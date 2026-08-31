@@ -14,9 +14,10 @@ for tests** — a test validates a design specification, not merely the written 
 change that adds or alters behavior, check it against the relevant design item and cite the item id
 (e.g. `FR-050`, `SEAM-03`, `C-I1`) in the change.
 
-New design decisions are recorded as RFCs under `rfcs/` (the four-folder lifecycle: `proposed/`,
-`done/`, `archive/`, and an index `README.md`). Completed RFCs are never deleted; they move to
-`done/`.
+New design decisions are recorded as RFCs under `rfcs/` (the five-folder lifecycle: `proposed/`,
+`accepted/`, `done/`, `archive/`, and an index `README.md`). An RFC moves `proposed/` → `accepted/`
+when its design is settled and an implementer may start, then → `done/` when the work ships. Completed
+RFCs are never deleted.
 
 ## Ground rules
 

@@ -30,6 +30,9 @@ of the design set, built and tested under prikk-grade gates.
 - **Documentation** — README, SECURITY.md, CONTRIBUTING.md, ROADMAP.md, and an mdBook under `docs/`
   carrying the full design set (requirements, external design, internal design, data model, threat
   model).
+- **RFC process** — the RFC lifecycle policy adopted as `rfcs/done/000` (five-folder variant), with the
+  five deferred Program-Design decisions drafted as proposed RFCs 001–005 (frontend toolkit, action-id
+  catalog, change-token signals, export schema, library backend).
 
 ### Security
 

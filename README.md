@@ -75,4 +75,5 @@ The full design set lives in [`docs/src`](docs/src) (mdBook), organized by reade
   and the security threat model.
 - **Contributors** — [CONTRIBUTING.md](CONTRIBUTING.md), the workflow, and the testing discipline.
 
-Security: see [SECURITY.md](SECURITY.md). Changes: see [CHANGELOG.md](CHANGELOG.md).
+Where stikk is headed: see [ROADMAP.md](ROADMAP.md). Security: see [SECURITY.md](SECURITY.md).
+Changes: see [CHANGELOG.md](CHANGELOG.md).

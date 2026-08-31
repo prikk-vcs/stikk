@@ -27,8 +27,9 @@ of the design set, built and tested under prikk-grade gates.
   handshake, orientation, and derived capability into a view-model.
 - **The `stikk` launcher** — `--version`, `--help`, `config check`, `config path`, and opening a
   repository to print a one-shot orientation (the interactive TUI is the next increment).
-- **Documentation** — README, SECURITY.md, CONTRIBUTING.md, and an mdBook under `docs/` carrying the
-  full design set (requirements, external design, internal design, data model, threat model).
+- **Documentation** — README, SECURITY.md, CONTRIBUTING.md, ROADMAP.md, and an mdBook under `docs/`
+  carrying the full design set (requirements, external design, internal design, data model, threat
+  model).
 
 ### Security
 

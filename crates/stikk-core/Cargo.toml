@@ -1,0 +1,18 @@
+[package]
+name        = "stikk-core"
+description = "The operation layer: one shared operation set both frontends drive. Owns no I/O and no widgets; orchestrates the seam, state, and view-models."
+
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
+
+[dependencies]
+stikk-model = { workspace = true }
+stikk-prikk = { workspace = true }
+stikk-state = { workspace = true }
+
+[lints]
+workspace = true

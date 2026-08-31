@@ -1,0 +1,11 @@
+[book]
+title = "stikk"
+description = "A history browser and workbench for the prikk version control system."
+authors = ["nabbisen"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/prikk-vcs/stikk"

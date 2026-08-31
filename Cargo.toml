@@ -1,6 +1,13 @@
 [package]
-name = "stikk"
-version = "0.0.0"
-edition = "2024"
+name        = "stikk"
+description = "A user-facing tool of the prikk ecosystem."
+readme      = "./README.md"
+
+version             = "0.0.0"
+edition             = "2024"
+rust-version        = "1.85"
+license             = "Apache-2.0"
+authors             = ["nabbisen"]
+repository          = "https://github.com/prikk-vcs/stikk"
 
 [dependencies]

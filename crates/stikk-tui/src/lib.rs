@@ -82,6 +82,8 @@ pub fn run(repo: &Path, prikk: &impl Prikk, config: &Config) -> Result<()> {
                         Action::Up => app.nav_up(),
                         Action::Down => app.nav_down(),
                         Action::OpenRefPicker => app.open_ref_picker(prikk),
+                        Action::OpenChanges => app.open_changes(prikk),
+                        Action::ToggleUntracked => app.toggle_untracked(),
                         Action::OpenGlossary => app.open_glossary(),
                         Action::OpenPalette => app.open_palette(),
                         Action::OpenRefusals => app.open_refusals(),

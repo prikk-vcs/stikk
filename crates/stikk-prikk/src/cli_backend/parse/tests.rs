@@ -169,3 +169,91 @@ fn parses_refs_with_markers_and_kinds() {
 fn refs_skips_blank_lines() {
     assert_eq!(refs("\n\n").expect("empty ok").len(), 0);
 }
+
+// Captured verbatim from `prikk worktree-status` (clean) at prikk 0.28.0.
+const WORKTREE_CLEAN_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 2
+unchanged files: 2
+missing files: 0
+modified files: 0
+untracked files: 0
+unsupported paths: 0
+worktree: clean against baseline
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+// Captured verbatim from `prikk worktree-status` (dirty) at prikk 0.28.0 — the report is on stdout;
+// the `error: worktree has changes against the baseline` line is on stderr and is *not* part of it.
+const WORKTREE_DIRTY_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 2
+unchanged files: 0
+missing files: 1
+modified files: 1
+untracked files: 1
+unsupported paths: 0
+worktree: changed against baseline
+  untracked notes.tmp — worktree file is not in the baseline
+  modified readme.txt — tracked file bytes differ from the baseline
+  missing src/main.rs — tracked file is absent from the worktree
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+#[test]
+fn parses_a_clean_worktree() {
+    let s = worktree_status(WORKTREE_CLEAN_FIXTURE).expect("clean parses");
+    assert!(s.clean);
+    assert_eq!(s.reff, "heads/main");
+    assert_eq!(s.tracked, 2);
+    assert_eq!(s.unchanged, 2);
+    assert!(s.entries.is_empty());
+}
+
+#[test]
+fn parses_a_dirty_worktree_with_all_kinds() {
+    let s = worktree_status(WORKTREE_DIRTY_FIXTURE).expect("dirty parses");
+    assert!(!s.clean);
+    assert_eq!(s.missing, 1);
+    assert_eq!(s.modified, 1);
+    assert_eq!(s.untracked, 1);
+    assert_eq!(s.entries.len(), 3);
+    let modified = s.entries.iter().find(|e| e.kind == "modified").unwrap();
+    assert_eq!(modified.path, "readme.txt");
+    assert!(modified.note.contains("bytes differ"));
+    let missing = s.entries.iter().find(|e| e.kind == "missing").unwrap();
+    assert_eq!(missing.path, "src/main.rs");
+}
+
+#[test]
+fn worktree_entry_preserves_a_path_with_spaces() {
+    let text = "\
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 0
+modified files: 1
+untracked files: 0
+unsupported paths: 0
+worktree: changed against baseline
+  modified my docs/read me.txt — tracked file bytes differ from the baseline
+";
+    let s = worktree_status(text).expect("parses");
+    assert_eq!(s.entries[0].path, "my docs/read me.txt");
+}
+
+#[test]
+fn worktree_status_refuses_without_the_headline() {
+    // UD-02: no `worktree:` headline ⇒ not a worktree-status report ⇒ environment fault (the caller
+    // then treats the outcome as a real failure rather than a status).
+    let text = "some unrelated prikk output\n";
+    assert_eq!(worktree_status(text).unwrap_err().class(), "environment");
+}
+
+#[test]
+fn worktree_status_refuses_on_a_missing_count() {
+    let text = "ref: heads/main\nworktree: clean against baseline\n";
+    assert_eq!(worktree_status(text).unwrap_err().class(), "environment");
+}

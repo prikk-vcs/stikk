@@ -20,7 +20,7 @@ use std::process::Command;
 use stikk_model::{RequestCategory, Result, StikkError};
 
 use crate::version::Version;
-use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles};
+use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus};
 
 mod classify;
 mod parse;
@@ -85,6 +85,35 @@ impl CliBackend {
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         Err(classify::classify(&stdout, &stderr, category))
     }
+
+    /// Run `prikk`, draining both streams, and return `(stdout, stderr, success)` **without**
+    /// classifying a non-zero exit. Used where a non-zero exit is a normal outcome the caller must
+    /// interpret itself — `worktree-status` exits 1 for a *dirty* tree (RFC 008 finding 2 / UD-05).
+    fn run_capturing<I, S>(&self, cwd: Option<&Path>, args: I) -> Result<(String, String, bool)>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let mut command = Command::new(&self.program);
+        command.args(args);
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        let output = command.output().map_err(|error| {
+            StikkError::environment(
+                format!(
+                    "could not launch prikk ({}): is it installed and on PATH?",
+                    self.program.to_string_lossy()
+                ),
+                error,
+            )
+        })?;
+        Ok((
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+            output.status.success(),
+        ))
+    }
 }
 
 impl Prikk for CliBackend {
@@ -130,6 +159,22 @@ impl Prikk for CliBackend {
             ["branch", "list", "--all"],
         )?;
         parse::refs(&out)
+    }
+
+    fn worktree_status(&self, repo: &Path, reff: &str) -> Result<WorktreeStatus> {
+        // `worktree-status` exits 1 for a *dirty* tree and 0 for a clean one, writing the report to
+        // stdout either way (RFC 008 finding 2). Capture without classifying, and parse stdout
+        // regardless of exit; only when stdout carries no report is the outcome a real failure.
+        let (stdout, stderr, _success) =
+            self.run_capturing(Some(repo), ["worktree-status", "--ref", reff])?;
+        match parse::worktree_status(&stdout) {
+            Ok(status) => Ok(status),
+            Err(_shape) => Err(classify::classify(
+                &stdout,
+                &stderr,
+                RequestCategory::WorktreeAnalysis,
+            )),
+        }
     }
 }
 

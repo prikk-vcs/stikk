@@ -13,8 +13,8 @@
 use std::path::{Path, PathBuf};
 
 use stikk_core::{
-    BlockDetailView, Command, HistoryView, NextTarget, OperationContext, Presentation,
-    RefusalHistory, Target, block_detail, history_view, list_refs, orient, present,
+    BlockDetailView, ChangesView, Command, HistoryView, NextTarget, OperationContext, Presentation,
+    RefusalHistory, Target, block_detail, changes_view, history_view, list_refs, orient, present,
 };
 use stikk_model::Capability;
 use stikk_prikk::Prikk;
@@ -52,6 +52,13 @@ pub enum Screen {
     },
     /// A single block's detail.
     BlockDetail(BlockDetailView),
+    /// The worktree-vs-baseline Changes view, with the UD-08 display-only untracked filter.
+    Changes {
+        /// The loaded status.
+        view: ChangesView,
+        /// Whether untracked entries are hidden (display only — a commit still captures them).
+        hide_untracked: bool,
+    },
 }
 
 /// What the shell should render in the body region — the top screen, or the Orientation root.
@@ -63,6 +70,8 @@ pub enum Focus<'a> {
     History(&'a HistoryView, usize),
     /// A Block-detail screen.
     BlockDetail(&'a BlockDetailView),
+    /// The Changes view and whether untracked entries are hidden.
+    Changes(&'a ChangesView, bool),
 }
 
 /// The running application.
@@ -149,6 +158,26 @@ impl App {
         }
     }
 
+    /// Open the Changes (worktree-vs-baseline) view for the focused ref (the `w` key). Below prikk
+    /// 0.28 the version gate surfaces guidance rather than the broken command (FR-034/UD-03).
+    pub fn open_changes(&mut self, prikk: &impl Prikk) {
+        self.banner = None;
+        match changes_view(prikk, &self.repo, &self.focused_ref) {
+            Ok(view) => self.screens.push(Screen::Changes {
+                view,
+                hide_untracked: false,
+            }),
+            Err(error) => self.surface(&error, OperationContext::LoadChanges),
+        }
+    }
+
+    /// Toggle the display-only untracked filter on a focused Changes screen (the `u` key; UD-08).
+    pub fn toggle_untracked(&mut self) {
+        if let Some(Screen::Changes { hide_untracked, .. }) = self.screens.last_mut() {
+            *hide_untracked = !*hide_untracked;
+        }
+    }
+
     /// The context-sensitive select/drill-in action (the `Enter` key). Overlays take priority.
     pub fn select(&mut self, prikk: &impl Prikk) {
         match self.overlays.last() {
@@ -211,6 +240,9 @@ impl App {
                 }
             }
             Some(Screen::BlockDetail(_)) => {}
+            // Enter on a Changes row would open a per-file content diff — deferred (UD-09); the view
+            // states so. No drill-in.
+            Some(Screen::Changes { .. }) => {}
             None => self.open_history(prikk),
         }
     }
@@ -382,6 +414,7 @@ impl App {
             Target::Orientation => self.screens.clear(),
             Target::History => self.open_history(prikk),
             Target::RefPicker => self.open_ref_picker(prikk),
+            Target::Changes => self.open_changes(prikk),
             Target::Glossary => self.overlays.push(Overlay::Glossary),
             // Targets whose views land in later increments: no-op for now (the mapping is complete).
             Target::LockInspector | Target::TrustKeys | Target::Verify | Target::Doctor => {}
@@ -454,6 +487,10 @@ impl App {
         match self.screens.last() {
             Some(Screen::History { view, cursor }) => Focus::History(view, *cursor),
             Some(Screen::BlockDetail(detail)) => Focus::BlockDetail(detail),
+            Some(Screen::Changes {
+                view,
+                hide_untracked,
+            }) => Focus::Changes(view, *hide_untracked),
             None => Focus::Orientation(&self.state),
         }
     }

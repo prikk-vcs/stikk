@@ -121,6 +121,9 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         },
         Focus::History(v, cursor) => view::history::render(v, cursor, palette, frame, area),
         Focus::BlockDetail(detail) => view::block::render(detail, palette, frame, area),
+        Focus::Changes(v, hide_untracked) => {
+            view::changes::render(v, hide_untracked, palette, frame, area);
+        }
     }
 }
 

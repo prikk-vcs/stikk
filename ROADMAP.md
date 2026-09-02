@@ -57,8 +57,16 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
    operation registry (TU-07, capability-gated with visible-but-disabled reasons). `cargo run -p
    stikk-tui --example explanation_demo` drives all of it. Built per the
    [handoff](rfcs/handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md).
-5. **Compare** (`FR-033`) and **Changes** — worktree-vs-baseline (`FR-034`) computed via the
-   replay/plan route while `worktree-status` is unusable upstream (`UD-03`).
+5. **Changes** — worktree-vs-baseline (`FR-034`) — ✅ **shipped** (RFC 008); **Compare (`FR-033`)
+   deferred**. A check of the live binary found `worktree-status` **fixed as of prikk 0.28** (UD-03 was
+   a 0.27.x defect), so Changes uses it directly (version-gated; below 0.28 it explains rather than runs
+   the broken command). It is path-level (modified/missing/untracked/unsupported) with the UD-08
+   untracked filter and the UD-06/UD-09 honesty notes; a dirty tree's non-zero exit is treated as a
+   normal status, not a refusal (UD-05). `cargo run -p stikk-tui --example changes_demo` drives it.
+   **Compare has no honest command** (no `diff`/`compare`/`show`; `checkout` is ref-tip-only; plan
+   output carries no per-file content), so a partial Compare would mislabel differing files as identical
+   (T-T4) — split out with a concrete future route (materialize two ref tips to temp dirs). Built per
+   the [handoff](rfcs/handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md).
 6. **Session persistence and progressive disclosure** (`FR-122`, `TU-12`): resume the focused ref,
    view, and filters; default vs. advanced view depth.
 

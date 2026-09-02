@@ -29,6 +29,10 @@ pub enum Action {
     Down,
     /// Open the ref picker.
     OpenRefPicker,
+    /// Open the Changes (worktree-vs-baseline) view.
+    OpenChanges,
+    /// Toggle the display-only untracked filter (Changes view).
+    ToggleUntracked,
     /// Open the glossary / help browser.
     OpenGlossary,
     /// Open the command palette.
@@ -68,6 +72,8 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Up | KeyCode::Char('k') => Action::Up,
         KeyCode::Down | KeyCode::Char('j') => Action::Down,
         KeyCode::Char('b') => Action::OpenRefPicker,
+        KeyCode::Char('w') => Action::OpenChanges,
+        KeyCode::Char('u') => Action::ToggleUntracked,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,
         KeyCode::Char('R') => Action::OpenRefusals,

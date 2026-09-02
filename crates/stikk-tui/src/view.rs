@@ -3,5 +3,6 @@
 //! `stikk-core` view-model into a body region and computes nothing itself.
 
 pub mod block;
+pub mod changes;
 pub mod history;
 pub mod orientation;

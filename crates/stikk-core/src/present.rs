@@ -24,6 +24,8 @@ pub enum OperationContext {
     LoadHistory,
     /// Loading a block's replayed state.
     LoadBlockState,
+    /// Loading worktree-vs-baseline changes.
+    LoadChanges,
     /// Listing refs (the ref picker).
     ListRefs,
     /// Anything not otherwise distinguished.
@@ -41,6 +43,8 @@ pub enum Target {
     History,
     /// The ref picker overlay.
     RefPicker,
+    /// The Changes (worktree-vs-baseline) view.
+    Changes,
     /// The glossary / help browser.
     Glossary,
     /// The lock inspector (FR-102) — renderer lands with recovery.
@@ -194,6 +198,9 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
         OperationContext::LoadBlockState => {
             "prikk declined to replay this ref's state. stikk shows prikk's reason above."
         }
+        OperationContext::LoadChanges => {
+            "prikk declined to report worktree changes for this ref. stikk shows prikk's reason above."
+        }
         OperationContext::Orient => {
             "prikk declined to open this repository. Its message above is the authoritative reason."
         }
@@ -206,7 +213,9 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
 /// from the message text (C-T2b).
 fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
     match op {
-        OperationContext::LoadHistory | OperationContext::LoadBlockState => vec![
+        OperationContext::LoadHistory
+        | OperationContext::LoadBlockState
+        | OperationContext::LoadChanges => vec![
             NextStep {
                 label: "Choose another ref".to_string(),
                 target: NextTarget::OpenView(Target::RefPicker),

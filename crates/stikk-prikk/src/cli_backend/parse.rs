@@ -7,7 +7,11 @@
 
 use stikk_model::{Result, StikkError};
 
-use crate::{BlockRow, History, Orientation, RefEntry, StateFiles};
+use crate::{BlockRow, History, Orientation, RefEntry, StateFiles, WorktreeEntry, WorktreeStatus};
+
+/// The per-path change kinds `worktree-status` emits; used to tell an indented entry line from a
+/// flush-left count line that happens to share a first word (`modified files:` vs `  modified …`).
+const WORKTREE_KINDS: [&str; 4] = ["modified", "missing", "untracked", "unsupported"];
 
 /// Parse `prikk status` output into an [`Orientation`].
 ///
@@ -37,11 +41,10 @@ fn field<'a>(text: &'a str, label: &str) -> Option<&'a str> {
 }
 
 fn required_u64(text: &str, label: &str) -> Result<u64> {
-    let value = field(text, label).ok_or_else(|| {
-        StikkError::environment_msg(format!("prikk status output is missing {label:?}"))
-    })?;
+    let value = field(text, label)
+        .ok_or_else(|| StikkError::environment_msg(format!("prikk output is missing {label:?}")))?;
     value.parse::<u64>().map_err(|_| {
-        StikkError::environment_msg(format!("prikk status {label:?} is not a number: {value:?}"))
+        StikkError::environment_msg(format!("prikk field {label:?} is not a number: {value:?}"))
     })
 }
 
@@ -147,6 +150,59 @@ pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
         });
     }
     Ok(out)
+}
+
+/// Parse `prikk worktree-status` into a [`WorktreeStatus`] (design FR-034; RFC 008).
+///
+/// The `worktree: clean|changed against baseline` headline is the shape anchor — its absence means
+/// this is not a worktree-status report (the caller then treats the outcome as a real failure). Count
+/// lines are flush-left (`modified files: N`); per-path entries are indented (`  modified <path> —
+/// <note>`), which is how the two are told apart despite sharing a first word.
+pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
+    let headline = field(text, "worktree:").ok_or_else(|| {
+        StikkError::environment_msg(
+            "prikk worktree-status output is missing the worktree: headline",
+        )
+    })?;
+    let clean = headline.starts_with("clean");
+    let reff = required_field(text, "ref:")?;
+    let entries = text
+        .lines()
+        .filter(|line| line.starts_with(' ') || line.starts_with('\t'))
+        .filter_map(parse_worktree_entry)
+        .collect();
+    Ok(WorktreeStatus {
+        reff,
+        clean,
+        tracked: required_u64(text, "tracked files:")?,
+        unchanged: required_u64(text, "unchanged files:")?,
+        missing: required_u64(text, "missing files:")?,
+        modified: required_u64(text, "modified files:")?,
+        untracked: required_u64(text, "untracked files:")?,
+        unsupported: required_u64(text, "unsupported paths:")?,
+        entries,
+    })
+}
+
+/// Decode one indented entry line `  <kind> <path> — <note>`. Returns `None` for an indented line
+/// that is not an entry (its first word is not a change kind), e.g. a wrapped note.
+fn parse_worktree_entry(line: &str) -> Option<WorktreeEntry> {
+    let trimmed = line.trim_start();
+    let (kind, rest) = trimmed.split_once(' ')?;
+    if !WORKTREE_KINDS.contains(&kind) {
+        return None;
+    }
+    // The path runs up to the " — " separator; the note is the remainder. A path may contain spaces,
+    // so split on the separator rather than on whitespace.
+    let (path, note) = match rest.split_once(" — ") {
+        Some((path, note)) => (path.trim(), note.trim()),
+        None => (rest.trim(), ""),
+    };
+    Some(WorktreeEntry {
+        kind: kind.to_string(),
+        path: path.to_string(),
+        note: note.to_string(),
+    })
 }
 
 /// A required string field.

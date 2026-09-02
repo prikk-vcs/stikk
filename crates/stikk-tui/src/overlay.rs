@@ -102,6 +102,8 @@ fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
         key_line(palette, "Enter", "open / drill in / activate"),
         key_line(palette, "↑/↓ or j/k", "move selection"),
         key_line(palette, "b", "choose which ref to view"),
+        key_line(palette, "w", "changes — worktree vs baseline"),
+        key_line(palette, "u", "toggle untracked (in Changes)"),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
         key_line(palette, "r", "refresh — re-read from prikk"),

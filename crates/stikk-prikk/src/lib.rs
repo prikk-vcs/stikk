@@ -124,6 +124,46 @@ impl RefEntry {
     }
 }
 
+/// One worktree path that differs from the replay baseline, from `prikk worktree-status` (design
+/// FR-034; RFC 008). Path-level only — prikk reports *that* a tracked file's bytes differ, never the
+/// content difference (the UD-09 ceiling).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeEntry {
+    /// The change kind as prikk names it (`modified`, `missing`, `untracked`, `unsupported`); kept as
+    /// text so a future kind renders rather than breaks parsing.
+    pub kind: String,
+    /// The repo-relative worktree path.
+    pub path: String,
+    /// prikk's own one-line description of why the path is listed (preserved verbatim, NFR-I03).
+    pub note: String,
+}
+
+/// Worktree-vs-baseline status for a ref, from `prikk worktree-status` (design FR-034; RFC 008).
+///
+/// `worktree-status` reports a **non-zero exit when the tree is dirty** — that is a normal status, not
+/// a refusal (RFC 008 finding 2 / UD-05); the seam reads this report from stdout regardless of exit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeStatus {
+    /// The ref whose replay baseline the worktree was compared against.
+    pub reff: String,
+    /// True when the worktree matches the baseline (`worktree: clean against baseline`).
+    pub clean: bool,
+    /// Tracked files in the baseline.
+    pub tracked: u64,
+    /// Files unchanged from the baseline.
+    pub unchanged: u64,
+    /// Tracked files absent from the worktree.
+    pub missing: u64,
+    /// Tracked files whose bytes differ from the baseline.
+    pub modified: u64,
+    /// Worktree files not in the baseline.
+    pub untracked: u64,
+    /// Paths prikk cannot represent against the baseline.
+    pub unsupported: u64,
+    /// The per-path entries (the counts above summarize these).
+    pub entries: Vec<WorktreeEntry>,
+}
+
 /// The entire prikk contract stikk depends on. Every method returns [`stikk_model::StikkError`] on
 /// failure, classified into the presentation taxonomy the operation layer consumes.
 ///
@@ -162,4 +202,13 @@ pub trait Prikk {
     /// # Errors
     /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
     fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>>;
+
+    /// Read worktree-vs-baseline status for `reff` (design FR-034; category `worktree-analysis`;
+    /// RFC 008). A dirty worktree is reported as success (`clean == false`), not a refusal — prikk's
+    /// non-zero dirty exit is handled inside the implementation (RFC 008 finding 2).
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: an unrecognized report shape is an environment fault (UD-02); a
+    /// genuine failure (bad ref, not a repository) classifies as for [`Prikk::orientation`].
+    fn worktree_status(&self, repo: &Path, reff: &str) -> Result<WorktreeStatus>;
 }

@@ -4,11 +4,39 @@
 
 use std::path::Path;
 
-use stikk_prikk::{BlockRow, History, NullBackend, Orientation, RefEntry, StateFiles};
+use stikk_prikk::{
+    BlockRow, History, NullBackend, Orientation, RefEntry, StateFiles, WorktreeEntry,
+    WorktreeStatus,
+};
 use stikk_state::Config;
 
 use super::*;
 use crate::overlay::Overlay;
+
+fn dirty_worktree() -> WorktreeStatus {
+    WorktreeStatus {
+        reff: "heads/main".into(),
+        clean: false,
+        tracked: 1,
+        unchanged: 0,
+        missing: 0,
+        modified: 1,
+        untracked: 1,
+        unsupported: 0,
+        entries: vec![
+            WorktreeEntry {
+                kind: "modified".into(),
+                path: "readme.txt".into(),
+                note: "bytes differ".into(),
+            },
+            WorktreeEntry {
+                kind: "untracked".into(),
+                path: "notes.tmp".into(),
+                note: "not in the baseline".into(),
+            },
+        ],
+    }
+}
 
 fn block(id: &str, seq: u64) -> BlockRow {
     BlockRow {
@@ -259,6 +287,39 @@ fn recent_refusals_overlay_reopens_a_card() {
     }
     app.select(&backend); // re-open the remembered refusal
     assert!(matches!(app.top_overlay(), Some(Overlay::Refusal { .. })));
+}
+
+#[test]
+fn open_changes_pushes_the_view_and_toggle_hides_untracked() {
+    let backend = NullBackend::supported()
+        .with_version(0, 28, 1)
+        .with_worktree_status(dirty_worktree());
+    let mut app = App::open("/repo", &backend, &Config::default());
+    app.open_changes(&backend);
+    match app.focus() {
+        Focus::Changes(view, hide) => {
+            assert!(!view.clean);
+            assert_eq!(view.entries.len(), 2);
+            assert!(!hide);
+        }
+        other => panic!("expected Changes, got {other:?}"),
+    }
+    app.toggle_untracked();
+    match app.focus() {
+        Focus::Changes(_, hide) => assert!(hide),
+        other => panic!("expected Changes, got {other:?}"),
+    }
+}
+
+#[test]
+fn open_changes_below_0_28_surfaces_guidance_not_a_screen() {
+    // Default NullBackend is 0.27.1 — below the worktree-status fix (UD-03).
+    let backend = NullBackend::supported().with_worktree_status(dirty_worktree());
+    let mut app = App::open("/repo", &backend, &Config::default());
+    app.open_changes(&backend);
+    // No Changes screen was pushed; the guidance is a banner (inline class), not a broken error.
+    assert!(matches!(app.focus(), Focus::Orientation(_)));
+    assert!(app.banner().unwrap().contains("0.28"));
 }
 
 #[test]

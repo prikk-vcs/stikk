@@ -9,7 +9,7 @@ use std::path::Path;
 use stikk_model::{Result, StikkError};
 
 use crate::version::Version;
-use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles};
+use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus};
 
 type Scripted<T> = std::result::Result<T, String>;
 
@@ -21,6 +21,7 @@ pub struct NullBackend {
     history: Scripted<History>,
     state: Scripted<StateFiles>,
     refs: Scripted<Vec<RefEntry>>,
+    worktree: Scripted<WorktreeStatus>,
 }
 
 impl NullBackend {
@@ -57,7 +58,45 @@ impl NullBackend {
                 closed: false,
                 received: false,
             }]),
+            worktree: Ok(WorktreeStatus {
+                reff: "heads/main".to_string(),
+                clean: true,
+                tracked: 0,
+                unchanged: 0,
+                missing: 0,
+                modified: 0,
+                untracked: 0,
+                unsupported: 0,
+                entries: Vec::new(),
+            }),
         }
+    }
+
+    /// Set the reported prikk version (for testing the version gate — e.g. Changes needs ≥ 0.28).
+    #[must_use]
+    pub fn with_version(mut self, major: u32, minor: u32, patch: u32) -> Self {
+        self.handshake.version = Version {
+            major,
+            minor,
+            patch,
+        };
+        self.handshake.raw_version = format!("prikk {major}.{minor}.{patch}");
+        self.handshake.supported = self.handshake.version.is_supported();
+        self
+    }
+
+    /// Replace the worktree status this backend returns.
+    #[must_use]
+    pub fn with_worktree_status(mut self, status: WorktreeStatus) -> Self {
+        self.worktree = Ok(status);
+        self
+    }
+
+    /// Make the worktree-status call fail with a refusal carrying `message`.
+    #[must_use]
+    pub fn with_worktree_status_refusal(mut self, message: impl Into<String>) -> Self {
+        self.worktree = Err(message.into());
+        self
     }
 
     /// Replace the orientation this backend returns.
@@ -135,6 +174,10 @@ impl Prikk for NullBackend {
 
     fn refs(&self, _repo: &Path) -> Result<Vec<RefEntry>> {
         deliver(&self.refs)
+    }
+
+    fn worktree_status(&self, _repo: &Path, _reff: &str) -> Result<WorktreeStatus> {
+        deliver(&self.worktree)
     }
 }
 

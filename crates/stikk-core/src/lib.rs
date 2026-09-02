@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod changes;
 pub mod glossary;
 pub mod history;
 pub mod orient;
@@ -20,6 +21,7 @@ pub mod palette;
 pub mod present;
 pub mod refusal_history;
 
+pub use changes::{ChangeEntry, ChangeKind, ChangesView, changes_view};
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{BlockDetailView, HistoryView, block_detail, history_view, list_refs};
 pub use orient::{OrientationView, orient};

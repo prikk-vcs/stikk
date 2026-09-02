@@ -62,3 +62,23 @@ fn drains_large_output_without_deadlock() {
         .expect("large output drains");
     assert!(out.lines().count() >= 100_000);
 }
+
+#[cfg(unix)]
+#[test]
+fn run_capturing_keeps_stdout_on_a_nonzero_exit() {
+    // `worktree-status` exits 1 for a dirty tree while writing the report to stdout (RFC 008): the
+    // capturing runner must return that stdout with success=false, never discard it or classify it.
+    let backend = CliBackend::with_program("sh");
+    let (stdout, stderr, success) = backend
+        .run_capturing(
+            None,
+            [
+                "-c",
+                "printf 'the report\\n'; printf 'oops\\n' 1>&2; exit 1",
+            ],
+        )
+        .expect("capture succeeds even though the process exits 1");
+    assert!(!success);
+    assert!(stdout.contains("the report"));
+    assert!(stderr.contains("oops"));
+}

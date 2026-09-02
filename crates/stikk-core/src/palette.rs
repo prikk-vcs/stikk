@@ -71,6 +71,13 @@ static COMMANDS: &[Command] = &[
         opens: Some(Target::RefPicker),
     },
     Command {
+        id: "view.changes",
+        name: "Open Changes (worktree)",
+        binding: "w",
+        min_capability: Capability::Viewer,
+        opens: Some(Target::Changes),
+    },
+    Command {
         id: "view.glossary",
         name: "Glossary & Help",
         binding: "?",

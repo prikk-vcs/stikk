@@ -1,0 +1,226 @@
+name: Release
+
+# Cut a release from a version tag. Tags follow the Rust convention — the bare Cargo version, no `v`
+# prefix (e.g. `0.1.0`, `0.2.0-rc.1`). The flow is, in order:
+#   guard   → the tag must equal the workspace version; classify pre-release
+#   verify  → the full CI gate (fmt · clippy -D warnings · test) on the tagged commit
+#   release → create the GitHub Release with notes from CHANGELOG.md
+#   crates  → publish every crate to crates.io via Trusted Publishing (idempotent), behind an
+#             approval environment; short-lived OIDC token, no stored secret
+#   binaries→ build, checksum, and provenance-attest the `stikk` binary for each target
+#
+# Nothing publishes until a maintainer pushes a version tag; crates.io publishing additionally waits on
+# the `release` environment (add required reviewers there for a manual gate). See docs/src/contributing/
+# releasing.md for the one-time Trusted Publishing setup and the first manual publish.
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  guard:
+    name: Guard the tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must equal the workspace version
+        id: check
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          ws="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="stikk") | .version')"
+          echo "tag=$tag  workspace=$ws"
+          if [ "$tag" != "$ws" ]; then
+            echo "::error::tag ($tag) does not match the workspace version in Cargo.toml ($ws)"
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          if [[ "$tag" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  verify:
+    name: Gate (fmt · clippy · test)
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust (pinned MSRV)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+
+  release:
+    name: Create the GitHub Release
+    needs: [guard, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract the CHANGELOG section
+        run: |
+          set -euo pipefail
+          ver="${{ needs.guard.outputs.version }}"
+          # Pull the body under `## [ver]` or `## ver` (any trailing date) up to the next `## `.
+          awk -v ver="$ver" '
+            $0 ~ ("^## \\[?" ver "\\]?([^0-9].*)?$") { flag=1; next }
+            flag && /^## / { flag=0 }
+            flag { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md || true
+          if [ ! -s RELEASE_NOTES.md ]; then
+            printf 'Release %s.\n' "$ver" > RELEASE_NOTES.md
+          fi
+      - name: Create or update the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: stikk ${{ needs.guard.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          prerelease: ${{ needs.guard.outputs.prerelease }}
+          generate_release_notes: true
+
+  crates:
+    name: Publish to crates.io
+    needs: [guard, verify]
+    runs-on: ubuntu-latest
+    # An approval gate for the irreversible publish: add required reviewers to this environment in the
+    # repo settings to require a manual click before any crate is pushed.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Authenticate to crates.io (Trusted Publishing)
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish crates in dependency order (idempotent)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Dependency order: model → prikk/state → core → tui → the stikk launcher.
+          for crate in stikk-model stikk-prikk stikk-state stikk-core stikk-tui stikk; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' \
+              -H 'User-Agent: stikk-release (github actions; https://github.com/prikk-vcs/stikk)' \
+              "https://crates.io/api/v1/crates/${crate}/${VERSION}")"
+            if [ "$code" = "200" ]; then
+              echo "== ${crate} ${VERSION} already on crates.io — skipping"
+              continue
+            fi
+            echo "== publishing ${crate} ${VERSION}"
+            cargo publish -p "${crate}" --locked
+          done
+
+  binaries:
+    name: Binary (${{ matrix.target }})
+    needs: [guard, release]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.guard.outputs.version }}
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build the launcher
+        run: cargo build --release --locked -p stikk --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="stikk-${VERSION}-${TARGET}"
+          mkdir "$dist"
+          cp "target/${TARGET}/release/stikk" "$dist/"
+          cp README.md LICENSE CHANGELOG.md "$dist/"
+          tar -czf "${dist}.tar.gz" "$dist"
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${dist}.tar.gz" > "${dist}.tar.gz.sha256"
+          else
+            shasum -a 256 "${dist}.tar.gz" > "${dist}.tar.gz.sha256"
+          fi
+          echo "ASSET=${dist}.tar.gz" >> "$GITHUB_ENV"
+          echo "ASSET_SHA=${dist}.tar.gz.sha256" >> "$GITHUB_ENV"
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dist = "stikk-$env:VERSION-$env:TARGET"
+          New-Item -ItemType Directory -Path $dist | Out-Null
+          Copy-Item "target/$env:TARGET/release/stikk.exe" $dist/
+          Copy-Item README.md, LICENSE, CHANGELOG.md $dist/
+          Compress-Archive -Path $dist -DestinationPath "$dist.zip"
+          (Get-FileHash "$dist.zip" -Algorithm SHA256).Hash | Out-File -Encoding ascii "$dist.zip.sha256"
+          "ASSET=$dist.zip"          | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
+          "ASSET_SHA=$dist.zip.sha256" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ env.ASSET }}
+
+      - name: Upload to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET_SHA }}

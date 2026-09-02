@@ -22,3 +22,6 @@ target
 
 # mdBook build output
 docs/book
+
+# GitHub Pages assembly (CI)
+/_site

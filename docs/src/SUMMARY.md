@@ -17,3 +17,4 @@
 # Contributing
 
 - [Development](./contributing/development.md)
+- [Releasing](./contributing/releasing.md)

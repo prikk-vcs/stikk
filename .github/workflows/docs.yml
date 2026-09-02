@@ -1,0 +1,83 @@
+name: Docs
+
+# Build the mdBook (design set + guide) and the rustdoc API reference, and publish both to GitHub
+# Pages. The book is the site root; the API docs live under /api. Nothing here touches a repository or
+# a secret — it only reads the source and deploys a static site.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# Least privilege: read the repo, write Pages via an OIDC-minted deployment token.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deployment at a time; let a running deploy finish rather than cancelling it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install mdBook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: latest
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build the book
+        run: mdbook build docs
+
+      - name: Build the API docs
+        run: cargo doc --no-deps --workspace --locked
+
+      - name: Assemble the site (book at root, API under /api)
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site/api
+          cp -r docs/book/. _site/
+          cp -r target/doc/. _site/api/
+          # cargo doc emits no workspace-root index; redirect /api to the operation layer's crate.
+          cat > _site/api/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=stikk_core/index.html">
+          <title>stikk API docs</title>
+          <a href="stikk_core/index.html">stikk API documentation</a>
+          HTML
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

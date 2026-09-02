@@ -48,9 +48,14 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
      block-level `log`. stikk shows block lineage + a block's state file list now, and names the gap
      where a user would open a patch — never a faked diff. UD-09 (a `log --format json` + a
      patch-content surface) is filed upstream, mirroring UD-01…08.
-4. **Refusal explanation overlay + the witness/finding glossary** (`FR-110/111`) and the **command
-   palette** (`FR-125`). The explanation surface lands early, with the first read surfaces, because
-   it is the product, not an error path.
+4. **Refusal explanation overlay + the witness/finding glossary** (`FR-110/111/112`) and the **command
+   palette** (`FR-125`) — **planned, RFC 007 accepted**: one class→presentation mapping in `stikk-core`
+   (ER-03), a version-gated seam classifier for prikk's 0/1 exit (UD-05), the TU-08 refusal overlay,
+   the glossary asset (DM-09, terminology seeded now / witness+finding codes as their sources land),
+   the in-memory session refusal history (DM-06), and the palette's operation registry (TU-07). The
+   explanation surface lands early, with the first read surfaces, because it is the product, not an
+   error path. See the
+   [handoff](rfcs/handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md).
 5. **Compare** (`FR-033`) and **Changes** — worktree-vs-baseline (`FR-034`) computed via the
    replay/plan route while `worktree-status` is unusable upstream (`UD-03`).
 6. **Session persistence and progressive disclosure** (`FR-122`, `TU-12`): resume the focused ref,

@@ -33,6 +33,11 @@ one-shot orientation print.
 - **Handoff for the TUI shell + Orientation increment** written and now realized: program design,
   decision notes, the security surface, the test plan, and acceptance criteria —
   `rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md`.
+- **RFC 006 accepted (2026-09-02): History & inspection seam.** Grows the read-seam for a History
+  (block-lineage) browser + Block detail now; **Patch detail is split to increment 3b behind UD-09** —
+  prikk exposes no per-patch content and no `show`/`diff`, only block-level `log`, so stikk shows
+  lineage + a block's state file list and names the gap rather than faking a diff. Handoff:
+  `rfcs/handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md`. UD-09 filed upstream.
 
 ## 0.1.0 — foundation
 

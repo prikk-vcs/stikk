@@ -30,7 +30,8 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Decision | Handoff |
 |----|-------|----------|---------|
-| 001 | [Frontend toolkit selection](./accepted/001-frontend-toolkit-selection.md) | TUI: `ratatui` + `crossterm` (2026-09-01); GUI spun out to a future RFC | [TUI shell & Orientation](./handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md) |
+| 001 | [Frontend toolkit selection](./accepted/001-frontend-toolkit-selection.md) | TUI: `ratatui` + `crossterm` (2026-09-01); GUI spun out to a future RFC — **shipped** | [TUI shell & Orientation](./handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md) |
+| 006 | [History & inspection seam](./accepted/006-history-and-inspection-seam.md) | grow the read-seam for History + Block detail now; Patch detail split to 3b behind UD-09 (2026-09-02) | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |
 
 ## Done (implemented)
 

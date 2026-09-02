@@ -36,10 +36,15 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
    header/status-bar/overlay layout, the view stack, global keys, and the live Orientation. `stikk
    <repo>` opens the TUI on a terminal; piped/CI keeps the one-shot print. Built per the
    [handoff](rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md).
-3. **History** (`FR-010…017`) with the unsealed queue tier, and **Patch / Block detail** with the
-   diff and state-tree render (`FR-030…032`) — **next increment**: the seam grows its `read-history`
-   and `read-state` methods to feed these, and this is the first real consumer of the inert-text
-   primitive and the overlay layer the shell increment built.
+3. **History** (`FR-010…017`) with the unsealed queue tier + **Block detail** (`FR-031/032` at block
+   granularity) — **planned, RFC 006 accepted**: the seam grows `read-history`/`read-state`, and this
+   is the first heavy use of the inert-text primitive and overlay layer. See the
+   [handoff](rfcs/handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md).
+   - **3b — Patch detail** (`FR-030`), patch-id enumeration, and diff-aware search (`FR-013`) are
+     **split out, blocked on UD-09**: prikk exposes no per-patch content and no `show`/`diff`, only
+     block-level `log`. stikk shows block lineage + a block's state file list now, and names the gap
+     where a user would open a patch — never a faked diff. UD-09 (a `log --format json` + a
+     patch-content surface) is filed upstream, mirroring UD-01…08.
 4. **Refusal explanation overlay + the witness/finding glossary** (`FR-110/111`) and the **command
    palette** (`FR-125`). The explanation surface lands early, with the first read surfaces, because
    it is the product, not an error path.
@@ -99,6 +104,7 @@ issues for the prikk project (requirement `UD-01…UD-05`):
 | `UD-03` | `worktree-status` is broken on ordinary repos | Changes is computed via the replay/plan route |
 | `UD-04` | the CLI panics on EPIPE | the seam drains output fully (already implemented) |
 | `UD-05` | exit codes collapse to 0/1 | the seam classifies by message + context |
+| `UD-09` | no per-patch content, no patch-id enumeration, no `show`/`diff` — `log` is block-level only (RFC 006) | History shows block lineage + a block's state file list; Patch detail (3b) waits; the gap is named where a user would open a patch |
 
 ## Releases and versioning
 

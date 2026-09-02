@@ -1,6 +1,9 @@
 # RFC 001 — Frontend toolkit selection
 
-**Status.** Proposed
+**Status.** Accepted (2026-09-01) — **TUI: `ratatui` on the `crossterm` backend**; the GUI toolkit is
+deliberately left undecided and spun out to a future RFC. See [Acceptance](#acceptance-2026-09-01).
+An implementer may start the TUI shell + Orientation increment; the handoff is
+[`../handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md`](../handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md).
 **Tracks.** Which rendering toolkits the TUI and GUI frontends are built on. Gates every interactive
 increment (the internal design deferred this to Program Design deliberately).
 **Touches.** `crates/stikk-tui` and `crates/stikk-gui` (neither exists yet); their dependency
@@ -89,3 +92,25 @@ dependency). No recommendation is made here on purpose.
 - Should the TUI backend be abstracted (crossterm today, termion/termwiz later) or is committing to
   crossterm fine given the swap-cost analysis above? Proposed: commit to crossterm; revisit only if a
   platform gap appears.
+
+## Acceptance (2026-09-01)
+
+**Ruled:** the TUI is built on **`ratatui`** over the **`crossterm`** backend, for the reasons in
+§TUI — the immediate-mode redraw model matches stikk's re-derive-a-view-model design, and `crossterm`
+covers the three mutation platforms in pure Rust. Both are pinned to a specific version in the first
+`stikk-tui` manifest and updated deliberately. The two open questions are carried, not blockers:
+
+1. **Backend not abstracted for now** — commit to `crossterm` directly; revisit only if a platform gap
+   appears (the frontends depend only on `stikk-core`, so a later swap is one-crate-local).
+2. **TUI accessibility** is treated as a **documented limitation** rather than a claim: terminals give
+   assistive tech little to work with, so the accessible path is the (future) GUI. This must be stated
+   plainly in the TUI's own docs before 0.2 ships; it does not block the read surfaces.
+
+**Scope decided by this acceptance:** TUI toolkit only. **The GUI toolkit remains undecided** and is
+spun out to its own RFC to be written when GUI work begins (the shortlist and the accessibility filter
+in §GUI are the input to it). Accepting this RFC does not authorize any GUI dependency.
+
+**Unblocks:** the roadmap's "Next" increment 2 — the TUI shell and Orientation view (`TU-01/02/03`,
+`FR-002`). Its program design, decision notes, and the security surface it activates are in the
+handoff linked in the Status field. Implementation follows the handoff; nothing below `stikk-core`
+changes.

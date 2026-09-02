@@ -20,7 +20,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 001 | [Frontend toolkit selection](./proposed/001-frontend-toolkit-selection.md) | the TUI toolkit (decided) and GUI direction — gates every interactive increment |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 003 | [Repository change-token signal set](./proposed/003-repository-change-token.md) | cache validity and external-change / preview-staleness detection |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
@@ -29,7 +28,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None yet._
+| ID | Title | Decision | Handoff |
+|----|-------|----------|---------|
+| 001 | [Frontend toolkit selection](./accepted/001-frontend-toolkit-selection.md) | TUI: `ratatui` + `crossterm` (2026-09-01); GUI spun out to a future RFC | [TUI shell & Orientation](./handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md) |
 
 ## Done (implemented)
 

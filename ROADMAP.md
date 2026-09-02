@@ -30,10 +30,13 @@ The security-critical layers, built and tested under the project gates:
 
 The goal: a running TUI you can browse a repository with. Nothing here needs a mutation.
 
-1. **Pick the TUI toolkit** — the first RFC (`rfcs/proposed`). It was deliberately left unmade in the
-   internal design; it gates everything interactive.
-2. **The TUI shell and Orientation view** (`TU-01/02/03`, `FR-002`): the header/status-bar/overlay
-   layout, the view stack, global keys, and the live Orientation the launcher currently prints once.
+1. **Pick the TUI toolkit** — ✅ decided: **`ratatui` + `crossterm`** (RFC 001, accepted 2026-09-01;
+   GUI toolkit spun out to a future RFC). It gates everything interactive.
+2. **The TUI shell and Orientation view** (`TU-01/02/03`, `FR-002`) — **active increment**: the
+   header/status-bar/overlay layout, the view stack, global keys, and the live Orientation the launcher
+   currently prints once. Program design, decision notes, and security surface are in the
+   [handoff](rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md);
+   implementation follows it.
 3. **History** (`FR-010…017`) with the unsealed queue tier, and **Patch / Block detail** with the
    diff and state-tree render (`FR-030…032`) — the seam grows its `read-history` and `read-state`
    methods to feed these.

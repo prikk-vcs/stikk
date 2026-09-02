@@ -2,6 +2,17 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Decisions & planning
+
+- **RFC 001 accepted (2026-09-01): the TUI is built on `ratatui` + `crossterm`.** The GUI toolkit is
+  deliberately left undecided and spun out to a future RFC. RFC 001 moved `proposed/` → `accepted/`.
+- **Handoff for the TUI shell + Orientation increment** (the roadmap's next step) written: program
+  design, decision notes, the security surface it activates, the test plan, and acceptance criteria —
+  `rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md`. Implementation
+  follows the handoff.
+
 ## 0.1.0 — foundation
 
 The first real code increment: a multi-crate workspace implementing the security-critical foundation

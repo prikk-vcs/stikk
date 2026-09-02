@@ -117,7 +117,8 @@ fn config_path() -> ExitCode {
     }
 }
 
-/// Open a repository and print its orientation (the one-shot stand-in for the Orientation view).
+/// Open a repository. On a TTY, launch the interactive TUI (design CL-06); otherwise print a one-shot
+/// orientation, which stays the machine-friendly path for pipes and CI.
 fn run_open(path: Option<&str>) -> ExitCode {
     let start = match path {
         Some(p) => PathBuf::from(p),
@@ -131,12 +132,34 @@ fn run_open(path: Option<&str>) -> ExitCode {
         Err(err) => return fail(&err.to_string()),
     };
     let backend = CliBackend::new();
+
+    if stikk_tui::stdout_is_tty() {
+        let config = load_config();
+        return match stikk_tui::run(handle.root(), &backend, &config) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => fail(&err.to_string()),
+        };
+    }
+
+    // Non-TTY (piped, redirected, CI): the one-shot orientation.
     match orient(&backend, handle.root()) {
         Ok(view) => {
             print_orientation(handle.root(), &view);
             ExitCode::SUCCESS
         }
         Err(err) => fail(&err.to_string()),
+    }
+}
+
+/// Load the stikk config, falling back to defaults on any problem (design CF-02: a bad config never
+/// blocks launch).
+fn load_config() -> Config {
+    let Ok(path) = paths::config_file() else {
+        return Config::default();
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Config::parse(&text),
+        Err(_) => Config::default(),
     }
 }
 
@@ -179,7 +202,10 @@ fn print_orientation(root: &Path, view: &orient::OrientationView) {
         Some(id) => println!("  heads/main:  {id}"),
         None => println!("  heads/main:  <unpublished>"),
     }
-    println!("\nThe interactive TUI is the next increment; this is a one-shot orientation.");
+    println!(
+        "\nRunning without a terminal, so this is the one-shot orientation; open stikk in a \
+         terminal for the interactive view."
+    );
 }
 
 fn ready(flag: bool) -> &'static str {

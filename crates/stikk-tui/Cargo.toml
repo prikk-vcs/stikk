@@ -1,0 +1,24 @@
+[package]
+name        = "stikk-tui"
+description = "The terminal (TUI) frontend for stikk. Renders the operation layer's view-models; computes nothing about the repository."
+
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
+
+[dependencies]
+stikk-model = { workspace = true }
+stikk-prikk = { workspace = true }
+stikk-state = { workspace = true }
+stikk-core  = { workspace = true }
+
+# RFC 001 (accepted 2026-09-01): the TUI is built on ratatui over the crossterm backend. crossterm is
+# used through ratatui's own re-export (`ratatui::crossterm`) so the two can never drift to
+# incompatible versions.
+ratatui = "0.29"
+
+[lints]
+workspace = true

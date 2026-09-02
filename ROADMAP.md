@@ -32,14 +32,14 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
 
 1. **Pick the TUI toolkit** — ✅ decided: **`ratatui` + `crossterm`** (RFC 001, accepted 2026-09-01;
    GUI toolkit spun out to a future RFC). It gates everything interactive.
-2. **The TUI shell and Orientation view** (`TU-01/02/03`, `FR-002`) — **active increment**: the
-   header/status-bar/overlay layout, the view stack, global keys, and the live Orientation the launcher
-   currently prints once. Program design, decision notes, and security surface are in the
-   [handoff](rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md);
-   implementation follows it.
+2. **The TUI shell and Orientation view** (`TU-01/02/03`, `FR-002`) — ✅ shipped (`stikk-tui`): the
+   header/status-bar/overlay layout, the view stack, global keys, and the live Orientation. `stikk
+   <repo>` opens the TUI on a terminal; piped/CI keeps the one-shot print. Built per the
+   [handoff](rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md).
 3. **History** (`FR-010…017`) with the unsealed queue tier, and **Patch / Block detail** with the
-   diff and state-tree render (`FR-030…032`) — the seam grows its `read-history` and `read-state`
-   methods to feed these.
+   diff and state-tree render (`FR-030…032`) — **next increment**: the seam grows its `read-history`
+   and `read-state` methods to feed these, and this is the first real consumer of the inert-text
+   primitive and the overlay layer the shell increment built.
 4. **Refusal explanation overlay + the witness/finding glossary** (`FR-110/111`) and the **command
    palette** (`FR-125`). The explanation surface lands early, with the first read surfaces, because
    it is the product, not an error path.

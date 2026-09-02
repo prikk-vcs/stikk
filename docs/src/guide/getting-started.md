@@ -26,13 +26,16 @@ export STIKK_PRIKK_BIN=/path/to/prikk
 stikk /path/to/repo
 ```
 
-This prints a one-shot **orientation**: the prikk version and whether stikk supports it, the queue
-depth, your signing readiness, and the capability that readiness gives you. Run it inside a repository
-with no argument and stikk discovers the repository root by walking upward for a `.prikk` directory,
-the same way prikk does.
+On a terminal this launches the interactive **TUI**: an Orientation view — the prikk version and
+whether stikk supports it, the queue depth, your signing readiness, and the capability that readiness
+gives you — inside a shell with a status bar and a Help overlay. Press `?` for the key reference, `r`
+to refresh, `q` to quit. Run it inside a repository with no argument and stikk discovers the
+repository root by walking upward for a `.prikk` directory, the same way prikk does.
 
-The interactive TUI — which turns this orientation into a live, navigable interface — is the next
-increment.
+Run `stikk` piped or in CI (no terminal) and you get the same orientation as a one-shot print instead.
+To see the TUI with no repository at all: `cargo run -p stikk-tui --example orientation_demo`.
+
+More views — History, Patch and Block detail — are the next increment.
 
 ## Capability and signing
 

@@ -4,14 +4,34 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Added — the interactive TUI shell & Orientation view
+
+The first interactive surface, built on `ratatui` + `crossterm` (RFC 001), following the
+`001` handoff. `stikk <repo>` on a terminal now opens a live TUI; piped/CI invocation keeps the
+one-shot orientation print.
+
+- **`stikk-tui` crate** — the thin terminal frontend: it renders `stikk-core` view-models and computes
+  nothing about the repository (design AR-03/INV-8). Modules: the shell (header, active view, status
+  bar, overlay layer), the Orientation view (`VW-01`/`FR-002`), the status bar (`TU-03` — repo,
+  focused ref, queue, capability/readiness badges; never a "HEAD"), a Help overlay, global key
+  dispatch through a single `Action` seam (ready for RFC 002), the light/dark/mono palette, and the
+  panic-safe terminal guard.
+- **Security controls activated** (handoff §5): terminal restore-on-panic, and the **inert-text
+  primitive** — every repository-sourced string is stripped of control characters before it reaches a
+  cell (threat model C-T2a), built and tested now for the untrusted content History will render next.
+- **Launcher** now opens the TUI on a TTY and falls back to the one-shot orientation off a TTY
+  (design CL-06). No new seam method; nothing below `stikk-core` gained a dependency.
+- **Tests & example**: render tests via `ratatui`'s `TestBackend` driven by the scripted `NullBackend`
+  (headless, deterministic) plus a runnable `orientation_demo` example needing no prikk or repository.
+  Workspace now at 84 tests; `fmt` / `clippy -D warnings` / `test` all green.
+
 ### Decisions & planning
 
 - **RFC 001 accepted (2026-09-01): the TUI is built on `ratatui` + `crossterm`.** The GUI toolkit is
   deliberately left undecided and spun out to a future RFC. RFC 001 moved `proposed/` → `accepted/`.
-- **Handoff for the TUI shell + Orientation increment** (the roadmap's next step) written: program
-  design, decision notes, the security surface it activates, the test plan, and acceptance criteria —
-  `rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md`. Implementation
-  follows the handoff.
+- **Handoff for the TUI shell + Orientation increment** written and now realized: program design,
+  decision notes, the security surface, the test plan, and acceptance criteria —
+  `rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md`.
 
 ## 0.1.0 — foundation
 

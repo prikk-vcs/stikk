@@ -44,9 +44,11 @@ stikk config path          # where stikk's config and state live (never inside a
 stikk config check         # validate the config file
 ```
 
-Opening a repository currently prints a one-shot **orientation** — prikk version and support, queue
-depth, signing readiness, and your derived capability. The interactive TUI is the next increment (its
-toolkit is a deliberate Program-Design decision, not yet made).
+Opening a repository on a terminal launches the interactive **TUI** — an Orientation view showing
+prikk version and support, queue depth, signing readiness, and your derived capability, inside a shell
+with a status bar and a Help overlay (`?`). Run it piped or in CI and you get the same orientation as a
+one-shot print instead. The TUI is built on `ratatui` (RFC 001); more views (History, Patch detail)
+follow. Try it with no repository: `cargo run -p stikk-tui --example orientation_demo`.
 
 stikk reads `PRIKK_*_SEED` **presence only, never their values**; set `STIKK_READ_ONLY=1` to force a
 read-only session.

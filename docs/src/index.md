@@ -20,6 +20,7 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-Foundation increment (0.1.0): the security-critical layers — the shared model, the prikk seam, and
-the state layer — are implemented and tested; the launcher opens a repository and prints a one-shot
-orientation. The interactive TUI is the next increment.
+Foundation (0.1.0) plus the first interactive surface: the security-critical layers — the shared
+model, the prikk seam, and the state layer — are implemented and tested, and the **interactive TUI**
+(shell + Orientation view, built on `ratatui`, RFC 001) now opens on a terminal. Piped/CI invocation
+keeps the one-shot orientation. History and Patch detail are the next increment.

@@ -64,12 +64,12 @@ fn a_refusal_becomes_a_failed_state_with_verbatim_message() {
 }
 
 #[test]
-fn help_overlay_toggles() {
+fn glossary_overlay_toggles() {
     let mut app = App::from_state("/repo", OrientationState::Loading, Palette::default());
     assert!(!app.has_overlay());
-    app.toggle_help();
-    assert_eq!(app.top_overlay(), Some(&Overlay::Help));
-    app.toggle_help();
+    app.open_glossary();
+    assert_eq!(app.top_overlay(), Some(&Overlay::Glossary));
+    app.open_glossary();
     assert!(!app.has_overlay());
 }
 
@@ -84,7 +84,7 @@ fn back_closes_overlay_then_pops_screen_then_quits() {
         },
         cursor: 0,
     });
-    app.toggle_help();
+    app.open_glossary();
     // 1) overlay closes first
     app.back();
     assert!(!app.has_overlay());
@@ -180,16 +180,85 @@ fn ref_picker_selects_a_ref_and_reopens_history() {
 }
 
 #[test]
-fn a_history_refusal_surfaces_as_a_notice_overlay() {
+fn a_history_refusal_surfaces_as_a_refusal_overlay_and_is_remembered() {
     let backend = NullBackend::supported().with_history_refusal("ref does not exist");
     let mut app = App::open("/repo", &backend, &Config::default());
     app.open_history(&backend);
     match app.top_overlay() {
-        Some(Overlay::Notice(msg)) => assert!(msg.contains("ref does not exist")),
-        other => panic!("expected a Notice overlay, got {other:?}"),
+        Some(Overlay::Refusal { card, .. }) => {
+            assert_eq!(card.verbatim, "ref does not exist"); // verbatim (ER-02)
+            assert!(card.gloss.is_some()); // a gloss for LoadHistory
+            assert!(!card.next_steps.is_empty());
+        }
+        other => panic!("expected a Refusal overlay, got {other:?}"),
     }
     // The root is undisturbed: no History screen was pushed.
     assert!(matches!(app.focus(), Focus::Orientation(_)));
+    // And the refusal is remembered (FR-112).
+    assert_eq!(app.refusals().len(), 1);
+}
+
+#[test]
+fn activating_the_refresh_next_step_reloads_and_closes() {
+    let backend = NullBackend::supported().with_history_refusal("ref does not exist");
+    let mut app = App::open("/repo", &backend, &Config::default());
+    app.open_history(&backend);
+    // Move to the "Refresh" next-step (LoadHistory offers: Choose another ref, Refresh) and activate.
+    app.nav_down();
+    app.select(&backend);
+    // The overlay closed; a second refusal was recorded by the refresh attempt.
+    assert!(!app.has_overlay() || matches!(app.top_overlay(), Some(Overlay::Refusal { .. })));
+    assert!(!app.refusals().is_empty());
+}
+
+#[test]
+fn a_lock_conflict_surfaces_as_a_banner_not_an_overlay() {
+    let backend = NullBackend::supported();
+    let mut app = App::open("/repo", &backend, &Config::default());
+    let err = stikk_model::StikkError::LockConflict {
+        message: "lock held by another writer".into(),
+    };
+    app.surface_error(&err, OperationContext::Orient);
+    assert!(!app.has_overlay());
+    assert!(app.banner().unwrap().contains("another writer"));
+    // Back dismisses the banner before touching screens.
+    app.back();
+    assert!(app.banner().is_none());
+}
+
+#[test]
+fn palette_opens_and_filters() {
+    let backend = NullBackend::supported();
+    let mut app = App::open("/repo", &backend, &Config::default());
+    app.open_palette();
+    assert!(app.wants_text_input());
+    app.input_char('h');
+    app.input_char('i');
+    app.input_char('s'); // "his" → History
+    match app.top_overlay() {
+        Some(Overlay::Palette { filter, .. }) => assert_eq!(filter, "his"),
+        other => panic!("expected Palette, got {other:?}"),
+    }
+    app.backspace();
+    match app.top_overlay() {
+        Some(Overlay::Palette { filter, .. }) => assert_eq!(filter, "hi"),
+        other => panic!("expected Palette, got {other:?}"),
+    }
+}
+
+#[test]
+fn recent_refusals_overlay_reopens_a_card() {
+    let backend = NullBackend::supported().with_history_refusal("ref does not exist");
+    let mut app = App::open("/repo", &backend, &Config::default());
+    app.open_history(&backend); // record a refusal (and open its card)
+    app.back(); // close the card
+    app.open_refusals();
+    match app.top_overlay() {
+        Some(Overlay::Refusals { records, .. }) => assert_eq!(records.len(), 1),
+        other => panic!("expected Refusals, got {other:?}"),
+    }
+    app.select(&backend); // re-open the remembered refusal
+    assert!(matches!(app.top_overlay(), Some(Overlay::Refusal { .. })));
 }
 
 #[test]

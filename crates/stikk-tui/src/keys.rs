@@ -1,9 +1,14 @@
-//! Global key dispatch (handoff §2 `keys.rs`, a subset of design `TU-05`).
+//! Global key dispatch (handoff §7; a subset of design `TU-05`).
 //!
 //! Every key event resolves through [`dispatch`] into an [`Action`] — one seam, so that RFC 002 (the
 //! action-id catalog and configurable bindings) can replace the literal bindings here without a
-//! rewrite of the run loop. Dispatch is context-free: it names the *intent* (`Select`, `Back`, `Up`),
-//! and the [`crate::app::App`] resolves what that means for the current screen and overlay stack.
+//! rewrite of the run loop. Dispatch names the *intent*; the [`crate::app::App`] resolves what it means
+//! for the current screen and overlay stack.
+//!
+//! One documented exception to being context-free: when a **text-entry** overlay is open (the command
+//! palette), printable keys become [`Action::Input`] and Backspace [`Action::Backspace`], so the
+//! letters that are bindings elsewhere (`b`, `r`, `?`) type into the filter instead. The run loop
+//! passes [`crate::app::App::wants_text_input`].
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -14,9 +19,9 @@ pub enum Action {
     None,
     /// Quit the application unconditionally.
     Quit,
-    /// Go back one step: close an overlay, pop a screen, or quit at the root.
+    /// Go back one step: dismiss a fault/banner, close an overlay, pop a screen, or quit at the root.
     Back,
-    /// Select / drill in (open History, open a block, pick a ref).
+    /// Select / drill in / activate (open History, a block, a ref, a next-step, a palette command).
     Select,
     /// Move the selection up.
     Up,
@@ -24,19 +29,38 @@ pub enum Action {
     Down,
     /// Open the ref picker.
     OpenRefPicker,
-    /// Toggle the Help overlay.
-    ToggleHelp,
+    /// Open the glossary / help browser.
+    OpenGlossary,
+    /// Open the command palette.
+    OpenPalette,
+    /// Open the session refusal history.
+    OpenRefusals,
     /// Re-source the current view from prikk.
     Refresh,
+    /// A typed character (text-entry overlays only).
+    Input(char),
+    /// Delete the last typed character (text-entry overlays only).
+    Backspace,
 }
 
-/// Resolve a key press into an [`Action`]. Dispatch is context-free; `Back` folds in the old
-/// "close overlay before quitting" behaviour, resolved by the app against its stacks (handoff §7).
+/// Resolve a key press into an [`Action`]. `text_entry` is true when a text-entry overlay (the palette)
+/// is open, routing printable keys to its filter.
 #[must_use]
-pub fn dispatch(key: KeyEvent) -> Action {
+pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
     // Ctrl-C always quits, whatever is open.
     if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
         return Action::Quit;
+    }
+    if text_entry {
+        return match key.code {
+            KeyCode::Esc => Action::Back,
+            KeyCode::Enter => Action::Select,
+            KeyCode::Up => Action::Up,
+            KeyCode::Down => Action::Down,
+            KeyCode::Backspace => Action::Backspace,
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => Action::Input(c),
+            _ => Action::None,
+        };
     }
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => Action::Back,
@@ -44,7 +68,9 @@ pub fn dispatch(key: KeyEvent) -> Action {
         KeyCode::Up | KeyCode::Char('k') => Action::Up,
         KeyCode::Down | KeyCode::Char('j') => Action::Down,
         KeyCode::Char('b') => Action::OpenRefPicker,
-        KeyCode::Char('?') => Action::ToggleHelp,
+        KeyCode::Char('?') => Action::OpenGlossary,
+        KeyCode::Char(':') => Action::OpenPalette,
+        KeyCode::Char('R') => Action::OpenRefusals,
         KeyCode::Char('r') => Action::Refresh,
         _ => Action::None,
     }

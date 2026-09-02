@@ -47,11 +47,37 @@ fn a_refusal_renders_the_failure_body_verbatim() {
 fn overlay_draws_over_the_view() {
     let backend = NullBackend::supported();
     let mut app = App::open("/repo", &backend, &Config::default());
-    app.toggle_help();
+    app.open_glossary();
     let text = draw(&app, 90, 24);
-    assert!(text.contains("Help"));
+    assert!(text.contains("Glossary"));
     // The status bar still shows beneath the centred overlay.
     assert!(text.contains("q:back"));
+}
+
+#[test]
+fn a_banner_renders_above_the_status_bar() {
+    let backend = NullBackend::supported();
+    let mut app = App::open("/repo", &backend, &Config::default());
+    let err = stikk_model::StikkError::LockConflict {
+        message: "lock held by another writer".into(),
+    };
+    app.surface_error(&err, stikk_core::OperationContext::Orient);
+    let text = draw(&app, 90, 24);
+    assert!(text.contains("another writer"));
+    assert!(text.contains("Esc dismisses"));
+}
+
+#[test]
+fn a_fault_renders_the_untouched_repository_screen() {
+    let backend = NullBackend::supported();
+    let mut app = App::open("/repo", &backend, &Config::default());
+    let err = stikk_model::StikkError::Internal {
+        detail: "invariant X violated".into(),
+    };
+    app.surface_error(&err, stikk_core::OperationContext::Other);
+    let text = draw(&app, 90, 24);
+    assert!(text.contains("was not touched"));
+    assert!(text.contains("read-only"));
 }
 
 #[test]

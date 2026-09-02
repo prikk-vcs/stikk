@@ -1,17 +1,22 @@
-//! The application state and its transitions (handoff §2 `app.rs`, §3 render model).
+//! The application state and its transitions (handoff §2/§7 `app.rs`; RFC 006/007).
 //!
-//! The app owns the current view-model stack, the overlay stack, the focused ref, and the palette. It
-//! **holds no repository authority** (design INV-8): every view-model is a rendered snapshot of what
-//! prikk reported, re-sourced on demand. The only repository facts come from `stikk_core` — the app
-//! computes nothing.
+//! The app owns the view-model stack, the overlay stack, the focused ref, the session refusal history,
+//! and the palette colours. It **holds no repository authority** (design INV-8): every view-model is a
+//! rendered snapshot of what prikk reported, re-sourced on demand. The only repository facts come from
+//! `stikk_core` — the app computes nothing, and every seam error is routed through the one
+//! [`stikk_core::present`] mapping (ER-03), never presented ad hoc.
 //!
-//! Navigation is a stack of [`Screen`]s above the Orientation root: opening History pushes a screen,
-//! drilling into a block pushes another, and [`App::back`] pops one (closing the top overlay first, or
-//! quitting when nothing is left). This is the shape the Compare/Changes views plug into next.
+//! Navigation is a stack of [`Screen`]s above the Orientation root; overlays (help/glossary, ref
+//! picker, refusal, palette, refusal history) stack above the active view. [`App::back`] closes the
+//! top overlay, else pops a screen, else quits.
 
 use std::path::{Path, PathBuf};
 
-use stikk_core::{BlockDetailView, HistoryView, block_detail, history_view, list_refs, orient};
+use stikk_core::{
+    BlockDetailView, Command, HistoryView, NextTarget, OperationContext, Presentation,
+    RefusalHistory, Target, block_detail, history_view, list_refs, orient, present,
+};
+use stikk_model::Capability;
 use stikk_prikk::Prikk;
 use stikk_state::Config;
 
@@ -67,6 +72,12 @@ pub struct App {
     focused_ref: String,
     screens: Vec<Screen>,
     overlays: Vec<Overlay>,
+    refusals: RefusalHistory,
+    /// A transient one-line banner for non-overlay presentations (lock-conflict, guidance, plain
+    /// statements). Cleared on the next navigation (design OP-03 banner class).
+    banner: Option<String>,
+    /// A stikk-internal fault: the repository was untouched; the user may continue read-only (ER-04).
+    fault: Option<String>,
     palette: Palette,
     should_quit: bool,
 }
@@ -83,6 +94,9 @@ impl App {
             focused_ref: DEFAULT_REF.to_string(),
             screens: Vec::new(),
             overlays: Vec::new(),
+            refusals: RefusalHistory::new(),
+            banner: None,
+            fault: None,
             palette: Palette::from_theme(config.theme),
             should_quit: false,
         }
@@ -98,6 +112,9 @@ impl App {
             focused_ref: DEFAULT_REF.to_string(),
             screens: Vec::new(),
             overlays: Vec::new(),
+            refusals: RefusalHistory::new(),
+            banner: None,
+            fault: None,
             palette,
             should_quit: false,
         }
@@ -106,6 +123,7 @@ impl App {
     /// Re-source the visible screens from prikk (design FR-106; the `r` key). The Orientation root is
     /// always refreshed; a History screen on top is reloaded too, its cursor clamped to the new length.
     pub fn reload(&mut self, prikk: &impl Prikk) {
+        self.banner = None;
         self.state = load(prikk, &self.repo);
         let Some(Screen::History { cursor, .. }) = self.screens.last() else {
             return;
@@ -118,37 +136,68 @@ impl App {
                     *top = Screen::History { view, cursor };
                 }
             }
-            Err(error) => self.notice(error.to_string()),
+            Err(error) => self.surface(&error, OperationContext::LoadHistory),
         }
     }
 
-    /// Open the History view for the focused ref, pushing it above the current screen (the `Enter` key
-    /// on Orientation, or after picking a ref).
+    /// Open the History view for the focused ref, pushing it above the current screen.
     pub fn open_history(&mut self, prikk: &impl Prikk) {
+        self.banner = None;
         match history_view(prikk, &self.repo, &self.focused_ref, HISTORY_LIMIT) {
             Ok(view) => self.screens.push(Screen::History { view, cursor: 0 }),
-            Err(error) => self.notice(error.to_string()),
+            Err(error) => self.surface(&error, OperationContext::LoadHistory),
         }
     }
 
-    /// The context-sensitive select/drill-in action (the `Enter` key).
-    ///
-    /// - Ref picker open → adopt the highlighted ref and (re)open its History.
-    /// - History on top → open the selected block's detail.
-    /// - Orientation root → open the focused ref's History.
+    /// The context-sensitive select/drill-in action (the `Enter` key). Overlays take priority.
     pub fn select(&mut self, prikk: &impl Prikk) {
-        if let Some(Overlay::RefPicker { refs, cursor }) = self.overlays.last() {
-            if let Some(name) = refs.get(*cursor).cloned() {
-                self.overlays.pop();
-                self.focused_ref = name;
-                // Replace a History already on top rather than stacking a second one.
-                if matches!(self.screens.last(), Some(Screen::History { .. })) {
-                    self.screens.pop();
+        match self.overlays.last() {
+            Some(Overlay::RefPicker { refs, cursor }) => {
+                if let Some(name) = refs.get(*cursor).cloned() {
+                    self.overlays.pop();
+                    self.focused_ref = name;
+                    if matches!(self.screens.last(), Some(Screen::History { .. })) {
+                        self.screens.pop();
+                    }
+                    self.open_history(prikk);
                 }
-                self.open_history(prikk);
             }
-            return;
+            Some(Overlay::Refusal { card, cursor }) => {
+                if let Some(step) = card.next_steps.get(*cursor) {
+                    let target = step.target;
+                    self.overlays.pop();
+                    self.activate(target, prikk);
+                }
+            }
+            Some(Overlay::Palette { filter, cursor, .. }) => {
+                let hits = stikk_core::palette::matching(filter);
+                if let Some(cmd) = hits.get(*cursor).copied() {
+                    let capability = self.capability();
+                    if cmd.available_to(capability) {
+                        self.overlays.pop();
+                        self.run_command(cmd, prikk);
+                    }
+                }
+            }
+            Some(Overlay::Refusals { records, cursor }) => {
+                if let Some(record) = records.get(*cursor).cloned() {
+                    self.overlays.pop();
+                    // Rebuild the card from the remembered refusal (history holds refusals only).
+                    let err = stikk_model::StikkError::Refusal {
+                        message: record.verbatim.clone(),
+                    };
+                    if let Presentation::RefusalOverlay(card) = present(&err, record.operation) {
+                        self.overlays.push(Overlay::Refusal { card, cursor: 0 });
+                    }
+                }
+            }
+            Some(Overlay::Glossary) => {}
+            None => self.select_screen(prikk),
         }
+    }
+
+    /// `Enter` with no overlay open: drill into a block, or open History from the root.
+    fn select_screen(&mut self, prikk: &impl Prikk) {
         match self.screens.last() {
             Some(Screen::History { view, cursor }) => {
                 let cursor = *cursor;
@@ -157,7 +206,7 @@ impl App {
                     let reff = self.focused_ref.clone();
                     match block_detail(prikk, &self.repo, &reff, row, is_tip) {
                         Ok(detail) => self.screens.push(Screen::BlockDetail(detail)),
-                        Err(error) => self.notice(error.to_string()),
+                        Err(error) => self.surface(&error, OperationContext::LoadBlockState),
                     }
                 }
             }
@@ -168,6 +217,7 @@ impl App {
 
     /// Open the ref picker overlay, sourcing the ref list through the seam (the `b` key).
     pub fn open_ref_picker(&mut self, prikk: &impl Prikk) {
+        self.banner = None;
         match list_refs(prikk, &self.repo) {
             Ok(entries) => {
                 let refs: Vec<String> = entries.into_iter().map(|entry| entry.name).collect();
@@ -177,37 +227,189 @@ impl App {
                     .unwrap_or(0);
                 self.overlays.push(Overlay::RefPicker { refs, cursor });
             }
-            Err(error) => self.notice(error.to_string()),
+            Err(error) => self.surface(&error, OperationContext::ListRefs),
         }
     }
 
-    /// Move the selection up (the ref picker's cursor if open, else the History cursor).
+    /// Open the glossary / help browser (the `?` key).
+    pub fn open_glossary(&mut self) {
+        if matches!(self.overlays.last(), Some(Overlay::Glossary)) {
+            self.overlays.pop();
+        } else {
+            self.overlays.push(Overlay::Glossary);
+        }
+    }
+
+    /// Open the command palette (the `:` key).
+    pub fn open_palette(&mut self) {
+        let capability = self.capability();
+        self.overlays.push(Overlay::Palette {
+            filter: String::new(),
+            cursor: 0,
+            capability,
+        });
+    }
+
+    /// Open the session refusal history (the `R` key).
+    pub fn open_refusals(&mut self) {
+        let records = self
+            .refusals
+            .recent()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        self.overlays.push(Overlay::Refusals { records, cursor: 0 });
+    }
+
+    /// Type a character (only meaningful while the palette is open — text entry).
+    pub fn input_char(&mut self, ch: char) {
+        if let Some(Overlay::Palette { filter, cursor, .. }) = self.overlays.last_mut() {
+            filter.push(ch);
+            *cursor = 0;
+        }
+    }
+
+    /// Delete the last filter character (palette text entry).
+    pub fn backspace(&mut self) {
+        if let Some(Overlay::Palette { filter, cursor, .. }) = self.overlays.last_mut() {
+            filter.pop();
+            *cursor = 0;
+        }
+    }
+
+    /// Whether the top overlay is a text-entry surface (so the key layer routes chars to it).
+    #[must_use]
+    pub fn wants_text_input(&self) -> bool {
+        matches!(self.overlays.last(), Some(Overlay::Palette { .. }))
+    }
+
+    /// Move the selection up (the top overlay's cursor if it has one, else the History cursor).
     pub fn nav_up(&mut self) {
-        if let Some(Overlay::RefPicker { cursor, .. }) = self.overlays.last_mut() {
-            *cursor = cursor.saturating_sub(1);
-        } else if let Some(Screen::History { cursor, .. }) = self.screens.last_mut() {
-            *cursor = cursor.saturating_sub(1);
+        match self.overlays.last_mut() {
+            Some(Overlay::RefPicker { cursor, .. })
+            | Some(Overlay::Refusal { cursor, .. })
+            | Some(Overlay::Palette { cursor, .. })
+            | Some(Overlay::Refusals { cursor, .. }) => *cursor = cursor.saturating_sub(1),
+            Some(Overlay::Glossary) => {}
+            None => {
+                if let Some(Screen::History { cursor, .. }) = self.screens.last_mut() {
+                    *cursor = cursor.saturating_sub(1);
+                }
+            }
         }
     }
 
-    /// Move the selection down, clamped to the list length.
+    /// Move the selection down, clamped to the active list length.
     pub fn nav_down(&mut self) {
-        if let Some(Overlay::RefPicker { refs, cursor }) = self.overlays.last_mut() {
-            *cursor = next_index(*cursor, refs.len());
-        } else if let Some(Screen::History { view, cursor }) = self.screens.last_mut() {
-            *cursor = next_index(*cursor, view.blocks.len());
+        match self.overlays.last_mut() {
+            Some(Overlay::RefPicker { refs, cursor }) => *cursor = next_index(*cursor, refs.len()),
+            Some(Overlay::Refusal { card, cursor }) => {
+                *cursor = next_index(*cursor, card.next_steps.len());
+            }
+            Some(Overlay::Refusals { records, cursor }) => {
+                *cursor = next_index(*cursor, records.len());
+            }
+            Some(Overlay::Palette { filter, cursor, .. }) => {
+                let count = stikk_core::palette::matching(filter).len();
+                *cursor = next_index(*cursor, count);
+            }
+            Some(Overlay::Glossary) => {}
+            None => {
+                if let Some(Screen::History { view, cursor }) = self.screens.last_mut() {
+                    *cursor = next_index(*cursor, view.blocks.len());
+                }
+            }
         }
     }
 
-    /// Go back one step: close the top overlay, else pop the top screen, else quit.
+    /// Go back one step: dismiss a fault or banner, close the top overlay, pop a screen, else quit.
     pub fn back(&mut self) {
+        if self.fault.take().is_some() {
+            return;
+        }
         if self.overlays.pop().is_some() {
+            return;
+        }
+        if self.banner.take().is_some() {
             return;
         }
         if self.screens.pop().is_some() {
             return;
         }
         self.should_quit = true;
+    }
+
+    /// Route a seam error through the one presentation mapping (ER-03) and surface it accordingly.
+    fn surface(&mut self, error: &stikk_model::StikkError, op: OperationContext) {
+        match present(error, op) {
+            Presentation::RefusalOverlay(card) => {
+                self.refusals.record(card.verbatim.clone(), "refusal", op);
+                self.overlays.push(Overlay::Refusal { card, cursor: 0 });
+            }
+            Presentation::Banner { message, .. }
+            | Presentation::RoutedIntoView { message, .. }
+            | Presentation::InConfirmation { message } => self.banner = Some(message),
+            Presentation::InlineGuidance { detail, .. } => {
+                self.banner = Some(format!("{detail} — see Glossary → Trust & Keys"));
+            }
+            Presentation::PlainStatement { detail, original } => {
+                self.banner = Some(match original {
+                    Some(cause) => format!("{detail}: {cause}"),
+                    None => detail,
+                });
+            }
+            Presentation::FaultScreen { detail } => self.fault = Some(detail),
+            // `Presentation` is `#[non_exhaustive]`: a class added later degrades to an honest banner
+            // carrying prikk's own text, never a panic (RR-5 discipline).
+            _ => self.banner = Some(error.to_string()),
+        }
+    }
+
+    /// Activate a refusal card's next-step target (navigational only — NFR-S04).
+    fn activate(&mut self, target: NextTarget, prikk: &impl Prikk) {
+        match target {
+            NextTarget::OpenView(view) => self.activate_view(view, prikk),
+            NextTarget::Refresh => self.reload(prikk),
+            NextTarget::DismissAndResolveExternally => {}
+            _ => {}
+        }
+    }
+
+    /// Navigate to a view/overlay target (shared by refusal next-steps and the palette).
+    fn activate_view(&mut self, target: Target, prikk: &impl Prikk) {
+        self.banner = None;
+        match target {
+            Target::Orientation => self.screens.clear(),
+            Target::History => self.open_history(prikk),
+            Target::RefPicker => self.open_ref_picker(prikk),
+            Target::Glossary => self.overlays.push(Overlay::Glossary),
+            // Targets whose views land in later increments: no-op for now (the mapping is complete).
+            Target::LockInspector | Target::TrustKeys | Target::Verify | Target::Doctor => {}
+            _ => {}
+        }
+    }
+
+    /// Run a palette command (already checked available).
+    fn run_command(&mut self, cmd: &Command, prikk: &impl Prikk) {
+        if let Some(target) = cmd.opens {
+            self.activate_view(target, prikk);
+            return;
+        }
+        match cmd.id {
+            "view.refresh" => self.reload(prikk),
+            "session.refusals" => self.open_refusals(),
+            "app.quit" => self.should_quit = true,
+            _ => {}
+        }
+    }
+
+    /// The session's derived capability (Viewer when no orientation is loaded).
+    #[must_use]
+    fn capability(&self) -> Capability {
+        match &self.state {
+            OrientationState::Loaded(view) => view.capability,
+            _ => Capability::Viewer,
+        }
     }
 
     /// The repository root this app opened.
@@ -226,6 +428,24 @@ impl App {
     #[must_use]
     pub fn state(&self) -> &OrientationState {
         &self.state
+    }
+
+    /// The transient banner, if any (design OP-03 banner/inline classes).
+    #[must_use]
+    pub fn banner(&self) -> Option<&str> {
+        self.banner.as_deref()
+    }
+
+    /// The active fault message, if a stikk-internal fault occurred (ER-04).
+    #[must_use]
+    pub fn fault(&self) -> Option<&str> {
+        self.fault.as_deref()
+    }
+
+    /// The session refusal history (FR-112), for the recent-refusals overlay and tests.
+    #[must_use]
+    pub fn refusals(&self) -> &RefusalHistory {
+        &self.refusals
     }
 
     /// What the shell should render in the body region.
@@ -267,28 +487,12 @@ impl App {
         self.should_quit = true;
     }
 
-    /// Toggle the Help overlay: open it if the top overlay is not Help, else close it.
-    pub fn toggle_help(&mut self) {
-        if matches!(self.overlays.last(), Some(Overlay::Help)) {
-            self.overlays.pop();
-        } else {
-            self.overlays.push(Overlay::Help);
-        }
-    }
-
     /// Close the top overlay, if any.
     pub fn close_overlay(&mut self) {
         self.overlays.pop();
     }
 
-    /// Push a transient notice overlay carrying prikk's verbatim message (design NFR-I03). The full
-    /// refusal overlay with next-steps is increment 4; this preserves the message meanwhile.
-    fn notice(&mut self, message: String) {
-        self.overlays.push(Overlay::Notice(message));
-    }
-
-    /// Push a screen directly, without loading through the seam — used by tests and the runnable
-    /// example so they need no prikk binary (mirrors [`App::from_state`]).
+    /// Push a screen directly, without loading through the seam — for tests and the example.
     pub fn push_screen(&mut self, screen: Screen) {
         self.screens.push(screen);
     }
@@ -301,6 +505,11 @@ impl App {
     /// Push an overlay directly — for tests and the example.
     pub fn push_overlay(&mut self, overlay: Overlay) {
         self.overlays.push(overlay);
+    }
+
+    /// Surface a seam error directly — for tests and the example (drives the ER-03 routing).
+    pub fn surface_error(&mut self, error: &stikk_model::StikkError, op: OperationContext) {
+        self.surface(error, op);
     }
 }
 

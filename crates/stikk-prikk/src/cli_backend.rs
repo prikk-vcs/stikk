@@ -17,11 +17,12 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::process::Command;
 
-use stikk_model::{Result, StikkError};
+use stikk_model::{RequestCategory, Result, StikkError};
 
 use crate::version::Version;
 use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles};
 
+mod classify;
 mod parse;
 
 /// A [`Prikk`] implementation that shells out to the `prikk` binary.
@@ -54,8 +55,9 @@ impl CliBackend {
     }
 
     /// Run `prikk` with `args`, optionally in `cwd`, draining both streams fully before classifying
-    /// the exit. On a non-zero exit the combined message is classified into the error taxonomy.
-    fn run<I, S>(&self, cwd: Option<&Path>, args: I) -> Result<String>
+    /// the exit. On a non-zero exit the combined message is classified into the error taxonomy, using
+    /// `category` to disambiguate where the message text alone is ambiguous (design UD-05).
+    fn run<I, S>(&self, cwd: Option<&Path>, category: RequestCategory, args: I) -> Result<String>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -81,39 +83,13 @@ impl CliBackend {
             return Ok(stdout);
         }
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        Err(classify_failure(&stdout, &stderr))
+        Err(classify::classify(&stdout, &stderr, category))
     }
-}
-
-/// Classify a non-zero prikk exit into the presentation taxonomy (design UD-05: prikk collapses
-/// distinct outcomes onto exit 1, so stikk classifies by message text and defaults to a refusal —
-/// the safest class, since it never triggers a retry). The verbatim message is always preserved.
-fn classify_failure(stdout: &str, stderr: &str) -> StikkError {
-    let message = pick_message(stdout, stderr);
-    let lowered = message.to_ascii_lowercase();
-    if lowered.contains("lock") && (lowered.contains("conflict") || lowered.contains("already")) {
-        return StikkError::LockConflict { message };
-    }
-    if lowered.contains("could not") && lowered.contains("prikk") {
-        return StikkError::environment_msg(message);
-    }
-    // Default: a semantic refusal. Preserving the verbatim message is mandatory (NFR-I03); the
-    // operation layer adds a localized gloss beside it, never in place of it.
-    StikkError::Refusal { message }
-}
-
-/// prikk writes errors to stderr as `error: <msg>`; prefer that, else fall back to stdout.
-fn pick_message(stdout: &str, stderr: &str) -> String {
-    let trimmed = stderr.trim();
-    if !trimmed.is_empty() {
-        return trimmed.to_string();
-    }
-    stdout.trim().to_string()
 }
 
 impl Prikk for CliBackend {
     fn handshake(&self) -> Result<Handshake> {
-        let raw = self.run(None, ["--version"])?;
+        let raw = self.run(None, RequestCategory::ReadHistory, ["--version"])?;
         let raw_version = raw.trim().to_string();
         let version = Version::parse_version_line(&raw_version)?;
         Ok(Handshake {
@@ -124,7 +100,7 @@ impl Prikk for CliBackend {
     }
 
     fn orientation(&self, repo: &Path) -> Result<Orientation> {
-        let status = self.run(Some(repo), ["status"])?;
+        let status = self.run(Some(repo), RequestCategory::ReadHistory, ["status"])?;
         parse::orientation(&status)
     }
 
@@ -132,18 +108,27 @@ impl Prikk for CliBackend {
         let limit = limit.to_string();
         let out = self.run(
             Some(repo),
+            RequestCategory::ReadHistory,
             ["log", "--ref", reff, "--limit", limit.as_str()],
         )?;
         parse::history(&out)
     }
 
     fn block_state(&self, repo: &Path, reff: &str) -> Result<StateFiles> {
-        let out = self.run(Some(repo), ["checkout", "--patch-plan", "--ref", reff])?;
+        let out = self.run(
+            Some(repo),
+            RequestCategory::ReadState,
+            ["checkout", "--patch-plan", "--ref", reff],
+        )?;
         parse::state_files(&out)
     }
 
     fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {
-        let out = self.run(Some(repo), ["branch", "list", "--all"])?;
+        let out = self.run(
+            Some(repo),
+            RequestCategory::ReadHistory,
+            ["branch", "list", "--all"],
+        )?;
         parse::refs(&out)
     }
 }

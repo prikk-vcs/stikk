@@ -6,6 +6,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use stikk_model::RequestCategory;
+
 use super::*;
 
 #[test]
@@ -23,6 +25,7 @@ fn non_zero_exit_is_classified_and_message_preserved() {
     let backend = CliBackend::with_program("sh");
     let result = backend.run(
         None,
+        RequestCategory::ReadHistory,
         [
             "-c",
             "echo 'error: merge refused: not confluent' 1>&2; exit 1",
@@ -39,7 +42,11 @@ fn non_zero_exit_is_classified_and_message_preserved() {
 fn lock_message_classifies_as_lock_conflict() {
     let backend = CliBackend::with_program("sh");
     let err = backend
-        .run(None, ["-c", "echo 'ref lock already exists' 1>&2; exit 1"])
+        .run(
+            None,
+            RequestCategory::Publication,
+            ["-c", "echo 'ref lock already exists' 1>&2; exit 1"],
+        )
         .expect_err("non-zero exit");
     assert_eq!(err.class(), "lock-conflict");
 }
@@ -51,7 +58,7 @@ fn drains_large_output_without_deadlock() {
     // closed the pipe early this would hang or error. `yes | head` produces bounded large output.
     let backend = CliBackend::with_program("sh");
     let out = backend
-        .run(None, ["-c", "seq 1 100000"])
+        .run(None, RequestCategory::ReadHistory, ["-c", "seq 1 100000"])
         .expect("large output drains");
     assert!(out.lines().count() >= 100_000);
 }

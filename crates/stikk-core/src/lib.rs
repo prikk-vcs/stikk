@@ -13,8 +13,18 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod glossary;
 pub mod history;
 pub mod orient;
+pub mod palette;
+pub mod present;
+pub mod refusal_history;
 
+pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{BlockDetailView, HistoryView, block_detail, history_view, list_refs};
 pub use orient::{OrientationView, orient};
+pub use palette::Command;
+pub use present::{
+    NextStep, NextTarget, OperationContext, Presentation, RefusalCard, Target, present,
+};
+pub use refusal_history::{RefusalHistory, RefusalRecord};

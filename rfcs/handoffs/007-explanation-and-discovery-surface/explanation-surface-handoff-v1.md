@@ -312,3 +312,33 @@ adds against canned data.
 - **Persisting the refusal history** and the **private/ephemeral-session gate** (LC-8) via
   `stikk-state`.
 - **Palette fuzzy match over refs and recent object ids** once there are enough to warrant it.
+
+---
+
+## 14. Delivered — 2026-09-02
+
+Built and merged to `main`:
+
+- **Seam** (`stikk-prikk`): a confined, version-gated `cli_backend/classify.rs` mapping prikk's 0/1
+  exit + message + request category to a `StikkError` class, **degrading an unknown message to a
+  verbatim `Refusal`** (UD-05/RR-5); golden-message fixtures for a bad ref, a foreign directory, a
+  retired format, a held lock, a ref-state precondition, a missing key, and an integrity finding.
+- **Operations** (`stikk-core`): the single `present(&StikkError, OperationContext) -> Presentation`
+  mapping (ER-03) with `RefusalCard`/`NextStep`/`Target`; the `glossary` asset (DM-09) with the full
+  Git→prikk terminology mapping, a seeded code entry, and the missing-code degradation; the in-memory
+  `RefusalHistory` (DM-06/FR-112); the `palette` command registry (TU-07/FR-125) with `available_to` /
+  `unmet_reason` capability gating.
+- **TUI** (`stikk-tui`): the refusal overlay (verbatim quoted + inert, gloss separate, stikk-authored
+  next-steps, glossary links), the glossary/help browser, the command palette (`:`, text-entry
+  filter), the recent-refusals overlay (`R`), a non-modal banner (lock-conflict / guidance / plain
+  statements), and the ER-04 fault screen. The app routes every seam error through `present()`; a
+  refusal auto-opens the overlay and is remembered. `?` opens the glossary, replacing 3a's help card.
+- **Example**: `cargo run -p stikk-tui --example explanation_demo` (scripted, no prikk binary).
+- **Gates**: `fmt` / `clippy --all-targets --all-features -D warnings` / `test` green — 147 tests.
+  Verified live under niri with tiled-window screenshots of the refusal overlay, palette, glossary,
+  and recent-refusals.
+
+The security invariants hold: next-steps are stikk-authored from `(class, operation)` and never parsed
+from the message (C-T2b, tested); prikk's message is preserved verbatim and rendered inert (ER-02/
+C-T2a, tested); an unknown class/code degrades to verbatim-only, never hidden (RR-5). Items in §13
+remain queued.

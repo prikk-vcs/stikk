@@ -3,11 +3,7 @@
 //! The fixture below is captured verbatim from `prikk status` at the audited revision. A parser
 //! change that would misread it fails here.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing
-)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use super::*;
 

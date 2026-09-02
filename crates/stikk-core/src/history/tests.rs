@@ -1,10 +1,6 @@
 //! Tests for the history/block-detail operations (design TS-02), via the scripted backend.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing
-)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use std::path::Path;
 

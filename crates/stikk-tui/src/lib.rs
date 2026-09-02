@@ -75,15 +75,19 @@ pub fn run(repo: &Path, prikk: &impl Prikk, config: &Config) -> Result<()> {
             // Only key *presses* — on Windows, crossterm also emits release events.
             if let Event::Key(key) = ev {
                 if key.kind == KeyEventKind::Press {
-                    match keys::dispatch(key) {
+                    match keys::dispatch(key, app.wants_text_input()) {
                         Action::Quit => app.quit(),
                         Action::Back => app.back(),
                         Action::Select => app.select(prikk),
                         Action::Up => app.nav_up(),
                         Action::Down => app.nav_down(),
                         Action::OpenRefPicker => app.open_ref_picker(prikk),
-                        Action::ToggleHelp => app.toggle_help(),
+                        Action::OpenGlossary => app.open_glossary(),
+                        Action::OpenPalette => app.open_palette(),
+                        Action::OpenRefusals => app.open_refusals(),
                         Action::Refresh => app.reload(prikk),
+                        Action::Input(c) => app.input_char(c),
+                        Action::Backspace => app.backspace(),
                         Action::None => {}
                     }
                 }

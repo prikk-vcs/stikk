@@ -65,7 +65,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     spans.push(Span::styled(
-        "   Enter:open  ?:help  q:back",
+        "   :palette  ?:help  q:back",
         Style::default().fg(palette.dim),
     ));
     frame.render_widget(Paragraph::new(Line::from(spans)), area);

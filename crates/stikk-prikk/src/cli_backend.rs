@@ -20,7 +20,7 @@ use std::process::Command;
 use stikk_model::{Result, StikkError};
 
 use crate::version::Version;
-use crate::{Handshake, Orientation, Prikk};
+use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles};
 
 mod parse;
 
@@ -126,6 +126,25 @@ impl Prikk for CliBackend {
     fn orientation(&self, repo: &Path) -> Result<Orientation> {
         let status = self.run(Some(repo), ["status"])?;
         parse::orientation(&status)
+    }
+
+    fn history(&self, repo: &Path, reff: &str, limit: usize) -> Result<History> {
+        let limit = limit.to_string();
+        let out = self.run(
+            Some(repo),
+            ["log", "--ref", reff, "--limit", limit.as_str()],
+        )?;
+        parse::history(&out)
+    }
+
+    fn block_state(&self, repo: &Path, reff: &str) -> Result<StateFiles> {
+        let out = self.run(Some(repo), ["checkout", "--patch-plan", "--ref", reff])?;
+        parse::state_files(&out)
+    }
+
+    fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+        let out = self.run(Some(repo), ["branch", "list", "--all"])?;
+        parse::refs(&out)
     }
 }
 

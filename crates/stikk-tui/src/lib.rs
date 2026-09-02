@@ -5,19 +5,20 @@
 //! built on `ratatui` over the `crossterm` backend (RFC 001), used through `ratatui`'s own re-export
 //! so the versions cannot drift.
 //!
-//! This increment ships the shell (header, active view, status bar, overlay layer) and one view —
-//! Orientation (design VW-01, FR-002). [`run`] is the entry point the launcher calls when stdout is a
-//! TTY; the scripted-backend example (`examples/orientation_demo.rs`) drives the same shell with no
-//! prikk binary and no repository.
+//! This increment ships the shell (header, active view, status bar, overlay layer) and three views —
+//! Orientation (design VW-01, FR-002), History (VW-03, FR-010/011), and Block detail (FR-031/032 at
+//! block granularity, RFC 006) — plus a ref picker. [`run`] is the entry point the launcher calls when
+//! stdout is a TTY; the scripted-backend examples (`examples/orientation_demo.rs`,
+//! `examples/history_demo.rs`) drive the same shell with no prikk binary and no repository.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod app;
+pub mod overlay;
 pub mod text;
 
 mod keys;
-mod overlay;
 mod shell;
 mod status_bar;
 mod terminal;
@@ -27,7 +28,8 @@ mod view;
 #[cfg(test)]
 pub(crate) mod test_util;
 
-pub use app::{App, OrientationState};
+pub use app::{App, Focus, OrientationState, Screen};
+pub use overlay::Overlay;
 pub use terminal::stdout_is_tty;
 pub use theme::Palette;
 
@@ -73,10 +75,14 @@ pub fn run(repo: &Path, prikk: &impl Prikk, config: &Config) -> Result<()> {
             // Only key *presses* — on Windows, crossterm also emits release events.
             if let Event::Key(key) = ev {
                 if key.kind == KeyEventKind::Press {
-                    match keys::dispatch(key, app.has_overlay()) {
+                    match keys::dispatch(key) {
                         Action::Quit => app.quit(),
+                        Action::Back => app.back(),
+                        Action::Select => app.select(prikk),
+                        Action::Up => app.nav_up(),
+                        Action::Down => app.nav_down(),
+                        Action::OpenRefPicker => app.open_ref_picker(prikk),
                         Action::ToggleHelp => app.toggle_help(),
-                        Action::CloseOverlay => app.close_overlay(),
                         Action::Refresh => app.reload(prikk),
                         Action::None => {}
                     }

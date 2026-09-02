@@ -2,8 +2,8 @@
 //!
 //! Every key event resolves through [`dispatch`] into an [`Action`] — one seam, so that RFC 002 (the
 //! action-id catalog and configurable bindings) can replace the literal bindings here without a
-//! rewrite of the run loop. This increment ships a fixed set: quit, toggle help, refresh, and
-//! "close the top overlay before quitting".
+//! rewrite of the run loop. Dispatch is context-free: it names the *intent* (`Select`, `Back`, `Up`),
+//! and the [`crate::app::App`] resolves what that means for the current screen and overlay stack.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -12,32 +12,38 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub enum Action {
     /// No bound action for this key.
     None,
-    /// Quit the application.
+    /// Quit the application unconditionally.
     Quit,
+    /// Go back one step: close an overlay, pop a screen, or quit at the root.
+    Back,
+    /// Select / drill in (open History, open a block, pick a ref).
+    Select,
+    /// Move the selection up.
+    Up,
+    /// Move the selection down.
+    Down,
+    /// Open the ref picker.
+    OpenRefPicker,
     /// Toggle the Help overlay.
     ToggleHelp,
     /// Re-source the current view from prikk.
     Refresh,
-    /// Close the top overlay (used when one is open, before quitting).
-    CloseOverlay,
 }
 
-/// Resolve a key press into an [`Action`]. `has_overlay` is true when an overlay is open, so that
-/// `q`/`Esc` close the overlay first rather than quitting (handoff §7).
+/// Resolve a key press into an [`Action`]. Dispatch is context-free; `Back` folds in the old
+/// "close overlay before quitting" behaviour, resolved by the app against its stacks (handoff §7).
 #[must_use]
-pub fn dispatch(key: KeyEvent, has_overlay: bool) -> Action {
-    // Ctrl-C always quits, overlay or not.
+pub fn dispatch(key: KeyEvent) -> Action {
+    // Ctrl-C always quits, whatever is open.
     if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
         return Action::Quit;
     }
     match key.code {
-        KeyCode::Esc | KeyCode::Char('q') => {
-            if has_overlay {
-                Action::CloseOverlay
-            } else {
-                Action::Quit
-            }
-        }
+        KeyCode::Esc | KeyCode::Char('q') => Action::Back,
+        KeyCode::Enter => Action::Select,
+        KeyCode::Up | KeyCode::Char('k') => Action::Up,
+        KeyCode::Down | KeyCode::Char('j') => Action::Down,
+        KeyCode::Char('b') => Action::OpenRefPicker,
         KeyCode::Char('?') => Action::ToggleHelp,
         KeyCode::Char('r') => Action::Refresh,
         _ => Action::None,

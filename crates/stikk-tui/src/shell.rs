@@ -7,7 +7,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use crate::app::{App, OrientationState};
+use crate::app::{App, Focus, OrientationState};
 use crate::text::inert;
 use crate::theme::Palette;
 use crate::{overlay, status_bar, view};
@@ -64,10 +64,14 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
 
 fn render_body(app: &App, frame: &mut Frame, area: Rect) {
     let palette = app.palette();
-    match app.state() {
-        OrientationState::Loading => centered_note(palette, frame, area, "loading…", false),
-        OrientationState::Failed(message) => render_failure(palette, frame, area, message),
-        OrientationState::Loaded(v) => view::orientation::render(v, palette, frame, area),
+    match app.focus() {
+        Focus::Orientation(state) => match state {
+            OrientationState::Loading => centered_note(palette, frame, area, "loading…", false),
+            OrientationState::Failed(message) => render_failure(palette, frame, area, message),
+            OrientationState::Loaded(v) => view::orientation::render(v, palette, frame, area),
+        },
+        Focus::History(v, cursor) => view::history::render(v, cursor, palette, frame, area),
+        Focus::BlockDetail(detail) => view::block::render(detail, palette, frame, area),
     }
 }
 

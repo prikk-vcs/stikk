@@ -13,6 +13,8 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod history;
 pub mod orient;
 
+pub use history::{BlockDetailView, HistoryView, block_detail, history_view, list_refs};
 pub use orient::{OrientationView, orient};

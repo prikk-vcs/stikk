@@ -52,11 +52,83 @@ pub struct Orientation {
     pub trailing_partial_wal_bytes: u64,
 }
 
+/// One sealed block in a ref's lineage, as `prikk log` reports it (design FR-011; RFC 006). Block
+/// granularity is prikk's ceiling: there are **no patch ids and no per-patch detail** here — prikk
+/// emits only counts — and, by prikk's no-clock, message-not-yet-persisted design, no message,
+/// author, or date (RFC 006, UD-09).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockRow {
+    /// The block's object id.
+    pub block_id: String,
+    /// The RefState object id that points at this block.
+    pub ref_state_id: String,
+    /// Monotonic publication sequence.
+    pub update_seq: u64,
+    /// Block kind as prikk names it (`Root`, `Normal`, `Merge`, `Repair`, `Import`, …); kept as text
+    /// so a future kind renders rather than breaks parsing.
+    pub kind: String,
+    /// Whether this block carries rollback patches.
+    pub rollback_block: bool,
+    /// Number of parent blocks.
+    pub parents: u64,
+    /// Number of patches sealed in this block (a count only — prikk does not expose their ids).
+    pub patches: u64,
+    /// Number of rollback patches.
+    pub rollback_patches: u64,
+    /// Number of required attestations.
+    pub required_attestations: u64,
+    /// The previous RefState in the chain, or `None` at genesis.
+    pub previous_ref_state: Option<String>,
+}
+
+/// A ref's sealed lineage (tip first), as `prikk log` reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct History {
+    /// The ref this lineage belongs to.
+    pub reff: String,
+    /// Blocks newest-first (the order `prikk log` prints).
+    pub blocks: Vec<BlockRow>,
+}
+
+/// The replayed state at a ref's tip, from `prikk checkout --patch-plan` (design FR-032 at tip
+/// granularity; RFC 006). prikk replays to the ref tip, not to an arbitrary historical block, so this
+/// describes the tip only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateFiles {
+    /// The block the state was replayed to (the ref tip).
+    pub target_block: String,
+    /// Repo-relative file paths present in the replayed state.
+    pub files: Vec<String>,
+    /// Total content bytes across those files, as prikk reports.
+    pub total_bytes: u64,
+}
+
+/// One ref pointer, from `prikk branch list --all` (which lists every ref — branches, tags, received).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefEntry {
+    /// The fully-qualified ref name (`heads/…`, `tags/…`, `remotes/…`).
+    pub name: String,
+    /// The RefState (or, for a received ref, the received pointer) id prikk printed.
+    pub id: String,
+    /// True for a closed branch (marked `(closed)`).
+    pub closed: bool,
+    /// True for a received ref (marked `(received)`) — read-only until adopted.
+    pub received: bool,
+}
+
+impl RefEntry {
+    /// True when this is a tag ref (`tags/…`).
+    #[must_use]
+    pub fn is_tag(&self) -> bool {
+        self.name.starts_with("tags/")
+    }
+}
+
 /// The entire prikk contract stikk depends on. Every method returns [`stikk_model::StikkError`] on
 /// failure, classified into the presentation taxonomy the operation layer consumes.
 ///
-/// This foundation increment defines the two read methods the launcher needs; the full nine-category
-/// surface (design CT-03) grows against this trait without disturbing callers.
+/// Read-only surface so far (design CT-03 categories `read-history`, `read-state`); the mutating
+/// categories grow against this trait later without disturbing callers.
 pub trait Prikk {
     /// Probe prikk's version and whether it is supported (design SEAM-05).
     ///
@@ -71,4 +143,23 @@ pub trait Prikk {
     /// [`stikk_model::StikkError`], classified: a refusal, an environment fault (unparseable output,
     /// missing binary), or a lock conflict, per the seam's classification rules.
     fn orientation(&self, repo: &Path) -> Result<Orientation>;
+
+    /// Read a ref's sealed block lineage (design FR-010/011; category `read-history`). `limit` caps
+    /// the number of blocks.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
+    fn history(&self, repo: &Path, reff: &str, limit: usize) -> Result<History>;
+
+    /// Read the replayed state file set at a ref's tip (design FR-032; category `read-state`).
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
+    fn block_state(&self, repo: &Path, reff: &str) -> Result<StateFiles>;
+
+    /// List every ref pointer in the repository (design FR-014; category `read-history`).
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
+    fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>>;
 }

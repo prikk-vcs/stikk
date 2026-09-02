@@ -37,7 +37,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         ),
         sep(palette),
         // The focused ref — a client-side pointer, not a HEAD (design FR-055).
-        Span::styled("heads/main", Style::default().fg(palette.accent)),
+        Span::styled(
+            inert(app.focused_ref()),
+            Style::default().fg(palette.accent),
+        ),
     ];
 
     if !loaded {
@@ -62,7 +65,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     spans.push(Span::styled(
-        "   ?:help  r:refresh  q:quit",
+        "   Enter:open  ?:help  q:back",
         Style::default().fg(palette.dim),
     ));
     frame.render_widget(Paragraph::new(Line::from(spans)), area);

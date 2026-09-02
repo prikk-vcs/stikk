@@ -37,8 +37,11 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
    <repo>` opens the TUI on a terminal; piped/CI keeps the one-shot print. Built per the
    [handoff](rfcs/handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md).
 3. **History** (`FR-010…017`) with the unsealed queue tier + **Block detail** (`FR-031/032` at block
-   granularity) — **planned, RFC 006 accepted**: the seam grows `read-history`/`read-state`, and this
-   is the first heavy use of the inert-text primitive and overlay layer. See the
+   granularity) — ✅ **3a shipped** (RFC 006): the seam grew `history`/`block_state`/`refs`, the
+   operation layer gained `history_view`/`block_detail`/`list_refs`, and the TUI gained the view
+   stack, the History and Block-detail views, and a ref picker — the first heavy use of the
+   inert-text primitive and the overlay layer. `cargo run -p stikk-tui --example history_demo` drives
+   all of it against a scripted backend. Built per the
    [handoff](rfcs/handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md).
    - **3b — Patch detail** (`FR-030`), patch-id enumeration, and diff-aware search (`FR-013`) are
      **split out, blocked on UD-09**: prikk exposes no per-patch content and no `show`/`diff`, only

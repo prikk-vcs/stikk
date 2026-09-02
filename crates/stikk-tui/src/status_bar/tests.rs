@@ -26,7 +26,7 @@ fn shows_repo_focused_ref_and_hint() {
     let text = render_app(&app);
     assert!(text.contains("project"));
     assert!(text.contains("heads/main"));
-    assert!(text.contains("q:quit"));
+    assert!(text.contains("q:back"));
     // Never "HEAD".
     assert!(!text.contains("HEAD"));
 }

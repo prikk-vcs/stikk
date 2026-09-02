@@ -9,13 +9,18 @@ use std::path::Path;
 use stikk_model::{Result, StikkError};
 
 use crate::version::Version;
-use crate::{Handshake, Orientation, Prikk};
+use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles};
+
+type Scripted<T> = std::result::Result<T, String>;
 
 /// A [`Prikk`] whose answers are set up front.
 #[derive(Debug, Clone)]
 pub struct NullBackend {
     handshake: Handshake,
-    orientation: std::result::Result<Orientation, String>,
+    orientation: Scripted<Orientation>,
+    history: Scripted<History>,
+    state: Scripted<StateFiles>,
+    refs: Scripted<Vec<RefEntry>>,
 }
 
 impl NullBackend {
@@ -37,6 +42,21 @@ impl NullBackend {
                 main_ref_state: None,
                 trailing_partial_wal_bytes: 0,
             }),
+            history: Ok(History {
+                reff: "heads/main".to_string(),
+                blocks: Vec::new(),
+            }),
+            state: Ok(StateFiles {
+                target_block: String::new(),
+                files: Vec::new(),
+                total_bytes: 0,
+            }),
+            refs: Ok(vec![RefEntry {
+                name: "heads/main".to_string(),
+                id: "0".repeat(64),
+                closed: false,
+                received: false,
+            }]),
         }
     }
 
@@ -54,6 +74,34 @@ impl NullBackend {
         self
     }
 
+    /// Replace the block lineage this backend returns.
+    #[must_use]
+    pub fn with_history(mut self, history: History) -> Self {
+        self.history = Ok(history);
+        self
+    }
+
+    /// Make the history call fail with a refusal carrying `message`.
+    #[must_use]
+    pub fn with_history_refusal(mut self, message: impl Into<String>) -> Self {
+        self.history = Err(message.into());
+        self
+    }
+
+    /// Replace the tip state file set this backend returns.
+    #[must_use]
+    pub fn with_state(mut self, state: StateFiles) -> Self {
+        self.state = Ok(state);
+        self
+    }
+
+    /// Replace the ref list this backend returns.
+    #[must_use]
+    pub fn with_refs(mut self, refs: Vec<RefEntry>) -> Self {
+        self.refs = Ok(refs);
+        self
+    }
+
     /// Mark the reported prikk version as unsupported (for testing the version-skew path).
     #[must_use]
     pub fn unsupported(mut self) -> Self {
@@ -62,15 +110,31 @@ impl NullBackend {
     }
 }
 
+fn deliver<T: Clone>(scripted: &Scripted<T>) -> Result<T> {
+    scripted
+        .clone()
+        .map_err(|message| StikkError::Refusal { message })
+}
+
 impl Prikk for NullBackend {
     fn handshake(&self) -> Result<Handshake> {
         Ok(self.handshake.clone())
     }
 
     fn orientation(&self, _repo: &Path) -> Result<Orientation> {
-        self.orientation
-            .clone()
-            .map_err(|message| StikkError::Refusal { message })
+        deliver(&self.orientation)
+    }
+
+    fn history(&self, _repo: &Path, _reff: &str, _limit: usize) -> Result<History> {
+        deliver(&self.history)
+    }
+
+    fn block_state(&self, _repo: &Path, _reff: &str) -> Result<StateFiles> {
+        deliver(&self.state)
+    }
+
+    fn refs(&self, _repo: &Path) -> Result<Vec<RefEntry>> {
+        deliver(&self.refs)
     }
 }
 

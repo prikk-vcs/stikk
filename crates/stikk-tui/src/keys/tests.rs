@@ -11,34 +11,35 @@ fn key(code: KeyCode) -> KeyEvent {
 }
 
 #[test]
-fn q_and_esc_quit_when_no_overlay() {
-    assert_eq!(dispatch(key(KeyCode::Char('q')), false), Action::Quit);
-    assert_eq!(dispatch(key(KeyCode::Esc), false), Action::Quit);
-}
-
-#[test]
-fn q_and_esc_close_overlay_before_quitting() {
-    assert_eq!(
-        dispatch(key(KeyCode::Char('q')), true),
-        Action::CloseOverlay
-    );
-    assert_eq!(dispatch(key(KeyCode::Esc), true), Action::CloseOverlay);
+fn q_and_esc_map_to_back() {
+    // Back is resolved by the app: close an overlay, pop a screen, or quit at the root.
+    assert_eq!(dispatch(key(KeyCode::Char('q'))), Action::Back);
+    assert_eq!(dispatch(key(KeyCode::Esc)), Action::Back);
 }
 
 #[test]
 fn ctrl_c_always_quits() {
     let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-    assert_eq!(dispatch(ctrl_c, false), Action::Quit);
-    assert_eq!(dispatch(ctrl_c, true), Action::Quit);
+    assert_eq!(dispatch(ctrl_c), Action::Quit);
+}
+
+#[test]
+fn navigation_keys_are_bound() {
+    assert_eq!(dispatch(key(KeyCode::Enter)), Action::Select);
+    assert_eq!(dispatch(key(KeyCode::Up)), Action::Up);
+    assert_eq!(dispatch(key(KeyCode::Char('k'))), Action::Up);
+    assert_eq!(dispatch(key(KeyCode::Down)), Action::Down);
+    assert_eq!(dispatch(key(KeyCode::Char('j'))), Action::Down);
+    assert_eq!(dispatch(key(KeyCode::Char('b'))), Action::OpenRefPicker);
 }
 
 #[test]
 fn help_and_refresh_are_bound() {
-    assert_eq!(dispatch(key(KeyCode::Char('?')), false), Action::ToggleHelp);
-    assert_eq!(dispatch(key(KeyCode::Char('r')), false), Action::Refresh);
+    assert_eq!(dispatch(key(KeyCode::Char('?'))), Action::ToggleHelp);
+    assert_eq!(dispatch(key(KeyCode::Char('r'))), Action::Refresh);
 }
 
 #[test]
 fn unbound_key_is_none() {
-    assert_eq!(dispatch(key(KeyCode::Char('z')), false), Action::None);
+    assert_eq!(dispatch(key(KeyCode::Char('z'))), Action::None);
 }

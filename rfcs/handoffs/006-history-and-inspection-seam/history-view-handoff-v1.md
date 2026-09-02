@@ -208,3 +208,26 @@ of 2), navigable with no prikk and no repository. Update the crate's guide to me
 - **Increment 4** — the refusal-explanation overlay content + the witness/finding glossary
   (`FR-110/111`) and the command palette (`FR-125`), which History's failures and the ref picker make
   more valuable.
+
+---
+
+## 10. Delivered (3a) — 2026-09-02
+
+Built and merged to `main`:
+
+- **Seam** (`stikk-prikk`): `History`/`BlockRow`/`StateFiles`/`RefEntry` types; `Prikk::history`,
+  `block_state`, `refs`; `CliBackend` impls driving `log`/`checkout --patch-plan`/`branch list`;
+  golden-fixture parsers that **refuse on an unrecognized shape** (UD-02); `NullBackend` scripted
+  responses + refusal builders.
+- **Operations** (`stikk-core`): `history_view` (lineage + queue count), `block_detail` (state for the
+  tip only — prikk replays only to the tip), `list_refs`.
+- **TUI** (`stikk-tui`): the App view stack (Orientation root → History → Block detail) with a focused
+  ref; context-free key dispatch resolved by the app; the History view (queue tier + newest-first
+  block rows), the Block-detail view (metadata + tip state files + the honest UD-09 note), the ref
+  picker and notice overlays. Every repository string rendered inert.
+- **Example**: `cargo run -p stikk-tui --example history_demo` (scripted, no prikk binary).
+- **Gates**: `fmt` / `clippy --all-targets --all-features -D warnings` / `test` green — 111 tests.
+  Verified live under niri with a tiled-window screenshot of each view (Orientation, History, Block
+  detail, ref picker).
+
+3b (patch detail) and increment 4 remain as in §9; RFC 006 stays **accepted** until 3b lands.

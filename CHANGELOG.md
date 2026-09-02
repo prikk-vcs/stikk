@@ -14,7 +14,8 @@ one-shot orientation print.
   nothing about the repository (design AR-03/INV-8). Modules: the shell (header, active view, status
   bar, overlay layer), the Orientation view (`VW-01`/`FR-002`), the status bar (`TU-03` — repo,
   focused ref, queue, capability/readiness badges; never a "HEAD"), a Help overlay, global key
-  dispatch through a single `Action` seam (ready for RFC 002), the light/dark/mono palette, and the
+  dispatch through a single `Action` seam (ready for RFC 002), the light/dark/mono palette (fixed-RGB
+  foreground/secondary text so labels stay legible on any terminal theme — NFR-A03), and the
   panic-safe terminal guard.
 - **Security controls activated** (handoff §5): terminal restore-on-panic, and the **inert-text
   primitive** — every repository-sourced string is stripped of control characters before it reaches a

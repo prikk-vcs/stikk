@@ -36,26 +36,28 @@ impl Palette {
         }
     }
 
-    /// The dark-terminal palette.
+    /// The dark-terminal palette. `fg` and `dim` are fixed RGB rather than the named `Gray`/`DarkGray`
+    /// so secondary text (labels) stays legible regardless of the terminal's own palette — named
+    /// `DarkGray` renders near-invisible on many dark themes, which failed the contrast bar (NFR-A03).
     #[must_use]
     pub fn dark() -> Self {
         Self {
-            fg: Color::Gray,
-            dim: Color::DarkGray,
+            fg: Color::Rgb(0xd8, 0xde, 0xe4),
+            dim: Color::Rgb(0x9e, 0xa6, 0xb0),
             accent: Color::Cyan,
             ok: Color::Green,
             warn: Color::Yellow,
         }
     }
 
-    /// The light-terminal palette.
+    /// The light-terminal palette. `fg`/`dim` are fixed RGB for the same contrast reason as [`dark`].
     #[must_use]
     pub fn light() -> Self {
         Self {
-            fg: Color::Black,
-            dim: Color::DarkGray,
+            fg: Color::Rgb(0x1b, 0x20, 0x24),
+            dim: Color::Rgb(0x5a, 0x62, 0x6a),
             accent: Color::Blue,
-            ok: Color::Green,
+            ok: Color::Rgb(0x18, 0x7a, 0x3c),
             warn: Color::Rgb(0xa0, 0x60, 0x00),
         }
     }

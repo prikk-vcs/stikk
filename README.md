@@ -1,6 +1,9 @@
 # stikk
 
-[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![documentation](https://img.shields.io/badge/docs-github_pages-brightgreen)](https://prikk-vcs.github.io/stikk/)
+[![license](https://img.shields.io/crates/l/stikk.svg)](LICENSE)
+[![CI](https://github.com/prikk-vcs/stikk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/prikk-vcs/stikk/actions/workflows/ci.yml)    
+[Report a vulnerability](SECURITY.md)
 
 **stikk is a history browser and workbench for the [prikk](https://github.com/nabbisen/prikk)
 version control system** — a terminal (TUI) and graphical (GUI) front-end over one shared operation
@@ -67,6 +70,21 @@ read-only session.
   itself. This is enforced by test, not just convention.
 - **One operation layer, two frontends.** The TUI and GUI drive the same operations, so parity is
   mechanical, not maintained by hand.
+
+## Project Status
+
+### Crates
+
+| Crate | Purpose | Version | Docs | Dependencies |
+|---|---|---|---|---|
+| [`stikk`](https://crates.io/crates/stikk) | (todo) | [![crates.io](https://img.shields.io/crates/v/stikk.svg?label=%20)](https://crates.io/crates/stikk) | [![documentation](https://img.shields.io/badge/docs-github_pages-brightgreen)](https://prikk-vcs.github.io/stikk/) | [![Dependency Status](https://deps.rs/crate/stikk/latest/status.svg)](https://deps.rs/crate/stikk) |
+| [`stikk-core`](https://crates.io/crates/stikk-core) | (todo) | [![crates.io](https://img.shields.io/crates/v/stikk-core.svg?label=%20)](https://crates.io/crates/stikk-core) | [![docs.rs](https://img.shields.io/docsrs/stikk-core?version=latest&label=%20)](https://docs.rs/stikk-core) | [![Dependency Status](https://deps.rs/crate/stikk-core/latest/status.svg)](https://deps.rs/crate/stikk-core) |
+
+(todo)
+
+### Project Structure
+
+(todo)
 
 ## More detail
 

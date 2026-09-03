@@ -1,27 +1,6 @@
-[package]
-name        = "stikk"
-description = "A user-facing history browser and workbench for the prikk version control system."
-readme      = "./README.md"
-
-version.workspace       = true
-edition.workspace       = true
-rust-version.workspace  = true
-license.workspace       = true
-authors.workspace       = true
-repository.workspace    = true
-
-[dependencies]
-stikk-model = { workspace = true }
-stikk-prikk = { workspace = true }
-stikk-state = { workspace = true }
-stikk-core  = { workspace = true }
-stikk-tui   = { workspace = true }
-
-[lints]
-workspace = true
-
 [workspace]
-members = ["crates/*"]
+resolver = "3"
+members  = ["crates/*"]
 
 [workspace.package]
 version         = "0.1.0"

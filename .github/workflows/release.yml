@@ -113,29 +113,48 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Authenticate to crates.io (Trusted Publishing)
-        id: auth
-        uses: rust-lang/crates-io-auth-action@v1
-      - name: Publish crates in dependency order (idempotent)
+      - name: Plan — which crates are not yet on crates.io
+        id: plan
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ needs.guard.outputs.version }}
         run: |
           set -euo pipefail
-          # Dependency order: model → prikk/state → core → tui → the stikk launcher.
+          missing=""
           for crate in stikk-model stikk-prikk stikk-state stikk-core stikk-tui stikk; do
             code="$(curl -s -o /dev/null -w '%{http_code}' \
               -H 'User-Agent: stikk-release (github actions; https://github.com/prikk-vcs/stikk)' \
               "https://crates.io/api/v1/crates/${crate}/${VERSION}")"
-            if [ "$code" = "200" ]; then
-              echo "== ${crate} ${VERSION} already on crates.io — skipping"
-              continue
-            fi
-            echo "== publishing ${crate} ${VERSION}"
-            cargo publish -p "${crate}" --locked
+            [ "$code" = "200" ] || missing="${missing} ${crate}"
+          done
+          missing="$(echo ${missing} | xargs || true)"
+          echo "missing=${missing}" >> "$GITHUB_OUTPUT"
+          [ -n "${missing}" ] && echo "any=true" >> "$GITHUB_OUTPUT" || echo "any=false" >> "$GITHUB_OUTPUT"
+          echo "to publish: '${missing:-<none — all already on crates.io>}'"
+      # The remaining steps run only when something is actually new — so a re-tag (or a tag whose
+      # crates were first published by hand) needs no Trusted Publishing at all.
+      - name: Install Rust
+        if: steps.plan.outputs.any == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        if: steps.plan.outputs.any == 'true'
+      - name: Authenticate to crates.io (Trusted Publishing)
+        id: auth
+        if: steps.plan.outputs.any == 'true'
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish the missing crates (dependency order)
+        if: steps.plan.outputs.any == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          MISSING: ${{ steps.plan.outputs.missing }}
+        run: |
+          set -euo pipefail
+          # Canonical dependency order (model → prikk/state → core → tui → launcher), restricted to
+          # the crates that are actually missing.
+          for crate in stikk-model stikk-prikk stikk-state stikk-core stikk-tui stikk; do
+            case " ${MISSING} " in
+              *" ${crate} "*) echo "== publishing ${crate}"; cargo publish -p "${crate}" --locked ;;
+              *) echo "== ${crate} already on crates.io — skipping" ;;
+            esac
           done
 
   binaries:

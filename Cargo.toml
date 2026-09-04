@@ -3,7 +3,7 @@ resolver = "3"
 members  = ["crates/*"]
 
 [workspace.package]
-version         = "0.1.0"
+version         = "0.2.0"
 edition         = "2024"
 rust-version    = "1.85"
 license         = "Apache-2.0"
@@ -12,11 +12,11 @@ repository      = "https://github.com/prikk-vcs/stikk"
 homepage        = "https://github.com/prikk-vcs/stikk"
 
 [workspace.dependencies]
-stikk-model = { version = "0.1.0", path = "crates/stikk-model" }
-stikk-prikk = { version = "0.1.0", path = "crates/stikk-prikk" }
-stikk-state = { version = "0.1.0", path = "crates/stikk-state" }
-stikk-core  = { version = "0.1.0", path = "crates/stikk-core" }
-stikk-tui   = { version = "0.1.0", path = "crates/stikk-tui" }
+stikk-model = { version = "0.2.0", path = "crates/stikk-model" }
+stikk-prikk = { version = "0.2.0", path = "crates/stikk-prikk" }
+stikk-state = { version = "0.2.0", path = "crates/stikk-state" }
+stikk-core  = { version = "0.2.0", path = "crates/stikk-core" }
+stikk-tui   = { version = "0.2.0", path = "crates/stikk-tui" }
 
 # Lint discipline mirrors prikk's: unsafe is forbidden (no FFI in stikk yet; the TUI/GUI toolkit
 # decision is deferred to Program Design), public items must be documented, and the panic-prone

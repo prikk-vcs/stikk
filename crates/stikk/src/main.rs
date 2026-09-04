@@ -1,13 +1,20 @@
 //! The `stikk` launcher (design `stikk-04` MOD-08, external design CL-01…08).
 //!
 //! stikk is a history browser and workbench for the prikk version control system. The launcher's job
-//! is small: parse the launch contract, run the headless utilities, and open a repository. The
-//! interactive TUI/GUI render loop is the next increment (its toolkit is a Program-Design decision,
-//! deliberately not made here); until then, opening a repository prints a one-shot orientation so the
-//! foundation is runnable end-to-end against a real prikk.
+//! is small: parse the launch contract, run the headless utilities, and open a repository. Opening one
+//! on a terminal launches the interactive **TUI** (`stikk-tui`; `ratatui`/`crossterm`, RFC 001) — the
+//! primary surface, not a future increment. A GUI frontend remains a later Program-Design decision. Off
+//! a TTY (piped, redirected, CI) the launcher instead prints a one-shot orientation — the **non-TTY
+//! fallback** (design `CL-06`), not the main path — so scripts and pipelines get a stable, parseable
+//! summary instead of raw terminal control sequences.
 //!
-//! Exit codes (a subset of external design CL-05, honest for this non-interactive increment):
-//! `0` success · `2` usage error · `3` config check failed · `1` runtime error.
+//! Exit codes: `0` success (headless utilities and a completed interactive session alike); `1` a
+//! runtime error (e.g. an unopenable repository, an I/O failure); `2` a usage error (an unknown option
+//! or malformed subcommand, detected before any repository work); `3` `config check` found a notice
+//! (non-blocking warnings in the config file). External design `CL-05` additionally defines an exit `4`
+//! ("environment unsuitable", e.g. no TTY) that this launcher does not use — opening off a TTY falls
+//! back to the one-shot print (`CL-06`) instead of refusing. That gap between the design and the code is
+//! flagged here, not fixed; see the 0.2.0 release-prep review request.
 
 #![forbid(unsafe_code)]
 
@@ -29,9 +36,10 @@ USAGE:
     stikk --help            print this help
 
 Notes:
-    The interactive TUI is the next increment; opening a repository currently prints a one-shot
-    orientation. stikk drives prikk through its public CLI; set STIKK_PRIKK_BIN to point at a
-    specific prikk build. stikk reads PRIKK_*_SEED presence only, never their values.";
+    Opening a repository on a terminal launches the interactive TUI; off a TTY (piped, redirected, CI)
+    stikk prints a one-shot orientation instead. stikk drives prikk through its public CLI; set
+    STIKK_PRIKK_BIN to point at a specific prikk build. stikk reads PRIKK_*_SEED presence only, never
+    their values.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

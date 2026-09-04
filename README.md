@@ -80,14 +80,20 @@ read-only session.
 
 | Crate | Purpose | Version | Docs | Dependencies |
 |---|---|---|---|---|
-| [`stikk`](https://crates.io/crates/stikk) | (todo) | [![crates.io](https://img.shields.io/crates/v/stikk.svg?label=%20)](https://crates.io/crates/stikk) | [![documentation](https://img.shields.io/badge/docs-github_pages-brightgreen)](https://prikk-vcs.github.io/stikk/) | [![Dependency Status](https://deps.rs/crate/stikk/latest/status.svg)](https://deps.rs/crate/stikk) |
-| [`stikk-core`](https://crates.io/crates/stikk-core) | (todo) | [![crates.io](https://img.shields.io/crates/v/stikk-core.svg?label=%20)](https://crates.io/crates/stikk-core) | [![docs.rs](https://img.shields.io/docsrs/stikk-core?version=latest&label=%20)](https://docs.rs/stikk-core) | [![Dependency Status](https://deps.rs/crate/stikk-core/latest/status.svg)](https://deps.rs/crate/stikk-core) |
-
-(todo)
+| [`stikk`](https://crates.io/crates/stikk) | A user-facing history browser and workbench for the prikk version control system (the launcher binary). | [![crates.io](https://img.shields.io/crates/v/stikk.svg?label=%20)](https://crates.io/crates/stikk) | [![documentation](https://img.shields.io/badge/docs-github_pages-brightgreen)](https://prikk-vcs.github.io/stikk/) | [![Dependency Status](https://deps.rs/crate/stikk/latest/status.svg)](https://deps.rs/crate/stikk) |
+| [`stikk-core`](https://crates.io/crates/stikk-core) | The operation layer: one shared operation set both frontends drive. Owns no I/O and no widgets; orchestrates the seam, state, and view-models. | [![crates.io](https://img.shields.io/crates/v/stikk-core.svg?label=%20)](https://crates.io/crates/stikk-core) | [![docs.rs](https://img.shields.io/docsrs/stikk-core?version=latest&label=%20)](https://docs.rs/stikk-core) | [![Dependency Status](https://deps.rs/crate/stikk-core/latest/status.svg)](https://deps.rs/crate/stikk-core) |
+| [`stikk-model`](https://crates.io/crates/stikk-model) | Shared kernel for stikk: error taxonomy, object/ref identity, request categories, and capabilities. No I/O. | [![crates.io](https://img.shields.io/crates/v/stikk-model.svg?label=%20)](https://crates.io/crates/stikk-model) | [![docs.rs](https://img.shields.io/docsrs/stikk-model?version=latest&label=%20)](https://docs.rs/stikk-model) | [![Dependency Status](https://deps.rs/crate/stikk-model/latest/status.svg)](https://deps.rs/crate/stikk-model) |
+| [`stikk-prikk`](https://crates.io/crates/stikk-prikk) | The prikk seam: the only code in stikk that talks to prikk. CLI backend, version handshake, and presence-only key readiness. | [![crates.io](https://img.shields.io/crates/v/stikk-prikk.svg?label=%20)](https://crates.io/crates/stikk-prikk) | [![docs.rs](https://img.shields.io/docsrs/stikk-prikk?version=latest&label=%20)](https://docs.rs/stikk-prikk) | [![Dependency Status](https://deps.rs/crate/stikk-prikk/latest/status.svg)](https://deps.rs/crate/stikk-prikk) |
+| [`stikk-state`](https://crates.io/crates/stikk-state) | stikk's own durable data: config, sessions, recents. Lives in user scope, never inside a repository, and is never authority. | [![crates.io](https://img.shields.io/crates/v/stikk-state.svg?label=%20)](https://crates.io/crates/stikk-state) | [![docs.rs](https://img.shields.io/docsrs/stikk-state?version=latest&label=%20)](https://docs.rs/stikk-state) | [![Dependency Status](https://deps.rs/crate/stikk-state/latest/status.svg)](https://deps.rs/crate/stikk-state) |
+| [`stikk-tui`](https://crates.io/crates/stikk-tui) | The terminal (TUI) frontend for stikk. Renders the operation layer's view-models; computes nothing about the repository. | [![crates.io](https://img.shields.io/crates/v/stikk-tui.svg?label=%20)](https://crates.io/crates/stikk-tui) | [![docs.rs](https://img.shields.io/docsrs/stikk-tui?version=latest&label=%20)](https://docs.rs/stikk-tui) | [![Dependency Status](https://deps.rs/crate/stikk-tui/latest/status.svg)](https://deps.rs/crate/stikk-tui) |
 
 ### Project Structure
 
-(todo)
+stikk is a five-layer workspace, dependencies pointing strictly downward: `stikk-model` (shared kernel,
+no I/O) ← `stikk-prikk` (the seam — the only code that talks to prikk) and `stikk-state` (user-scope
+config/session) ← `stikk-core` (the one operation layer both frontends drive) ← the frontends
+(`stikk-tui` today) and the `stikk` launcher. See
+[`docs/src/contributing/development.md`](docs/src/contributing/development.md) for the full picture.
 
 ## More detail
 

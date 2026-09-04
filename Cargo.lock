@@ -404,7 +404,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stikk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "stikk-core",
  "stikk-model",
@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "stikk-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "stikk-model",
  "stikk-prikk",
@@ -424,25 +424,25 @@ dependencies = [
 
 [[package]]
 name = "stikk-model"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "stikk-prikk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "stikk-model",
 ]
 
 [[package]]
 name = "stikk-state"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "stikk-model",
 ]
 
 [[package]]
 name = "stikk-tui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ratatui",
  "stikk-core",

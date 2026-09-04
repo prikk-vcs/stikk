@@ -83,10 +83,11 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.1.0 release is (and is not)
+## What a v0.2.x release is (and is not)
 
-v0.1.x is a **read-only preview**: orientation, history, block detail, worktree changes, and the
+v0.2.x is still a **read-only preview**: orientation, history, block detail, worktree changes, and the
 refusal/glossary surfaces. It performs **no repository mutations** yet. It drives the external `prikk`
-binary at runtime (not a Cargo dependency), so the release notes must state which prikk version it was
-validated against and how to install it — a `cargo install stikk` with no `prikk` on `PATH` will open
-and then explain that prikk is missing, by design.
+binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.30.0** — so the
+release notes must state which prikk version it was validated against and how to install it — a
+`cargo install stikk` with no `prikk` on `PATH` will open and then explain that prikk is missing, by
+design.

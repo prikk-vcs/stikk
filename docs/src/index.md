@@ -20,7 +20,10 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-Foundation (0.1.0) plus the first interactive surface: the security-critical layers — the shared
-model, the prikk seam, and the state layer — are implemented and tested, and the **interactive TUI**
-(shell + Orientation view, built on `ratatui`, RFC 001) now opens on a terminal. Piped/CI invocation
-keeps the one-shot orientation. History and Patch detail are the next increment.
+**0.2.0 is a read-only preview.** The security-critical layers (shared model, prikk seam, state layer),
+the interactive **TUI** (shell + Orientation, built on `ratatui` — RFC 001), **History** + Block detail
+(RFC 006), the refusal-explanation and glossary surfaces (RFC 007), and **worktree Changes** (RFC 008)
+are all implemented and tested, and re-baselined against prikk 0.30 with parser-fidelity corrections
+(RFC 009). Piped/CI invocation keeps the one-shot orientation. **Patch detail** is deferred behind
+`UD-09` — prikk exposes no per-patch content yet — and **Compare** is deferred behind the same ceiling,
+with a recorded future route (RFC 008); neither is "next", both are named gaps.

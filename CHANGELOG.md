@@ -2,13 +2,31 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.2.0 — 2026-09-04
 
 The prikk 0.30 re-baseline and parser-fidelity corrections (RFC 009). Running shipped 0.1.0 against a
 real prikk 0.30.0 repository found that Orientation refused to open **any repository with queued
 work**, at every prikk version stikk claimed to support — not new drift, but a golden fixture that was
 written rather than captured. This release fixes that and three related parser defects, closes a live
 threat-model violation, and re-baselines the validated prikk range.
+
+### Breaking
+
+For a `0.x` crate the minor version is the breaking position: `^0.1.0` resolves `0.1.1`, so a public
+field added on what looked like a patch would break any downstream code constructing these structs with
+struct-literal syntax. That is why this release is `0.2.0`, not `0.1.1` (RFC 011). Five structs gained
+fields; none is `#[non_exhaustive]` (RFC 011 decides against adding it before 1.0 — see that RFC for the
+reasoning):
+
+| Crate | Struct | Field added |
+|---|---|---|
+| `stikk-prikk` | `Handshake` | `validated: bool` |
+| `stikk-prikk` | `Orientation` | `queued_target: Option<String>` |
+| `stikk-prikk` | `WorktreeStatus` | `queued_elsewhere: Option<String>` |
+| `stikk-core` | `OrientationView` | `queued_target: Option<String>`, `prikk_validated: bool` |
+| `stikk-core` | `ChangesView` | `queued_elsewhere: Option<String>` |
+
+If you construct any of these five with struct-literal syntax, add the new field(s) before upgrading.
 
 ### Fixed
 

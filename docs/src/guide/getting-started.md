@@ -32,14 +32,23 @@ stikk /path/to/repo
 
 On a terminal this launches the interactive **TUI**: an Orientation view — the prikk version and
 whether stikk supports it, the queue depth, your signing readiness, and the capability that readiness
-gives you — inside a shell with a status bar and a Help overlay. Press `?` for the key reference, `r`
-to refresh, `q` to quit. Run it inside a repository with no argument and stikk discovers the
-repository root by walking upward for a `.prikk` directory, the same way prikk does.
+gives you — inside a shell with a status bar and a Help overlay. Run it inside a repository with no
+argument and stikk discovers the repository root by walking upward for a `.prikk` directory, the same
+way prikk does.
+
+Key reference: `Enter` opens History and drills into a block; `b` chooses which ref to view; `w` opens
+Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; `:` opens the command
+palette; `R` shows the session's recent refusals; `?` opens the glossary and full key reference; `r`
+refreshes the current view from prikk; `Esc`/`q` steps back, and quits at the root.
 
 Run `stikk` piped or in CI (no terminal) and you get the same orientation as a one-shot print instead.
-To see the TUI with no repository at all: `cargo run -p stikk-tui --example orientation_demo`.
+To see the TUI with no repository at all: `cargo run -p stikk-tui --example orientation_demo` (also see
+`history_demo`, `explanation_demo`, and `changes_demo` for the other views, all scripted — no prikk
+binary or repository needed).
 
-More views — History, Patch and Block detail — are the next increment.
+**Patch detail** is deferred behind `UD-09` (prikk exposes no per-patch content yet); **Compare** is
+deferred behind the same ceiling, with a recorded future route (RFC 008). Both are named gaps, not
+upcoming work.
 
 ## Capability and signing
 

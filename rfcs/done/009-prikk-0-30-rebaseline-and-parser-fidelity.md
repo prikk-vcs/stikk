@@ -1,14 +1,24 @@
 # RFC 009 — The prikk 0.30 re-baseline and the parser-fidelity defects
 
-**Status.** Accepted (2026-09-04) — re-baseline stikk on **prikk 0.30**, and correct four
+**Status.** Implemented (0.1.1 candidate; on `main` 2026-09-04, reviewed and approved) — re-baselined stikk on **prikk 0.30**, and correct four
 **parser-fidelity defects** found by running shipped stikk against the real binary. One of them
 (**F1**) breaks the Orientation view — stikk's entry point — on *any* repository with queued work, at
 *every* prikk version stikk claims to support. This is a correction increment, proposed ahead of
 roadmap increment 6, and a **0.1.1 patch release** candidate. Handoff:
 [`../handoffs/009-prikk-0-30-rebaseline-and-parser-fidelity/parser-fidelity-handoff-v1.md`](../handoffs/009-prikk-0-30-rebaseline-and-parser-fidelity/parser-fidelity-handoff-v1.md).
 **Decision 6 was ruled by the owner on 2026-09-04: dropping prikk 0.27.x is accepted, and 0.30.0 is
-the version to develop and validate against.** No decision in this RFC is now outstanding; all seven
-are accepted and implementable.
+the version to develop and validate against.** All seven decisions were implemented and verified
+(review result: `.git-exclude/reviewed/009-…/review-result-v2.md`, Approved after one correction
+round); 164 → 197 tests. **The release itself is the owner's**: the version bump, CHANGELOG heading,
+tag and publish for 0.1.1 are not authorized by this RFC.
+**Deferred, carried forward (not built by this RFC):** the **real-binary integration suite** (`TS-07`) —
+without it the fixture-capture rule is enforced in *form* only (a provenance comment's shape), which is
+recorded as threat-model **RR-9**; **`FR-014`'s ref surface is corrected, not completed** — `branch
+list` cannot emit tags and a `prikk tag list` seam read is still unbuilt; **ref-name validation** —
+`stikk_model::RefName` rejects control characters but is used nowhere, so every ref name from the seam
+travels as an unvalidated `String` (display is inert at every call site, validation is not); and a
+**richer `.prikkignore` surface** (viewing or editing rules). The off-thread seam is
+[RFC 010](../proposed/010-off-thread-seam-and-ui-responsiveness.md), separately proposed.
 **Tracks.** The standing obligation to re-validate against the real prikk (`ASM-2`, `NFR-R03`), and the
 correction of `UD-05`/`UD-08` after prikk 0.28–0.30.
 **Touches.** `stikk-prikk` (`cli_backend/parse.rs`, `classify.rs`, `version.rs`, and every golden

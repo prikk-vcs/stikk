@@ -31,9 +31,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Decision | Handoff |
-|----|-------|----------|---------|
-| 009 | [prikk 0.30 re-baseline and parser fidelity](./accepted/009-prikk-0-30-rebaseline-and-parser-fidelity.md) | correct four parser-fidelity defects found against the real binary (one breaks Orientation on every non-empty repository); retire `UD-08`, revise `UD-05` (2026-09-04) | [Parser fidelity](./handoffs/009-prikk-0-30-rebaseline-and-parser-fidelity/parser-fidelity-handoff-v1.md) |
+_None currently._
 
 ## Done (implemented)
 
@@ -44,6 +42,7 @@ _Design settled; implementer may start; work has not yet shipped._
 | 006 | [History & inspection seam](./done/006-history-and-inspection-seam.md) | 0.1.0 | Patch detail (`FR-030`), patch-id enumeration, diff-aware search — all `UD-09` | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |
 | 007 | [Explanation & discovery surface](./done/007-explanation-and-discovery-surface.md) | 0.1.0 | `RoutedIntoView`/`InConfirmation` renderers; merge/checkout/seal/trust next-steps + witness glossary; refusal-history persistence + `LC-8` gate | [Explanation surface](./handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md) |
 | 008 | [Worktree changes & the Compare ceiling](./done/008-worktree-changes-and-the-compare-ceiling.md) | 0.1.0 | Compare (`FR-033`); per-file content diffs (`UD-09`); the `C` commit action; status-bar worktree marker. **Amended by RFC 009** | [Changes view](./handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md) |
+| 009 | [prikk 0.30 re-baseline & parser fidelity](./done/009-prikk-0-30-rebaseline-and-parser-fidelity.md) | 0.1.1 candidate (on `main`) | real-binary integration suite (`TS-07`, threat-model `RR-9`); `FR-014`'s ref surface corrected but not completed (no `tag list` read); ref-name validation (`RefName` unused); richer `.prikkignore` surface | [Parser fidelity](./handoffs/009-prikk-0-30-rebaseline-and-parser-fidelity/parser-fidelity-handoff-v1.md) |
 
 ## Archive (withdrawn or superseded)
 

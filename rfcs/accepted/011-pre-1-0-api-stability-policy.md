@@ -19,7 +19,7 @@ was not obvious in either direction. Handoff:
 
 ## Summary
 
-RFC 009 added public fields to six structs. That made 0.1.1 the wrong version — for a `0.x` crate the
+RFC 009 added public fields to five published structs (`Handshake`, `Orientation`, `WorktreeStatus`, `OrientationView`, `ChangesView`). That made 0.1.1 the wrong version — for a `0.x` crate the
 **minor** is the breaking position, and `^0.1.0` resolves `0.1.1`, so anyone constructing those structs
 would break on a "patch". 0.2.0 is correct, and that part is settled.
 

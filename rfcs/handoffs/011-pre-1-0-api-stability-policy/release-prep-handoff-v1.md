@@ -18,14 +18,19 @@ it does.
 
 **In:**
 1. Workspace version `0.1.0` → **`0.2.0`**, including the five `workspace.dependencies` path entries.
-2. `CHANGELOG.md`: `## Unreleased` → `## 0.2.0 — <release date>`, with a short "why this is a minor,
-   not a patch" line.
+2. `CHANGELOG.md`: `## Unreleased` → `## 0.2.0 — <release date>`, plus a **`### Breaking`**
+   subsection enumerating the added public fields (see §2.1) — the semver justification must be
+   readable by a downstream user, not just asserted.
 3. `crates/stikk/src/main.rs`: the `USAGE` text and the module doc comment, both of which still say the
    interactive TUI is a future increment.
 4. `README.md`: the `## Project Status` section — four `(todo)` placeholders and a crate table listing
    2 of 6 crates.
 5. `docs/src/index.md` and `docs/src/guide/getting-started.md`: the "next increment" status lines and
    the incomplete key reference (see §5).
+6. `docs/src/contributing/releasing.md`: the section headed **"What a v0.1.0 release is (and is not)"**
+   — generalize it to `0.2.x`. Its substance is still true (still a read-only preview, still drives an
+   external `prikk`), but it must also now state the **prikk range as `>= 0.28`, validated through
+   `0.30.0`** rather than the old floor. Leave the rest of the runbook alone.
 
 **Out (do not build here):**
 - **`#[non_exhaustive]` on any struct.** RFC 011 decides against it before 1.0 — 75 cross-crate
@@ -49,14 +54,47 @@ version = "0.2.0"          # was 0.1.0
 stikk-model = { version = "0.2.0", path = "crates/stikk-model" }   # and the other four
 ```
 
-`.github/workflows/release.yml`'s guard job requires **tag == workspace version**, so a `0.2.0` tag
-fails unless both are updated. Run `cargo build --locked` afterwards: `Cargo.lock` records the
-workspace crates' versions and must be regenerated and committed, or `--locked` fails in CI.
+There are **six** version strings in that file — one in `[workspace.package]` and five in
+`[workspace.dependencies]`. All six move together.
 
-**Why 0.2.0 and not 0.1.1** (state this in the CHANGELOG, briefly): RFC 009 added public fields to
-`Handshake`, `Orientation`, `WorktreeStatus`, `WorktreeEntry`, `OrientationView` and `ChangesView`,
-none of which is `#[non_exhaustive]`. For a `0.x` crate the minor is the breaking position, so
-`^0.1.0` would resolve a `0.1.1` and break any downstream construction of those structs. See RFC 011.
+`.github/workflows/release.yml`'s guard job requires **tag == workspace version**, so a `0.2.0` tag
+fails unless they are updated.
+
+**`Cargo.lock` must then be regenerated, and the order matters.** The lock records the workspace
+crates' own versions (`name = "stikk"` / `version = "0.1.0"` today). `--locked` *verifies* a lock, it
+never rewrites one, so `cargo build --locked` after the bump **fails** rather than fixing it:
+
+```sh
+cargo update --workspace     # rewrites Cargo.lock's workspace-member versions
+cargo build --locked         # now verifies clean
+git add Cargo.lock           # commit it — CI and `cargo publish` both run --locked
+```
+
+This matters more than it looks: the publish job runs `cargo publish -p <crate> --locked` for each
+crate **in dependency order**. A stale lock is caught earlier by the `verify` job, so it cannot cause a
+half-finished publish — but get it right rather than relying on that.
+
+### 2.1 Why 0.2.0 and not 0.1.1 — and what the CHANGELOG must say
+
+RFC 009 added public fields to five structs, **none** of which is `#[non_exhaustive]`:
+
+| Crate | Struct | Field added |
+|---|---|---|
+| `stikk-prikk` | `Handshake` | `validated: bool` |
+| `stikk-prikk` | `Orientation` | `queued_target: Option<String>` |
+| `stikk-prikk` | `WorktreeStatus` | `queued_elsewhere: Option<String>` |
+| `stikk-core` | `OrientationView` | `queued_target: Option<String>`, `prikk_validated: bool` |
+| `stikk-core` | `ChangesView` | `queued_elsewhere: Option<String>` |
+
+**Five structs, not six** — I said six earlier and named `WorktreeEntry`, which in fact gained nothing;
+`OrientationView` gained two fields, not one. Verified against `git show f862990` on 2026-09-04. Check
+it yourself anyway before writing the CHANGELOG: a release note that misdescribes a breaking change is
+worse than one that omits it, and I have already got this list wrong once.
+
+For a `0.x` crate the **minor** is the breaking position, so `^0.1.0` resolves a `0.1.1` and would
+break any downstream code constructing those structs with literal syntax. A `### Breaking` subsection
+must name the crate, the struct, and the field, so a reader can tell whether it affects them without
+diffing. See RFC 011 for the full reasoning and for why `#[non_exhaustive]` is *not* the fix here.
 
 ---
 
@@ -150,11 +188,30 @@ There is no behaviour to test. What must hold:
    deferrals, and the guide's key reference is complete.
 6. Gates green at **197 tests** (unchanged); examples build; `mdbook build` succeeds.
 7. **No struct gained `#[non_exhaustive]`; no constructor or builder was added** (RFC 011).
-8. Nothing tagged, pushed, or published.
+8. `Cargo.lock` is regenerated and committed, and `cargo build --locked` verifies clean (§2).
+9. The review request states the two pre-flight facts in §8 for the owner.
+10. Nothing tagged, pushed, or published — and no source file outside the list in §1 is touched.
 
 ---
 
-## 8. Submit
+## 8. Pre-flight facts for the owner's tag (report these; do not act on them)
+
+The tag is the owner's and it triggers an **irreversible** publish. Two things they should know, and
+which your submission should state plainly so they are not discovered mid-release:
+
+1. **There is no manual approval gate.** `release.yml`'s `crates` job declares `environment: release`
+   precisely so required reviewers *can* be added, but none are configured — so pushing the tag
+   publishes to crates.io with no further click. Say so in the review request.
+2. **Index-propagation is a real transient risk that CI does not handle.** The publish loop runs
+   `cargo publish -p <crate> --locked` for the six crates in dependency order with **no wait between
+   them**, while `releasing.md`'s by-hand procedure explicitly notes that "each command waits for the
+   index before the next resolves." `stikk-prikk` 0.2.0 depends on `stikk-model` 0.2.0 *from
+   crates.io*, so if the index has not caught up, the second publish can fail.
+   **This is recoverable and not dangerous:** the job first queries which versions are missing and
+   publishes only those, so re-running the workflow completes the rest. Flag it as "may need one
+   re-run", not as a blocker — and do **not** attempt to fix the workflow in this increment.
+
+## 9. Submit
 
 The usual package to `.git-exclude/review-request/011-release-0-2-0-preparation/review-request-v1.md`.
 Because nothing here is behavioural, the review will be a **reading** review: paste the final

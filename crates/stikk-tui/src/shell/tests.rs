@@ -21,6 +21,7 @@ fn draw(app: &App, w: u16, h: u16) -> String {
 fn renders_header_orientation_and_status_together() {
     let backend = NullBackend::supported().with_orientation(Orientation {
         queued_patches: 1,
+        queued_target: Some("heads/main".into()),
         main_ref_state: Some("237d0681".into()),
         trailing_partial_wal_bytes: 0,
     });
@@ -29,7 +30,7 @@ fn renders_header_orientation_and_status_together() {
     assert!(text.contains("stikk")); // header
     assert!(text.contains("sample-repo")); // header repo name
     assert!(text.contains("Orientation")); // body
-    assert!(text.contains("prikk 0.27.1")); // orientation content
+    assert!(text.contains("prikk 0.30.0")); // orientation content (RFC 009: the new NullBackend default)
     assert!(text.contains("q:back")); // status bar
 }
 
@@ -94,6 +95,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
     let backend = NullBackend::supported()
         .with_orientation(Orientation {
             queued_patches: 3,
+            queued_target: Some("heads/main".into()),
             main_ref_state: Some("bbbb".into()),
             trailing_partial_wal_bytes: 0,
         })

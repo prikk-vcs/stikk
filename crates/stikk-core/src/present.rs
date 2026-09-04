@@ -213,9 +213,7 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
 /// from the message text (C-T2b).
 fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
     match op {
-        OperationContext::LoadHistory
-        | OperationContext::LoadBlockState
-        | OperationContext::LoadChanges => vec![
+        OperationContext::LoadHistory | OperationContext::LoadBlockState => vec![
             NextStep {
                 label: "Choose another ref".to_string(),
                 target: NextTarget::OpenView(Target::RefPicker),
@@ -223,6 +221,27 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
             NextStep {
                 label: "Refresh".to_string(),
                 target: NextTarget::Refresh,
+            },
+        ],
+        OperationContext::LoadChanges => vec![
+            NextStep {
+                label: "Choose another ref".to_string(),
+                target: NextTarget::OpenView(Target::RefPicker),
+            },
+            NextStep {
+                label: "Refresh".to_string(),
+                target: NextTarget::Refresh,
+            },
+            // RFC 009 F5: a malformed `.prikkignore` is one cause of a Changes refusal that neither of
+            // the above resolves. This is offered unconditionally for every LoadChanges refusal — never
+            // derived from prikk's message text (C-T2b) — and is guidance, not an action: stikk must
+            // not edit a repository file (CON-1, INV-1).
+            NextStep {
+                label:
+                    "If this repository has a `.prikkignore`, check it for a malformed rule (edit \
+                        or remove it outside stikk), then Refresh"
+                        .to_string(),
+                target: NextTarget::DismissAndResolveExternally,
             },
         ],
         OperationContext::ListRefs | OperationContext::Orient => vec![NextStep {

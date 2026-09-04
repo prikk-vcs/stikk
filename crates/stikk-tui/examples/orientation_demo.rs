@@ -27,6 +27,7 @@ fn main() -> ExitCode {
     }
     let backend = NullBackend::supported().with_orientation(Orientation {
         queued_patches: 2,
+        queued_target: Some("heads/main".to_string()),
         main_ref_state: Some(
             "237d0681acace31e17f80dee61d386c8d13529056721ba9c188e42ee4a13d5f8".to_string(),
         ),

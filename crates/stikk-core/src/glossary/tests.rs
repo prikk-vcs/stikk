@@ -41,3 +41,14 @@ fn codes_in_links_only_named_codes() {
     let none = codes_in("a plain refusal with no code in it");
     assert!(none.is_empty());
 }
+
+#[test]
+fn the_prikkignore_code_resolves_and_links_from_a_real_refusal() {
+    // RFC 009 F5.
+    let entry = lookup(".prikkignore").expect("seeded code");
+    assert!(entry.explanation.contains("CON-1"));
+    let named = codes_in(
+        "error: invalid name: .prikkignore line 1: invalid name: absolute paths are not allowed",
+    );
+    assert_eq!(named, vec![".prikkignore"]);
+}

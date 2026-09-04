@@ -20,6 +20,10 @@ specific build:
 export STIKK_PRIKK_BIN=/path/to/prikk
 ```
 
+stikk requires prikk **≥ 0.28** and is validated through **0.30.0**. A prikk below the floor degrades
+to read-only where it can; a prikk above the validated ceiling still runs, but Orientation says its
+output shapes have not actually been checked against it, rather than silently assuming they have.
+
 ## Open a repository
 
 ```sh

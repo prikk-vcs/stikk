@@ -4,7 +4,51 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
-_Nothing yet._
+The prikk 0.30 re-baseline and parser-fidelity corrections (RFC 009). Running shipped 0.1.0 against a
+real prikk 0.30.0 repository found that Orientation refused to open **any repository with queued
+work**, at every prikk version stikk claimed to support — not new drift, but a golden fixture that was
+written rather than captured. This release fixes that and three related parser defects, closes a live
+threat-model violation, and re-baselines the validated prikk range.
+
+### Fixed
+
+- **Orientation no longer refuses on queued work** (F1). `prikk status`'s `queued patches: N targeting
+  <ref>` line — present since prikk 0.18.0 — is now parsed correctly, and `Orientation`/
+  `OrientationView` carry the queue's target ref (`queued_target`), shown as "N queued · targeting
+  `<ref>`".
+- **An unpublished `heads/main` no longer becomes a fabricated object id** (F2). `status`'s
+  `<not published>` sentinel — and any future unrecognized sentinel — is now recognized (or refused,
+  never guessed) alongside `log`'s `<none>`.
+- **An empty repository no longer produces a phantom ref** (F3). `prikk branch list --all`'s `no
+  branches` line used to parse as `RefEntry { name: "no", id: "branches" }`; it is now the empty list.
+  `branch list` cannot emit a tag — the seam's doc comments and the ref-picker gap are corrected to say
+  so; a real `tag list` read is tracked, not built here.
+- **A prikk usage error (exit `2`) no longer wears prikk's voice** (F6). prikk 0.28 split its exit
+  contract into success / operational failure / usage error; a bad argument list stikk assembled now
+  surfaces as a stikk-internal fault, never as one of prikk's own refusals.
+
+### Security
+
+- **Closed a live confident-but-wrong-picture violation** (F4; threat model `T-T4`/`C-T4c`, tracked as
+  `RR-9`). When the active WAL holds queued patches for a ref other than the one being reviewed, prikk's
+  `worktree-status` says so explicitly — those "untracked" paths may already be committed, unsealed
+  work. Shipped 0.1.0 silently dropped that warning and then showed its own contradicting "a commit
+  still captures them" banner. The Changes view now carries prikk's warning verbatim into a distinct
+  band above the entries, and suppresses the contradicting claim while the warning is present.
+- **`UD-08` retired.** `.prikkignore` shipped in prikk 0.29; the design set, the Changes view's copy,
+  and the glossary no longer say prikk has no ignore mechanism. The malformed-`.prikkignore` refusal now
+  has a glossary entry and a next-step that can actually resolve it.
+- Every golden fixture in `stikk-prikk`'s parser tests is re-captured verbatim from a real prikk 0.30.0
+  binary and carries a provenance comment naming the command and version; a regression test enforces
+  the rule going forward.
+
+### Changed
+
+- **The validated prikk range is now `>= 0.28`, through `0.30.0`** (owner-ruled 2026-09-04; `0.27.x`
+  dropped — its `worktree-status` was already the `UD-03` defect stikk refused to run). A prikk above
+  the validated ceiling still runs; Orientation states that its output shapes have not been checked,
+  rather than silently assuming they have (`Handshake`/`OrientationView` gain a `validated` field
+  alongside `supported`).
 
 ## 0.1.0 — 2026-09-03
 

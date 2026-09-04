@@ -24,9 +24,10 @@ cargo install stikk
 ```
 
 **stikk drives the external `prikk` binary at runtime** (it is not a Cargo dependency): install a
-compatible `prikk` on your `PATH` as well. This release is validated against prikk ≥ 0.27, and the
-worktree-changes view needs prikk ≥ 0.28. If `prikk` is missing, stikk opens and then explains that —
-by design.
+compatible `prikk` on your `PATH` as well. This release requires prikk **≥ 0.28** and is validated
+through **0.30.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
+against it rather than silently assuming they have. If `prikk` is missing, stikk opens and then
+explains that — by design.
 
 ## Use
 

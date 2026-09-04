@@ -95,6 +95,48 @@ fn an_internal_fault_is_a_fault_screen() {
 }
 
 #[test]
+fn load_changes_refusal_offers_a_prikkignore_pointer_unconditionally() {
+    // RFC 009 F5: a malformed `.prikkignore` is one cause of a Changes refusal that "choose another
+    // ref" and "refresh" cannot resolve. The step is offered for every LoadChanges refusal — never
+    // derived from the message text (C-T2b) — so a hostile or unrelated message gets it too, and that
+    // is by design: the mapping is `(class, operation)`, not `(class, operation, message)`.
+    let err = StikkError::Refusal {
+        message: "ref does not exist".into(),
+    };
+    let card = match present(&err, OperationContext::LoadChanges) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected overlay, got {other:?}"),
+    };
+    assert!(
+        card.next_steps
+            .iter()
+            .any(|s| s.label.contains(".prikkignore"))
+    );
+    // Still guidance only — never a mutation or an auto-retry (NFR-S04).
+    for step in &card.next_steps {
+        assert!(matches!(
+            step.target,
+            NextTarget::OpenView(_) | NextTarget::Refresh | NextTarget::DismissAndResolveExternally
+        ));
+    }
+}
+
+#[test]
+fn a_prikkignore_refusal_links_the_glossary_entry() {
+    // RFC 009 F5: the code-link mechanism (FR-111), not a message-derived action (C-T2b) — `codes_in`
+    // only links a code it already knows, it never invents a next-step from the text.
+    let err = StikkError::Refusal {
+        message: "invalid name: .prikkignore line 1: invalid name: absolute paths are not allowed"
+            .into(),
+    };
+    let card = match present(&err, OperationContext::LoadChanges) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected overlay, got {other:?}"),
+    };
+    assert!(card.glossary_codes.contains(&".prikkignore".to_string()));
+}
+
+#[test]
 fn a_refusal_with_no_surface_context_has_no_fabricated_gloss() {
     let err = StikkError::Refusal {
         message: "some refusal".into(),

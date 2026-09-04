@@ -174,10 +174,14 @@ fn open_handle(start: &Path) -> stikk_model::Result<RepositoryHandle> {
 fn print_orientation(root: &Path, view: &orient::OrientationView) {
     println!("stikk — orientation");
     println!("  repository:  {}", root.display());
-    let support = if view.prikk_supported {
-        "supported"
-    } else {
+    // RFC 009 decisions 6-7: below the floor stikk degrades; above the validated ceiling it still
+    // runs, but says so rather than silently asserting a validation it has not done.
+    let support = if !view.prikk_supported {
         "OUTSIDE stikk's validated range — read-only"
+    } else if !view.prikk_validated {
+        "validated through 0.30 — this prikk is newer; its output shapes have not been checked"
+    } else {
+        "supported"
     };
     println!("  prikk:       {} ({support})", view.prikk_version);
     println!("  capability:  {}", view.capability.name());
@@ -191,7 +195,13 @@ fn print_orientation(root: &Path, view: &orient::OrientationView) {
             ""
         }
     );
-    println!("  queued:      {}", view.queued_patches);
+    match &view.queued_target {
+        Some(target) => println!(
+            "  queued:      {} · targeting {target}",
+            view.queued_patches
+        ),
+        None => println!("  queued:      {}", view.queued_patches),
+    }
     if view.trailing_partial_wal_bytes != 0 {
         println!(
             "  warning:     {} trailing partial WAL byte(s) — an interrupted commit left a torn tail",

@@ -1,4 +1,4 @@
-//! Worktree-vs-baseline (Changes) operation (design FR-034; RFC 008).
+//! Worktree-vs-baseline (Changes) operation (design FR-034; RFC 008; RFC 009 F4).
 //!
 //! `changes_view` drives prikk's `worktree-status` — verified fixed as of prikk 0.28 (RFC 008; the
 //! audit's UD-03 defect was 0.27.x). The operation is **version-gated**: below 0.28 it returns
@@ -6,6 +6,12 @@
 //! present the broken command's error to users." Everything here is read-only and path-level — prikk
 //! reports *that* a file's bytes differ, never the content difference (the UD-09 ceiling), so no
 //! per-file diff is fabricated (threat T-T4).
+//!
+//! [`ChangesView::queued_elsewhere`] carries prikk's own warning verbatim when the active WAL holds
+//! queued work for a **different** ref (RFC 009 F4): shipped stikk silently dropped this warning and
+//! then added its own contradicting "a commit still captures them" banner, which is exactly the
+//! confident-but-wrong picture (`T-T4`) the threat model names as this project's worst failure. This
+//! operation only transports the field; the frontend decides how to render it.
 
 use std::path::Path;
 
@@ -82,6 +88,13 @@ pub struct ChangesView {
     pub unsupported: u64,
     /// The changed paths (the counts summarize these).
     pub entries: Vec<ChangeEntry>,
+    /// prikk's own warning, verbatim, when the active WAL holds queued patches for a **different** ref
+    /// than the one asked about — paths listed "untracked" above may be committed-but-unsealed work
+    /// (RFC 009 F4). `None` when prikk did not emit it. Never paraphrased (ER-02): while this is
+    /// present, the UD-08 untracked filter's "a commit still captures them" claim is suppressed and
+    /// replaced by a pointer to this warning, because the two would otherwise contradict each other and
+    /// prikk's is the true one (RFC 009 decision 3).
+    pub queued_elsewhere: Option<String>,
 }
 
 /// Produce the Changes view for `reff` (design FR-034; RFC 008).
@@ -127,6 +140,7 @@ fn from_status(status: WorktreeStatus) -> ChangesView {
         untracked: status.untracked,
         unsupported: status.unsupported,
         entries,
+        queued_elsewhere: status.queued_elsewhere,
     }
 }
 

@@ -65,6 +65,45 @@ fn drains_large_output_without_deadlock() {
 
 #[cfg(unix)]
 #[test]
+fn exit_2_is_a_stikk_fault_never_prikks_refusal() {
+    // RFC 009 F6: prikk 0.28+ uses exit 2 for a usage error — a bad argument list stikk assembled,
+    // detected before any repository work. It must never be classified as prikk's semantic refusal.
+    let backend = CliBackend::with_program("sh");
+    let err = backend
+        .run(
+            None,
+            RequestCategory::ReadHistory,
+            [
+                "-c",
+                "echo 'error: unknown log argument: --nonexistent-flag' 1>&2; exit 2",
+            ],
+        )
+        .expect_err("exit 2 is an error");
+    assert_eq!(err.class(), "stikk-internal");
+    // prikk's own message is kept — it names the bad argument — but the class is stikk's.
+    assert!(err.to_string().contains("unknown log argument"));
+}
+
+#[cfg(unix)]
+#[test]
+fn run_capturing_also_treats_exit_2_as_a_stikk_fault() {
+    // The dirty-exit caller (`worktree_status`) must never see a usage-error exit as a normal outcome
+    // to interpret itself — `run_capturing` intercepts it before returning.
+    let backend = CliBackend::with_program("sh");
+    let err = backend
+        .run_capturing(
+            None,
+            [
+                "-c",
+                "echo 'error: worktree-status requires --ref' 1>&2; exit 2",
+            ],
+        )
+        .expect_err("exit 2 is an error");
+    assert_eq!(err.class(), "stikk-internal");
+}
+
+#[cfg(unix)]
+#[test]
 fn run_capturing_keeps_stdout_on_a_nonzero_exit() {
     // `worktree-status` exits 1 for a dirty tree while writing the report to stdout (RFC 008): the
     // capturing runner must return that stdout with success=false, never discard it or classify it.

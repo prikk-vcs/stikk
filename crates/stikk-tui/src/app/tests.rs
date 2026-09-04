@@ -35,6 +35,7 @@ fn dirty_worktree() -> WorktreeStatus {
                 note: "not in the baseline".into(),
             },
         ],
+        queued_elsewhere: None,
     }
 }
 
@@ -70,12 +71,16 @@ fn two_block_backend() -> NullBackend {
 fn open_loads_orientation_from_the_backend() {
     let backend = NullBackend::supported().with_orientation(Orientation {
         queued_patches: 2,
+        queued_target: Some("heads/main".into()),
         main_ref_state: Some("abc".into()),
         trailing_partial_wal_bytes: 0,
     });
     let app = App::open("/repo", &backend, &Config::default());
     match app.state() {
-        OrientationState::Loaded(view) => assert_eq!(view.queued_patches, 2),
+        OrientationState::Loaded(view) => {
+            assert_eq!(view.queued_patches, 2);
+            assert_eq!(view.queued_target.as_deref(), Some("heads/main"));
+        }
         other => panic!("expected Loaded, got {other:?}"),
     }
 }
@@ -313,8 +318,11 @@ fn open_changes_pushes_the_view_and_toggle_hides_untracked() {
 
 #[test]
 fn open_changes_below_0_28_surfaces_guidance_not_a_screen() {
-    // Default NullBackend is 0.27.1 — below the worktree-status fix (UD-03).
-    let backend = NullBackend::supported().with_worktree_status(dirty_worktree());
+    // RFC 009 raised the default NullBackend to a supported+validated 0.30.0, so the below-the-gate
+    // version (UD-03) must now be scripted explicitly rather than relied on as the default.
+    let backend = NullBackend::supported()
+        .with_version(0, 27, 1)
+        .with_worktree_status(dirty_worktree());
     let mut app = App::open("/repo", &backend, &Config::default());
     app.open_changes(&backend);
     // No Changes screen was pushed; the guidance is a banner (inline class), not a broken error.
@@ -326,6 +334,7 @@ fn open_changes_below_0_28_surfaces_guidance_not_a_screen() {
 fn reload_re_sources_from_the_backend() {
     let backend = NullBackend::supported().with_orientation(Orientation {
         queued_patches: 5,
+        queued_target: None,
         main_ref_state: None,
         trailing_partial_wal_bytes: 0,
     });

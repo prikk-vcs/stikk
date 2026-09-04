@@ -96,14 +96,27 @@ static TERMS: &[TermMapping] = &[
 ];
 
 /// Code entries (witness/finding). A representative sample now; the full sets land with FR-080/FR-100.
-static CODE_ENTRIES: &[GlossaryEntry] = &[GlossaryEntry {
-    code: "unverifiable-author-signature",
-    title: "Unverifiable author signature",
-    explanation: "No key material is recorded for the author, so the signature cannot be checked. \
-                  This is NOT a failure — verify still passes — but it must never be shown as a \
-                  green/sound state. It means continuity is unknown here, not that the author is fake.",
-    see_also: &["sound-author-signature"],
-}];
+static CODE_ENTRIES: &[GlossaryEntry] = &[
+    GlossaryEntry {
+        code: "unverifiable-author-signature",
+        title: "Unverifiable author signature",
+        explanation: "No key material is recorded for the author, so the signature cannot be checked. \
+                      This is NOT a failure — verify still passes — but it must never be shown as a \
+                      green/sound state. It means continuity is unknown here, not that the author is \
+                      fake.",
+        see_also: &["sound-author-signature"],
+    },
+    GlossaryEntry {
+        code: ".prikkignore",
+        title: "A malformed .prikkignore file",
+        explanation: "prikk excludes matching worktree paths from commit's walk and \
+                      worktree-status's untracked scan using this file, but refuses to proceed when a \
+                      rule it cannot use — an absolute path, for example — appears in it (RFC 009 F5). \
+                      Fix or remove the offending line outside stikk, then retry: stikk itself never \
+                      edits a repository file (CON-1).",
+        see_also: &[],
+    },
+];
 
 /// Look up a code entry (witness kind or verify finding). `None` is the RR-5 degradation: the caller
 /// shows prikk's verbatim message and says no gloss exists yet — it never hides the message.

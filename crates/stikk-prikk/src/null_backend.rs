@@ -25,21 +25,25 @@ pub struct NullBackend {
 }
 
 impl NullBackend {
-    /// A backend reporting a supported prikk and a clean, empty repository — the common happy path.
+    /// A backend reporting a supported, validated prikk (RFC 009: the floor is 0.28, validated through
+    /// 0.30.0 — this default is the ceiling itself) and a clean, empty repository — the common happy
+    /// path.
     #[must_use]
     pub fn supported() -> Self {
         Self {
             handshake: Handshake {
                 version: Version {
                     major: 0,
-                    minor: 27,
-                    patch: 1,
+                    minor: 30,
+                    patch: 0,
                 },
-                raw_version: "prikk 0.27.1".to_string(),
+                raw_version: "prikk 0.30.0".to_string(),
                 supported: true,
+                validated: true,
             },
             orientation: Ok(Orientation {
                 queued_patches: 0,
+                queued_target: None,
                 main_ref_state: None,
                 trailing_partial_wal_bytes: 0,
             }),
@@ -68,11 +72,14 @@ impl NullBackend {
                 untracked: 0,
                 unsupported: 0,
                 entries: Vec::new(),
+                queued_elsewhere: None,
             }),
         }
     }
 
-    /// Set the reported prikk version (for testing the version gate — e.g. Changes needs ≥ 0.28).
+    /// Set the reported prikk version (for testing the version floor/ceiling — e.g. Changes needs
+    /// ≥ 0.28, or a version above 0.30 to exercise the unvalidated-but-running case, RFC 009 decision
+    /// 7). Recomputes both `supported` and `validated`.
     #[must_use]
     pub fn with_version(mut self, major: u32, minor: u32, patch: u32) -> Self {
         self.handshake.version = Version {
@@ -82,6 +89,7 @@ impl NullBackend {
         };
         self.handshake.raw_version = format!("prikk {major}.{minor}.{patch}");
         self.handshake.supported = self.handshake.version.is_supported();
+        self.handshake.validated = self.handshake.version.is_validated();
         self
     }
 
@@ -89,6 +97,17 @@ impl NullBackend {
     #[must_use]
     pub fn with_worktree_status(mut self, status: WorktreeStatus) -> Self {
         self.worktree = Ok(status);
+        self
+    }
+
+    /// Set the `queued_elsewhere` warning on the worktree status this backend returns, leaving
+    /// everything else as previously set (RFC 009 F4) — the state that caused the defect, made
+    /// drivable with no prikk and no repository.
+    #[must_use]
+    pub fn with_queued_elsewhere(mut self, note: impl Into<String>) -> Self {
+        if let Ok(status) = &mut self.worktree {
+            status.queued_elsewhere = Some(note.into());
+        }
         self
     }
 

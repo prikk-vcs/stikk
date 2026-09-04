@@ -3,9 +3,13 @@
 //! Every parser refuses rather than fabricates on an unrecognized shape: a missing expected field is
 //! an [`StikkError::Environment`], never a silent default, because encountering it means either
 //! stikk misread prikk or the prikk version is outside the validated range. Golden fixtures in
-//! `cli_backend/tests.rs` pin the shapes these read.
+//! `parse/tests.rs` pin the shapes these read — **captured from a real `prikk` run, never composed by
+//! hand or by analogy**, each with a provenance comment naming the command and prikk version it came
+//! from (RFC 009 §0). A hand-written fixture is a defect, not a shortcut: RFC 009's F1 was exactly
+//! that — a `queued patches: 3` fixture prikk has never emitted, which made Orientation's parser pass
+//! its test while refusing on every real repository with queued work.
 
-use stikk_model::{Result, StikkError};
+use stikk_model::{ObjectId, Result, StikkError};
 
 use crate::{BlockRow, History, Orientation, RefEntry, StateFiles, WorktreeEntry, WorktreeStatus};
 
@@ -20,18 +24,56 @@ const WORKTREE_KINDS: [&str; 4] = ["modified", "missing", "untracked", "unsuppor
 /// prikk repository: <path>/.prikk
 /// active WAL records: <n>
 /// trailing partial WAL bytes: <n>
-/// heads/main RefState: <hex> | <none>
-/// queued patches: <n>
+/// heads/main RefState: <hex> | <not published>
+/// queued patches: <n> [targeting <ref>]
+/// [warning: active patches …]
+/// status: …
 /// ```
+/// The `queued patches:` value is a bare count only when the queue is empty; otherwise prikk appends
+/// ` targeting <ref>` (RFC 009 F1 — this is not new drift, `git log -S` dates it to prikk 0.18.0).
+/// prikk may also print an active-patch threshold `warning:` line before the closing `status:` line;
+/// this parser does not read it (deferred to the commit increment), but tolerates its presence by
+/// anchoring on the `queued patches:` line rather than on where the report ends.
 pub(super) fn orientation(status: &str) -> Result<Orientation> {
-    let queued_patches = required_u64(status, "queued patches:")?;
+    let (queued_patches, queued_target) =
+        parse_queued(&required_field(status, "queued patches:")?)?;
     let trailing_partial_wal_bytes = required_u64(status, "trailing partial WAL bytes:")?;
-    let main_ref_state = optional_object_id(status, "heads/main RefState:");
+    let main_ref_state = optional_object_id(status, "heads/main RefState:")?;
     Ok(Orientation {
         queued_patches,
+        queued_target,
         main_ref_state,
         trailing_partial_wal_bytes,
     })
+}
+
+/// Parse the `queued patches:` field's value into a count and, when the queue targets a specific ref, a
+/// look at that ref (RFC 009 F1/F2). A bare integer means an empty queue; `<n> targeting <ref>` means
+/// `<ref>` is the queue's target — unless `<ref>` is one of prikk's own sentinel forms for unreadable
+/// active-ref metadata (`<missing metadata>`, `<malformed metadata>`), which map to `None` rather than
+/// a fabricated ref name. Any other trailing shape refuses (UD-02) rather than guesses.
+fn parse_queued(value: &str) -> Result<(u64, Option<String>)> {
+    let mut parts = value.splitn(2, ' ');
+    let count_str = parts.next().unwrap_or_default();
+    let count = count_str.parse::<u64>().map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk field \"queued patches:\" is not a number: {value:?}"
+        ))
+    })?;
+    let rest = parts.next().map(str::trim).unwrap_or("");
+    if rest.is_empty() {
+        return Ok((count, None));
+    }
+    let Some(target) = rest.strip_prefix("targeting ") else {
+        return Err(StikkError::environment_msg(format!(
+            "prikk field \"queued patches:\" has an unrecognized tail: {value:?}"
+        )));
+    };
+    let queued_target = match target.trim() {
+        "<missing metadata>" | "<malformed metadata>" => None,
+        other => Some(other.to_string()),
+    };
+    Ok((count, queued_target))
 }
 
 /// Find the value after a `label` prefix on some line, trimmed. `None` if the label is absent.
@@ -48,11 +90,34 @@ fn required_u64(text: &str, label: &str) -> Result<u64> {
     })
 }
 
-/// Read an object-id field that may be the literal `<none>`.
-fn optional_object_id(text: &str, label: &str) -> Option<String> {
+/// prikk's sentinel forms for "no object id here" (RFC 009 F2): an absent chain link (`log`'s
+/// `<none>`), an unpublished ref (`status`'s `<not published>`), and unreadable active-ref metadata
+/// (`status`'s `<missing metadata>` / `<malformed metadata>`, the same forms [`parse_queued`] handles).
+/// All map to `None`; stikk assumed only `<none>` existed, which turned `<not published>` into a
+/// fabricated object id (F2's defect).
+const OBJECT_ID_SENTINELS: [&str; 4] = [
+    "<none>",
+    "<not published>",
+    "<missing metadata>",
+    "<malformed metadata>",
+];
+
+/// Read an object-id field: a known sentinel maps to `None`, a valid 64-hex id maps to `Some`, and
+/// anything else — a sentinel this parser does not yet know, or plain corruption — refuses (RFC 009
+/// F2, UD-02) rather than passing an unrecognized value through as if it were an identity.
+fn optional_object_id(text: &str, label: &str) -> Result<Option<String>> {
     match field(text, label) {
-        Some("<none>") | None => None,
-        Some(value) => Some(value.to_string()),
+        None => Ok(None),
+        Some(value) if OBJECT_ID_SENTINELS.contains(&value) => Ok(None),
+        Some(value) => {
+            ObjectId::parse(value).map_err(|_| {
+                StikkError::environment_msg(format!(
+                    "prikk field {label:?} is neither a known sentinel nor a valid object id: \
+                     {value:?}"
+                ))
+            })?;
+            Ok(Some(value.to_string()))
+        }
     }
 }
 
@@ -101,7 +166,7 @@ fn decode_block(lines: &[&str]) -> Result<BlockRow> {
         patches: required_u64(&group, "patches:")?,
         rollback_patches: required_u64(&group, "rollback-patches:")?,
         required_attestations: required_u64(&group, "required-attestations:")?,
-        previous_ref_state: optional_object_id(&group, "previous-ref-state:"),
+        previous_ref_state: optional_object_id(&group, "previous-ref-state:")?,
     })
 }
 
@@ -125,13 +190,21 @@ pub(super) fn state_files(text: &str) -> Result<StateFiles> {
     })
 }
 
-/// Parse `prikk branch list --all` into every ref pointer (RFC 006). Each line is
-/// `<name> <id> [(closed)|(received)]`.
+/// Parse `prikk branch list --all` into every ref pointer (RFC 006; corrected RFC 009 F3). It lists
+/// **branches** only (open, closed, received) — it cannot emit a tag; `prikk tag list` is separate and
+/// not yet read by this seam. prikk prints the literal line `no branches` (or `tag list`'s `no tags`,
+/// for when that read is added) when there are none; otherwise each line is
+/// `<name> <64-hex-id> [(closed)|(received)]`.
+///
+/// Anchored on the id's shape, unlike before: a line with two tokens whose second is not a 64-hex id
+/// (the literal `no branches` included) previously became a phantom `RefEntry { name: "no", id:
+/// "branches" }` (RFC 009 F3's defect) because this was the one parser that refused on nothing. It now
+/// refuses on anything but the recognized empty-list line or the exact ref-line shape.
 pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
     let mut out = Vec::new();
     for line in text.lines() {
         let line = line.trim();
-        if line.is_empty() {
+        if line.is_empty() || line == "no branches" || line == "no tags" {
             continue;
         }
         let mut parts = line.split_whitespace();
@@ -141,23 +214,52 @@ pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
         let id = parts.next().ok_or_else(|| {
             StikkError::environment_msg(format!("ref line missing an id: {line:?}"))
         })?;
-        let rest = line;
+        ObjectId::parse(id).map_err(|_| {
+            StikkError::environment_msg(format!(
+                "prikk branch list line has an unrecognized id: {line:?}"
+            ))
+        })?;
+        let (closed, received) = match parts.next() {
+            None => (false, false),
+            Some("(closed)") => (true, false),
+            Some("(received)") => (false, true),
+            Some(other) => {
+                return Err(StikkError::environment_msg(format!(
+                    "prikk branch list line has an unrecognized marker {other:?}: {line:?}"
+                )));
+            }
+        };
+        if parts.next().is_some() {
+            return Err(StikkError::environment_msg(format!(
+                "prikk branch list line has unexpected trailing content: {line:?}"
+            )));
+        }
         out.push(RefEntry {
             name: name.to_string(),
             id: id.to_string(),
-            closed: rest.contains("(closed)"),
-            received: rest.contains("(received)"),
+            closed,
+            received,
         });
     }
     Ok(out)
 }
 
-/// Parse `prikk worktree-status` into a [`WorktreeStatus`] (design FR-034; RFC 008).
+/// The distinguishing prefix of prikk's queued-elsewhere warning (RFC 009 F4): present only when the
+/// active WAL holds queued patches for a **different** ref than the one `worktree-status` was asked
+/// about. Matched by prefix, not the full line, because the note names the specific refs involved.
+const QUEUED_ELSEWHERE_PREFIX: &str = "note: the active WAL has queued";
+
+/// Parse `prikk worktree-status` into a [`WorktreeStatus`] (design FR-034; RFC 008; RFC 009 F4).
 ///
 /// The `worktree: clean|changed against baseline` headline is the shape anchor — its absence means
 /// this is not a worktree-status report (the caller then treats the outcome as a real failure). Count
 /// lines are flush-left (`modified files: N`); per-path entries are indented (`  modified <path> —
-/// <note>`), which is how the two are told apart despite sharing a first word.
+/// <note>`), which is how the two are told apart despite sharing a first word. A flush-left `note:`
+/// line is prose, not shape: only the queued-elsewhere warning is captured (verbatim, never
+/// paraphrased — ER-02), and any other `note:` line — including prikk's generic "use `prikk commit`"
+/// hint — passes through unread rather than causing a refusal. Refusing on an unrecognized `note:`
+/// would make every future prikk note a user-visible outage; only a malformed *count* or a missing
+/// *headline* refuses.
 pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
     let headline = field(text, "worktree:").ok_or_else(|| {
         StikkError::environment_msg(
@@ -171,6 +273,11 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         .filter(|line| line.starts_with(' ') || line.starts_with('\t'))
         .filter_map(parse_worktree_entry)
         .collect();
+    let queued_elsewhere = text
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with(QUEUED_ELSEWHERE_PREFIX))
+        .map(str::to_string);
     Ok(WorktreeStatus {
         reff,
         clean,
@@ -181,6 +288,7 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         untracked: required_u64(text, "untracked files:")?,
         unsupported: required_u64(text, "unsupported paths:")?,
         entries,
+        queued_elsewhere,
     })
 }
 

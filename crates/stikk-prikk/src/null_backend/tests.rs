@@ -11,7 +11,8 @@ fn supported_backend_reports_a_clean_repo() {
     let backend = NullBackend::supported();
     let hs = backend.handshake().unwrap();
     assert!(hs.supported);
-    assert_eq!(hs.version.minor, 27);
+    assert!(hs.validated);
+    assert_eq!(hs.version.minor, 30); // RFC 009: the default is now the validated ceiling
     let o = backend.orientation(Path::new("/anywhere")).unwrap();
     assert_eq!(o.queued_patches, 0);
 }
@@ -29,4 +30,27 @@ fn refusal_orientation_surfaces_verbatim() {
 fn unsupported_version_is_reported() {
     let backend = NullBackend::supported().unsupported();
     assert!(!backend.handshake().unwrap().supported);
+}
+
+#[test]
+fn with_version_recomputes_both_supported_and_validated() {
+    let below_floor = NullBackend::supported().with_version(0, 27, 1);
+    let hs = below_floor.handshake().unwrap();
+    assert!(!hs.supported && !hs.validated);
+
+    let above_ceiling = NullBackend::supported().with_version(0, 31, 0);
+    let hs = above_ceiling.handshake().unwrap();
+    assert!(hs.supported && !hs.validated);
+}
+
+#[test]
+fn with_queued_elsewhere_sets_the_note_on_the_scripted_status() {
+    let backend = NullBackend::supported().with_queued_elsewhere("note: queued elsewhere");
+    let status = backend
+        .worktree_status(Path::new("/x"), "heads/main")
+        .unwrap();
+    assert_eq!(
+        status.queued_elsewhere.as_deref(),
+        Some("note: queued elsewhere")
+    );
 }

@@ -35,6 +35,7 @@ fn dirty_status() -> WorktreeStatus {
                 note: "worktree file is not in the baseline".into(),
             },
         ],
+        queued_elsewhere: None,
     }
 }
 
@@ -63,8 +64,11 @@ fn a_dirty_worktree_is_success_not_a_refusal() {
 
 #[test]
 fn below_0_28_returns_version_guidance_not_the_command() {
-    // The default NullBackend reports 0.27.1 — below the worktree-status fix.
-    let backend = NullBackend::supported().with_worktree_status(dirty_status());
+    // RFC 009 raised the default NullBackend to a supported+validated 0.30.0, so the below-the-gate
+    // version must now be scripted explicitly rather than relied on as the default.
+    let backend = NullBackend::supported()
+        .with_version(0, 27, 1)
+        .with_worktree_status(dirty_status());
     let err = changes_view(&backend, Path::new("/r"), "heads/main").unwrap_err();
     assert_eq!(err.class(), "not-ready");
     assert!(err.to_string().contains("0.28"));
@@ -86,4 +90,29 @@ fn an_unknown_kind_is_preserved_as_other() {
         ChangeKind::from_label("typechange"),
         ChangeKind::Other("typechange".into())
     );
+}
+
+#[test]
+fn carries_the_queued_elsewhere_warning_through_unmodified() {
+    // RFC 009 F4: the operation layer transports prikk's warning verbatim; it never computes or
+    // paraphrases it (ER-02).
+    let mut status = dirty_status();
+    status.queued_elsewhere = Some("note: the active WAL has queued patches for heads/main".into());
+    let backend = NullBackend::supported()
+        .with_version(0, 28, 1)
+        .with_worktree_status(status);
+    let view = changes_view(&backend, Path::new("/repo"), "heads/main").expect("changes");
+    assert_eq!(
+        view.queued_elsewhere.as_deref(),
+        Some("note: the active WAL has queued patches for heads/main")
+    );
+}
+
+#[test]
+fn queued_elsewhere_is_none_when_prikk_did_not_emit_it() {
+    let backend = NullBackend::supported()
+        .with_version(0, 28, 1)
+        .with_worktree_status(dirty_status());
+    let view = changes_view(&backend, Path::new("/repo"), "heads/main").expect("changes");
+    assert_eq!(view.queued_elsewhere, None);
 }

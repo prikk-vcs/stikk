@@ -34,9 +34,14 @@ pub struct Handshake {
     pub version: Version,
     /// prikk's raw `--version` line, preserved verbatim for display and diagnostics (NFR-I03).
     pub raw_version: String,
-    /// Whether this prikk version is within the range stikk was validated against (NFR-R03). When
-    /// false, the operation layer degrades to read-only rather than misrender an unknown format.
+    /// Whether this prikk version is at or above the floor stikk requires (NFR-R03). When false, the
+    /// operation layer degrades to read-only rather than misrender an unknown format.
     pub supported: bool,
+    /// Whether this prikk version is within the range stikk has actually checked its output shapes
+    /// against — at or below the validated ceiling (RFC 009 decision 7). A `supported` prikk above
+    /// this ceiling still runs (refusing it would break users the day prikk ships a minor), but stikk
+    /// says its shapes are unverified rather than silently asserting knowledge it does not have.
+    pub validated: bool,
 }
 
 /// A minimal read-only orientation of a repository — the summary the launcher and the (future) TUI
@@ -46,6 +51,10 @@ pub struct Handshake {
 pub struct Orientation {
     /// Number of patches queued in the active WAL, not yet sealed.
     pub queued_patches: u64,
+    /// The ref the queue targets, when prikk reports one (`queued patches: N targeting <ref>`) — absent
+    /// only when the queue is empty. This is the same fact behind [`WorktreeStatus::queued_elsewhere`]'s
+    /// warning (RFC 009 F1/F4): showing it here is strictly more honest than a bare count.
+    pub queued_target: Option<String>,
     /// The current RefState object id of `heads/main`, if the ref is published.
     pub main_ref_state: Option<String>,
     /// Trailing partial WAL bytes, if any — a torn tail an interrupted commit left behind.
@@ -103,7 +112,10 @@ pub struct StateFiles {
     pub total_bytes: u64,
 }
 
-/// One ref pointer, from `prikk branch list --all` (which lists every ref — branches, tags, received).
+/// One ref pointer, from `prikk branch list --all`. This lists **branches** (open, closed, and
+/// received) only — `branch list` cannot emit a tag; tags are listed separately by `prikk tag list`,
+/// which this seam does not yet read (RFC 009 F3). [`RefEntry::is_tag`] is correct for a `tags/…` name
+/// but has no source through this method today.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefEntry {
     /// The fully-qualified ref name (`heads/…`, `tags/…`, `remotes/…`).
@@ -162,6 +174,11 @@ pub struct WorktreeStatus {
     pub unsupported: u64,
     /// The per-path entries (the counts above summarize these).
     pub entries: Vec<WorktreeEntry>,
+    /// prikk's own warning, verbatim, when the active WAL holds queued patches for a **different** ref
+    /// than the one asked about: paths listed "untracked" here may be committed-but-unsealed work
+    /// (RFC 009 F4). `None` when prikk did not emit it. Never paraphrased (ER-02) — stikk transports
+    /// this warning, it does not restate it.
+    pub queued_elsewhere: Option<String>,
 }
 
 /// The entire prikk contract stikk depends on. Every method returns [`stikk_model::StikkError`] on

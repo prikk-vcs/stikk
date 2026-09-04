@@ -26,11 +26,13 @@ fn orients_a_clean_repo_as_viewer_by_default() {
 fn surfaces_queue_depth_and_partial_tail() {
     let backend = NullBackend::supported().with_orientation(Orientation {
         queued_patches: 5,
+        queued_target: Some("heads/main".to_string()),
         main_ref_state: Some("abc".to_string()),
         trailing_partial_wal_bytes: 12,
     });
     let view = orient(&backend, Path::new("/repo")).expect("orients");
     assert_eq!(view.queued_patches, 5);
+    assert_eq!(view.queued_target.as_deref(), Some("heads/main"));
     assert_eq!(view.trailing_partial_wal_bytes, 12);
     assert_eq!(view.main_ref_state.as_deref(), Some("abc"));
 }

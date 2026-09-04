@@ -419,3 +419,56 @@ scripted test alone cannot prove this increment, because a scripted test is what
   repository fingerprint (`DM-02`/`LC-9`) before `SessionState` can be keyed correctly.
 - A **richer `.prikkignore` surface**, and the **`C` commit action** that this Changes view is the
   preview for.
+
+---
+
+## 11. Delivered — 2026-09-04
+
+Built and verified against a live prikk binary (0.30.0, then rebuilt to 0.31.0 mid-implementation —
+which turned out to be a live exercise of decision 7's soft ceiling: stikk kept working and said so):
+
+- **Seam** (`stikk-prikk`): `parse::orientation` now parses `queued patches: <n>[ targeting <ref>]`,
+  preserving the target as `Orientation::queued_target` and tolerating an interposed active-patch
+  threshold `warning:` line (F1); `optional_object_id` replaced with a sentinel-set check
+  (`<none>`/`<not published>`/`<missing metadata>`/`<malformed metadata>`) plus an `ObjectId`-shape
+  check on anything else, refusing rather than fabricating (F2); `parse::refs` anchors on the id's
+  shape, treats `no branches`/`no tags` as the empty list, and refuses an unrecognized marker or
+  trailing content — the `no branches` phantom-ref regression is directly tested (F3);
+  `WorktreeStatus::queued_elsewhere` carries prikk's queued-elsewhere note verbatim, matched by prefix
+  so the generic commit-hint note is ignored without refusing (F4); `CliBackend::run`/`run_capturing`
+  route a `2` exit to `StikkError::Internal` via a shared `usage_error` helper, never through
+  `classify` (F6); `Version::is_validated` adds the 0.30 ceiling alongside the 0.28 floor, and
+  `Handshake`/`NullBackend::supported` carry `validated` (decisions 6–7).
+- **Operations** (`stikk-core`): `OrientationView` gains `prikk_validated`/`queued_target`;
+  `ChangesView` gains `queued_elsewhere`, passed through unmodified; `present()`'s `LoadChanges`
+  next-steps gain an unconditional `.prikkignore` pointer (never derived from the message — C-T2b) and
+  the glossary gains a `.prikkignore` entry linked via the existing `codes_in` mechanism (F5).
+- **TUI** (`stikk-tui`): Orientation shows "`N` queued · targeting `<ref>`" and, above the validated
+  ceiling, "validated through 0.30 — this prikk is newer…" (both `Wrap`-enabled, inert); the Changes
+  view renders `queued_elsewhere` as a distinct quoted band above the entries and suppresses the
+  UD-08 filter's "a commit still captures them" claim while it is present, replacing it with a pointer
+  to the warning (the acceptance-critical behaviour); `changes_demo` drives the new state with a
+  `NullBackend::with_queued_elsewhere` builder.
+- **Fixtures**: every constant in `parse/tests.rs` re-captured verbatim from the live prikk binary
+  (init → commit → seal → branch create/close → bundle export/import for a received ref → dirtied
+  worktree → queued-elsewhere reproduction → malformed `.prikkignore` → exit-2 usage error), each with
+  a provenance comment; a new test (`every_fixture_constant_carries_a_provenance_comment`) enforces the
+  rule mechanically. The false `branch list` "…and a tag" provenance comment is gone.
+- **Design set**: `docs/src/reference/data-model.md` and `threat-model.md` no longer claim prikk has no
+  ignore mechanism (`requirements.md`/`ROADMAP.md` were already corrected before this handoff);
+  `threat-model.md` gains **RR-9**, recording F4 as a live `T-T4`/`C-T4c` violation in shipped 0.1.0 and
+  how it was closed, per `NFR-S07`. `README.md`, `crates/stikk/README.md`, and
+  `docs/src/guide/getting-started.md` state the new `>= 0.28`, validated-through-`0.30.0` range.
+- **Verified against the real binary, not only `NullBackend`** (the discipline this increment exists to
+  enforce): reproduced F1 (`stikk` now opens a repository with one queued patch and shows
+  "1 · targeting heads/main" where it previously errored `prikk field "queued patches:" is not a
+  number`) and F4 (`worktree_status` against a live `heads/other` returns
+  `queued_elsewhere: Some(...)` byte-identical to the fixture) end-to-end through the built launcher and
+  the `CliBackend`, against both 0.30.0 and, after a mid-session rebuild, 0.31.0 — the latter run is
+  live evidence for decision 7's ceiling notice.
+- **Gates**: `fmt` / `clippy --workspace --all-targets --all-features -D warnings` / `test` green — 194
+  tests (up from 164). `cargo build --examples -p stikk-tui` succeeds.
+
+Known limitation carried forward: the `.prikkignore` next-step and glossary entry address the
+malformed-file refusal (F5); a richer ignore surface (showing rules, offering to add one) remains
+out of scope, as scoped. Items in §10 remain queued; RFC 009 stays **accepted**.

@@ -8,10 +8,16 @@
 //! ```
 //!
 //! The backend reports prikk 0.28.1 (where `worktree-status` is fixed — RFC 008/UD-03) and a dirty
-//! worktree on `heads/main`: a modified file, a missing file, and two untracked files.
+//! worktree on `heads/main`: a modified file, a missing file, and two untracked files — plus prikk's
+//! own **queued-elsewhere warning** (RFC 009 F4): the active WAL holds queued work on `heads/main`
+//! itself, so the two "untracked" files might actually be exactly that work seen from another ref's
+//! baseline.
 //!
-//! - `w` opens Changes; `u` toggles the display-only untracked filter (note the "a commit still
-//!   captures them" caveat — UD-08) and the whole-worktree reminder (UD-06).
+//! - `w` opens Changes; the queued-elsewhere warning renders as a distinct band above the entries,
+//!   verbatim and inert. While it is present, the untracked filter's "a commit still captures them"
+//!   claim is suppressed and replaced by a pointer to the warning — the two would otherwise contradict
+//!   each other (RFC 009 decision 3).
+//! - `u` toggles the display-only untracked filter (UD-08) and the whole-worktree reminder (UD-06).
 //! - Per-file content diff is named as awaiting prikk support (UD-09) — never faked.
 //! - `:` palette · `?` glossary · `Esc`/`q` back · `Ctrl-C` quit.
 //!
@@ -41,7 +47,8 @@ fn main() -> ExitCode {
     let backend = NullBackend::supported()
         .with_version(0, 28, 1)
         .with_orientation(Orientation {
-            queued_patches: 0,
+            queued_patches: 1,
+            queued_target: Some("heads/main".to_string()),
             main_ref_state: Some(
                 "76cee1dc985406f931a2bbeb217653e509183c2d5280fdf933b5ebac78f4cbc0".to_string(),
             ),
@@ -78,7 +85,17 @@ fn main() -> ExitCode {
                     "worktree file is not in the baseline",
                 ),
             ],
-        });
+            queued_elsewhere: None,
+        })
+        // RFC 009 F4 — the state that caused the defect, made drivable with no prikk and no
+        // repository: prikk's own warning that the active WAL holds queued work for *this* ref, so an
+        // "untracked" file above may actually be that work seen from a different baseline.
+        .with_queued_elsewhere(
+            "note: the active WAL has queued (unsealed) patches for heads/main, not heads/other -- \
+             that is real, committed work, not shown above; any \"untracked\" file here may be exactly \
+             that work seen from this ref's own baseline, so do not delete based on this report alone \
+             (see `prikk status`)",
+        );
 
     match stikk_tui::run(Path::new("demo-repo"), &backend, &Config::default()) {
         Ok(()) => ExitCode::SUCCESS,

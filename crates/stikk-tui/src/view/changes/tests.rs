@@ -37,6 +37,7 @@ fn dirty_view() -> ChangesView {
                 note: "worktree file is not in the baseline".into(),
             },
         ],
+        queued_elsewhere: None,
     }
 }
 
@@ -75,6 +76,7 @@ fn a_clean_worktree_says_so() {
         untracked: 0,
         unsupported: 0,
         entries: Vec::new(),
+        queued_elsewhere: None,
     };
     let text = draw(&view, false);
     assert!(text.contains("clean against baseline"));
@@ -106,8 +108,53 @@ fn a_hostile_path_is_rendered_inert() {
             path: "evil\u{1b}[2Jfile.txt".into(),
             note: "bytes differ".into(),
         }],
+        queued_elsewhere: None,
     };
     let text = draw(&view, false);
     assert!(!text.contains('\u{1b}'));
     assert!(text.contains('\u{FFFD}'));
+}
+
+#[test]
+fn queued_elsewhere_renders_as_a_distinct_verbatim_band() {
+    // RFC 009 F4 — the acceptance-critical test.
+    let mut view = dirty_view();
+    view.queued_elsewhere = Some(
+        "note: the active WAL has queued (unsealed) patches for heads/main, not heads/other"
+            .to_string(),
+    );
+    let text = draw(&view, false);
+    assert!(text.contains("prikk reported"));
+    assert!(text.contains("the active WAL has queued (unsealed) patches for heads/main"));
+}
+
+#[test]
+fn queued_elsewhere_suppresses_the_contradicting_ud08_claim() {
+    // The acceptance-critical assertion: with `hide_untracked` set and `queued_elsewhere` present, the
+    // string "a commit still captures them" must not appear anywhere in the rendered buffer — it would
+    // contradict prikk's own warning that these files may already be committed, queued elsewhere.
+    let mut view = dirty_view();
+    view.queued_elsewhere = Some(
+        "note: the active WAL has queued (unsealed) patches for heads/main, not heads/other"
+            .to_string(),
+    );
+    let text = draw(&view, true);
+    assert!(!text.contains("still captures them"));
+    assert!(text.contains("untracked hidden")); // the UD-08 caveat still appears, reworded
+    assert!(text.contains("see prikk's warning above"));
+}
+
+#[test]
+fn without_queued_elsewhere_the_ud08_claim_is_unchanged() {
+    let text = draw(&dirty_view(), true);
+    assert!(text.contains("still captures them"));
+    assert!(!text.contains("prikk reported"));
+}
+
+#[test]
+fn a_hostile_queued_elsewhere_note_is_rendered_inert() {
+    let mut view = dirty_view();
+    view.queued_elsewhere = Some("\u{1b}[2Jhostile note".to_string());
+    let text = draw(&view, false);
+    assert!(!text.contains('\u{1b}'));
 }

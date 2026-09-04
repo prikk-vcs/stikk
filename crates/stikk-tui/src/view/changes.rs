@@ -1,4 +1,4 @@
-//! The Changes view (design VW-06, FR-034; RFC 008).
+//! The Changes view (design VW-06, FR-034; RFC 008; RFC 009 F4).
 //!
 //! Renders `stikk_core::ChangesView` — worktree-vs-baseline for the focused ref, at the **path level**
 //! prikk's `worktree-status` reports (changed / missing / untracked / unsupported). It is honest about
@@ -6,6 +6,14 @@
 //! T-T4), and commits are **whole-worktree** (UD-06). The untracked group has a display-only filter
 //! (UD-08) that never hides that a commit would still capture those files. Every worktree path is
 //! routed through [`crate::text::inert`] (threat model C-T2a).
+//!
+//! When [`stikk_core::ChangesView::queued_elsewhere`] is present, it renders as a distinct warning band
+//! **above** the entries, verbatim and inert (ER-02/C-T2a) — prikk's own statement that some
+//! "untracked" paths below may be committed-but-unsealed work queued on another ref. While it is
+//! present, the untracked filter's "a commit still captures them" claim is **suppressed and replaced**
+//! by a pointer to the warning: the two would otherwise contradict each other, and prikk's is the true
+//! one (RFC 009 decision 3) — showing both would be exactly the confident-but-wrong picture (`T-T4`)
+//! this project treats as its worst failure.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -57,6 +65,23 @@ pub fn render(
         Style::default().fg(palette.dim),
     )));
 
+    // RFC 009 F4: prikk's queued-elsewhere warning, verbatim and inert, in a quoted band clearly
+    // distinct from stikk's own chrome (C-T2a/C-T2b) — the same "prikk reported" pattern the refusal
+    // overlay uses for prikk's own text.
+    if let Some(note) = &view.queued_elsewhere {
+        lines.push(Line::from(Span::styled(
+            "  prikk reported —",
+            Style::default().fg(palette.dim),
+        )));
+        for raw in note.lines() {
+            lines.push(Line::from(vec![
+                Span::styled("  │ ", Style::default().fg(palette.warn)),
+                Span::styled(inert(raw), Style::default().fg(palette.fg)),
+            ]));
+        }
+        lines.push(Line::from(""));
+    }
+
     // Entries, grouped so the most actionable come first; untracked hidden when filtered (UD-08).
     let mut untracked_hidden = 0u64;
     for entry in &view.entries {
@@ -73,13 +98,24 @@ pub fn render(
         )));
     }
 
-    // UD-08: the filter is display-only and always says a commit still captures the hidden files.
+    // UD-08: the filter is display-only. Its usual claim — "a commit still captures the hidden
+    // files" — is suppressed while prikk's queued-elsewhere warning is present (RFC 009 decision 3):
+    // that claim can be the opposite of true here (the files may already be committed, queued
+    // elsewhere), so pointing back at prikk's own warning is the only honest thing to say.
     if hide_untracked && untracked_hidden > 0 {
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
+        let text = if view.queued_elsewhere.is_some() {
+            format!(
+                "  {untracked_hidden} untracked hidden (display only) — see prikk's warning above \
+                 before assuming these are safe to lose",
+            )
+        } else {
             format!(
                 "  {untracked_hidden} untracked hidden (display only) — a commit still captures them",
-            ),
+            )
+        };
+        lines.push(Line::from(Span::styled(
+            text,
             Style::default().fg(palette.warn),
         )));
     }

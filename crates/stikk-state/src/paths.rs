@@ -77,8 +77,10 @@ fn non_empty_os(name: &str) -> Option<std::ffi::OsString> {
 ///
 /// Rejects two shapes: a path with a `.prikk` component anywhere (it would be inside prikk's metadata
 /// directory), and — when `repo_root` is provided — a path inside the currently open repository's
-/// root (its worktree, where a stray file would additionally be swept into the next `commit`, since
-/// prikk has no ignore mechanism). stikk calls this before every state/cache/export write.
+/// root (its worktree, where a stray file would additionally risk being captured by the next `commit`:
+/// `.prikkignore` (prikk 0.29+, RFC 009 F5) can exclude a matching path, but only if a rule already
+/// covers it, so stikk cannot rely on user configuration as a backstop for its own state). stikk calls
+/// this before every state/cache/export write.
 ///
 /// # Errors
 /// [`StikkError::Internal`] when `target` is repository-internal — an internal fault, because stikk's

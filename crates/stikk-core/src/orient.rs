@@ -18,11 +18,19 @@ use stikk_prikk::{Prikk, env};
 pub struct OrientationView {
     /// prikk's raw version line, verbatim.
     pub prikk_version: String,
-    /// Whether this prikk version is within stikk's validated range; when false the UI degrades
+    /// Whether this prikk version is at or above the floor stikk requires; when false the UI degrades
     /// mutation to read-only and says why (NFR-R03).
     pub prikk_supported: bool,
+    /// Whether this prikk version is within the range stikk has actually validated its output shapes
+    /// against (RFC 009 decision 7). A `prikk_supported` version that is not `prikk_validated` still
+    /// runs; the UI states that its shapes have not been checked, rather than asserting a validation
+    /// stikk has not done.
+    pub prikk_validated: bool,
     /// Patches queued in the active WAL, not yet sealed.
     pub queued_patches: u64,
+    /// The ref the queue targets, when prikk reports one — absent only when the queue is empty
+    /// (RFC 009 F1). The same fact behind the Changes view's `queued_elsewhere` warning.
+    pub queued_target: Option<String>,
     /// Trailing partial WAL bytes, if any — a torn tail worth surfacing.
     pub trailing_partial_wal_bytes: u64,
     /// The current `heads/main` RefState id, if published.
@@ -49,7 +57,9 @@ pub fn orient(prikk: &impl Prikk, repo: &Path) -> Result<OrientationView> {
     Ok(OrientationView {
         prikk_version: handshake.raw_version,
         prikk_supported: handshake.supported,
+        prikk_validated: handshake.validated,
         queued_patches: orientation.queued_patches,
+        queued_target: orientation.queued_target,
         trailing_partial_wal_bytes: orientation.trailing_partial_wal_bytes,
         main_ref_state: orientation.main_ref_state,
         capability,

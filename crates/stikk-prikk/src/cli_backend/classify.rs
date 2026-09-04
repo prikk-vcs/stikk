@@ -40,8 +40,9 @@ pub fn classify(stdout: &str, stderr: &str, category: RequestCategory) -> StikkE
     StikkError::Refusal { message }
 }
 
-/// prikk writes errors to stderr; prefer it, else fall back to stdout.
-fn pick_message(stdout: &str, stderr: &str) -> String {
+/// prikk writes errors to stderr; prefer it, else fall back to stdout. Shared with the exit-2
+/// usage-error path in `cli_backend.rs` (RFC 009 F6), which must not route through [`classify`].
+pub(super) fn pick_message(stdout: &str, stderr: &str) -> String {
     let trimmed = stderr.trim();
     if trimmed.is_empty() {
         stdout.trim().to_string()

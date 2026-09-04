@@ -32,6 +32,7 @@ fn history_view_composes_lineage_and_queue_count() {
         })
         .with_orientation(Orientation {
             queued_patches: 3,
+            queued_target: None,
             main_ref_state: Some("rs-bb".into()),
             trailing_partial_wal_bytes: 0,
         });

@@ -13,7 +13,9 @@ fn view(readiness: Readiness, supported: bool, queued: u64, partial: u64) -> Ori
     OrientationView {
         prikk_version: "prikk 0.27.1".to_string(),
         prikk_supported: supported,
+        prikk_validated: supported,
         queued_patches: queued,
+        queued_target: None,
         trailing_partial_wal_bytes: partial,
         main_ref_state: Some("237d0681".to_string()),
         capability: Capability::derive(readiness),
@@ -64,6 +66,38 @@ fn surfaces_queue_and_torn_tail() {
 fn unsupported_prikk_is_flagged() {
     let text = render_to_text(&view(Readiness::none(), false, 0, 0));
     assert!(text.contains("outside stikk's validated range"));
+}
+
+#[test]
+fn a_supported_but_unvalidated_prikk_says_so_without_degrading() {
+    // RFC 009 decision 7: above the validated ceiling, stikk still runs but says its shapes have not
+    // been checked — never silently asserting a validation it has not done. The notice is long enough
+    // to wrap across rows (it is now `Wrap`-enabled — TU-11), so join rows before matching a phrase
+    // that could otherwise straddle a wrap point.
+    let mut v = view(Readiness::none(), true, 0, 0);
+    v.prikk_validated = false;
+    let text = render_to_text(&v).replace('\n', " ");
+    assert!(text.contains("validated through 0.30"));
+    assert!(text.contains("have not been checked"));
+    assert!(!text.contains("outside stikk's validated range")); // still runs, not degraded
+}
+
+#[test]
+fn queued_target_renders_next_to_the_count() {
+    // RFC 009 F1: showing the queue's target ref is strictly more honest than a bare count.
+    let mut v = view(Readiness::none(), true, 3, 0);
+    v.queued_target = Some("heads/main".to_string());
+    let text = render_to_text(&v);
+    assert!(text.contains("targeting"));
+    assert!(text.contains("heads/main"));
+}
+
+#[test]
+fn a_hostile_queued_target_is_rendered_inert() {
+    let mut v = view(Readiness::none(), true, 1, 0);
+    v.queued_target = Some("\u{1b}[2Jheads/main".to_string());
+    let text = render_to_text(&v);
+    assert!(!text.contains('\u{1b}'), "the ESC must be neutralized");
 }
 
 #[test]

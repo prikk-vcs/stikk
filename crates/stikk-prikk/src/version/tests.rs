@@ -36,13 +36,23 @@ fn rejects_output_with_no_version() {
     assert!(Version::parse_version_line("prikk: command not found").is_err());
 }
 
+/// RFC 009 decision 6: the floor moved to 0.28 — 0.27.x is dropped because `worktree-status` is the
+/// UD-03 defect there and stikk already refuses to run it.
 #[test]
-fn supported_range_is_0_27_and_up_within_0_x() {
+fn supported_range_starts_at_0_28() {
     assert!(
-        Version {
+        !Version {
             major: 0,
             minor: 27,
             patch: 1
+        }
+        .is_supported()
+    );
+    assert!(
+        Version {
+            major: 0,
+            minor: 28,
+            patch: 0
         }
         .is_supported()
     );
@@ -54,16 +64,7 @@ fn supported_range_is_0_27_and_up_within_0_x() {
         }
         .is_supported()
     );
-    // Below the floor: not validated.
-    assert!(
-        !Version {
-            major: 0,
-            minor: 21,
-            patch: 0
-        }
-        .is_supported()
-    );
-    // A 1.x prikk is a different format contract; not assumed supported by v0.1.
+    // A 1.x prikk is a different format contract; not assumed supported.
     assert!(
         !Version {
             major: 1,
@@ -72,4 +73,37 @@ fn supported_range_is_0_27_and_up_within_0_x() {
         }
         .is_supported()
     );
+}
+
+/// RFC 009 decision 7: a prikk above the validated ceiling (0.30) still runs (`is_supported`), but
+/// `is_validated` says its output shapes have not actually been checked.
+#[test]
+fn validated_ceiling_is_0_30_but_newer_still_runs() {
+    let below_floor = Version {
+        major: 0,
+        minor: 27,
+        patch: 1,
+    };
+    assert!(!below_floor.is_supported() && !below_floor.is_validated());
+
+    let at_floor = Version {
+        major: 0,
+        minor: 28,
+        patch: 0,
+    };
+    assert!(at_floor.is_supported() && at_floor.is_validated());
+
+    let at_ceiling = Version {
+        major: 0,
+        minor: 30,
+        patch: 0,
+    };
+    assert!(at_ceiling.is_supported() && at_ceiling.is_validated());
+
+    let above_ceiling = Version {
+        major: 0,
+        minor: 31,
+        patch: 0,
+    };
+    assert!(above_ceiling.is_supported() && !above_ceiling.is_validated());
 }

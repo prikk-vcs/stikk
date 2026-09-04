@@ -41,7 +41,9 @@ fn shows_queue_and_maintainer_badge() {
     let view = OrientationView {
         prikk_version: "prikk 0.27.1".into(),
         prikk_supported: true,
+        prikk_validated: true,
         queued_patches: 4,
+        queued_target: None,
         trailing_partial_wal_bytes: 0,
         main_ref_state: None,
         capability: Capability::derive(r),
@@ -68,7 +70,9 @@ fn read_only_badge_appears_and_no_queue_when_zero() {
     let view = OrientationView {
         prikk_version: "prikk 0.27.1".into(),
         prikk_supported: true,
+        prikk_validated: true,
         queued_patches: 0,
+        queued_target: None,
         trailing_partial_wal_bytes: 0,
         main_ref_state: None,
         capability: Capability::derive(r),

@@ -8,7 +8,9 @@ deleted; they move to `done/`. **The folder is the source of truth for an RFC's 
 stikk adopts the **five-folder variant** (`proposed/`, `accepted/`, `done/`, `archive/`, plus this
 index): the maintainer's "accepted for implementation" is a distinct event from "implemented and
 shipped", so an RFC moves `proposed/` → `accepted/` when its design is settled and an implementer may
-start, then → `done/` when the work ships.
+start, then → `done/` when the work ships. Per the policy's granularity rule, an RFC moves to `done/`
+when its **main design decision has shipped**, with anything deferred recorded in its Status field —
+not held in `accepted/` until every last follow-up lands.
 
 The initial design set (requirements, external design, internal design, data model, threat model)
 lives in [`../docs/src/reference`](../docs/src/reference/) rather than as numbered RFCs — it was
@@ -21,23 +23,27 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | ID | Title | Addresses |
 |----|-------|-----------|
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
-| 003 | [Repository change-token signal set](./proposed/003-repository-change-token.md) | cache validity and external-change / preview-staleness detection |
+| 003 | [Repository change-token signal set](./proposed/003-repository-change-token.md) | cache validity, external-change / preview-staleness detection, and the repository fingerprint **increment 6 needs** |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 010 | [Off-thread seam and UI responsiveness](./proposed/010-off-thread-seam-and-ui-responsiveness.md) | `NFR-P01`/`NFR-P02`/`CC-01` — currently unmet; proposed **before** the 0.3 working cycle |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Decision | Handoff |
 |----|-------|----------|---------|
-| 001 | [Frontend toolkit selection](./accepted/001-frontend-toolkit-selection.md) | TUI: `ratatui` + `crossterm` (2026-09-01); GUI spun out to a future RFC — **shipped** | [TUI shell & Orientation](./handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md) |
-| 006 | [History & inspection seam](./accepted/006-history-and-inspection-seam.md) | grow the read-seam for History + Block detail now; Patch detail split to 3b behind UD-09 (2026-09-02) | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |
+| 009 | [prikk 0.30 re-baseline and parser fidelity](./accepted/009-prikk-0-30-rebaseline-and-parser-fidelity.md) | correct four parser-fidelity defects found against the real binary (one breaks Orientation on every non-empty repository); retire `UD-08`, revise `UD-05` (2026-09-04) | [Parser fidelity](./handoffs/009-prikk-0-30-rebaseline-and-parser-fidelity/parser-fidelity-handoff-v1.md) |
 
 ## Done (implemented)
 
-| ID | Title | Shipped in |
-|----|-------|------------|
-| 000 | [RFC lifecycle policy](./done/000-rfc-lifecycle-policy.md) | 0.1.0 (adopted, five-folder variant) |
+| ID | Title | Shipped in | Deferred, carried forward | Handoff |
+|----|-------|------------|---------------------------|---------|
+| 000 | [RFC lifecycle policy](./done/000-rfc-lifecycle-policy.md) | 0.1.0 (adopted, five-folder variant) | — | — |
+| 001 | [Frontend toolkit selection](./done/001-frontend-toolkit-selection.md) | 0.1.0 | GUI toolkit undecided (own RFC when GUI work begins); TUI accessibility limitation to be documented | [TUI shell & Orientation](./handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md) |
+| 006 | [History & inspection seam](./done/006-history-and-inspection-seam.md) | 0.1.0 | Patch detail (`FR-030`), patch-id enumeration, diff-aware search — all `UD-09` | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |
+| 007 | [Explanation & discovery surface](./done/007-explanation-and-discovery-surface.md) | 0.1.0 | `RoutedIntoView`/`InConfirmation` renderers; merge/checkout/seal/trust next-steps + witness glossary; refusal-history persistence + `LC-8` gate | [Explanation surface](./handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md) |
+| 008 | [Worktree changes & the Compare ceiling](./done/008-worktree-changes-and-the-compare-ceiling.md) | 0.1.0 | Compare (`FR-033`); per-file content diffs (`UD-09`); the `C` commit action; status-bar worktree marker. **Amended by RFC 009** | [Changes view](./handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md) |
 
 ## Archive (withdrawn or superseded)
 

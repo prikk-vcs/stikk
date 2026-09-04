@@ -1,7 +1,11 @@
 # RFC 006 — History &amp; inspection: read-seam growth and the patch-detail dependency
 
-**Status.** Accepted (2026-09-02) — grow the seam for History (block lineage) and Block detail/state
-tree now; **Patch detail (FR-030) is blocked on a prikk-side gap** and is split out until it lands.
+**Status.** Implemented (0.1.0) — the seam grew for History (block lineage) and Block detail/state
+tree, and both views shipped.
+**Deferred, carried forward (not built by this RFC):** **Patch detail (FR-030)**, patch-id enumeration
+within a block, and diff-aware content search (FR-013) remain blocked on **UD-09** (prikk exposes no
+per-patch content and no `show`/`diff`) — re-verified against prikk 0.30 on 2026-09-04 and still true.
+They are increment 3b, to be scheduled when UD-09 lands.
 Handoff:
 [`../handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md`](../handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md).
 **Tracks.** The roadmap's "Next" increment 3 — History (`FR-010…017`) and Patch/Block detail

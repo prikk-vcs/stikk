@@ -3,8 +3,9 @@
 **Status.** Proposed
 **Tracks.** The versioned shape of stikk-authored report exports. Referenced by the external design
 (`CT-02`, `CT-04`) and data model (`DM-10`, `INV-7`) as deferred.
-**Touches.** `stikk-state`'s `export.rs`; the report-producing view-models in `stikk-view`
-(evidence, verify, refusal).
+**Touches.** `stikk-state`'s `export.rs`; the report-producing view-models in `stikk-core` (evidence,
+verify, refusal) — the `stikk-view` crate the internal design named was never built and its
+responsibilities live in `stikk-core` (see `stikk-04` MOD-04).
 
 ## Summary
 

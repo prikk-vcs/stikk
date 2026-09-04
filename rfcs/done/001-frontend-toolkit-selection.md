@@ -1,8 +1,12 @@
 # RFC 001 — Frontend toolkit selection
 
-**Status.** Accepted (2026-09-01) — **TUI: `ratatui` on the `crossterm` backend**; the GUI toolkit is
-deliberately left undecided and spun out to a future RFC. See [Acceptance](#acceptance-2026-09-01).
-An implementer may start the TUI shell + Orientation increment; the handoff is
+**Status.** Implemented (0.1.0) — **TUI: `ratatui` on the `crossterm` backend**. Shipped as the TUI
+shell + Orientation increment. See [Acceptance](#acceptance-2026-09-01).
+**Deferred, carried forward (not built by this RFC):** the **GUI toolkit remains undecided** and is
+spun out to its own RFC, to be written when GUI work begins (§GUI holds the shortlist and the
+accessibility filter that are its input); and the **TUI accessibility limitation** ruled at acceptance
+(terminals give assistive tech little to work with, so the accessible path is the future GUI) is still
+to be stated plainly in the TUI's own docs. The handoff is
 [`../handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md`](../handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md).
 **Tracks.** Which rendering toolkits the TUI and GUI frontends are built on. Gates every interactive
 increment (the internal design deferred this to Program Design deliberately).

@@ -4,8 +4,12 @@
 **Tracks.** The concrete prikk-observable signals stikk uses to detect that a repository changed, so
 cached derivations and armed previews can be invalidated. Referenced by the data model (`LC-4`,
 `LC-9`, `LC-10`) and internal design (`change_token.rs`, `CT-05`) as deferred.
-**Touches.** `stikk-view` (`change_token.rs`, `cache.rs`), the operation layer's refresh step
-(`refresh.rs`), and the seam if a dedicated `change_token()` request is added (`SEAM-02`).
+**Touches.** `stikk-core` (`change_token.rs`, `cache.rs` — the derivation layer was folded into
+`stikk-core`; the `stikk-view` crate the internal design named was never built, see `stikk-04` MOD-04),
+the operation layer's refresh step (`refresh.rs`), `stikk-state`'s `RepositoryHandle` (which carries no
+fingerprint yet), and the seam if a dedicated `change_token()` request is added (`SEAM-02`).
+**Blocks:** roadmap increment 6 — `SessionState` is keyed by the repository fingerprint (`DM-02`/`LC-9`)
+this RFC must settle.
 
 ## Summary
 

@@ -67,8 +67,19 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
    output carries no per-file content), so a partial Compare would mislabel differing files as identical
    (T-T4) — split out with a concrete future route (materialize two ref tips to temp dirs). Built per
    the [handoff](rfcs/handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md).
+5b. **Correction — prikk 0.30 re-baseline and parser fidelity** (RFC 009) — **next, ahead of 6.**
+   Running shipped stikk against the real binary found that **Orientation fails on any repository with
+   queued patches** (prikk reports `queued patches: N targeting <ref>`; stikk's parser refused it), that
+   two other parsers accept shapes prikk never emits, and that stikk **drops prikk's own warning** that
+   paths shown "untracked" may be committed-but-unsealed work on another ref — the `T-T4` picture the
+   project exists to prevent. Root cause in each case: a golden fixture that was *written* rather than
+   *captured*. Targeted at a **0.1.1** patch release. Built per the
+   [handoff](rfcs/handoffs/009-prikk-0-30-rebaseline-and-parser-fidelity/parser-fidelity-handoff-v1.md).
+
 6. **Session persistence and progressive disclosure** (`FR-122`, `TU-12`): resume the focused ref,
-   view, and filters; default vs. advanced view depth.
+   view, and filters; default vs. advanced view depth. **Depends on RFC 003** — `SessionState` is keyed
+   by the repository fingerprint (`DM-02`/`LC-9`), which does not exist yet, so RFC 003 must be
+   accepted before this increment can be built as designed.
 
 ## Then — the working cycle and explanation-heavy operations (toward 0.3)
 
@@ -118,14 +129,17 @@ issues for the prikk project (requirement `UD-01…UD-05`):
 |---|---|---|
 | `UD-01` | patch messages are discarded; no author display name | commit collects a message and says core does not persist it; history shows ids/keys/paths |
 | `UD-02` | machine-readable output only on `verify` | the seam parses confined, version-gated output and refuses rather than guesses; never screen-scrapes unpinned prose |
-| `UD-03` | `worktree-status` is broken on ordinary repos | Changes is computed via the replay/plan route |
+| `UD-03` | **resolved at prikk 0.28** (was a 0.27.x defect) | Changes uses `worktree-status` directly, version-gated at ≥ 0.28; below it stikk explains rather than runs it |
 | `UD-04` | the CLI panics on EPIPE | the seam drains output fully (already implemented) |
-| `UD-05` | exit codes collapse to 0/1 | the seam classifies by message + context |
+| `UD-08` | **retired at prikk 0.29** — `.prikkignore` excludes matching paths from `commit`'s walk and `worktree-status`'s untracked scan | prikk filters ignored paths before reporting them; stikk keeps its display-only untracked filter for what remains, and no longer claims files cannot be excluded |
+| `UD-05` | **revised at prikk 0.28**: `0`/`1`/`2` (2 = usage error); exit 1 still covers refusal, dirty worktree and integrity failure alike | the seam classifies exit 1 by message + context; exit 2 is a stikk argument bug, surfaced as `stikk-internal` (RFC 009) |
 | `UD-09` | no per-patch content, no patch-id enumeration, no `show`/`diff` — `log` is block-level only (RFC 006) | History shows block lineage + a block's state file list; Patch detail (3b) waits; the gap is named where a user would open a patch |
 
 ## Releases and versioning
 
 stikk versions independently of prikk and declares, per release, the prikk range it was validated
-against (currently `>= 0.27.x`; `NFR-R03`). Before a 1.0, the repository format and command surface of
+against — currently **`>= 0.28`, validated through `0.30.0`** (`NFR-R03`; 0.27.x dropped by owner
+ruling 2026-09-04, RFC 009). A prikk newer than the validated ceiling still runs, and stikk says the
+range is unvalidated rather than pretending to know it. Before a 1.0, the repository format and command surface of
 prikk are still moving, so stikk stays pre-1.0 too and treats its own APIs as unstable. Changes are
 recorded in [`CHANGELOG.md`](CHANGELOG.md); design decisions in `rfcs/`.

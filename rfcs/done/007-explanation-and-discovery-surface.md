@@ -1,9 +1,13 @@
 # RFC 007 — The explanation &amp; discovery surface: error taxonomy → presentation, glossary, palette
 
-**Status.** Accepted (2026-09-02) — build the **mechanism** of "where prikk refuses, stikk explains"
-now (the class→presentation mapping, the refusal overlay pattern, the glossary asset, the session
-refusal history, and the command palette), wired to the surfaces that exist today; the per-operation
-**next-step catalog** grows as the operations it points at land. Handoff:
+**Status.** Implemented (0.1.0) — the **mechanism** of "where prikk refuses, stikk explains" shipped:
+the class→presentation mapping (ER-03), the refusal overlay, the glossary asset, the session refusal
+history, and the command palette, wired to the surfaces that exist today.
+**Deferred, carried forward (not built by this RFC):** live renderers for `RoutedIntoView`
+(Verify/Doctor) and `InConfirmation` (limits), which land with those operations; the **next-step
+catalog and witness/finding glossary entries** for merge/checkout/seal/trust, each landing with the
+operation that produces it; and **persisting the refusal history** with the private/ephemeral-session
+gate (LC-8), which lands with the `stikk-state` session store. Handoff:
 [`../handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md`](../handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md).
 **Tracks.** The roadmap's "Next" increment 4 — the refusal-explanation overlay + witness/finding
 glossary (`FR-110/111/112`) and the command palette (`FR-125`).

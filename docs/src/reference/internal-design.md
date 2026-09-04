@@ -26,8 +26,9 @@ stikk is one workspace of five layers; dependencies point strictly downward (no 
 │  OPERATION LAYER   stikk-core  (the one shared operation    │  FR-123, CON-2
 │                    set both frontends call; owns no I/O)    │
 ├───────────────────────────────────────────────────────────┤
-│  DERIVATION &      stikk-view  (view-models, diff/tree      │  VW-*, DM-08
-│  STATE             render, change-token, DerivedViewCache)  │
+│  DERIVATION &      (view-models, diff/tree render,          │  VW-*, DM-08
+│  STATE              change-token, DerivedViewCache)         │
+│                    — folded into stikk-core, see MOD-04     │
 │                    stikk-state (config, sessions, exports)  │  DM-01..10, LC-*
 ├───────────────────────────────────────────────────────────┤
 │  PRIKK SEAM        stikk-prikk (the ONLY code that talks to │  CON-1, SEAM-*
@@ -76,14 +77,34 @@ Workspace members (Rust 2024, 2018+ module style throughout):
 - `export.rs` — DM-10 ReportExport writer: temp-then-atomic-rename (LC-12), verbatim passthrough vs. stamped `stikk-export-v1` (INV-7). Applies the **redaction rule** stikk inherits from prikk (threat model C-I3, `trust-threat-model.md:210-211`): a stikk-authored export never contains blob bytes, raw span/replacement text, absolute host paths, or `.prikk` private paths; the same rule gates any diagnostic log stikk writes.
 - `paths.rs` — resolves the CF-01 user-scope locations per platform; the one module that knows where stikk's files live, and it refuses any path inside a repository (INV-2 enforced in code).
 
-### MOD-04 — `stikk-view` (derivation & rendering — VW-*, DM-08)
-- `viewmodel.rs` (+ `viewmodel/`) — one module per VW-01…11 producing the view-model from seam responses.
-- `diff_render.rs` — renders a prikk patch's operations as a human diff (FR-030); pure, testable against fixtures.
-- `tree_render.rs` — state-tree rendering (FR-032).
-- `change_token.rs` — LC-4 token acquisition + comparison; the shared staleness primitive (AR-05).
-- `cache.rs` — DM-08 DerivedViewCache with the LC-10 validity rule and LRU bound; correctness never depends on it (INV-6).
-- `glossary.rs` — DM-09 product-asset content, keyed by prikk codes with the missing-code degradation (NFR-I03).
-- `size_guard.rs` — TU-11 oversized-renderable summary-then-expand (threat T-DO1).
+### MOD-04 — derivation & rendering (VW-*, DM-08) — **folded into `stikk-core`**
+
+> **Design change, recorded 2026-09-04 (was made implicitly during implementation and is documented
+> here retroactively — see the note at the end of this section).** `stikk-view` was specified as a
+> separate crate; it does not exist. Its responsibilities live in `stikk-core` beside the operations
+> that produce them, and the shipped workspace is **six crates** (`stikk-model`, `stikk-prikk`,
+> `stikk-state`, `stikk-core`, `stikk-tui`, `stikk`), not seven. The module names below are therefore
+> `stikk-core` modules; those marked *(not yet built)* are still ahead.
+>
+> **Why this is the right shape:** the derivation layer is a set of pure functions over seam responses
+> with exactly one consumer — the operation layer that calls them — and no independent dependency
+> direction of its own. A separate crate would add a compilation boundary and a public API surface
+> without separating any concern, against the project's *balance, not over-abstraction* rule (AR-05).
+> The layering property that matters (`AR-01`: frontends depend only on `stikk-core` and
+> `stikk-model`; nothing above the seam touches prikk) is unchanged, because it never depended on
+> view-models living in their own crate.
+>
+> **What is not excused by this:** the decision was taken during implementation rather than recorded
+> first, which §2.3 of the development workflow prohibits. This note is the correction, not a
+> ratification of the route.
+
+- `history.rs`, `changes.rs`, `orient.rs` — the view-models per VW-01…11, produced from seam responses.
+- `diff_render.rs` *(not yet built — blocked on UD-09)* — renders a prikk patch's operations as a human diff (FR-030).
+- `tree_render.rs` *(not yet built)* — state-tree rendering (FR-032).
+- `change_token.rs` *(not yet built — RFC 003)* — LC-4 token acquisition + comparison; the shared staleness primitive (AR-05).
+- `cache.rs` *(not yet built)* — DM-08 DerivedViewCache with the LC-10 validity rule and LRU bound; correctness never depends on it (INV-6).
+- `glossary.rs` — DM-09 product-asset content, keyed by prikk codes with the missing-code degradation (NFR-I03). **Built.**
+- `size_guard.rs` *(not yet built)* — TU-11 oversized-renderable summary-then-expand (threat T-DO1).
 
 ### MOD-05 — `stikk-core` (operation layer — OPL-*)
 - `op.rs` (+ `op/`) — one module per operation family (history, inspect, compare, work, refs, merge, rollback, exchange, trust, integrity, recovery), each a function taking typed intent + a `&dyn Prikk` + `&mut` state, returning a view-model or a staged preview.
@@ -133,7 +154,7 @@ Two candidate transports exist; the design commits to the **trait**, not the tra
 
 ## 5. Frontends (FE-…)
 
-- **FE-01 — Shared view-model contract.** `stikk-core` returns view-models (`stikk-view` types); each frontend has a renderer per view-model type. Adding a view = one view-model + two renderers; the operation is defined once (AR-03).
+- **FE-01 — Shared view-model contract.** `stikk-core` returns view-models (its own types — see MOD-04); each frontend has a renderer per view-model type. Adding a view = one view-model + two renderers; the operation is defined once (AR-03).
 - **FE-02 — TUI** (`stikk-tui`): a main loop with an immediate-mode or retained renderer (choice deferred to program design; either satisfies TU-01…12); the overlay stack (TU-02) is a view-model list rendered above the active view; keybindings resolve through the config's action-id map (CF-03); TTY-only (CL-06); degrades per TU-10.
 - **FE-03 — GUI** (`stikk-gui`): a desktop toolkit (choice deferred to program design; must expose platform accessibility APIs — NFR-A02, and support i18n — GUI rule) rendering the same view-models into the GU-01 pane structure; drag-and-drop is constrained to the GU-05 legal targets by making drop handlers accept only the typed ids those targets expect (an illegal drag has no handler, so cherry-pick/stage gestures are structurally impossible, not merely hidden).
 - **FE-04 — i18n.** All user-facing strings resolve through a locale catalog (en/ja/nb — NFR-I01); ids/paths/key-ids are never passed through translation (NFR-I02); prikk's verbatim messages are shown as-is with an optional localized gloss beside them (NFR-I03). Catalogs are data, hot-swappable at runtime (CF-05).

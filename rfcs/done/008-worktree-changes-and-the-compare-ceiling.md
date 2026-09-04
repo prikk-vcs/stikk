@@ -1,9 +1,15 @@
 # RFC 008 — Worktree Changes via a now-fixed `worktree-status`; Compare deferred behind the content ceiling
 
-**Status.** Accepted (2026-09-03) — build **Changes** (worktree-vs-baseline) on prikk's
-`worktree-status`, which a check of the live binary shows is **fixed as of prikk 0.28** (UD-03 was a
-0.27.x defect). **Compare (FR-033) is split out and deferred**: prikk exposes no command that can
-compute a two-tree difference honestly, so a Compare built now would mislead. Handoff:
+**Status.** Implemented (0.1.0) — **Changes** (worktree-vs-baseline) shipped on prikk's
+`worktree-status`, verified **fixed as of prikk 0.28** (UD-03 was a 0.27.x defect).
+**Deferred, carried forward (not built by this RFC):** **Compare (FR-033)** — prikk exposes no command
+that can compute a two-tree difference honestly, so a Compare built now would mislead (T-T4);
+re-verified against prikk 0.30 on 2026-09-04 (`checkout` is still ref-tip-only, there is still no
+`show`/`diff`/`compare`), with the materialize-to-temp route recorded below. Also deferred: **per-file
+content diffs** (UD-09), the **`C` commit action**, and the **status-bar worktree marker** (TU-03).
+**Superseded in part by [RFC 009](../accepted/009-prikk-0-30-rebaseline-and-parser-fidelity.md)**, which corrects
+this increment's untracked-filter copy and adds the `queued_elsewhere` warning this RFC's fixtures
+missed. Handoff:
 [`../handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md`](../handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md).
 **Tracks.** The roadmap's "Next" increment 5 — Compare (`FR-033`) and Changes / worktree-vs-baseline
 (`FR-034`, via the `UD-03` route).

@@ -1,6 +1,6 @@
 # Handoff — prikk 0.30 re-baseline and parser fidelity (v1)
 
-**Companion to:** RFC 009 (Accepted 2026-09-04). Inherits its state.
+**Companion to:** [RFC 009](../../accepted/009-prikk-0-30-rebaseline-and-parser-fidelity.md) (Accepted 2026-09-04). Inherits its state.
 **Realizes:** the corrective increment ahead of roadmap increment 6 — a **0.1.1 patch release**
 candidate. Fixes four parser-fidelity defects (RFC 009 F1–F4), retires `UD-08` (F5), and revises
 `UD-05` (F6).

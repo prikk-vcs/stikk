@@ -26,13 +26,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 003 | [Repository change-token signal set](./proposed/003-repository-change-token.md) | cache validity, external-change / preview-staleness detection, and the repository fingerprint. **0.3.0, last** — it adds a method to the trait RFC 010 reshapes |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 012 | [Post-0.2.0 correctness sweep](./proposed/012-post-0-2-0-correctness-sweep.md) | five review findings (read-only vs recovery, version-skew guidance, per-platform paths, `RefName` adoption, prikk 0.31's schema skew) **and the re-sequenced roadmap**. 0.3.0, second |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Decision | Handoff |
 |----|-------|----------|---------|
+| 012 | [Post-0.2.0 correctness sweep](./accepted/012-post-0-2-0-correctness-sweep.md) | five review findings + prikk 0.31 re-validation, **and the re-sequenced roadmap**. 0.3.0, second (2026-09-05) | [Correctness sweep](./handoffs/012-post-0-2-0-correctness-sweep/correctness-sweep-handoff-v1.md) |
 | 011 | [Pre-1.0 API stability policy](./accepted/011-pre-1-0-api-stability-policy.md) | a public struct gaining a field is a **minor** bump pre-1.0, so RFC 009 ships as **0.2.0**, not 0.1.1; blanket `#[non_exhaustive]` is deferred to 1.0 readiness (2026-09-04) | [0.2.0 release prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-handoff-v1.md) |
 
 ## Done (implemented)

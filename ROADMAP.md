@@ -81,25 +81,26 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
 
 ---
 
-## Next — foundations & correctness (0.3.0, all breaking)
+## Next — responsive & correct (0.3.0, breaking)
 
-Grouped by *breakage*, not by theme: four of these change public API, so one release absorbs the churn
-instead of three. **The order is load-bearing** — RFC 010 reshapes the seam trait, so anything landing
-after it would otherwise be re-touched; RFC 003 adds a method to that trait, so it goes last, once the
-shape has settled. Recorded in [RFC 012](rfcs/proposed/012-post-0-2-0-correctness-sweep.md).
+Two increments, in a load-bearing order: RFC 010 reshapes the seam trait, so anything landing after it
+would otherwise be re-touched. Recorded in
+[RFC 012](rfcs/accepted/012-post-0-2-0-correctness-sweep.md).
 
-1. **[RFC 010](rfcs/done/010-off-thread-seam-and-ui-responsiveness.md) — the off-thread seam.**
-   `NFR-P01`/`NFR-P02` are **Must** requirements and are currently **unmet**: every seam call blocks
-   the render loop, and `OrientationState::Loading` is a state no user can observe. Gives the trait its
-   `Send + Sync` bound, real cancellation, a cached handshake, and the background-operations surfaces.
-2. **[RFC 012](rfcs/proposed/012-post-0-2-0-correctness-sweep.md) — the correctness sweep.** Read-only
+1. ✅ **[RFC 010](rfcs/done/010-off-thread-seam-and-ui-responsiveness.md) — the off-thread seam.**
+   Shipped to `main` 2026-09-04. `NFR-P01` was a **Must** and was **unmet**: every seam call blocked
+   the render loop, and `OrientationState::Loading` was a state no user could observe. Gives the trait
+   its `Send + Sync` bound, a cached handshake, per-view load states with stale-response discarding,
+   and the background-operation surfaces. `NFR-P02` (true cancellation) is deliberately deferred to
+   `FR-100`, where it can be measured.
+2. **[RFC 012](rfcs/accepted/012-post-0-2-0-correctness-sweep.md) — the correctness sweep.** Read-only
    must lock out recovery (`FR-121` over `AC-04`); version skew must stop pointing users at their
    signing keys; per-platform config/state paths on the platforms we already ship binaries for;
    `RefName` adopted so ref names are validated and not merely rendered inert; a gloss for prikk
    0.31's forward-incompatible schema error; and the `tag list` read that completes `FR-014`.
-3. **[RFC 003](rfcs/proposed/003-repository-change-token.md) — change token & repository fingerprint.**
-   The staleness primitive (`LC-4`) and the identity (`LC-9`) that `OPL-02`'s preview↔execute binding
-   and session persistence both require.
+
+**Then 0.3.0 is cut.** RFC 003 moves to 0.4.0, where its consumers actually live — see the
+release-boundary note in RFC 012.
 
 ## Then — the working cycle (0.4.0)
 
@@ -107,9 +108,15 @@ _Re-sequenced 2026-09-04: session persistence no longer precedes this. It was pl
 could not open a real repository; now that it can, being able to commit matters more than resuming a
 view — and after RFC 003 it is also cheaper to build._
 
-**The preview + tiered-confirmation machinery (`FR-120`/`FR-121`, `OPL-01…05`) is the first increment
-of this release**, not an afterthought inside the commit flow: it is what every mutation below is
-gated on.
+**[RFC 003](rfcs/proposed/003-repository-change-token.md) — change token & repository fingerprint —
+opens this release**, because `OPL-02`'s preview↔execute binding is built on it: a preview computed
+under one change token must refuse to execute if the repository moved underneath it. It also supplies
+the `LC-9` identity that session persistence needs later. *(Moved here from 0.3.0 on 2026-09-05: it
+delivers nothing user-visible on its own, and 0.4.0 breaks the seam trait anyway for the mutating
+methods, so it costs no extra break here.)*
+
+**Then the preview + tiered-confirmation machinery (`FR-120`/`FR-121`, `OPL-01…05`)** — not an
+afterthought inside the commit flow: it is what every mutation below is gated on.
 
 Mutations, always preview-first with tiered confirmation (`FR-120/121`):
 

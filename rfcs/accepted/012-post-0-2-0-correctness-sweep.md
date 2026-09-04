@@ -1,6 +1,8 @@
 # RFC 012 — Post-0.2.0 correctness sweep, and the re-sequenced roadmap
 
-**Status.** Proposed (2026-09-04) — collect the findings left over from the RFC 009 review plus one new
+**Status.** Accepted (2026-09-05) — handoff:
+[`../handoffs/012-post-0-2-0-correctness-sweep/correctness-sweep-handoff-v1.md`](../handoffs/012-post-0-2-0-correctness-sweep/correctness-sweep-handoff-v1.md).
+Originally proposed 2026-09-04 — collect the findings left over from the RFC 009 review plus one new
 upstream fact, rule the two that carry design questions, and record the **re-sequenced roadmap** the
 owner delegated (2026-09-04: no 0.2.1 — these ride 0.3.0; and increment 6 no longer precedes the
 working cycle).
@@ -62,10 +64,29 @@ Windows, `CF-01` already says "user scope, **per platform convention**", and 0.2
 all three. On Windows `HOME` is typically unset, so `stikk config path` fails unless the user sets
 `STIKK_CONFIG`/`STIKK_STATE_DIR` themselves.
 
-This is a gap against a clear design, not a design question. The only open call is whether to take a
-dependency (e.g. `directories`) or resolve by hand; **ruled: take the dependency** — platform
-conventions are a moving target that a hand-rolled resolver gets subtly wrong, and this is precisely
-the kind of well-audited, narrow crate the *Less is more* rule permits. Non-breaking.
+This is a gap against a clear design, not a design question. The only open call was whether to take a
+dependency (e.g. `dirs`/`directories`) or resolve by hand.
+
+**Ruled at handoff time: resolve by hand, and keep `stikk-state` dependency-free.** *(This reverses the
+first pass of this RFC, which ruled "take the dependency" before measuring. Recorded rather than
+quietly edited: I have now made the same mistake twice — ruling a dependency question from a general
+principle and reversing it once I looked, the other being `#[non_exhaustive]` in RFC 011. Measure
+first.)* What measuring showed:
+
+- **`stikk-state` has zero external dependencies today** — its only edge is `stikk-model`. It is also
+  the crate holding `ensure_outside_repository`, which the threat model calls the **primary** control
+  against stikk writing inside a repository (`C-E2`), not defence-in-depth. A dependency-free crate is
+  worth real effort to preserve *there* specifically.
+- **The crates would not remove the hand-rolled logic anyway.** `dirs::state_dir()` is Linux-only and
+  returns `None` on macOS and Windows, so a fallback has to be written regardless.
+- **The surface is four well-known branches**, not a moving target: XDG on Linux (already implemented),
+  `~/Library/Application Support` on macOS, `%APPDATA%`/`%LOCALAPPDATA%` on Windows. These conventions
+  have been stable for a decade.
+- **The codebase already has the pattern for testing this hermetically** — `stikk-prikk::env` resolves
+  through an injected lookup so its rules are tested without touching process-global state. The same
+  shape applies directly here, and gives *better* test coverage than a dependency would.
+
+Non-breaking either way.
 
 ### F-d — `RefName` exists to reject control characters and is used nowhere
 
@@ -112,11 +133,12 @@ and only then move `VALIDATED_MAX_MINOR`.
 
 1. **`FR-121` governs read-only; `AC-04` is corrected** (F-a). `may_operate` takes readiness. Breaking.
 2. **A distinct guidance target for environment/version skew** (F-b), not a new error class.
-3. **Per-platform path resolution via a dependency** (F-c).
+3. **Per-platform path resolution, hand-rolled, keeping `stikk-state` dependency-free** (F-c).
 4. **Adopt `RefName` across the seam's ref-bearing fields** (F-d). Breaking.
 5. **Gloss the schema-skew refusal, and re-validate the ceiling against 0.31 empirically** (F-e).
 6. **All of it lands in 0.3.0** — the owner ruled out a 0.2.1 (2026-09-04). Four of the five are
-   breaking, so grouping them costs one breaking release instead of three.
+   breaking, so grouping them costs one breaking release instead of three. **0.3.0 is then cut**, with
+   RFC 003 moving to 0.4.0 — see the release-boundary revision below.
 
 ## The re-sequenced roadmap
 
@@ -131,20 +153,34 @@ Two changes from the roadmap as written:
 
 | Release | Theme | Contents |
 |---|---|---|
-| **0.3.0** | Foundations & correctness (all breaking) | **RFC 010** (off-thread seam) → **RFC 012** (this sweep) → **RFC 003** (fingerprint + change token). Ships: a UI that never blocks, cancellable reads, correct paths on every platform we ship, honest version-skew guidance, validated ref names, resolved capability semantics, staleness detection. Plus the `tag list` read that completes `FR-014`. |
-| **0.4.0** | The working cycle | The `FR-120`/`FR-121` preview + tiered-confirmation machinery (`OPL-01…05`), then **commit → queue review → seal ceremony**. The first mutations. |
+| **0.3.0** | Responsive & correct (breaking) | **RFC 010** (off-thread seam, shipped to `main`) → **RFC 012** (this sweep). Ships: a UI that never blocks, correct config/state paths on every platform we ship binaries for, honest version-skew guidance, validated ref names, resolved read-only/recovery semantics, a gloss for prikk 0.31's schema skew, and the `tag list` read that completes `FR-014`. |
+| **0.4.0** | The working cycle | **RFC 003** (fingerprint + change token) → the `FR-120`/`FR-121` preview + tiered-confirmation machinery (`OPL-01…05`) → **commit → queue review → seal ceremony**. The first mutations. |
+
+**Release-boundary revision (2026-09-05).** The *order* is unchanged — 010 → 012 → 003 — but the 0.3.0
+boundary now falls after 012 rather than after 003. RFC 003 delivers nothing a user can see on its own:
+its consumers are `OPL-02`'s preview↔execute binding and session persistence, both of which live in
+0.4.0. The original grouping rationale was "absorb the breaking changes in one release," and that still
+holds for 010+012 — but **0.4.0 breaks the seam trait regardless**, since the working cycle adds
+mutating methods to it, so 003 riding 0.4.0 costs no additional break. Against that, holding 0.3.0 open
+for 003 would delay responsiveness and the platform-paths fix for no one's benefit. Shorter cycle,
+coherent theme.
 | **Later** | | Session persistence (`FR-122`, cheap once RFC 003 lands, and the increment that finally gives `C-E2` a production caller); verify/doctor browser; branches, tags and checkout planning; merge evidence and rollback; Compare and Patch detail when `UD-09` allows. |
 
 **Order within 0.3.0 is not arbitrary.** RFC 010 reshapes the seam trait, so it goes first or everything
 after it gets re-touched. RFC 012's F-a/F-d change the same public surface, so they follow immediately.
 RFC 003 adds `change_token()` to that trait, so it goes last — after the shape has settled.
 
-## Open questions
+## Open questions — both settled at handoff time (2026-09-05)
 
-- **Does `may_operate` survive at all?** If read-only locks out recovery, Operator may be better
-  expressed as a check over `Readiness` than as a method on `Capability`. Settle in the F-a handoff;
-  the ruling above fixes the semantics, not the shape.
-- **Which platform-dirs crate** (F-c) — evaluate at handoff time against dependency weight, not now.
+- **Does `may_operate` survive at all?** **Ruled: no — it moves.** `Capability::may_operate` is deleted
+  and replaced by **`Readiness::may_operate(self) -> bool`**, which is simply `!self.read_only`. This
+  is the honest shape: `AC-04` describes Operator as *any human at the machine under explicit
+  confirmation*, orthogonal to the signing ladder — so it was never a rung on `Capability`, and the one
+  fact that removes it (read-only mode) lives on `Readiness`. Putting the method where its input lives
+  is what makes the `FR-121` ruling expressible at all; on `Capability` it is unimplementable, because
+  `derive()` has already discarded `read_only`. Adding a `Capability::Operator` variant was considered
+  and rejected: it would model an orthogonal axis as a rung on a ladder.
+- ~~**Which platform-dirs crate** (F-c)~~ — **settled: none.** See F-c above.
 
 ## Consequences
 

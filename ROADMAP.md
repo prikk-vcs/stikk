@@ -15,7 +15,7 @@ Guiding rules that do not change across the roadmap:
 - **Design before implementation** — each milestone below is gated on its design items already
   existing in the reference set; new decisions are recorded as RFCs first.
 
-## Now — shipped (0.1.0, foundation)
+## Shipped (0.1.0 foundation · 0.2.0 read surface, corrected)
 
 The security-critical layers, built and tested under the project gates:
 
@@ -26,7 +26,10 @@ The security-critical layers, built and tested under the project gates:
 - The two security invariants are enforced by test. 57 tests pass; clippy is clean under `-D
   warnings`.
 
-## Next — the interactive read surface (toward 0.2)
+## Shipped — the interactive read surface (0.2.0)
+
+_Increments 1–5 shipped in 0.1.0; 5b corrected them in 0.2.0. Kept in sequence because each records why
+its scope is what it is._
 
 The goal: a running TUI you can browse a repository with. Nothing here needs a mutation.
 
@@ -67,7 +70,7 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
    output carries no per-file content), so a partial Compare would mislabel differing files as identical
    (T-T4) — split out with a concrete future route (materialize two ref tips to temp dirs). Built per
    the [handoff](rfcs/handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md).
-5b. **Correction — prikk 0.30 re-baseline and parser fidelity** (RFC 009) — **next, ahead of 6.**
+5b. **Correction — prikk 0.30 re-baseline and parser fidelity** (RFC 009) — ✅ **shipped in 0.2.0.**
    Running shipped stikk against the real binary found that **Orientation fails on any repository with
    queued patches** (prikk reports `queued patches: N targeting <ref>`; stikk's parser refused it), that
    two other parsers accept shapes prikk never emits, and that stikk **drops prikk's own warning** that
@@ -76,12 +79,37 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
    *captured*. Targeted at a **0.1.1** patch release. Built per the
    [handoff](rfcs/handoffs/009-prikk-0-30-rebaseline-and-parser-fidelity/parser-fidelity-handoff-v1.md).
 
-6. **Session persistence and progressive disclosure** (`FR-122`, `TU-12`): resume the focused ref,
-   view, and filters; default vs. advanced view depth. **Depends on RFC 003** — `SessionState` is keyed
-   by the repository fingerprint (`DM-02`/`LC-9`), which does not exist yet, so RFC 003 must be
-   accepted before this increment can be built as designed.
+---
 
-## Then — the working cycle and explanation-heavy operations (toward 0.3)
+## Next — foundations & correctness (0.3.0, all breaking)
+
+Grouped by *breakage*, not by theme: four of these change public API, so one release absorbs the churn
+instead of three. **The order is load-bearing** — RFC 010 reshapes the seam trait, so anything landing
+after it would otherwise be re-touched; RFC 003 adds a method to that trait, so it goes last, once the
+shape has settled. Recorded in [RFC 012](rfcs/proposed/012-post-0-2-0-correctness-sweep.md).
+
+1. **[RFC 010](rfcs/proposed/010-off-thread-seam-and-ui-responsiveness.md) — the off-thread seam.**
+   `NFR-P01`/`NFR-P02` are **Must** requirements and are currently **unmet**: every seam call blocks
+   the render loop, and `OrientationState::Loading` is a state no user can observe. Gives the trait its
+   `Send + Sync` bound, real cancellation, a cached handshake, and the background-operations surfaces.
+2. **[RFC 012](rfcs/proposed/012-post-0-2-0-correctness-sweep.md) — the correctness sweep.** Read-only
+   must lock out recovery (`FR-121` over `AC-04`); version skew must stop pointing users at their
+   signing keys; per-platform config/state paths on the platforms we already ship binaries for;
+   `RefName` adopted so ref names are validated and not merely rendered inert; a gloss for prikk
+   0.31's forward-incompatible schema error; and the `tag list` read that completes `FR-014`.
+3. **[RFC 003](rfcs/proposed/003-repository-change-token.md) — change token & repository fingerprint.**
+   The staleness primitive (`LC-4`) and the identity (`LC-9`) that `OPL-02`'s preview↔execute binding
+   and session persistence both require.
+
+## Then — the working cycle (0.4.0)
+
+_Re-sequenced 2026-09-04: session persistence no longer precedes this. It was placed first when stikk
+could not open a real repository; now that it can, being able to commit matters more than resuming a
+view — and after RFC 003 it is also cheaper to build._
+
+**The preview + tiered-confirmation machinery (`FR-120`/`FR-121`, `OPL-01…05`) is the first increment
+of this release**, not an afterthought inside the commit flow: it is what every mutation below is
+gated on.
 
 Mutations, always preview-first with tiered confirmation (`FR-120/121`):
 
@@ -95,7 +123,12 @@ Mutations, always preview-first with tiered confirmation (`FR-120/121`):
 - **Merge evidence → plan → execution** (`FR-080…082`) and the **rollback flow** (`FR-083`) — the
   merge refusal path is where the explanation surface earns its place.
 
-## Later — exchange, trust, and the GUI
+## Later — session, exchange, trust, and the GUI
+
+- **Session persistence and progressive disclosure** (`FR-122`, `TU-12`): resume the focused ref, view
+  and filters; default vs. advanced depth. Cheap once RFC 003's fingerprint exists — and the increment
+  that finally gives `C-E2` (the *primary* control against writing inside a repository) a production
+  caller, which it does not have today.
 
 - **Exchange**: bundle export/verify/import and the **sync assistant** (`FR-090…094`), with the input
   ceilings surfaced before an operation runs.

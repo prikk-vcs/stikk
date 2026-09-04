@@ -23,10 +23,11 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | ID | Title | Addresses |
 |----|-------|-----------|
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
-| 003 | [Repository change-token signal set](./proposed/003-repository-change-token.md) | cache validity, external-change / preview-staleness detection, and the repository fingerprint **increment 6 needs** |
+| 003 | [Repository change-token signal set](./proposed/003-repository-change-token.md) | cache validity, external-change / preview-staleness detection, and the repository fingerprint. **0.3.0, last** — it adds a method to the trait RFC 010 reshapes |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 010 | [Off-thread seam and UI responsiveness](./proposed/010-off-thread-seam-and-ui-responsiveness.md) | `NFR-P01`/`NFR-P02`/`CC-01` — currently unmet; proposed **before** the 0.3 working cycle |
+| 010 | [Off-thread seam and UI responsiveness](./proposed/010-off-thread-seam-and-ui-responsiveness.md) | `NFR-P01`/`NFR-P02`/`CC-01` — currently unmet. **0.3.0, first** — it reshapes the seam trait, so it precedes 012 and 003 |
+| 012 | [Post-0.2.0 correctness sweep](./proposed/012-post-0-2-0-correctness-sweep.md) | five review findings (read-only vs recovery, version-skew guidance, per-platform paths, `RefName` adoption, prikk 0.31's schema skew) **and the re-sequenced roadmap**. 0.3.0, second |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

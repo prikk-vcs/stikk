@@ -88,7 +88,7 @@ instead of three. **The order is load-bearing** — RFC 010 reshapes the seam tr
 after it would otherwise be re-touched; RFC 003 adds a method to that trait, so it goes last, once the
 shape has settled. Recorded in [RFC 012](rfcs/proposed/012-post-0-2-0-correctness-sweep.md).
 
-1. **[RFC 010](rfcs/proposed/010-off-thread-seam-and-ui-responsiveness.md) — the off-thread seam.**
+1. **[RFC 010](rfcs/accepted/010-off-thread-seam-and-ui-responsiveness.md) — the off-thread seam.**
    `NFR-P01`/`NFR-P02` are **Must** requirements and are currently **unmet**: every seam call blocks
    the render loop, and `OrientationState::Loading` is a state no user can observe. Gives the trait its
    `Send + Sync` bound, real cancellation, a cached handshake, and the background-operations surfaces.

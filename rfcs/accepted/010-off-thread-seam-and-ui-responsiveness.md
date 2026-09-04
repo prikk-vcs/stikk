@@ -1,9 +1,17 @@
 # RFC 010 — The off-thread seam and UI responsiveness
 
-**Status.** Proposed (2026-09-04) — move every seam call off the UI thread behind a worker, give the
-`Prikk` trait the `Send + Sync` bound its design always specified, cache the handshake per session, and
-make cancellation and progress real. Proposed **before** the 0.3 working cycle, because the change
-alters the seam's trait signature and is far cheaper before mutating operations exist than after.
+**Status.** Accepted (2026-09-04) — move every seam call off the UI thread behind a worker, give the
+`Prikk` trait the `Send + Sync` bound its design always specified, and cache the handshake per session.
+**First increment of 0.3.0** (RFC 012's re-sequenced roadmap), because it reshapes the seam trait and
+everything after it would otherwise be re-touched. Handoff:
+[`../handoffs/010-off-thread-seam-and-ui-responsiveness/off-thread-seam-handoff-v1.md`](../handoffs/010-off-thread-seam-and-ui-responsiveness/off-thread-seam-handoff-v1.md).
+
+> **Scope narrowed at acceptance: true cancellation is deferred, deliberately.** This RFC delivers
+> `NFR-P01` (the UI never blocks), which is live and unmet. It does **not** deliver `NFR-P02`
+> (cancellation), because every operation `NFR-P02` names — verify, bundle build/import, sync accept —
+> **does not exist yet**, and implementing cancellation would mean rewriting the `UD-04` EPIPE guard for
+> a benefit nothing can measure. See the rulings under §Open questions. stikk will not offer a control
+> labelled "cancel" that does not cancel.
 **Tracks.** `NFR-P01` (the UI never blocks input), `NFR-P02` (long operations are cancellable),
 `CC-01` (one UI thread, seam off-thread), `SEAM-02` (the trait is `Send + Sync`-bounded), `OP-02`
 (background operations), and the `TU-01`/`TU-03` background-operation surfaces.
@@ -69,33 +77,60 @@ way to stay responsive.
    owns no I/O policy), keeps parity mechanical (`FR-123` — the GUI calls the same synchronous
    operations from its own scheduler), avoids pulling a runtime into a no-network terminal tool
    (*Less is more*), and keeps `NullBackend`-driven tests deterministic and thread-free.
-4. **Cancellation is a cooperative token passed to the cancellable categories**
-   (`RequestCategory::cancellable_in_flight` already names them: the four read categories). A cancelled
-   read abandons its result; it never leaves stikk state inconsistent, because stikk holds no repository
-   authority (`INV-1`). Mutating categories remain **uncancellable in flight** and single-shot
-   (`SEAM-04`, `NFR-S04`) — cancellation applies *before* execution only, which is the preview stage.
+4. **No cancellation token, and no "cancel" affordance, in this increment** *(revised at acceptance —
+   the original decision proposed a cooperative token; see §Open questions Q3/Q4 for why that was
+   wrong to do now)*. A view whose read is in flight may be **left** — the user navigates away and the
+   result is discarded when it arrives — and the UI says exactly that ("stop waiting"), never "cancel".
+   Mutating categories remain uncancellable in flight and single-shot regardless (`SEAM-04`,
+   `NFR-S04`); for them cancellation was always a *pre-execution* concept, which the preview stage
+   already provides.
 5. **The handshake is performed once per session and cached**, and the version gate reads the cached
    value. `changes_view`'s `≥ 0.28` check (RFC 008) and `orient`'s support flag both consume it.
-6. **The background-operation surfaces become real**: an operations registry the worker reports into,
-   the `TU-03` `⟳ n` status-bar indicator, and the `TU-01` Background Operations overlay listing
-   running/finished operations with cancel. This is what makes `NFR-P02` observable rather than claimed.
+6. **The background-operation surfaces become real, minus cancel**: an operations registry the worker
+   reports into, and the `TU-03` `⟳ n` status-bar indicator. The `TU-01` Background Operations overlay
+   lists running and finished operations; it gains its cancel action with `NFR-P02`, not here. What
+   this makes observable is that work *is happening off the UI thread* — which today a user cannot
+   tell, because the UI simply freezes.
 
-## Open questions
+## Open questions — all four ruled at acceptance (2026-09-04)
 
-- **`std::thread` + `mpsc`, or a small scheduler?** *Recommendation: `std::thread` + `mpsc`.* One
-  worker with a request/response channel covers every read stikk performs; it adds no dependency, and
-  `CC-02`'s eventual per-repository mutation gate is a mutex in the same process, not a reason for a
-  runtime. Revisit only if a genuinely concurrent read workload appears.
-- **One worker or a small pool?** *Recommendation: one, initially.* `CT-05` allows concurrent reads,
-  but stikk's views are driven one at a time by a single user; a pool is speculation until a view
-  fans out (Compare's two-tree materialize would be the first real candidate).
-- **Does a cancelled `prikk` child get killed, or drained and dropped?** *Open — decide with evidence.*
-  Killing risks leaving prikk mid-write on a future mutating call; draining honours the `UD-04` EPIPE
-  guard, which is why the seam drains today. Proposed: **drain and drop for reads**, and never cancel a
-  mutation in flight (decision 4), which sidesteps the dangerous half entirely.
-- **Should `stikk-core` operations take the cancellation token, or only the seam?** Proposed: the seam
-  takes it and the operation layer threads it through, so a multi-call operation (`history_view` makes
-  two seam calls) can stop between calls.
+**Q1 — `std::thread` + `mpsc`, or a small scheduler?** **Ruled: `std::thread` + `mpsc`**, and
+specifically **`std::thread::scope`**. Scoped threads let the worker *borrow* `&impl Prikk` rather than
+requiring `Arc` or a `'static` bound, so `stikk_tui::run(repo, prikk, config)` keeps its signature and
+the launcher keeps handing in a borrowed `CliBackend`. No dependency added.
+
+**Q1a — is `Send + Sync` actually free?** **Verified, not assumed:** `CliBackend` is
+`{ program: OsString }`; `NullBackend` holds `Handshake` plus five `Scripted<T> = Result<T, String>`
+fields. Neither has interior mutability — no `Rc`, `RefCell` or `Cell` anywhere in `stikk-prikk`. The
+bound is purely additive for both existing implementors.
+
+**Q2 — one worker or a pool?** **Ruled: one.** `CT-05` permits concurrent reads, but stikk's views are
+driven one at a time by a single user. Revisit when a view genuinely fans out — Compare's
+materialize-two-tips route (RFC 008) would be the first real candidate.
+
+**Q3 — kill the `prikk` child on cancel, or drain and drop?** *This was left explicitly to be "decided
+with evidence."* The evidence says **do neither yet, and do not ship a cancel affordance**:
+
+- **Every operation `NFR-P02` names does not exist.** It lists verify, deep history walks, bundle
+  build/import, and sync accept. Of these only history walks exist, bounded by `--limit 200`.
+- **The current read set is milliseconds.** prikk's own measured figure for its most expensive
+  operation is `verify` at **27.04 ms for 160 blocks**, and it is linear; `log`, `status` and
+  `worktree-status` are cheaper still.
+- **Kill-cancellation would mean rewriting the `UD-04` EPIPE guard.** Killing requires replacing
+  `Command::output()` — which drains both pipes to EOF, and *is* the guard — with `spawn()` plus
+  manual draining. That is the most safety-critical code in the seam, and rewriting it to cancel
+  operations that finish in milliseconds is speculative complexity of exactly the kind RFC 005 refuses
+  to add on unmeasured grounds.
+
+So: the worker makes the UI responsive, and a user who navigates away from an in-flight read has its
+result discarded on arrival. The UI calls that **"stop waiting"**, not "cancel", because that is what
+it does. True cancellation lands with `FR-100` (verify) — the first operation long enough for it to
+mean anything, and the point at which destabilizing the EPIPE guard buys something measurable.
+
+**Q4 — does `stikk-core` take the cancellation token?** **Ruled: no token at all**, following Q3. A
+parameter that is threaded through every operation and honoured by none is worse than no parameter — it
+is a lie told in the type signature. Adding it later is a minor bump, which RFC 011 already establishes
+as cheap and expected pre-1.0.
 
 ## Consequences
 

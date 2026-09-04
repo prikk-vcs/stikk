@@ -47,12 +47,13 @@ If you construct any of these five with struct-literal syntax, add the new field
 
 ### Security
 
-- **Closed a live confident-but-wrong-picture violation** (F4; threat model `T-T4`/`C-T4c`, tracked as
-  `RR-9`). When the active WAL holds queued patches for a ref other than the one being reviewed, prikk's
-  `worktree-status` says so explicitly — those "untracked" paths may already be committed, unsealed
-  work. Shipped 0.1.0 silently dropped that warning and then showed its own contradicting "a commit
-  still captures them" banner. The Changes view now carries prikk's warning verbatim into a distinct
-  band above the entries, and suppresses the contradicting claim while the warning is present.
+- **Closed a live confident-but-wrong-picture violation** (F4; threat model `T-T4`/`C-T4c`, recorded in
+  the threat model's §5.1, *Closed violations*). When the active WAL holds queued patches for a ref
+  other than the one being reviewed, prikk's `worktree-status` says so explicitly — those "untracked"
+  paths may already be committed, unsealed work. Shipped 0.1.0 silently dropped that warning and then
+  showed its own contradicting "a commit still captures them" banner. The Changes view now carries
+  prikk's warning verbatim into a distinct band above the entries, and suppresses the contradicting
+  claim while the warning is present.
 - **`UD-08` retired.** `.prikkignore` shipped in prikk 0.29; the design set, the Changes view's copy,
   and the glossary no longer say prikk has no ignore mechanism. The malformed-`.prikkignore` refusal now
   has a glossary entry and a next-step that can actually resolve it.

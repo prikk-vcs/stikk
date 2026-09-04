@@ -104,6 +104,53 @@ fn run_capturing_also_treats_exit_2_as_a_stikk_fault() {
 
 #[cfg(unix)]
 #[test]
+fn handshake_probes_the_program_at_most_once_per_backend() {
+    // RFC 010 / SEAM-05: the version probe is recorded at open and reused, never re-run per operation
+    // (`orient` and `changes_view` used to each call it separately — RFC 010 finding 4). A real prikk
+    // can't report its own invocation count, so this is a tiny script that counts its own runs via a
+    // side effect (appending to a counter file) and then prints a real version line regardless of its
+    // arguments — standing in for `prikk --version`.
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir =
+        std::env::temp_dir().join(format!("stikk-handshake-cache-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let counter = dir.join("count");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho x >> \"{}\"\necho 'prikk 0.30.0'\n",
+            counter.display()
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+
+    let backend = CliBackend::with_program(&script);
+    let first = backend.handshake().expect("first handshake succeeds");
+    let second = backend
+        .handshake()
+        .expect("second handshake succeeds (cached)");
+    assert_eq!(first, second);
+
+    let runs = std::fs::read_to_string(&counter)
+        .unwrap_or_default()
+        .lines()
+        .count();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        runs, 1,
+        "the script must run exactly once across two handshake() calls"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn run_capturing_keeps_stdout_on_a_nonzero_exit() {
     // `worktree-status` exits 1 for a dirty tree while writing the report to stdout (RFC 008): the
     // capturing runner must return that stdout with success=false, never discard it or classify it.

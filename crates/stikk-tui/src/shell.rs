@@ -119,6 +119,9 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
             OrientationState::Failed(message) => render_failure(palette, frame, area, message),
             OrientationState::Loaded(v) => view::orientation::render(v, palette, frame, area),
         },
+        Focus::Loading(what) => {
+            centered_note(palette, frame, area, &format!("loading {what}…"), false)
+        }
         Focus::History(v, cursor) => view::history::render(v, cursor, palette, frame, area),
         Focus::BlockDetail(detail) => view::block::render(detail, palette, frame, area),
         Focus::Changes(v, hide_untracked) => {

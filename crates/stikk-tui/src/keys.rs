@@ -39,6 +39,8 @@ pub enum Action {
     OpenPalette,
     /// Open the session refusal history.
     OpenRefusals,
+    /// Open the Background Operations overlay (TU-01; RFC 010).
+    OpenOperations,
     /// Re-source the current view from prikk.
     Refresh,
     /// A typed character (text-entry overlays only).
@@ -77,6 +79,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,
         KeyCode::Char('R') => Action::OpenRefusals,
+        KeyCode::Char('o') => Action::OpenOperations,
         KeyCode::Char('r') => Action::Refresh,
         _ => Action::None,
     }

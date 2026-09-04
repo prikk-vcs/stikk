@@ -186,7 +186,13 @@ pub struct WorktreeStatus {
 ///
 /// Read-only surface so far (design CT-03 categories `read-history`, `read-state`); the mutating
 /// categories grow against this trait later without disturbing callers.
-pub trait Prikk {
+///
+/// **`Send + Sync`** (design SEAM-02; RFC 010): the frontend runs every seam call on a worker thread
+/// borrowed via `std::thread::scope`, so an implementor must be safely shareable across that boundary.
+/// This is additive for both existing implementors — `CliBackend` holds only an `OsString` and a
+/// `OnceLock`, `NullBackend` holds only owned, `Clone` data — neither has interior mutability that
+/// would need `unsafe` to satisfy the bound.
+pub trait Prikk: Send + Sync {
     /// Probe prikk's version and whether it is supported (design SEAM-05).
     ///
     /// # Errors
@@ -229,3 +235,6 @@ pub trait Prikk {
     /// genuine failure (bad ref, not a repository) classifies as for [`Prikk::orientation`].
     fn worktree_status(&self, repo: &Path, reff: &str) -> Result<WorktreeStatus>;
 }
+
+#[cfg(test)]
+mod tests;

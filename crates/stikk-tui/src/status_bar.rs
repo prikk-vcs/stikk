@@ -1,8 +1,10 @@
-//! The status bar (design TU-03; handoff §2 `status_bar.rs`).
+//! The status bar (design TU-03; handoff §2 `status_bar.rs`; RFC 010).
 //!
 //! One line: repository, focused ref (never "HEAD" — it does not exist; this increment shows the
-//! literal `heads/main`), queue depth, worktree marker, and the capability/readiness badges. Every
-//! badge has a text form so a monochrome terminal loses nothing (design NFR-A03).
+//! literal `heads/main`), queue depth, worktree marker, the `⟳ n` background-operation indicator
+//! (TU-03; RFC 010 — the count of requests the worker has not yet answered), and the
+//! capability/readiness badges. Every badge has a text form so a monochrome terminal loses nothing
+//! (design NFR-A03).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -62,6 +64,15 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         }
         spans.push(sep(palette));
         spans.append(&mut badges(palette, readiness));
+    }
+
+    let in_flight = app.in_flight_count();
+    if in_flight > 0 {
+        spans.push(sep(palette));
+        spans.push(Span::styled(
+            format!("⟳ {in_flight}"),
+            Style::default().fg(palette.accent),
+        ));
     }
 
     spans.push(Span::styled(

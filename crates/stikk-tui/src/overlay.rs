@@ -1,9 +1,14 @@
-//! The overlay layer (design TU-02/07/08; RFC 007).
+//! The overlay layer (design TU-02/07/08; RFC 007; RFC 010).
 //!
 //! An overlay is drawn above the active view without destroying it. This increment ships: the
 //! **glossary / help** browser (FR-111), the **ref picker** (RFC 006), the **refusal explanation**
-//! overlay (TU-08/FR-110), the **command palette** (TU-07/FR-125), and the **recent-refusals** list
-//! (FR-112). Overlays form a stack; the top one renders and receives navigation keys.
+//! overlay (TU-08/FR-110), the **command palette** (TU-07/FR-125), the **recent-refusals** list
+//! (FR-112), and the **Background Operations** listing (TU-01; RFC 010 — no cancel action this
+//! increment). Overlays form a stack; the top one renders and receives navigation keys.
+//!
+//! [`Overlay::Loading`] is the pending-overlay counterpart to [`crate::app::Screen::Loading`] (RFC 010
+//! §5): pushed immediately for an overlay-bound request (currently only the ref picker's), replaced or
+//! removed by [`crate::app::App::apply`], and popped directly by `back()` like any other overlay.
 //!
 //! The refusal overlay is the load-bearing one: prikk's message is shown **verbatim and inert**, in a
 //! quoted content region visibly distinct from stikk's chrome (C-T2a/C-T2b); the gloss and the
@@ -18,6 +23,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use stikk_core::{RefusalCard, RefusalRecord, glossary, palette};
 use stikk_model::Capability;
 
+use crate::app::{Operation, OperationStatus};
 use crate::text::inert;
 use crate::theme::Palette;
 
@@ -26,6 +32,21 @@ use crate::theme::Palette;
 pub enum Overlay {
     /// The glossary / help browser (terminology mapping, key reference, code index).
     Glossary,
+    /// An overlay-bound request asked for but not yet arrived (RFC 010 §5) — currently only the ref
+    /// picker's read. Replaced or removed by `App::apply`; popped directly by `back()`.
+    Loading {
+        /// A short label for what is loading (e.g. `"refs"`).
+        what: &'static str,
+        /// The request this placeholder is waiting on; a response for any other `seq` is stale here.
+        seq: u64,
+    },
+    /// The Background Operations listing (TU-01; RFC 010) — a snapshot of running and finished
+    /// requests this session, taken when the overlay was opened (the same convention
+    /// [`Overlay::Refusals`] uses). No cancel action this increment (RFC 010 decision 6).
+    Operations {
+        /// The operations at the moment this overlay was opened, oldest-first.
+        operations: Vec<Operation>,
+    },
     /// A ref chooser: the ref names and the highlighted index.
     RefPicker {
         /// The selectable ref names (repository-sourced; rendered inert).
@@ -64,6 +85,8 @@ impl Overlay {
     pub fn title(&self) -> &'static str {
         match self {
             Self::Glossary => " Glossary & Help ",
+            Self::Loading { .. } => " Loading ",
+            Self::Operations { .. } => " Background operations ",
             Self::RefPicker { .. } => " Choose ref ",
             Self::Refusal { .. } => " prikk refused ",
             Self::Palette { .. } => " Command palette ",
@@ -76,6 +99,8 @@ impl Overlay {
 pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rect) {
     match overlay {
         Overlay::Glossary => render_glossary(palette, frame, area),
+        Overlay::Loading { what, .. } => render_loading(what, palette, frame, area),
+        Overlay::Operations { operations } => render_operations(operations, palette, frame, area),
         Overlay::RefPicker { refs, cursor } => {
             render_ref_picker(refs, *cursor, palette, frame, area)
         }
@@ -106,6 +131,7 @@ fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
         key_line(palette, "u", "toggle untracked (in Changes)"),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
+        key_line(palette, "o", "background operations"),
         key_line(palette, "r", "refresh — re-read from prikk"),
         key_line(palette, "? / Esc / q", "close · back · quit at root"),
         Line::from(""),
@@ -299,6 +325,64 @@ fn render_palette(
         .style(Style::default().fg(palette.fg));
     let height = (lines.len() as u16 + 2).min(area.height);
     let region = centered(64, height.max(6), area);
+    frame.render_widget(Clear, region);
+    frame.render_widget(Paragraph::new(lines).block(block), region);
+}
+
+/// A small centred note for a pending overlay-bound request (RFC 010 §5) — the overlay counterpart to
+/// `shell`'s `Focus::Loading` rendering for a pending screen.
+fn render_loading(what: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
+    let lines = vec![Line::from(Span::styled(
+        format!("  loading {what}…"),
+        Style::default().fg(palette.dim),
+    ))];
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Loading ")
+        .style(Style::default().fg(palette.fg));
+    let region = centered(40, 3, area);
+    frame.render_widget(Clear, region);
+    frame.render_widget(Paragraph::new(lines).block(block), region);
+}
+
+/// The Background Operations listing (TU-01; RFC 010): running and finished requests this session,
+/// newest-first. A listing only — no cancel action this increment (RFC 010 decision 6).
+fn render_operations(operations: &[Operation], palette: &Palette, frame: &mut Frame, area: Rect) {
+    let lines: Vec<Line> = if operations.is_empty() {
+        vec![Line::from(Span::styled(
+            "  no background operations this session",
+            Style::default().fg(palette.dim),
+        ))]
+    } else {
+        operations
+            .iter()
+            .rev()
+            .map(|op| {
+                let (status, style) = match op.status {
+                    OperationStatus::Running => ("running", Style::default().fg(palette.accent)),
+                    OperationStatus::Finished { ok: true } => {
+                        ("done", Style::default().fg(palette.ok))
+                    }
+                    OperationStatus::Finished { ok: false } => {
+                        ("failed", Style::default().fg(palette.warn))
+                    }
+                };
+                Line::from(vec![
+                    Span::styled(
+                        format!("  {:<14}", op.label),
+                        Style::default().fg(palette.fg),
+                    ),
+                    Span::styled(status, style),
+                ])
+            })
+            .collect()
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Background operations ")
+        .style(Style::default().fg(palette.fg));
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let region = centered(56, height.max(4), area);
     frame.render_widget(Clear, region);
     frame.render_widget(Paragraph::new(lines).block(block), region);
 }

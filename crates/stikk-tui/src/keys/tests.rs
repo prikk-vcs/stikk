@@ -47,6 +47,10 @@ fn navigation_and_surface_keys_are_bound() {
         Action::OpenRefusals
     );
     assert_eq!(dispatch(key(KeyCode::Char('r')), false), Action::Refresh);
+    assert_eq!(
+        dispatch(key(KeyCode::Char('o')), false),
+        Action::OpenOperations
+    );
 }
 
 #[test]

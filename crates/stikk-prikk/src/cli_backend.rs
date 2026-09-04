@@ -12,6 +12,9 @@
 //! - **RFC 009 F6** — prikk 0.28 split its exit contract into `0` success / `1` operational failure /
 //!   `2` usage error (a bad argument list, detected before any repository work). Exit `2` means *stikk*
 //!   built a bad command, not that prikk refused something; it is never classified as prikk's voice.
+//! - **SEAM-05 (handshake caching, RFC 010)** — the version probe runs at most once per backend
+//!   instance, cached in a [`OnceLock`](std::sync::OnceLock), matching the design's "recorded at open"
+//!   semantics: a session does not notice prikk being upgraded underneath it, which is correct.
 //!
 //! The program invoked defaults to `prikk` on `PATH`, overridable with `STIKK_PRIKK_BIN` for testing
 //! against a specific build.
@@ -19,6 +22,7 @@
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::process::Command;
+use std::sync::OnceLock;
 
 use stikk_model::{RequestCategory, Result, StikkError};
 
@@ -38,6 +42,9 @@ const USAGE_ERROR_EXIT: i32 = 2;
 #[derive(Debug, Clone)]
 pub struct CliBackend {
     program: OsString,
+    /// The version probe, run at most once per instance (SEAM-05; RFC 010). `OnceLock` is `Send + Sync`
+    /// whenever its contents are, so this does not disturb the trait's `Send + Sync` bound.
+    handshake_cache: OnceLock<Handshake>,
 }
 
 impl Default for CliBackend {
@@ -52,7 +59,10 @@ impl CliBackend {
     pub fn new() -> Self {
         let program =
             std::env::var_os("STIKK_PRIKK_BIN").unwrap_or_else(|| OsString::from("prikk"));
-        Self { program }
+        Self {
+            program,
+            handshake_cache: OnceLock::new(),
+        }
     }
 
     /// Construct a backend that invokes an explicit program path (used in tests).
@@ -60,6 +70,7 @@ impl CliBackend {
     pub fn with_program(program: impl Into<OsString>) -> Self {
         Self {
             program: program.into(),
+            handshake_cache: OnceLock::new(),
         }
     }
 
@@ -163,15 +174,22 @@ impl CliBackend {
 
 impl Prikk for CliBackend {
     fn handshake(&self) -> Result<Handshake> {
+        if let Some(cached) = self.handshake_cache.get() {
+            return Ok(cached.clone());
+        }
         let raw = self.run(None, RequestCategory::ReadHistory, ["--version"])?;
         let raw_version = raw.trim().to_string();
         let version = Version::parse_version_line(&raw_version)?;
-        Ok(Handshake {
+        let handshake = Handshake {
             supported: version.is_supported(),
             validated: version.is_validated(),
             version,
             raw_version,
-        })
+        };
+        // `OnceLock::set` losing a race is fine: both sides computed the same probe of the same
+        // process, so whichever value ends up cached is equivalent. Ignore the "already set" case.
+        let _ = self.handshake_cache.set(handshake.clone());
+        Ok(handshake)
     }
 
     fn orientation(&self, repo: &Path) -> Result<Orientation> {

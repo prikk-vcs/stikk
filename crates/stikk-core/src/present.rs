@@ -237,10 +237,8 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
             // derived from prikk's message text (C-T2b) — and is guidance, not an action: stikk must
             // not edit a repository file (CON-1, INV-1).
             NextStep {
-                label:
-                    "If this repository has a `.prikkignore`, check it for a malformed rule (edit \
-                        or remove it outside stikk), then Refresh"
-                        .to_string(),
+                label: "Check `.prikkignore` for a malformed rule (edit it outside stikk)"
+                    .to_string(),
                 target: NextTarget::DismissAndResolveExternally,
             },
         ],

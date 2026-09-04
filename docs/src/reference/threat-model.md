@@ -160,7 +160,31 @@ Cells that are blank or "prikk-owned" are threats a front-end structurally canno
 | **RR-6** | User fatigue defeating confirmations | tiered confirmations can be click-through | Mitigated by tiering (only tier-3 uses typed confirmation) and progressive disclosure keeping the common path simple (NFR-U02); not fully eliminable |
 | **RR-7** | An operation that *should* be trust-gated but is not (prikk's unenumerable gating gap, `trust-threat-model.md:89-94`) | prikk cannot prove its gated set complete; `tag create` shipped ungated for months | Inherited from prikk (ASSUME-2); stikk never *claims* an operation is gated beyond what prikk enforces, and shows the maintainer key id that actually sealed each object (FR-035) so a user can judge provenance directly rather than trusting a "gated" label |
 | **RR-8** | Repo-path case-collision surfaces at `seal`, not at `commit` (`path-safety.md:28-32`); NFC/NFD ref-name collisions are un-rejected | prikk's stated timing/validation gap | stikk surfaces the seal-time refusal with its FL-06/TU-08 explanation and, where it can, warns at commit time that a colliding path was queued; ref-name NFC/NFD collisions are shown by raw-byte inspection on focus (C-T2d) |
-| **RR-9** | `C-T4c`/`T-T4` had a **live violation** in shipped 0.1.0, not a theoretical gap: the Changes view silently dropped prikk's `worktree-status` warning that queued-elsewhere paths may be committed-but-unsealed work, then rendered its own contradicting "a commit still captures them" claim — the confident-but-wrong picture this document names as the project's worst failure, found by running shipped stikk against a real repository rather than by review (RFC 009 F4, 2026-09-04) | A golden fixture for `worktree-status` was captured from a scratch repository that never had queued work on another ref, so the warning line was never exercised by a test; the parser silently discarded any flush-left line it did not anchor on | **Closed, not merely mitigated**, in the same release that found it: the seam now captures the warning verbatim into `WorktreeStatus::queued_elsewhere` (never paraphrased, ER-02); the Changes view renders it as a distinct inert band above the entries; and the UD-08 filter's contradicting claim is suppressed whenever the warning is present (RFC 009 decision 3). Regression-tested (`carries_the_queued_elsewhere_warning_through_unmodified`, `queued_elsewhere_suppresses_the_contradicting_ud08_claim`). Recorded here per NFR-S07 so this document does not imply the control held throughout 0.1.0 when it did not |
+| **RR-9** | **The fixture-fidelity discipline is enforced in form, not substance.** `every_fixture_constant_carries_a_provenance_comment` (RFC 009 §0) checks that a fixture constant has a provenance comment naming a prikk version — it does not, and cannot, check that the fixture text was actually captured from a real run. A fabricated fixture with a plausible-looking comment still passes | CI has no prikk binary, so nothing mechanically re-validates a fixture against a real one; the discipline currently rests on the implementer's diligence — precisely what it rested on before RFC 009's F1 (an invented fixture with no false comment, which was the easier case to have caught) | Accepted for now. `TS-07` (`docs/src/reference/internal-design.md`) already describes a real-prikk integration suite as future work; that suite, once built, is this risk's actual closure — a mechanical guard on *comment shape* is a floor, not a substitute for it |
+
+---
+
+### 5.1 Closed violations (history)
+
+Confirmed-and-closed findings are recorded here rather than in the residual-risk table above, so that
+table reflects only what the project still carries (`NFR-S07` requires this document not to *imply* a
+control held throughout a release when it did not — that is satisfied by recording the closure
+prominently, not by leaving it in the residual-risk register once it no longer is one).
+
+- **`C-T4c`/`T-T4` had a live violation in shipped 0.1.0**, not a theoretical gap: the Changes view
+  silently dropped prikk's `worktree-status` warning that queued-elsewhere paths may be
+  committed-but-unsealed work, then rendered its own contradicting "a commit still captures them"
+  claim — the confident-but-wrong picture this document names as the project's worst failure, found by
+  running shipped stikk against a real repository rather than by review (RFC 009 F4, 2026-09-04).
+  **Root cause:** a golden fixture for `worktree-status` was captured from a scratch repository that
+  never had queued work on another ref, so the warning line was never exercised by a test; the parser
+  silently discarded any flush-left line it did not anchor on. **Closed, not merely mitigated**, in the
+  same release that found it: the seam now captures the warning verbatim into
+  `WorktreeStatus::queued_elsewhere` (never paraphrased, ER-02); the Changes view renders it as a
+  distinct inert band above the entries; and the UD-08 filter's contradicting claim is suppressed
+  whenever the warning is present (RFC 009 decision 3). Regression-tested
+  (`carries_the_queued_elsewhere_warning_through_unmodified`,
+  `queued_elsewhere_suppresses_the_contradicting_ud08_claim`).
 
 ---
 

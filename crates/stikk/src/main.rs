@@ -195,13 +195,10 @@ fn print_orientation(root: &Path, view: &orient::OrientationView) {
             ""
         }
     );
-    match &view.queued_target {
-        Some(target) => println!(
-            "  queued:      {} · targeting {target}",
-            view.queued_patches
-        ),
-        None => println!("  queued:      {}", view.queued_patches),
-    }
+    println!(
+        "{}",
+        queued_line(view.queued_patches, view.queued_target.as_deref())
+    );
     if view.trailing_partial_wal_bytes != 0 {
         println!(
             "  warning:     {} trailing partial WAL byte(s) — an interrupted commit left a torn tail",
@@ -218,6 +215,20 @@ fn print_orientation(root: &Path, view: &orient::OrientationView) {
     );
 }
 
+/// Format the `queued:` line. `target` is repository-sourced (prikk's active-ref metadata) and is
+/// rendered inert (design C-T2a) before it reaches stdout: this one-shot path has no raw terminal mode
+/// to rely on, but the output can still land on a real terminal (piped through `less`, or a redirected
+/// file `cat`-ed later), so the same control applies as in the TUI (review finding M1, RFC 009).
+fn queued_line(patches: u64, target: Option<&str>) -> String {
+    match target {
+        Some(target) => format!(
+            "  queued:      {patches} · targeting {}",
+            stikk_tui::text::inert(target)
+        ),
+        None => format!("  queued:      {patches}"),
+    }
+}
+
 fn ready(flag: bool) -> &'static str {
     if flag { "ready" } else { "not ready" }
 }
@@ -226,3 +237,6 @@ fn fail(message: &str) -> ExitCode {
     eprintln!("error: {message}");
     ExitCode::from(1)
 }
+
+#[cfg(test)]
+mod tests;

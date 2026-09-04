@@ -1,13 +1,17 @@
 # RFC 010 — The off-thread seam and UI responsiveness
 
-**Status.** Accepted (2026-09-04) — move every seam call off the UI thread behind a worker, give the
+**Status.** Implemented (0.3.0 candidate; on `main` 2026-09-04, reviewed and approved with no corrections) — moved every seam call off the UI thread behind a worker, gave the
 `Prikk` trait the `Send + Sync` bound its design always specified, and cache the handshake per session.
 **First increment of 0.3.0** (RFC 012's re-sequenced roadmap), because it reshapes the seam trait and
 everything after it would otherwise be re-touched. Handoff:
 [`../handoffs/010-off-thread-seam-and-ui-responsiveness/off-thread-seam-handoff-v1.md`](../handoffs/010-off-thread-seam-and-ui-responsiveness/off-thread-seam-handoff-v1.md).
 
 > **Scope narrowed at acceptance: true cancellation is deferred, deliberately.** This RFC delivers
-> `NFR-P01` (the UI never blocks), which is live and unmet. It does **not** deliver `NFR-P02`
+> `NFR-P01` (the UI never blocks), which was live and unmet.
+> **Deferred, carried forward (not built by this RFC):** `NFR-P02` — true cancellation, and the
+> Background Operations overlay's cancel action, which land together with `FR-100` (verify), the first
+> operation long enough for cancellation to mean anything. Until then no stikk control is labelled
+> "cancel". It does **not** deliver `NFR-P02`
 > (cancellation), because every operation `NFR-P02` names — verify, bundle build/import, sync accept —
 > **does not exist yet**, and implementing cancellation would mean rewriting the `UD-04` EPIPE guard for
 > a benefit nothing can measure. See the rulings under §Open questions. stikk will not offer a control

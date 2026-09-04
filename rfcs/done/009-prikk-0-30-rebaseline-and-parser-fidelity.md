@@ -18,7 +18,7 @@ list` cannot emit tags and a `prikk tag list` seam read is still unbuilt; **ref-
 `stikk_model::RefName` rejects control characters but is used nowhere, so every ref name from the seam
 travels as an unvalidated `String` (display is inert at every call site, validation is not); and a
 **richer `.prikkignore` surface** (viewing or editing rules). The off-thread seam is
-[RFC 010](../accepted/010-off-thread-seam-and-ui-responsiveness.md), separately proposed.
+[RFC 010](../done/010-off-thread-seam-and-ui-responsiveness.md), separately proposed.
 **Tracks.** The standing obligation to re-validate against the real prikk (`ASM-2`, `NFR-R03`), and the
 correction of `UD-05`/`UD-08` after prikk 0.28–0.30.
 **Touches.** `stikk-prikk` (`cli_backend/parse.rs`, `classify.rs`, `version.rs`, and every golden

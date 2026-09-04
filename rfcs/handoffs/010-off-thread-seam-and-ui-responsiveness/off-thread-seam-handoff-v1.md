@@ -1,6 +1,6 @@
 # Handoff — the off-thread seam (v1)
 
-**Companion to:** [RFC 010](../../accepted/010-off-thread-seam-and-ui-responsiveness.md)
+**Companion to:** [RFC 010](../../done/010-off-thread-seam-and-ui-responsiveness.md)
 (Accepted 2026-09-04). Inherits its state.
 **Realizes:** the first increment of **0.3.0** ([RFC 012](../../proposed/012-post-0-2-0-correctness-sweep.md)'s
 re-sequenced roadmap). It goes first because it reshapes the seam trait; RFC 012 and RFC 003 follow it.

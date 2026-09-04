@@ -114,6 +114,11 @@ fn handshake_probes_the_program_at_most_once_per_backend() {
 
     let dir =
         std::env::temp_dir().join(format!("stikk-handshake-cache-test-{}", std::process::id()));
+    // Defensive, not incidental: the directory name is PID-based, and a prior run of this same test
+    // killed before reaching its own cleanup below (e.g. a timed-out `cargo test`) can leave a stale
+    // `count` file that a later process reusing that PID would inherit, corrupting the "exactly one
+    // run" assertion below through no fault of the code under test.
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let counter = dir.join("count");
     let script = dir.join("fake-prikk.sh");

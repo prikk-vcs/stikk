@@ -112,10 +112,12 @@ pub struct StateFiles {
     pub total_bytes: u64,
 }
 
-/// One ref pointer, from `prikk branch list --all`. This lists **branches** (open, closed, and
-/// received) only — `branch list` cannot emit a tag; tags are listed separately by `prikk tag list`,
-/// which this seam does not yet read (RFC 009 F3). [`RefEntry::is_tag`] is correct for a `tags/…` name
-/// but has no source through this method today.
+/// One ref pointer — a branch (open, closed, or received) or a tag. `branch list --all` does not
+/// reliably exclude tags (RFC 012 FR-014: `prikk`'s own ref-pointer index carries no namespace filter,
+/// so a tag can appear there too), so stikk does not depend on it either including or excluding them;
+/// `Prikk::tags` (`prikk tag list`) is the documented source, and `stikk_core::list_refs` is the merge
+/// point that makes the result correct regardless of which way that unspecified behavior goes.
+/// [`RefEntry::is_tag`] is sourced through both `Prikk::refs` and `Prikk::tags`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefEntry {
     /// The fully-qualified ref name (`heads/…`, `tags/…`, `remotes/…`).
@@ -224,8 +226,8 @@ pub trait Prikk: Send + Sync {
     ///
     /// **Does not reliably exclude tags** — `prikk branch list --all`'s own implementation lists every
     /// ref pointer regardless of namespace, undocumented behavior stikk must not depend on either way
-    /// (RFC 012 FR-014, discovered empirically: RFC 009 F3's "`branch list` cannot emit a tag ... there
-    /// never can be one from this command" was untested, not true). `stikk_core::list_refs` is the
+    /// (RFC 012 FR-014, discovered empirically: RFC 009 F3 had claimed a tag could never appear here,
+    /// an inference from an untested case, not a checked one). `stikk_core::list_refs` is the
     /// merge-and-deduplicate caller that makes tag coverage correct regardless of what this returns;
     /// call [`Prikk::tags`] for the documented, stable way to list tags.
     ///

@@ -208,11 +208,13 @@ pub(super) fn state_files(text: &str) -> Result<StateFiles> {
     })
 }
 
-/// Parse `prikk branch list --all` into every ref pointer (RFC 006; corrected RFC 009 F3). It lists
-/// **branches** only (open, closed, received) — it cannot emit a tag; `prikk tag list` is separate and
-/// not yet read by this seam. prikk prints the literal line `no branches` (or `tag list`'s `no tags`,
-/// for when that read is added) when there are none; otherwise each line is
-/// `<name> <64-hex-id> [(closed)|(received)]`.
+/// Parse `prikk branch list --all` into every ref pointer (RFC 006; corrected RFC 009 F3). Named for
+/// branches (open, closed, received), but does **not** reliably exclude tags — prikk's ref-pointer
+/// index carries no namespace filter, so a tag can appear here too (RFC 012 FR-014). `tags` (`prikk tag
+/// list`) is the documented source for tags; `stikk_core::list_refs` merges both, deduplicated, so
+/// stikk's own behavior does not depend on whether this parser's output happens to include one. prikk
+/// prints the literal line `no branches` (or `tag list`'s `no tags`) when there are none; otherwise each
+/// line is `<name> <64-hex-id> [(closed)|(received)]`.
 ///
 /// Anchored on the id's shape, unlike before: a line with two tokens whose second is not a 64-hex id
 /// (the literal `no branches` included) previously became a phantom `RefEntry { name: "no", id:

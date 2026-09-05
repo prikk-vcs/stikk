@@ -294,9 +294,9 @@ const BRANCH_LIST_EMPTY_FIXTURE: &str = "no branches\n";
 // Captured verbatim from `prikk branch list --all` on a repository with a sealed `heads/main`, a
 // second branch created from it and then closed, and a received ref imported from a bundle exported by
 // a peer repository, prikk 0.30.0. Re-verified byte-identical (with fresh object ids) against prikk
-// 0.31.0 on 2026-09-05 (RFC 012 F-e). RFC 009 F3's claim that "`branch list` cannot emit a tag ... there
-// never can be one from this command" is **corrected** by that same re-verification: this repository
-// simply had no tag yet, so the absence proved nothing either way. `prikk-cli`'s `branch list` reads
+// 0.31.0 on 2026-09-05 (RFC 012 F-e). RFC 009 F3's claim that a tag could never appear in this output
+// is **corrected** by that same re-verification: this repository simply had no tag yet when F3 was
+// written, so the absence proved nothing either way. `prikk-cli`'s `branch list` reads
 // `RefStore::list_ref_pointers()` (`crates/prikk-cli/src/branch.rs`), which does not filter by ref
 // namespace at all — a tag created in the same repository appears in `branch list --all`'s output too,
 // confirmed live against both 0.30.0 and 0.31.0 with a tag actually present. This is not documented

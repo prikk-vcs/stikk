@@ -138,7 +138,12 @@ stikk's does not, so the count can only grow without one.
 
 Mutations, always preview-first with tiered confirmation (`FR-120/121`):
 
-- **Commit → queue review → seal ceremony** (`FR-050/051/052`), including the informed-consent
+- **Commit** (`FR-050`) — [RFC 014](rfcs/proposed/014-commit-the-first-mutation.md), the first
+  operation stikk performs that writes, arriving into RFC 013's gate. Drafting it found that a
+  cross-ref commit is refused by prikk in words stikk's classifier reads as a *lock conflict* — the
+  RFC 012 F-b shape again — and that `Orientation::queued_target`, added in 0.2.0 to make Orientation
+  honest, lets stikk **prevent** that refusal rather than explain it.
+- **Then queue review → seal ceremony** (`FR-051/052`), including the informed-consent
   no-audit step and the capability gate re-checked at the seam.
 - **Verify report browser and doctor/recovery** (`FR-100/101/102`), with the three-valued
   author-signature outcome rendered precisely (Sound / Unverifiable / a blocking failure) and locks

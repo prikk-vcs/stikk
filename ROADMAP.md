@@ -109,12 +109,13 @@ _Re-sequenced 2026-09-04: session persistence no longer precedes this. It was pl
 could not open a real repository; now that it can, being able to commit matters more than resuming a
 view — and after RFC 003 it is also cheaper to build._
 
-**[RFC 003](rfcs/proposed/003-repository-change-token.md) — change token & repository fingerprint —
-opens this release**, because `OPL-02`'s preview↔execute binding is built on it: a preview computed
-under one change token must refuse to execute if the repository moved underneath it. It also supplies
-the `LC-9` identity that session persistence needs later. *(Moved here from 0.3.0 on 2026-09-05: it
-delivers nothing user-visible on its own, and 0.4.0 breaks the seam trait anyway for the mutating
-methods, so it costs no extra break here.)*
+**[RFC 003](rfcs/accepted/003-repository-change-token.md) — the change token — opens this release**,
+because `OPL-02`'s preview↔execute binding is built on it: a preview computed under one change token
+must refuse to execute if the repository moved underneath it. *(Moved here from 0.3.0 on 2026-09-05: it
+delivers nothing user-visible alone, and 0.4.0 breaks the seam trait anyway for the mutating methods.
+**Its fingerprint half was split off and deferred at acceptance** — prikk deliberately has no
+repository identity and states that as a security property, deriving one would mean walking the entire
+log, and `INV-5`'s re-resolution already carries the protection it was meant to add.)*
 
 **Then the preview + tiered-confirmation machinery (`FR-120`/`FR-121`, `OPL-01…05`)** — not an
 afterthought inside the commit flow: it is what every mutation below is gated on.

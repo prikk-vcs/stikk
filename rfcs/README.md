@@ -23,7 +23,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | ID | Title | Addresses |
 |----|-------|-----------|
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
-| 003 | [Repository change-token signal set](./proposed/003-repository-change-token.md) | cache validity, external-change / preview-staleness detection, and the repository fingerprint. **0.3.0, last** — it adds a method to the trait RFC 010 reshapes |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
 
@@ -32,6 +31,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Decision | Handoff |
 |----|-------|----------|---------|
+| 003 | [Repository change token](./accepted/003-repository-change-token.md) | the staleness primitive `OPL-02`'s preview↔execute binding needs. **Scope split at acceptance**: the fingerprint half is deferred — prikk has no repository identity *by design* (2026-09-05). **0.4.0, first** | [Change token](./handoffs/003-repository-change-token/change-token-handoff-v1.md) |
 | 011 | [Pre-1.0 API stability policy](./accepted/011-pre-1-0-api-stability-policy.md) | a public API break before 1.0 is a **minor** bump; blanket `#[non_exhaustive]` deferred to 1.0 readiness (2026-09-04). A **standing policy** — it stays here while its release-prep handoffs are in flight | [0.2.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-handoff-v1.md) · [0.3.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-0-3-0-handoff-v1.md) |
 
 ## Done (implemented)

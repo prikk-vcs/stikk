@@ -93,7 +93,8 @@ would otherwise be re-touched. Recorded in
    its `Send + Sync` bound, a cached handshake, per-view load states with stale-response discarding,
    and the background-operation surfaces. `NFR-P02` (true cancellation) is deliberately deferred to
    `FR-100`, where it can be measured.
-2. **[RFC 012](rfcs/done/012-post-0-2-0-correctness-sweep.md) — the correctness sweep.** Read-only
+2. ✅ **[RFC 012](rfcs/done/012-post-0-2-0-correctness-sweep.md) — the correctness sweep.** Shipped to
+   `main` 2026-09-05. Read-only
    must lock out recovery (`FR-121` over `AC-04`); version skew must stop pointing users at their
    signing keys; per-platform config/state paths on the platforms we already ship binaries for;
    `RefName` adopted so ref names are validated and not merely rendered inert; a gloss for prikk

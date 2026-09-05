@@ -125,6 +125,7 @@ fn ui_loop(
                         Action::OpenRefPicker => app.open_ref_picker(),
                         Action::OpenChanges => app.open_changes(),
                         Action::ToggleUntracked => app.toggle_untracked(),
+                        Action::Commit => app.begin_commit(),
                         Action::OpenGlossary => app.open_glossary(),
                         Action::OpenPalette => app.open_palette(),
                         Action::OpenRefusals => app.open_refusals(),

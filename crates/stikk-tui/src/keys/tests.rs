@@ -51,6 +51,7 @@ fn navigation_and_surface_keys_are_bound() {
         dispatch(key(KeyCode::Char('o')), false),
         Action::OpenOperations
     );
+    assert_eq!(dispatch(key(KeyCode::Char('C')), false), Action::Commit);
 }
 
 #[test]

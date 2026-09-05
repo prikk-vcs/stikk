@@ -23,6 +23,14 @@ pub fn classify(stdout: &str, stderr: &str, category: RequestCategory) -> StikkE
     if is_environment(&lowered) {
         return StikkError::environment_msg(message);
     }
+    // A commit whose focused ref is not the active WAL's queue target (RFC 014 F2). Checked **before**
+    // the generic lock-conflict pattern below, which this message's own wording ("lock conflict: …")
+    // would otherwise match — the RFC 012 F-b shape again: prikk's wording names a lock, but nothing is
+    // locked and no other writer is active. Recognized by the specific shape only ("active WAL is owned
+    // by … requested ref …"), never the bare "lock"/"conflict" words a real lock conflict also carries.
+    if is_cross_ref_conflict(&lowered) {
+        return StikkError::CrossRef { message };
+    }
     // A lock or CAS conflict — "another writer is active" (FR-106), never corruption.
     if is_lock_conflict(&lowered) {
         return StikkError::LockConflict { message };
@@ -58,6 +66,10 @@ fn is_environment(lowered: &str) -> bool {
         || (lowered.contains("could not") && lowered.contains("prikk"))
         || lowered.contains("unsupported prikk version")
         || lowered.contains("retired repository format")
+}
+
+fn is_cross_ref_conflict(lowered: &str) -> bool {
+    lowered.contains("active wal is owned by") && lowered.contains("requested ref")
 }
 
 fn is_lock_conflict(lowered: &str) -> bool {

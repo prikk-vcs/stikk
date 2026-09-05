@@ -26,7 +26,8 @@ use std::time::Duration;
 
 use stikk_model::{ChangeToken, Result};
 use stikk_prikk::{
-    Handshake, History, NullBackend, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus,
+    CommitResult, Handshake, History, NullBackend, Orientation, Prikk, RefEntry, StateFiles,
+    WorktreeStatus,
 };
 use stikk_state::Config;
 
@@ -68,6 +69,10 @@ impl Prikk for SlowOrientation {
     fn change_token(&self, repo: &Path) -> Result<ChangeToken> {
         self.0.change_token(repo)
     }
+
+    fn commit(&self, repo: &Path, reff: &str, message: &str) -> Result<CommitResult> {
+        self.0.commit(repo, reff, message)
+    }
 }
 
 fn main() -> ExitCode {
@@ -82,6 +87,7 @@ fn main() -> ExitCode {
             "237d0681acace31e17f80dee61d386c8d13529056721ba9c188e42ee4a13d5f8".to_string(),
         ),
         trailing_partial_wal_bytes: 0,
+        active_patch_warning: None,
     }));
     match stikk_tui::run(Path::new("demo-repo"), &backend, &Config::default()) {
         Ok(()) => ExitCode::SUCCESS,

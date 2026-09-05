@@ -24,10 +24,13 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::OnceLock;
 
-use stikk_model::{ChangeToken, RequestCategory, Result, StikkError};
+use stikk_model::{Capability, ChangeToken, RequestCategory, Result, StikkError};
 
+use crate::env;
 use crate::version::Version;
-use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus};
+use crate::{
+    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus,
+};
 
 mod classify;
 mod parse;
@@ -244,6 +247,30 @@ impl Prikk for CliBackend {
                 RequestCategory::WorktreeAnalysis,
             )),
         }
+    }
+
+    fn commit(&self, repo: &Path, reff: &str, message: &str) -> Result<CommitResult> {
+        // OPL-04's seam-side half (handoff §7), built honestly: for AUTHOR readiness this re-check is
+        // constant within a process — `PRIKK_AUTHOR_SEED` presence cannot change underneath a running
+        // session — so it cannot catch a *lapse* today. It exists because a future readiness source
+        // (a trust-policy read for MAINTAINER, `FR-104`) genuinely can change, and because the seam is
+        // the right place for that check regardless of what triggers it. `Capability::derive` (not a
+        // bare `author_ready` read) so a `STIKK_READ_ONLY=1` override is honoured here too, the same
+        // fold `confirm::capability_gate` already applies.
+        let readiness = env::read_readiness(env::read_only_override());
+        if !Capability::derive(readiness).may_author() {
+            return Err(StikkError::NotReady {
+                detail: "commit needs AUTHOR signing readiness".to_string(),
+            });
+        }
+        // No `--text-edits`: prikk's own source documents it as a no-op kept for compatibility (RFC
+        // 014 F1) — offering a control that changes nothing would be a small dishonesty.
+        let out = self.run(
+            Some(repo),
+            RequestCategory::QueueMutation,
+            ["commit", "--from-worktree", "--ref", reff, "-m", message],
+        )?;
+        parse::commit(&out)
     }
 
     fn change_token(&self, repo: &Path) -> Result<ChangeToken> {

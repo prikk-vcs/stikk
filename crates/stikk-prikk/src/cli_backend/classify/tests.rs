@@ -48,6 +48,19 @@ fn a_held_lock_is_a_lock_conflict() {
 }
 
 #[test]
+fn a_cross_ref_commit_refusal_is_not_a_lock_conflict() {
+    // RFC 014 F2: prikk words this as a lock conflict, but nothing is locked. Captured live from a
+    // real prikk 0.31.1 binary: `prikk commit --from-worktree --ref heads/other -m x` against a
+    // repository whose active WAL owns `heads/main`.
+    let (out, err) = on_stderr(
+        "error: lock conflict: active WAL is owned by heads/main; requested ref heads/other",
+    );
+    let e = classify(out, err, RequestCategory::QueueMutation);
+    assert_eq!(e.class(), "cross-ref");
+    assert!(e.to_string().contains("active WAL is owned by"));
+}
+
+#[test]
 fn a_ref_state_precondition_is_a_lock_conflict() {
     let (out, err) = on_stderr("error: ref-state precondition failed: heads/main advanced");
     let e = classify(out, err, RequestCategory::Publication);

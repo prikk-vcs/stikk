@@ -35,6 +35,7 @@ fn history_view_composes_lineage_and_queue_count() {
             queued_target: None,
             main_ref_state: Some("rs-bb".into()),
             trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
         });
     let view = history_view(&backend, Path::new("/repo"), "heads/main", 20).expect("history");
     assert_eq!(view.reff, "heads/main");

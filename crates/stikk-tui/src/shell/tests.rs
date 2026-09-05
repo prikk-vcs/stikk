@@ -53,6 +53,7 @@ fn renders_header_orientation_and_status_together() {
         queued_target: Some("heads/main".into()),
         main_ref_state: Some("237d0681".into()),
         trailing_partial_wal_bytes: 0,
+        active_patch_warning: None,
     });
     let (mut app, rx) = open("/home/dev/sample-repo", &Config::default());
     drain(&mut app, &rx, &backend);
@@ -156,6 +157,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
             queued_target: Some("heads/main".into()),
             main_ref_state: Some("bbbb".into()),
             trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
         })
         .with_history(History {
             reff: "heads/main".into(),

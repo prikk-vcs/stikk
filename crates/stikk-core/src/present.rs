@@ -28,6 +28,9 @@ pub enum OperationContext {
     LoadChanges,
     /// Listing refs (the ref picker).
     ListRefs,
+    /// Committing worktree changes (RFC 014). Prevention handles the common cases (F2/F6)
+    /// client-side; a refusal reaching here is the race, or something neither prevention check saw.
+    Commit,
     /// Anything not otherwise distinguished.
     Other,
 }
@@ -240,6 +243,31 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
         StikkError::Declined { detail } => Presentation::InConfirmation {
             message: detail.clone(),
         },
+        StikkError::CrossRef { message } => Presentation::RefusalOverlay(RefusalCard {
+            // `message` is prikk's own words (RFC 014 F2) — unlike `Stale`, this genuinely satisfies
+            // `RefusalCard.verbatim`'s invariant. A fixed override independent of `op` (like the
+            // schema-skew shape above): this class only ever comes from a commit, and stikk prevents it
+            // client-side (`Orientation::queued_target`) before arming one, so reaching here at all is
+            // already the rare race case (RFC 014 decision 2) — the same gloss and next-steps apply
+            // regardless of which read happened to be in flight when it hit.
+            verbatim: message.clone(),
+            gloss: Some(
+                "prikk's active queue belongs to a different ref than the one you tried to commit \
+                 to. Seal the queue first, or switch focus to the ref it targets."
+                    .to_string(),
+            ),
+            next_steps: vec![
+                NextStep {
+                    label: "Choose another ref".to_string(),
+                    target: NextTarget::OpenView(Target::RefPicker),
+                },
+                NextStep {
+                    label: "Refresh".to_string(),
+                    target: NextTarget::Refresh,
+                },
+            ],
+            glossary_codes: Vec::new(),
+        }),
         // `StikkError` is `#[non_exhaustive]`: a class added later degrades to an honest plain
         // statement carrying its message, never a panic (RR-5 discipline applied to our own type).
         other => Presentation::PlainStatement {
@@ -276,6 +304,11 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
         }
         OperationContext::Orient => {
             "prikk declined to open this repository. Its message above is the authoritative reason."
+        }
+        OperationContext::Commit => {
+            "prikk declined this commit. stikk shows prikk's reason above; the usual preconditions \
+             (a matching queue target, a non-empty worktree) were already checked before this was \
+             attempted."
         }
         OperationContext::Other => return None,
     };
@@ -319,6 +352,16 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
             label: "Refresh".to_string(),
             target: NextTarget::Refresh,
         }],
+        OperationContext::Commit => vec![
+            NextStep {
+                label: "Back to Changes".to_string(),
+                target: NextTarget::OpenView(Target::Changes),
+            },
+            NextStep {
+                label: "Refresh".to_string(),
+                target: NextTarget::Refresh,
+            },
+        ],
         OperationContext::Other => vec![NextStep {
             label: "Dismiss".to_string(),
             target: NextTarget::DismissAndResolveExternally,

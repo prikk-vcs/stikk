@@ -1,6 +1,6 @@
 //! Tests for the overlay layer (design TS-01; RFC 007).
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -143,20 +143,64 @@ fn an_ordinary_refusal_still_says_prikk_reported() {
     assert!(text.contains("prikk reported"));
 }
 
+fn viewer_readiness() -> stikk_model::Readiness {
+    stikk_model::Readiness {
+        author_ready: false,
+        maintainer_ready: false,
+        read_only: false,
+    }
+}
+
 #[test]
-fn palette_lists_commands_and_disables_below_capability() {
-    // A Viewer session sees every current (Viewer-level) command enabled.
+fn palette_lists_every_tier_one_command_enabled_for_a_viewer() {
     let overlay = Overlay::Palette {
         filter: String::new(),
         cursor: 0,
-        capability: Capability::Viewer,
+        readiness: viewer_readiness(),
     };
     let text = draw(&overlay);
     assert!(text.contains("Command palette"));
     assert!(text.contains("Open History"));
     assert!(text.contains("[Enter]")); // its binding
-    // No current command is disabled for a Viewer, so no "needs … readiness" appears.
-    assert!(!text.contains("needs"));
+    // Every tier-one command is unconditionally free — none of their lines carries a reason.
+    for name in ["Open History", "Open Changes", "Glossary & Help", "Quit"] {
+        let line = text
+            .lines()
+            .find(|l| l.contains(name))
+            .unwrap_or_else(|| panic!("expected a line for {name}"));
+        assert!(
+            !line.contains("needs"),
+            "{name} should not be disabled: {line:?}"
+        );
+    }
+}
+
+#[test]
+fn palette_disables_commit_for_a_viewer_with_the_capability_gate_reason() {
+    // RFC 014 §6: the palette and `confirm` must agree — this is the regression test for that.
+    let overlay = Overlay::Palette {
+        filter: "commit".into(),
+        cursor: 0,
+        readiness: viewer_readiness(),
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("Commit worktree changes"));
+    assert!(text.contains("needs AUTHOR signing readiness"));
+}
+
+#[test]
+fn palette_disables_commit_under_read_only_even_with_author_keys_present() {
+    let overlay = Overlay::Palette {
+        filter: "commit".into(),
+        cursor: 0,
+        readiness: stikk_model::Readiness {
+            author_ready: true,
+            maintainer_ready: false,
+            read_only: true,
+        },
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("read-only"));
 }
 
 #[test]
@@ -164,7 +208,7 @@ fn palette_filter_narrows_the_list() {
     let overlay = Overlay::Palette {
         filter: "history".into(),
         cursor: 0,
-        capability: Capability::Viewer,
+        readiness: viewer_readiness(),
     };
     let text = draw(&overlay);
     assert!(text.contains("Open History"));
@@ -271,4 +315,83 @@ fn confirmation_hostile_typed_input_also_renders_inert() {
     };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
+}
+
+#[test]
+fn commit_message_shows_the_target_ref_the_ud01_notice_and_typed_text() {
+    let overlay = Overlay::CommitMessage {
+        reff: "heads/main".to_string(),
+        typed: "fix the thing".to_string(),
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("Commit message"));
+    assert!(text.contains("heads/main"));
+    assert!(text.contains("required"));
+    assert!(text.contains("fix the thing"));
+}
+
+#[test]
+fn commit_message_hostile_ref_and_typed_text_render_inert() {
+    let overlay = Overlay::CommitMessage {
+        reff: "heads/\u{1b}[2Jevil".to_string(),
+        typed: "\u{1b}[2Jpasted".to_string(),
+    };
+    let text = draw(&overlay);
+    assert!(!text.contains('\u{1b}'));
+    assert!(text.contains('\u{FFFD}'));
+}
+
+fn commit_result(notes: Vec<&str>) -> stikk_prikk::CommitResult {
+    stikk_prikk::CommitResult {
+        baseline_ref: "heads/main".to_string(),
+        patch_id: "a".repeat(64),
+        wal_sequence: 1,
+        operations: 1,
+        referenced_blobs: 1,
+        text_edits: 0,
+        changes: vec![stikk_prikk::CommitChange {
+            operation: "create-file".to_string(),
+            path: "a.txt".to_string(),
+        }],
+        notes: notes.into_iter().map(str::to_string).collect(),
+    }
+}
+
+#[test]
+fn commit_result_shows_the_patch_id_counts_changes_and_every_note_verbatim() {
+    let overlay = Overlay::CommitResult {
+        result: commit_result(vec![
+            "note: multi-operation text diff minimization … remain later increments",
+            "note: the message is validated but not stored -- it will not appear in `prikk log`",
+        ]),
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("Commit recorded"));
+    assert!(text.contains(&"a".repeat(64)));
+    assert!(text.contains("create-file"));
+    assert!(text.contains("a.txt"));
+    assert!(text.contains("multi-operation text diff minimization"));
+    assert!(text.contains("message is validated but not stored"));
+}
+
+#[test]
+fn commit_result_with_no_message_fate_note_shows_only_the_note_present() {
+    // RFC 014's own found-a-contradiction case: a real prikk 0.32.0 prints only one note.
+    let overlay = Overlay::CommitResult {
+        result: commit_result(vec!["note: multi-operation text diff minimization"]),
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("multi-operation text diff minimization"));
+    assert!(!text.contains("message is validated but not stored"));
+}
+
+#[test]
+fn commit_result_hostile_patch_id_and_path_render_inert() {
+    let mut result = commit_result(vec![]);
+    result.patch_id = "\u{1b}[2Jevil".to_string();
+    result.changes[0].path = "\u{1b}[2Jpwned.txt".to_string();
+    let overlay = Overlay::CommitResult { result };
+    let text = draw(&overlay);
+    assert!(!text.contains('\u{1b}'));
+    assert!(text.contains('\u{FFFD}'));
 }

@@ -10,11 +10,11 @@
 use std::sync::mpsc;
 
 use stikk_core::{
-    BlockDetailView, ChangeEntry, ChangeKind, ChangesView, ConfirmationSummary, HistoryView,
-    OperationContext,
+    BlockDetailView, ChangeEntry, ChangeKind, ChangesView, CommitPreviewOutcome,
+    ConfirmationSummary, HistoryView, OperationContext, Outcome, commit_preview,
 };
 use stikk_model::{Capability, Readiness, StikkError, Tier};
-use stikk_prikk::{BlockRow, StateFiles};
+use stikk_prikk::{BlockRow, CommitResult, NullBackend, Orientation, StateFiles, WorktreeStatus};
 use stikk_state::Config;
 
 use super::*;
@@ -62,6 +62,27 @@ fn orientation_view(
 
 fn loaded(view: stikk_core::OrientationView) -> OrientationState {
     OrientationState::Loaded(view)
+}
+
+/// An orientation view with AUTHOR signing readiness present (RFC 014's commit tests need this — the
+/// default `orientation_view` is a Viewer, since most of this file's tests are read-only).
+fn author_orientation_view() -> stikk_core::OrientationView {
+    let readiness = Readiness {
+        author_ready: true,
+        maintainer_ready: false,
+        read_only: false,
+    };
+    stikk_core::OrientationView {
+        prikk_version: "prikk 0.30.0".to_string(),
+        prikk_supported: true,
+        prikk_validated: true,
+        queued_patches: 0,
+        queued_target: None,
+        trailing_partial_wal_bytes: 0,
+        main_ref_state: None,
+        capability: Capability::derive(readiness),
+        readiness,
+    }
 }
 
 fn block(id: &str, seq: u64) -> BlockRow {
@@ -943,9 +964,10 @@ fn nav_up_and_down_do_not_panic_or_move_anything_on_a_confirmation_overlay() {
 }
 
 #[test]
-fn select_on_a_confirmation_overlay_is_a_no_op_this_increment() {
-    // RFC 013: the machinery, not a consumer — there is no real `confirm()` call to dispatch from
-    // here yet, since nothing previews. Documented as a deliberate, temporary no-op.
+fn select_on_a_confirmation_overlay_with_no_pending_commit_is_a_defensive_no_op() {
+    // RFC 014 §3 wires `select()` to `App`'s own `pending_commit` state; a `Confirmation` overlay
+    // pushed directly (as every other test in this file does, bypassing the real preview flow) has no
+    // such state, so `select()` must not panic or silently dismiss it — there is nothing to confirm.
     let (mut app, _rx) = from_state(
         "/repo",
         loaded(orientation_view(0, None, None)),
@@ -959,4 +981,269 @@ fn select_on_a_confirmation_overlay_is_a_no_op_this_increment() {
     });
     app.select();
     assert!(app.has_overlay(), "select() must not silently dismiss it");
+}
+
+// RFC 014 §3: the commit flow, end to end through `App`.
+
+fn dirty_worktree_status() -> WorktreeStatus {
+    WorktreeStatus {
+        reff: "heads/main".to_string(),
+        clean: false,
+        tracked: 1,
+        unchanged: 0,
+        missing: 0,
+        modified: 1,
+        untracked: 0,
+        unsupported: 0,
+        entries: Vec::new(),
+        queued_elsewhere: None,
+    }
+}
+
+fn commit_backend() -> NullBackend {
+    NullBackend::supported()
+        .with_orientation(Orientation {
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+        })
+        .with_worktree_status(dirty_worktree_status())
+}
+
+#[test]
+fn begin_commit_opens_the_message_prompt_when_author_ready() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    match app.top_overlay() {
+        Some(Overlay::CommitMessage { reff, typed }) => {
+            assert_eq!(reff, "heads/main");
+            assert!(typed.is_empty());
+        }
+        other => panic!("expected CommitMessage, got {other:?}"),
+    }
+}
+
+#[test]
+fn begin_commit_refuses_with_a_banner_when_not_author_ready() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)), // Viewer: no signing readiness
+        Palette::default(),
+    );
+    app.begin_commit();
+    assert!(!app.has_overlay(), "no message prompt should open");
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("needs AUTHOR signing readiness"))
+    );
+}
+
+#[test]
+fn submitting_an_empty_commit_message_does_nothing() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.select(); // Enter with an empty typed field
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::CommitMessage { .. })),
+        "the prompt must stay open — UD-01 requires a non-empty message"
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "no preview request without a message"
+    );
+}
+
+#[test]
+fn submitting_a_commit_message_dispatches_a_preview_request_and_shows_loading() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.input_char('h');
+    app.input_char('i');
+    app.select();
+    let req = next_request(&rx);
+    assert!(matches!(req.kind, RequestKind::CommitPreview { reff } if reff == "heads/main"));
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::Loading {
+            what: "commit preview",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn a_blocked_commit_preview_shows_a_banner_and_closes_the_overlay() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.input_char('x');
+    app.select();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::CommitPreview(Ok(CommitPreviewOutcome::Blocked(
+            "the worktree matches this ref's replay baseline — there is nothing to commit"
+                .to_string(),
+        ))),
+    });
+    assert!(!app.has_overlay());
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("nothing to commit"))
+    );
+}
+
+#[test]
+fn a_ready_commit_preview_opens_the_confirmation_overlay_with_the_restated_summary() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.input_char('x');
+    app.select();
+    let req = next_request(&rx);
+    let backend = commit_backend();
+    let outcome = commit_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("a scripted backend's preview always succeeds");
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::CommitPreview(Ok(outcome)),
+    });
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { summary, tier, .. }) => {
+            assert_eq!(*tier, Tier::Two);
+            assert!(summary.target_ids.contains(&"heads/main".to_string()));
+        }
+        other => panic!("expected Confirmation, got {other:?}"),
+    }
+}
+
+#[test]
+fn confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result_verbatim() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.input_char('x');
+    app.select(); // message step -> preview request
+    let preview_req = next_request(&rx);
+    let backend = commit_backend();
+    let outcome = commit_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::CommitPreview(Ok(outcome)),
+    });
+
+    app.select(); // confirm step -> confirm+execute request
+    let confirm_req = next_request(&rx);
+    assert!(matches!(
+        confirm_req.kind,
+        RequestKind::CommitConfirmExecute { .. }
+    ));
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::Loading { what: "commit", .. })
+    ));
+
+    let result = CommitResult {
+        baseline_ref: "heads/main".to_string(),
+        patch_id: "1".repeat(64),
+        wal_sequence: 1,
+        operations: 1,
+        referenced_blobs: 1,
+        text_edits: 0,
+        changes: Vec::new(),
+        notes: vec!["note: a note prikk printed".to_string()],
+    };
+    app.apply(Response {
+        seq: confirm_req.seq,
+        kind: ResponseKind::CommitConfirmExecute(Ok(Outcome {
+            operation: "commit".to_string(),
+            result: result.clone(),
+        })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::CommitResult { result: shown }) => assert_eq!(shown, &result),
+        other => panic!("expected CommitResult, got {other:?}"),
+    }
+    // A successful commit refreshes Orientation so the queue count updates.
+    let orient_req = next_request(&rx);
+    assert!(matches!(orient_req.kind, RequestKind::Orient));
+}
+
+#[test]
+fn a_failed_commit_confirm_execute_surfaces_through_present_not_silently() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.input_char('x');
+    app.select();
+    let preview_req = next_request(&rx);
+    let backend = commit_backend();
+    let outcome = commit_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::CommitPreview(Ok(outcome)),
+    });
+    app.select();
+    let confirm_req = next_request(&rx);
+    app.apply(Response {
+        seq: confirm_req.seq,
+        kind: ResponseKind::CommitConfirmExecute(Err(StikkError::CrossRef {
+            message: "lock conflict: active WAL is owned by heads/main; requested ref heads/other"
+                .to_string(),
+        })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::Refusal { card, .. }) => {
+            assert!(card.verbatim.contains("active WAL is owned by"));
+        }
+        other => panic!("expected a Refusal-shaped overlay for CrossRef, got {other:?}"),
+    }
+}
+
+#[test]
+fn back_on_the_message_prompt_clears_the_pending_commit() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.input_char('x');
+    app.back();
+    assert!(!app.has_overlay());
+    // Re-opening and submitting a fresh message must still work — nothing from the abandoned attempt
+    // lingers to interfere.
+    app.begin_commit();
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::CommitMessage { .. })
+    ));
 }

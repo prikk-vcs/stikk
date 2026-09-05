@@ -60,6 +60,7 @@ fn main() -> ExitCode {
                 "76cee1dc985406f931a2bbeb217653e509183c2d5280fdf933b5ebac78f4cbc0".to_string(),
             ),
             trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
         })
         .with_history(History {
             reff: "heads/main".to_string(),

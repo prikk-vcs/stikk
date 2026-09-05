@@ -59,6 +59,14 @@ pub struct Orientation {
     pub main_ref_state: Option<String>,
     /// Trailing partial WAL bytes, if any — a torn tail an interrupted commit left behind.
     pub trailing_partial_wal_bytes: u64,
+    /// prikk's own active-patch threshold warning, verbatim, when the queue is at or above the warn or
+    /// hard-limit threshold (`PRIKK_ACTIVE_PATCH_WARN`/`_LIMIT`; design `C-D2a`; RFC 014 F5). `None`
+    /// below the warn threshold. Read from the same `status` report `Orientation` already parses — the
+    /// parser has tolerated this line's presence since RFC 012, deferred to this increment (see
+    /// `cli_backend::parse::orientation`'s doc). Never paraphrased (`ER-02`): stikk surfaces the limit
+    /// it is about to hit using prikk's own words, computed against whatever thresholds are actually
+    /// configured — including operator overrides stikk has no other way to know about.
+    pub active_patch_warning: Option<String>,
 }
 
 /// One sealed block in a ref's lineage, as `prikk log` reports it (design FR-011; RFC 006). Block
@@ -183,6 +191,46 @@ pub struct WorktreeStatus {
     pub queued_elsewhere: Option<String>,
 }
 
+/// One file-level change `prikk commit` recorded, from its per-path output lines (design `FR-050`;
+/// RFC 014). `operation` is prikk's own label (`create-file`, …), kept as text like
+/// [`WorktreeEntry::kind`] so a future operation kind renders rather than breaks parsing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitChange {
+    /// prikk's own operation label for this change.
+    pub operation: String,
+    /// The repo-relative path affected.
+    pub path: String,
+}
+
+/// The result of `prikk commit --from-worktree` (design `FR-050`; RFC 014). Every field is prikk's own
+/// fact, transported rather than summarised (`C-T4a`/`C-T4c`) — including `notes`, which carries **every**
+/// `note:` line prikk printed, verbatim and in order, rather than two hardcoded slots. RFC 014 F4 found
+/// exactly one such note (the message's fate); this seam was captured against real prikk 0.31.1 output,
+/// but a note is prose, not a stable field — a later prikk (0.32+, once RFC 123 lands) removes it because
+/// it becomes false, not because stikk's parser changed. A fixed two-note shape would misreport the
+/// moment upstream ships that change; `Vec<String>` degrades honestly to whatever prikk actually said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitResult {
+    /// The ref this patch was authored against (`baseline ref:`).
+    pub baseline_ref: String,
+    /// The new patch's object id.
+    pub patch_id: String,
+    /// The active WAL's sequence number for this patch.
+    pub wal_sequence: u64,
+    /// Number of operations the patch carries.
+    pub operations: u64,
+    /// Number of blobs the patch references.
+    pub referenced_blobs: u64,
+    /// Number of text-edit operations (always `0`: stikk never sends `--text-edits`, RFC 014 F1).
+    pub text_edits: u64,
+    /// The per-path changes captured (the indented lines under the summary).
+    pub changes: Vec<CommitChange>,
+    /// Every `note:` line prikk printed, verbatim, in the order printed (`ER-02`). Includes the
+    /// perpetual multi-operation-diff-minimization note and, on a prikk that has not yet shipped RFC
+    /// 123, the message's-fate note (RFC 014 F4) — never assumed present, never assumed absent.
+    pub notes: Vec<String>,
+}
+
 /// The entire prikk contract stikk depends on. Every method returns [`stikk_model::StikkError`] on
 /// failure, classified into the presentation taxonomy the operation layer consumes.
 ///
@@ -263,6 +311,24 @@ pub trait Prikk: Send + Sync {
     /// # Errors
     /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
     fn change_token(&self, repo: &Path) -> Result<ChangeToken>;
+
+    /// Author a worktree patch into the active WAL (design `FR-050`; category `QueueMutation`; RFC
+    /// 014) — **the first method on this trait that writes**. Never sends `--text-edits`: prikk's own
+    /// source documents it as a no-op retained for compatibility (RFC 014 F1), so offering it would be
+    /// a control that changes nothing.
+    ///
+    /// **Single-shot: never retried** (`SEAM-04`/`NFR-S04`). A failure returns and the caller — the
+    /// operation layer's `execute` — decides; no implementation of this method may retry internally.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError::CrossRef`] when the active WAL's queue targets a different ref than
+    /// `reff` (a race: stikk prevents this client-side before arming a commit, via
+    /// `Orientation::queued_target`, but the queue can move between preview and this call). A clean
+    /// worktree is likewise prevented client-side and, reaching here anyway, degrades to a verbatim
+    /// [`stikk_model::StikkError::Refusal`] (RFC 014 F6 — no dedicated class, since no misclassification
+    /// risk exists to fix). [`stikk_model::StikkError::NotReady`] when AUTHOR signing readiness is
+    /// absent (`OPL-04`'s seam-side re-check). Otherwise classified as for [`Prikk::orientation`].
+    fn commit(&self, repo: &Path, reff: &str, message: &str) -> Result<CommitResult>;
 }
 
 #[cfg(test)]

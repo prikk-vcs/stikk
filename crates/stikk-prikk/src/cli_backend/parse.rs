@@ -20,7 +20,10 @@
 
 use stikk_model::{ObjectId, RefName, Result, StikkError};
 
-use crate::{BlockRow, History, Orientation, RefEntry, StateFiles, WorktreeEntry, WorktreeStatus};
+use crate::{
+    BlockRow, CommitChange, CommitResult, History, Orientation, RefEntry, StateFiles,
+    WorktreeEntry, WorktreeStatus,
+};
 
 /// The per-path change kinds `worktree-status` emits; used to tell an indented entry line from a
 /// flush-left count line that happens to share a first word (`modified files:` vs `  modified …`).
@@ -40,19 +43,27 @@ const WORKTREE_KINDS: [&str; 4] = ["modified", "missing", "untracked", "unsuppor
 /// ```
 /// The `queued patches:` value is a bare count only when the queue is empty; otherwise prikk appends
 /// ` targeting <ref>` (RFC 009 F1 — this is not new drift, `git log -S` dates it to prikk 0.18.0).
-/// prikk may also print an active-patch threshold `warning:` line before the closing `status:` line;
-/// this parser does not read it (deferred to the commit increment), but tolerates its presence by
-/// anchoring on the `queued patches:` line rather than on where the report ends.
+/// prikk may also print an active-patch threshold `warning:` line before the closing `status:` line
+/// (`PRIKK_ACTIVE_PATCH_WARN`/`_LIMIT`; design `C-D2a`) — read here as of the commit increment (RFC
+/// 014 F5), verbatim and un-parsed further: whichever of the two wordings prikk used (approaching the
+/// recommended threshold, or at the hard limit) is carried through unchanged, distinguished only by
+/// its own text, never by stikk re-deriving the thresholds itself.
 pub(super) fn orientation(status: &str) -> Result<Orientation> {
     let (queued_patches, queued_target) =
         parse_queued(&required_field(status, "queued patches:")?)?;
     let trailing_partial_wal_bytes = required_u64(status, "trailing partial WAL bytes:")?;
     let main_ref_state = optional_object_id(status, "heads/main RefState:")?;
+    let active_patch_warning = status
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("warning: active patches"))
+        .map(str::to_string);
     Ok(Orientation {
         queued_patches,
         queued_target,
         main_ref_state,
         trailing_partial_wal_bytes,
+        active_patch_warning,
     })
 }
 
@@ -416,6 +427,84 @@ fn required_bool(text: &str, label: &str) -> Result<bool> {
             "prikk field {label:?} is not a bool: {other:?}"
         ))),
     }
+}
+
+/// A required object-id field: fetched like [`required_field`], then validated through
+/// [`ObjectId::parse`] (RFC 009 F2, UD-02) — unlike [`optional_object_id`], no sentinel is legal here,
+/// since a successful commit always mints a real patch id.
+fn required_object_id_field(text: &str, label: &str) -> Result<String> {
+    let value = required_field(text, label)?;
+    ObjectId::parse(&value).map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk field {label:?} is not a valid object id: {value:?}"
+        ))
+    })?;
+    Ok(value)
+}
+
+/// Parse `prikk commit --from-worktree` output into a [`CommitResult`] (design `FR-050`; RFC 014 §2).
+///
+/// Expected shape:
+/// ```text
+/// recorded worktree patch in active WAL
+/// baseline ref: <ref>
+/// patch id: <64-hex>
+/// WAL sequence: <n>
+/// operations: <n>
+/// referenced blobs: <n>
+/// text edits: <n>
+///   <operation> <path>
+///   …
+/// note: …
+/// [note: …]
+/// ```
+/// The headline is the shape anchor — its absence means this is not a commit report. Indented lines
+/// are the per-path changes; flush-left `note:` lines are captured **every one, verbatim, in order**
+/// (RFC 014 F4) — never assumed to be a fixed count, since a future prikk removing or adding one (RFC
+/// 123, message-as-evidence, already has) is not a shape this parser should refuse on.
+pub(super) fn commit(text: &str) -> Result<CommitResult> {
+    if !text
+        .lines()
+        .any(|line| line.trim() == "recorded worktree patch in active WAL")
+    {
+        return Err(StikkError::environment_msg(
+            "prikk commit output is missing its \"recorded worktree patch in active WAL\" headline",
+        ));
+    }
+    let baseline_ref = required_ref_field(text, "baseline ref:")?;
+    let patch_id = required_object_id_field(text, "patch id:")?;
+    let wal_sequence = required_u64(text, "WAL sequence:")?;
+    let operations = required_u64(text, "operations:")?;
+    let referenced_blobs = required_u64(text, "referenced blobs:")?;
+    let text_edits = required_u64(text, "text edits:")?;
+    let changes = text
+        .lines()
+        .filter(|line| line.starts_with(' ') || line.starts_with('\t'))
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let (operation, path) = trimmed.split_once(' ')?;
+            Some(CommitChange {
+                operation: operation.to_string(),
+                path: path.to_string(),
+            })
+        })
+        .collect();
+    let notes = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("note:"))
+        .map(str::to_string)
+        .collect();
+    Ok(CommitResult {
+        baseline_ref,
+        patch_id,
+        wal_sequence,
+        operations,
+        referenced_blobs,
+        text_edits,
+        changes,
+        notes,
+    })
 }
 
 #[cfg(test)]

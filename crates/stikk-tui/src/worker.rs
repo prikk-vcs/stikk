@@ -9,11 +9,12 @@ use std::path::Path;
 use std::sync::mpsc;
 
 use stikk_core::{
-    BlockDetailView, ChangesView, HistoryView, OrientationView, block_detail, changes_view,
+    BlockDetailView, ChangesView, CommitPreviewOutcome, Evidence, HistoryView, OrientationView,
+    Outcome, PreviewToken, block_detail, changes_view, commit_confirm_and_execute, commit_preview,
     history_view, list_refs, orient,
 };
-use stikk_model::Result;
-use stikk_prikk::{BlockRow, Prikk, RefEntry};
+use stikk_model::{Readiness, Result};
+use stikk_prikk::{BlockRow, CommitResult, Prikk, RefEntry};
 
 /// How many blocks the History view requests at a time (design FR-011 caps the listing).
 pub(crate) const HISTORY_LIMIT: usize = 200;
@@ -55,6 +56,25 @@ pub(crate) enum RequestKind {
         /// The ref to compare the worktree against.
         reff: String,
     },
+    /// Build the commit preview for a ref (design `FL-05` step 3; RFC 014).
+    CommitPreview {
+        /// The ref to commit to.
+        reff: String,
+    },
+    /// Confirm and execute a commit in one round trip (RFC 014 §3 step 4) — there is no user action
+    /// between confirmation succeeding and execution starting, so this is one worker request, not two.
+    CommitConfirmExecute {
+        /// The token [`RequestKind::CommitPreview`] minted.
+        token: PreviewToken,
+        /// The session's signing readiness, read on the UI thread immediately before dispatch.
+        readiness: Readiness,
+        /// The user's confirmation evidence (an explicit yes, at commit's tier 2).
+        evidence: Evidence,
+        /// The ref to commit to (must match the preview's).
+        reff: String,
+        /// The commit message, typed in the message step before this request was ever built.
+        message: String,
+    },
 }
 
 /// The worker's answer to one [`Request`], echoing its `seq`.
@@ -77,6 +97,10 @@ pub(crate) enum ResponseKind {
     Refs(Result<Vec<RefEntry>>),
     /// Answers [`RequestKind::Changes`].
     Changes(Result<ChangesView>),
+    /// Answers [`RequestKind::CommitPreview`].
+    CommitPreview(Result<CommitPreviewOutcome>),
+    /// Answers [`RequestKind::CommitConfirmExecute`].
+    CommitConfirmExecute(Result<Outcome<CommitResult>>),
 }
 
 /// A short, display-only label for the kind of work a [`RequestKind`] represents — used for the
@@ -90,6 +114,8 @@ impl RequestKind {
             Self::BlockState { .. } => "block detail",
             Self::Refs => "refs",
             Self::Changes { .. } => "changes",
+            Self::CommitPreview { .. } => "commit preview",
+            Self::CommitConfirmExecute { .. } => "commit",
         }
     }
 }
@@ -121,6 +147,18 @@ pub(crate) fn run(
             RequestKind::Changes { reff } => {
                 ResponseKind::Changes(changes_view(prikk, repo, &reff))
             }
+            RequestKind::CommitPreview { reff } => {
+                ResponseKind::CommitPreview(commit_preview(prikk, repo, &reff))
+            }
+            RequestKind::CommitConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                reff,
+                message,
+            } => ResponseKind::CommitConfirmExecute(commit_confirm_and_execute(
+                prikk, repo, token, readiness, evidence, &reff, &message,
+            )),
         };
         // The UI thread has quit and dropped its receiver; nothing left to deliver to.
         if res_tx.send(Response { seq, kind }).is_err() {

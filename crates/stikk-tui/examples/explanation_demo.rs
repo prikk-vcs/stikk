@@ -38,6 +38,7 @@ fn main() -> ExitCode {
                 "76cee1dc985406f931a2bbeb217653e509183c2d5280fdf933b5ebac78f4cbc0".to_string(),
             ),
             trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
         })
         // History refuses — the whole point of the demo: a real refusal to explain.
         .with_history_refusal("ref \"heads/main\" does not exist at this revision")

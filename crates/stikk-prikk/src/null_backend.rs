@@ -9,9 +9,22 @@ use std::path::Path;
 use stikk_model::{ChangeToken, Result, StikkError};
 
 use crate::version::Version;
-use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus};
+use crate::{
+    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus,
+};
 
 type Scripted<T> = std::result::Result<T, String>;
+
+/// A scripted commit outcome. Not `Scripted<T>` (`Result<T, String>`) like every other field, because
+/// commit is the one seam method a test needs to fail under **two** distinct classes — an ordinary
+/// refusal, and the RFC 014 F2 race ([`StikkError::CrossRef`]) — and [`deliver`] only ever produces
+/// [`StikkError::Refusal`] from a bare `String`.
+#[derive(Debug, Clone)]
+enum ScriptedCommit {
+    Ok(CommitResult),
+    Refusal(String),
+    CrossRef(String),
+}
 
 /// A [`Prikk`] whose answers are set up front.
 #[derive(Debug, Clone)]
@@ -24,6 +37,7 @@ pub struct NullBackend {
     tags: Scripted<Vec<RefEntry>>,
     worktree: Scripted<WorktreeStatus>,
     change_token: Scripted<ChangeToken>,
+    commit: ScriptedCommit,
 }
 
 impl NullBackend {
@@ -49,6 +63,7 @@ impl NullBackend {
                 queued_target: None,
                 main_ref_state: None,
                 trailing_partial_wal_bytes: 0,
+                active_patch_warning: None,
             }),
             history: Ok(History {
                 reff: "heads/main".to_string(),
@@ -85,6 +100,16 @@ impl NullBackend {
                 0,
                 None,
             )),
+            commit: ScriptedCommit::Ok(CommitResult {
+                baseline_ref: "heads/main".to_string(),
+                patch_id: "1".repeat(64),
+                wal_sequence: 1,
+                operations: 1,
+                referenced_blobs: 1,
+                text_edits: 0,
+                changes: Vec::new(),
+                notes: Vec::new(),
+            }),
         }
     }
 
@@ -205,6 +230,28 @@ impl NullBackend {
         self
     }
 
+    /// Replace the commit result this backend returns from [`Prikk::commit`] (RFC 014).
+    #[must_use]
+    pub fn with_commit(mut self, result: CommitResult) -> Self {
+        self.commit = ScriptedCommit::Ok(result);
+        self
+    }
+
+    /// Make the commit call fail with an ordinary refusal carrying `message`.
+    #[must_use]
+    pub fn with_commit_refusal(mut self, message: impl Into<String>) -> Self {
+        self.commit = ScriptedCommit::Refusal(message.into());
+        self
+    }
+
+    /// Make the commit call fail with the RFC 014 F2 cross-ref race
+    /// ([`StikkError::CrossRef`]) — the queue moved between preview and this call.
+    #[must_use]
+    pub fn with_commit_cross_ref(mut self, message: impl Into<String>) -> Self {
+        self.commit = ScriptedCommit::CrossRef(message.into());
+        self
+    }
+
     /// Mark the reported prikk version as unsupported (for testing the version-skew path).
     #[must_use]
     pub fn unsupported(mut self) -> Self {
@@ -250,6 +297,14 @@ impl Prikk for NullBackend {
 
     fn change_token(&self, _repo: &Path) -> Result<ChangeToken> {
         deliver(&self.change_token)
+    }
+
+    fn commit(&self, _repo: &Path, _reff: &str, _message: &str) -> Result<CommitResult> {
+        match self.commit.clone() {
+            ScriptedCommit::Ok(result) => Ok(result),
+            ScriptedCommit::Refusal(message) => Err(StikkError::Refusal { message }),
+            ScriptedCommit::CrossRef(message) => Err(StikkError::CrossRef { message }),
+        }
     }
 }
 

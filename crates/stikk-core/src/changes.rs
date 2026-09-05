@@ -16,10 +16,12 @@
 use std::path::Path;
 
 use stikk_model::{Result, StikkError};
-use stikk_prikk::{Prikk, WorktreeStatus};
+use stikk_prikk::{Handshake, Prikk, WorktreeStatus};
 
 /// The lowest prikk version where `worktree-status` is reliable (RFC 008; UD-03 fixed at 0.28).
-const WORKTREE_STATUS_MIN: (u32, u32, u32) = (0, 28, 0);
+/// `pub(crate)`: the commit preview (RFC 014 §3) is derived from the same read and needs the same
+/// gate — a preview built atop known-unreliable worktree-status would inherit UD-03's defect.
+pub(crate) const WORKTREE_STATUS_MIN: (u32, u32, u32) = (0, 28, 0);
 
 /// A change kind, mapped from prikk's per-path label so the view can group and style it. `Other`
 /// preserves any future kind rather than dropping it.
@@ -105,6 +107,18 @@ pub struct ChangesView {
 /// any [`StikkError`] the seam raises (a bad ref, an unrecognized shape).
 pub fn changes_view(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<ChangesView> {
     let handshake = prikk.handshake()?;
+    ensure_worktree_status_supported(&handshake)?;
+    let status = prikk.worktree_status(repo, reff)?;
+    Ok(from_status(status))
+}
+
+/// Refuse with stikk-authored guidance, rather than invoke the pre-fix command, below prikk 0.28
+/// (RFC 008; UD-03). Shared with the commit preview (RFC 014 §3), which is derived from the same
+/// `worktree-status` read and would otherwise inherit the same unreliability silently.
+///
+/// # Errors
+/// [`StikkError::NotReady`] below the floor.
+pub(crate) fn ensure_worktree_status_supported(handshake: &Handshake) -> Result<()> {
     let version = handshake.version;
     if (version.major, version.minor, version.patch) < WORKTREE_STATUS_MIN {
         return Err(StikkError::NotReady {
@@ -115,12 +129,11 @@ pub fn changes_view(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<Chang
             ),
         });
     }
-    let status = prikk.worktree_status(repo, reff)?;
-    Ok(from_status(status))
+    Ok(())
 }
 
 /// Map the seam's [`WorktreeStatus`] into the view-model (labels → [`ChangeKind`]).
-fn from_status(status: WorktreeStatus) -> ChangesView {
+pub(crate) fn from_status(status: WorktreeStatus) -> ChangesView {
     let entries = status
         .entries
         .into_iter()

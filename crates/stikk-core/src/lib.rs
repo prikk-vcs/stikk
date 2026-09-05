@@ -15,6 +15,7 @@
 
 pub mod change_token;
 pub mod changes;
+pub mod commit;
 pub mod confirm;
 pub mod glossary;
 pub mod history;
@@ -25,6 +26,10 @@ pub mod refusal_history;
 
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{ChangeEntry, ChangeKind, ChangesView, changes_view};
+pub use commit::{
+    COMMIT_OPERATION, CommitPreview, CommitPreviewOutcome, commit_confirm_and_execute,
+    commit_preview,
+};
 pub use confirm::{
     ConfirmationSummary, ConfirmedToken, Evidence, Intent, Outcome, PreviewToken, capability_gate,
     confirm, execute, preview,

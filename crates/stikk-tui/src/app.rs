@@ -23,10 +23,10 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 use stikk_core::{
-    BlockDetailView, ChangesView, Command, HistoryView, NextTarget, OperationContext, Presentation,
-    RefusalHistory, Target, present,
+    BlockDetailView, ChangesView, Command, CommitPreviewOutcome, HistoryView, NextTarget,
+    OperationContext, Presentation, RefusalHistory, Target, present,
 };
-use stikk_model::{Capability, Tier};
+use stikk_model::Tier;
 use stikk_state::Config;
 
 use crate::overlay::Overlay;
@@ -154,6 +154,32 @@ pub struct App {
     /// "stop waiting" posture as a stale response, not a crash.
     req_tx: mpsc::Sender<Request>,
     operations: Vec<Operation>,
+    /// The commit flow's state between overlays (RFC 014 §3) — not carried on [`Overlay::Confirmation`]
+    /// itself, since [`stikk_core::PreviewToken`] has no public constructor and no `Clone`/`PartialEq`,
+    /// so it cannot live on a type ([`Overlay`]) that derives those. `App` is the one place that holds
+    /// it, across exactly the two round trips the flow needs (preview, then confirm+execute).
+    pending_commit: Option<PendingCommit>,
+}
+
+/// See [`App::pending_commit`].
+enum PendingCommit {
+    /// The message step finished; a [`RequestKind::CommitPreview`] is in flight for `reff`.
+    AwaitingPreview {
+        /// The ref this commit targets.
+        reff: String,
+        /// The message the user typed (`FL-05` step 2), carried through to execution.
+        message: String,
+    },
+    /// The preview succeeded; `token` is armed and `Overlay::Confirmation` is on the stack awaiting
+    /// evidence.
+    Confirming {
+        /// Feed this into [`stikk_core::commit_confirm_and_execute`] once evidence is supplied.
+        token: stikk_core::PreviewToken,
+        /// The ref this commit targets (must match the preview's).
+        reff: String,
+        /// The message the user typed.
+        message: String,
+    },
 }
 
 impl App {
@@ -211,6 +237,7 @@ impl App {
             next_seq: 0,
             req_tx,
             operations: Vec::new(),
+            pending_commit: None,
         }
     }
 
@@ -290,6 +317,77 @@ impl App {
         }
     }
 
+    /// Begin the commit flow (`FL-05` step 1; the `C` key; RFC 014 §3). Checked here, before the
+    /// message prompt even opens (`C-T4d`): a session that cannot commit sees why immediately, rather
+    /// than typing a message only to be refused at confirmation. This is the same
+    /// [`stikk_core::capability_gate`] check the palette's `op.commit` entry uses (RFC 014 §6) — the two
+    /// must agree.
+    pub fn begin_commit(&mut self) {
+        self.banner = None;
+        let readiness = self.readiness();
+        match stikk_core::capability_gate(stikk_core::COMMIT_OPERATION, Tier::Two, readiness) {
+            Ok(()) => {
+                self.overlays.push(Overlay::CommitMessage {
+                    reff: self.focused_ref.clone(),
+                    typed: String::new(),
+                });
+            }
+            Err(stikk_model::StikkError::NotReady { detail }) => self.banner = Some(detail),
+            // `capability_gate` only ever returns `NotReady`; kept exhaustive so a future change to
+            // that contract fails here loudly rather than silently swallowing a new error shape.
+            Err(other) => self.banner = Some(other.to_string()),
+        }
+    }
+
+    /// `FL-05` step 2 → 3: the message step finished (`Enter` on [`Overlay::CommitMessage`]) — dispatch
+    /// the preview, which does the fresh reads and the cross-ref/clean-worktree prevention (RFC 014
+    /// §3). A blank message is refused here rather than sent (`UD-01`: required non-empty).
+    fn submit_commit_message(&mut self, reff: String, typed: &str) {
+        let message = typed.trim().to_string();
+        if message.is_empty() {
+            return;
+        }
+        self.overlays.pop();
+        let seq = self.dispatch(RequestKind::CommitPreview { reff: reff.clone() });
+        self.overlays.push(Overlay::Loading {
+            what: "commit preview",
+            seq,
+        });
+        self.pending_commit = Some(PendingCommit::AwaitingPreview { reff, message });
+    }
+
+    /// The confirmation step's `Enter`: dispatch confirm+execute with whatever evidence the tier needs.
+    /// Tier 2 (commit's own tier) needs only an explicit yes; the typed-name shape stays reachable for
+    /// whichever tier-3-typed operation lands next, matching this overlay's general contract (RFC 013
+    /// §6) even though nothing at tier 3-typed drives it through `App` yet.
+    fn submit_commit_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingCommit::Confirming {
+            token,
+            reff,
+            message,
+        }) = self.pending_commit.take()
+        else {
+            return; // no commit is actually pending — a stray Enter on a Confirmation this app did not open
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let seq = self.dispatch(RequestKind::CommitConfirmExecute {
+            token,
+            readiness,
+            evidence,
+            reff,
+            message,
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "commit",
+            seq,
+        });
+    }
+
     /// The context-sensitive select/drill-in action (the `Enter` key). Overlays take priority.
     pub fn select(&mut self) {
         match self.overlays.last() {
@@ -322,8 +420,8 @@ impl App {
             Some(Overlay::Palette { filter, cursor, .. }) => {
                 let hits = stikk_core::palette::matching(filter);
                 if let Some(cmd) = hits.get(*cursor).copied() {
-                    let capability = self.capability();
-                    if cmd.available_to(capability) {
+                    let readiness = self.readiness();
+                    if cmd.available_to(readiness) {
                         self.overlays.pop();
                         self.run_command(cmd);
                     }
@@ -341,14 +439,21 @@ impl App {
                     }
                 }
             }
-            // `Confirmation` has no wiring yet (RFC 013: the machinery, not a consumer) — there is no
-            // real `confirm()` call to dispatch, since nothing previews yet. Falls through with the
-            // other overlays that take no `Select` action.
+            Some(Overlay::CommitMessage { reff, typed }) => {
+                let (reff, typed) = (reff.clone(), typed.clone());
+                self.submit_commit_message(reff, &typed);
+            }
+            // RFC 014 §3: commit is this overlay's first consumer (RFC 013 shipped it unwired).
+            Some(Overlay::Confirmation { tier, typed, .. }) => {
+                let (tier, typed) = (*tier, typed.clone());
+                self.submit_commit_confirmation(tier, &typed);
+            }
+            // A commit result is dismissed like any other content overlay — no drill-in.
             Some(
                 Overlay::Glossary
                 | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
-                | Overlay::Confirmation { .. },
+                | Overlay::CommitResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -400,11 +505,11 @@ impl App {
 
     /// Open the command palette (the `:` key).
     pub fn open_palette(&mut self) {
-        let capability = self.capability();
+        let readiness = self.readiness();
         self.overlays.push(Overlay::Palette {
             filter: String::new(),
             cursor: 0,
-            capability,
+            readiness,
         });
     }
 
@@ -431,8 +536,8 @@ impl App {
         }
     }
 
-    /// Type a character — the palette's filter, or a tier-3-typed confirmation's typed name (RFC 013
-    /// §6, reusing this same plumbing).
+    /// Type a character — the palette's filter, a tier-3-typed confirmation's typed name (RFC 013 §6),
+    /// or the commit message (RFC 014 §3, reusing this same plumbing).
     pub fn input_char(&mut self, ch: char) {
         match self.overlays.last_mut() {
             Some(Overlay::Palette { filter, cursor, .. }) => {
@@ -442,12 +547,13 @@ impl App {
             Some(Overlay::Confirmation { tier, typed, .. }) if *tier == Tier::ThreeTyped => {
                 typed.push(ch);
             }
+            Some(Overlay::CommitMessage { typed, .. }) => typed.push(ch),
             _ => {}
         }
     }
 
-    /// Delete the last typed character — the palette's filter, or a tier-3-typed confirmation's typed
-    /// name.
+    /// Delete the last typed character — the palette's filter, a tier-3-typed confirmation's typed
+    /// name, or the commit message.
     pub fn backspace(&mut self) {
         match self.overlays.last_mut() {
             Some(Overlay::Palette { filter, cursor, .. }) => {
@@ -457,20 +563,25 @@ impl App {
             Some(Overlay::Confirmation { tier, typed, .. }) if *tier == Tier::ThreeTyped => {
                 typed.pop();
             }
+            Some(Overlay::CommitMessage { typed, .. }) => {
+                typed.pop();
+            }
             _ => {}
         }
     }
 
     /// Whether the top overlay is a text-entry surface (so the key layer routes chars to it). A
     /// confirmation overlay wants text only at [`Tier::ThreeTyped`] (RFC 013 §6) — tiers 2/3 take a
-    /// plain yes/no, not typed input.
+    /// plain yes/no, not typed input. The commit message prompt (RFC 014 §3) always wants text.
     #[must_use]
     pub fn wants_text_input(&self) -> bool {
-        matches!(self.overlays.last(), Some(Overlay::Palette { .. }))
-            || matches!(
-                self.overlays.last(),
-                Some(Overlay::Confirmation { tier, .. }) if *tier == Tier::ThreeTyped
-            )
+        matches!(
+            self.overlays.last(),
+            Some(Overlay::Palette { .. } | Overlay::CommitMessage { .. })
+        ) || matches!(
+            self.overlays.last(),
+            Some(Overlay::Confirmation { tier, .. }) if *tier == Tier::ThreeTyped
+        )
     }
 
     /// Move the selection up (the top overlay's cursor if it has one, else the History cursor).
@@ -481,12 +592,14 @@ impl App {
             | Some(Overlay::Stale { cursor, .. })
             | Some(Overlay::Palette { cursor, .. })
             | Some(Overlay::Refusals { cursor, .. }) => *cursor = cursor.saturating_sub(1),
-            // A confirmation overlay is a single prompt, not a list — no cursor to move (RFC 013 §6).
+            // A single prompt or content pane, not a list — no cursor to move (RFC 013 §6/RFC 014 §3).
             Some(
                 Overlay::Glossary
                 | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
-                | Overlay::Confirmation { .. },
+                | Overlay::Confirmation { .. }
+                | Overlay::CommitMessage { .. }
+                | Overlay::CommitResult { .. },
             ) => {}
             None => {
                 if let Some(Screen::History { cursor, .. }) = self.screens.last_mut() {
@@ -519,7 +632,9 @@ impl App {
                 Overlay::Glossary
                 | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
-                | Overlay::Confirmation { .. },
+                | Overlay::Confirmation { .. }
+                | Overlay::CommitMessage { .. }
+                | Overlay::CommitResult { .. },
             ) => {}
             None => {
                 if let Some(Screen::History { view, cursor, .. }) = self.screens.last_mut() {
@@ -536,7 +651,17 @@ impl App {
         if self.fault.take().is_some() {
             return;
         }
-        if self.overlays.pop().is_some() {
+        if let Some(overlay) = self.overlays.pop() {
+            // Cancelling the message step or a confirmation abandons the commit it belonged to (RFC
+            // 014 §3) — otherwise a stale `PreviewToken` would sit unused until a later, unrelated
+            // commit's response arrived and (harmlessly, but confusingly) found nothing to attach it
+            // to. Popping either overlay is exactly "the user is not doing this anymore."
+            if matches!(
+                overlay,
+                Overlay::CommitMessage { .. } | Overlay::Confirmation { .. }
+            ) {
+                self.pending_commit = None;
+            }
             return;
         }
         if self.banner.take().is_some() {
@@ -560,6 +685,8 @@ impl App {
             ResponseKind::BlockState(r) => r.is_ok(),
             ResponseKind::Refs(r) => r.is_ok(),
             ResponseKind::Changes(r) => r.is_ok(),
+            ResponseKind::CommitPreview(r) => r.is_ok(),
+            ResponseKind::CommitConfirmExecute(r) => r.is_ok(),
         };
         self.record_finished(seq, ok);
         match kind {
@@ -568,6 +695,10 @@ impl App {
             ResponseKind::BlockState(result) => self.apply_block_state(seq, result),
             ResponseKind::Refs(result) => self.apply_refs(seq, result),
             ResponseKind::Changes(result) => self.apply_changes(seq, result),
+            ResponseKind::CommitPreview(result) => self.apply_commit_preview(seq, result),
+            ResponseKind::CommitConfirmExecute(result) => {
+                self.apply_commit_confirm_execute(seq, result);
+            }
         }
     }
 
@@ -705,6 +836,87 @@ impl App {
         }
     }
 
+    /// Answers [`RequestKind::CommitPreview`] (RFC 014 §3). Three outcomes, all replacing (or removing)
+    /// the `Overlay::Loading` placeholder [`Self::submit_commit_message`] pushed: blocked (`C-T4d`,
+    /// stikk's own words — never routed through `present()`, since neither condition is an error),
+    /// ready (arms the confirmation), or a genuine seam failure (the usual `present()` routing).
+    fn apply_commit_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<CommitPreviewOutcome>,
+    ) {
+        let index = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
+        let Some(index) = index else {
+            return; // stale: the user navigated away before the preview resolved
+        };
+        // Consumed regardless of outcome: a blocked or failed preview leaves nothing to confirm, and a
+        // ready one hands its pieces to the new `Confirming` state below — never both.
+        let pending = self.pending_commit.take();
+        match result {
+            Ok(CommitPreviewOutcome::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            Ok(CommitPreviewOutcome::Ready { preview: _, token }) => {
+                let Some(PendingCommit::AwaitingPreview { reff, message }) = pending else {
+                    self.overlays.remove(index);
+                    return; // defensive: should not happen, but nothing to confirm without this
+                };
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::Confirmation {
+                        summary: token.summary().clone(),
+                        tier: token.tier(),
+                        typed: String::new(),
+                        error: None,
+                    };
+                }
+                self.pending_commit = Some(PendingCommit::Confirming {
+                    token: *token,
+                    reff,
+                    message,
+                });
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Commit);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::CommitConfirmExecute`] (RFC 014 §3 step 4). On success, shows prikk's
+    /// result verbatim and refreshes Orientation so the queue count reflects the new patch; on failure
+    /// (`Stale`, `Declined`, the `CrossRef` race, or a genuine refusal), the usual `present()` routing.
+    fn apply_commit_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::CommitResult>>,
+    ) {
+        let index = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
+        let Some(index) = index else {
+            return; // stale: the user navigated away before the response arrived
+        };
+        match result {
+            Ok(outcome) => {
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::CommitResult {
+                        result: outcome.result,
+                    };
+                }
+                self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Commit);
+            }
+        }
+    }
+
     /// Record that the worker thread itself has stopped (RFC 010 §7/ER-04) — there is no
     /// [`stikk_model::StikkError`] to route through `present()` for "the channel closed", so this is a
     /// direct fault, stated exactly once by the caller (repeating it on every subsequent poll would
@@ -797,17 +1009,23 @@ impl App {
         match cmd.id {
             "view.refresh" => self.reload(),
             "session.refusals" => self.open_refusals(),
+            "op.commit" => self.begin_commit(),
             "app.quit" => self.should_quit = true,
             _ => {}
         }
     }
 
-    /// The session's derived capability (Viewer when no orientation is loaded).
+    /// The session's signing readiness (RFC 014 §6) — the tier-aware palette affordance and
+    /// [`Self::begin_commit`]'s pre-check both need this, not a derived [`stikk_model::Capability`]
+    /// alone, since
+    /// only `Readiness` carries whether read-only mode is on. Defaults to
+    /// [`stikk_model::Readiness::none`] before orientation has loaded (Viewer-equivalent, matching
+    /// every other pre-load default in this file).
     #[must_use]
-    fn capability(&self) -> Capability {
+    fn readiness(&self) -> stikk_model::Readiness {
         match &self.state {
-            OrientationState::Loaded(view) => view.capability,
-            _ => Capability::Viewer,
+            OrientationState::Loaded(view) => view.readiness,
+            _ => stikk_model::Readiness::none(),
         }
     }
 

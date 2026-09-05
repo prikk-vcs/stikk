@@ -33,6 +33,8 @@ pub enum Action {
     OpenChanges,
     /// Toggle the display-only untracked filter (Changes view).
     ToggleUntracked,
+    /// Begin the commit flow (`FL-05` step 1; RFC 014).
+    Commit,
     /// Open the glossary / help browser.
     OpenGlossary,
     /// Open the command palette.
@@ -76,6 +78,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('b') => Action::OpenRefPicker,
         KeyCode::Char('w') => Action::OpenChanges,
         KeyCode::Char('u') => Action::ToggleUntracked,
+        KeyCode::Char('C') => Action::Commit,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,
         KeyCode::Char('R') => Action::OpenRefusals,

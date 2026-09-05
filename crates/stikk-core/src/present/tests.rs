@@ -313,6 +313,37 @@ fn stale_is_never_a_refusal_overlay_design_review_c1() {
 }
 
 #[test]
+fn cross_ref_becomes_a_refusal_overlay_never_a_lock_conflict_shape() {
+    // RFC 014 F2/decision 2: prikk's own words, so RefusalOverlay is correct here (unlike Stale) — but
+    // this is its own class, distinct from LockConflict, so a future lock-inspector jump never attaches.
+    let err = StikkError::CrossRef {
+        message: "lock conflict: active WAL is owned by heads/main; requested ref heads/other"
+            .into(),
+    };
+    let card = match present(&err, OperationContext::Commit) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    assert!(card.verbatim.contains("active WAL is owned by"));
+    assert!(card.gloss.as_deref().is_some_and(|g| g.contains("Seal")));
+    let labels: Vec<&str> = card.next_steps.iter().map(|s| s.label.as_str()).collect();
+    assert_eq!(labels, vec!["Choose another ref", "Refresh"]);
+}
+
+#[test]
+fn a_commit_refusal_offers_back_to_changes_and_refresh() {
+    let err = StikkError::Refusal {
+        message: "invalid name: worktree has no node-addressed changes to commit".into(),
+    };
+    let card = match present(&err, OperationContext::Commit) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    let labels: Vec<&str> = card.next_steps.iter().map(|s| s.label.as_str()).collect();
+    assert_eq!(labels, vec!["Back to Changes", "Refresh"]);
+}
+
+#[test]
 fn declined_routes_to_in_confirmation_not_a_separate_popup() {
     // RFC 013 §4: wrong/empty confirmation evidence belongs inside the confirmation surface that asked
     // for it, not a new overlay — the user is still mid-confirmation, not facing an unrelated failure.

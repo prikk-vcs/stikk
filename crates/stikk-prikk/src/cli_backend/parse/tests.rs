@@ -49,12 +49,11 @@ status: multi-operation text diff minimization and plugins not yet implemented
 ";
 
 // Captured verbatim from `prikk status` with `PRIKK_ACTIVE_PATCH_WARN=1 PRIKK_ACTIVE_PATCH_LIMIT=100`
-// on a repository with one queued patch, prikk 0.30.0 — proves the parser tolerates the active-patch
-// threshold `warning:` line prikk inserts between `queued patches:` and `status:` (not itself parsed
-// this increment; RFC 009 open question, ruled deferred to the commit increment). Re-verified
-// byte-identical against prikk 0.31.0 on 2026-09-05 with the same two env vars (RFC 012 F-e) — note a
-// *smaller* `PRIKK_ACTIVE_PATCH_LIMIT` produces a differently-worded hard-limit warning instead of this
-// one; that shape is likewise not parsed, so it needed no fixture of its own.
+// on a repository with one queued patch, prikk 0.30.0 — the active-patch threshold `warning:` line
+// prikk inserts between `queued patches:` and `status:` (design `C-D2a`; parsed as of RFC 014 F5, the
+// commit increment — RFC 009 had deferred it). Re-verified byte-identical against prikk 0.31.0 on
+// 2026-09-05 (RFC 012 F-e) and again against a real prikk 0.31.1 binary on 2026-09-06 (RFC 014) with
+// the same two env vars.
 const STATUS_QUEUED_WITH_WARNING_FIXTURE: &str = "\
 prikk repository: /tmp/sample/.prikk
 active WAL records: 1
@@ -62,6 +61,21 @@ trailing partial WAL bytes: 0
 heads/main RefState: 0ea4951e3c16277436be45c729885d25d5d92c2073a0c1585e793af60c6d9e27
 queued patches: 1 targeting heads/main
 warning: active patches (1) at or above the recommended threshold (1); consider running `prikk seal`
+status: multi-operation text diff minimization and plugins not yet implemented
+";
+
+// Captured verbatim against a real prikk 0.31.1 binary on 2026-09-06 with
+// `PRIKK_ACTIVE_PATCH_WARN=1 PRIKK_ACTIVE_PATCH_LIMIT=1` (RFC 014 F5) — the differently-worded
+// hard-limit variant `STATUS_QUEUED_WITH_WARNING_FIXTURE`'s own comment predicted but did not capture.
+// Distinguished from the warn-threshold wording only by its own text (`configured hard limit` vs
+// `recommended threshold`), never by stikk re-deriving the thresholds.
+const STATUS_QUEUED_AT_HARD_LIMIT_FIXTURE: &str = "\
+prikk repository: /tmp/sample/.prikk
+active WAL records: 1
+trailing partial WAL bytes: 0
+heads/main RefState: <not published>
+queued patches: 1 targeting heads/main
+warning: active patches (1) at or above the configured hard limit (1); commit is blocked until you run `prikk seal`
 status: multi-operation text diff minimization and plugins not yet implemented
 ";
 
@@ -97,10 +111,30 @@ fn parses_queued_patches_and_their_target_ref() {
 }
 
 #[test]
-fn tolerates_an_active_patch_threshold_warning_line() {
+fn captures_the_active_patch_warn_threshold_line_verbatim() {
+    // RFC 014 F5 / C-D2a: surfaced in the preview before any refusal, in prikk's own words.
     let o = orientation(STATUS_QUEUED_WITH_WARNING_FIXTURE).expect("status parses");
     assert_eq!(o.queued_patches, 1);
     assert_eq!(o.queued_target.as_deref(), Some("heads/main"));
+    let warning = o.active_patch_warning.expect("warning must be captured");
+    assert!(
+        warning.starts_with("warning: active patches (1) at or above the recommended threshold")
+    );
+    assert!(STATUS_QUEUED_WITH_WARNING_FIXTURE.contains(&warning));
+}
+
+#[test]
+fn captures_the_active_patch_hard_limit_line_verbatim_distinguishable_from_the_warn_wording() {
+    let o = orientation(STATUS_QUEUED_AT_HARD_LIMIT_FIXTURE).expect("status parses");
+    let warning = o.active_patch_warning.expect("warning must be captured");
+    assert!(warning.contains("configured hard limit"));
+    assert!(!warning.contains("recommended threshold"));
+}
+
+#[test]
+fn no_active_patch_warning_when_prikk_did_not_print_one() {
+    let o = orientation(STATUS_QUEUED_FIXTURE).expect("status parses");
+    assert_eq!(o.active_patch_warning, None);
 }
 
 #[test]
@@ -582,6 +616,86 @@ fn worktree_status_refuses_without_the_headline() {
 fn worktree_status_refuses_on_a_missing_count() {
     let text = "ref: heads/main\nworktree: clean against baseline\n";
     assert_eq!(worktree_status(text).unwrap_err().class(), "environment");
+}
+
+// Captured verbatim against a real prikk 0.31.1 binary on 2026-09-06 (RFC 014 §2/§9):
+// `prikk commit --from-worktree --ref heads/main -m "first patch"` on a freshly-`init`ed repository
+// with one new file. Carries **both** `note:` lines a validated-range prikk prints — the perpetual
+// diff-minimization note, and the message's-fate note (RFC 014 F4).
+const COMMIT_FIXTURE: &str = "\
+recorded worktree patch in active WAL
+baseline ref: heads/main
+patch id: 863f5f1ffbd21e0fe1c4456ab624022d294f664532adc65e3e109a0d7f005207
+WAL sequence: 1
+operations: 1
+referenced blobs: 1
+text edits: 0
+  create-file a.txt
+note: multi-operation text diff minimization, patch algebra, rename detection, and audit plugins remain later increments
+note: the message is validated but not stored -- it will not appear in `prikk log`; persisting it is a later increment
+";
+
+// Captured verbatim against a real prikk 0.32.0 binary on 2026-09-06 (RFC 014 §9, the "found something
+// that contradicts the RFC" item): **only one** `note:` line. prikk 0.32.0 has already shipped RFC 123
+// (commit-message-as-evidence) upstream — ahead of stikk's own validated ceiling (0.31) — which stores
+// the message and removes the message's-fate note because it would now be false. This fixture is the
+// evidence that `CommitResult::notes` must be a `Vec<String>`, never two fixed named fields: the exact
+// set of notes a real prikk prints is not stable across versions, even within "supported."
+const COMMIT_FIXTURE_NO_MESSAGE_FATE_NOTE: &str = "\
+recorded worktree patch in active WAL
+baseline ref: heads/main
+patch id: 927bed5b80c47fc3ff6db3532951b0b55236450c1e4cf50e3e9f241dfdcf31db
+WAL sequence: 1
+operations: 1
+referenced blobs: 1
+text edits: 0
+  create-file a.txt
+note: multi-operation text diff minimization, patch algebra, rename detection, and audit plugins remain later increments
+";
+
+#[test]
+fn parses_a_commit_result_with_both_notes() {
+    let r = commit(COMMIT_FIXTURE).expect("commit output parses");
+    assert_eq!(r.baseline_ref, "heads/main");
+    assert_eq!(
+        r.patch_id,
+        "863f5f1ffbd21e0fe1c4456ab624022d294f664532adc65e3e109a0d7f005207"
+    );
+    assert_eq!(r.wal_sequence, 1);
+    assert_eq!(r.operations, 1);
+    assert_eq!(r.referenced_blobs, 1);
+    assert_eq!(r.text_edits, 0);
+    assert_eq!(r.changes.len(), 1);
+    assert_eq!(r.changes[0].operation, "create-file");
+    assert_eq!(r.changes[0].path, "a.txt");
+    assert_eq!(r.notes.len(), 2);
+    // ER-02: verbatim, not paraphrased — both notes must appear byte-identical in the captured fixture.
+    for note in &r.notes {
+        assert!(COMMIT_FIXTURE.contains(note.as_str()));
+    }
+    assert!(r.notes[1].contains("message is validated but not stored"));
+}
+
+#[test]
+fn a_commit_result_with_no_message_fate_note_has_exactly_one_note() {
+    // RFC 014's own contradiction, made concrete: a real prikk 0.32.0 no longer prints the second note
+    // (RFC 123 shipped), and this parser must not assume it is always there.
+    let r = commit(COMMIT_FIXTURE_NO_MESSAGE_FATE_NOTE).expect("commit output parses");
+    assert_eq!(r.notes.len(), 1);
+    assert!(!r.notes[0].contains("message is validated but not stored"));
+}
+
+#[test]
+fn commit_refuses_without_the_headline() {
+    let text = "some unrelated prikk output\n";
+    assert_eq!(commit(text).unwrap_err().class(), "environment");
+}
+
+#[test]
+fn commit_refuses_an_invalid_patch_id() {
+    let text = "recorded worktree patch in active WAL\nbaseline ref: heads/main\npatch id: not-hex\n\
+                WAL sequence: 1\noperations: 1\nreferenced blobs: 1\ntext edits: 0\n";
+    assert_eq!(commit(text).unwrap_err().class(), "environment");
 }
 
 /// RFC 009 §0's rule, enforced mechanically: every fixture constant in this file must carry a

@@ -82,8 +82,10 @@ pub enum Overlay {
         filter: String,
         /// The highlighted match.
         cursor: usize,
-        /// The session capability, for the disabled-entry reasons (FR-104).
-        capability: Capability,
+        /// The session's signing readiness, for the disabled-entry reasons (FR-104; RFC 014 §6) — a
+        /// bare `Capability` cannot see read-only, so it stopped being enough the moment a mutating
+        /// command (`op.commit`) entered the registry.
+        readiness: stikk_model::Readiness,
     },
     /// The session refusal history (FR-112): the remembered refusals and the highlighted one.
     Refusals {
@@ -95,9 +97,10 @@ pub enum Overlay {
     /// The `TU-09` confirmation overlay (RFC 013 §6): restates the operation from the preview's
     /// [`ConfirmationSummary`] — never a fresh read, since the summary is the one true copy stamped at
     /// preview time — and collects whatever evidence the tier requires. Chrome stays visibly stikk's
-    /// (`C-T2b`): a content pane must not be able to look like this. **No mutation is wired to this
-    /// overlay yet** (RFC 013: the machinery, not a consumer) — it exists to be pushed and rendered by
-    /// whichever real operation previews first.
+    /// (`C-T2b`): a content pane must not be able to look like this. **Commit is this overlay's first
+    /// consumer** (RFC 014 §3): `App` drives it by pairing this overlay's display state with a
+    /// [`crate::app::App`]-owned [`stikk_core::PreviewToken`] it does not carry itself, since a token
+    /// has no public constructor and this type derives `Clone`/`PartialEq`.
     Confirmation {
         /// What to restate. Composed at preview time; never re-derived here (RFC 013 §3).
         summary: ConfirmationSummary,
@@ -109,6 +112,21 @@ pub enum Overlay {
         /// ([`stikk_model::StikkError::Declined`]), shown in place — never a separate popup
         /// (RFC 013 §4: the user is still mid-confirmation, not facing a new failure).
         error: Option<String>,
+    },
+    /// `FL-05` step 2: the commit message prompt — required non-empty, before any confirmation exists
+    /// to restate (RFC 014 §3). Its own overlay, not folded into [`Self::Confirmation`], because the
+    /// message is mutable input the user is still composing, not a fact to restate.
+    CommitMessage {
+        /// The ref this commit will target (snapshotted at open time, like every other overlay here).
+        reff: String,
+        /// The message typed so far.
+        typed: String,
+    },
+    /// `FL-05` step 4's tail: prikk's own commit result, shown verbatim (`C-T4a`/`C-T4c`) — patch id,
+    /// operation counts, and every `note:` line it printed, in order (RFC 014 F4).
+    CommitResult {
+        /// prikk's result, transported unchanged.
+        result: stikk_prikk::CommitResult,
     },
 }
 
@@ -126,6 +144,8 @@ impl Overlay {
             Self::Palette { .. } => " Command palette ",
             Self::Refusals { .. } => " Recent refusals ",
             Self::Confirmation { .. } => " Confirm ",
+            Self::CommitMessage { .. } => " Commit message ",
+            Self::CommitResult { .. } => " Commit recorded ",
         }
     }
 }
@@ -149,8 +169,8 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
         Overlay::Palette {
             filter,
             cursor,
-            capability,
-        } => render_palette(filter, *cursor, *capability, palette, frame, area),
+            readiness,
+        } => render_palette(filter, *cursor, *readiness, palette, frame, area),
         Overlay::Refusals { records, cursor } => {
             render_refusals(records, *cursor, palette, frame, area);
         }
@@ -168,6 +188,10 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
             frame,
             area,
         ),
+        Overlay::CommitMessage { reff, typed } => {
+            render_commit_message(reff, typed, palette, frame, area);
+        }
+        Overlay::CommitResult { result } => render_commit_result(result, palette, frame, area),
     }
 }
 
@@ -376,7 +400,7 @@ fn render_stale(
 fn render_palette(
     filter: &str,
     cursor: usize,
-    capability: Capability,
+    readiness: stikk_model::Readiness,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -411,7 +435,7 @@ fn render_palette(
     }
     for (i, cmd) in hits.iter().enumerate() {
         let selected = i == cursor;
-        let reason = cmd.unmet_reason(capability);
+        let reason = cmd.unmet_reason(readiness);
         let disabled = reason.is_some();
         let name_style = match (selected, disabled) {
             (_, true) => Style::default().fg(palette.dim),
@@ -442,7 +466,11 @@ fn render_palette(
         .title(" Command palette ")
         .style(Style::default().fg(palette.fg));
     let height = (lines.len() as u16 + 2).min(area.height);
-    let region = centered(64, height.max(6), area);
+    // Widened from 64 (RFC 013 v1) to fit a disabled entry's name + binding + reason on one line
+    // without truncating it (RFC 014 §6: "Commit worktree changes" is the first command whose disabled
+    // reason is long enough to hit the old width) — `unmet_reason`'s text must actually be readable,
+    // not merely present in the `Line`.
+    let region = centered(80, height.max(6), area);
     frame.render_widget(Clear, region);
     frame.render_widget(Paragraph::new(lines).block(block), region);
 }
@@ -642,6 +670,116 @@ fn render_confirmation(
         .style(Style::default().fg(palette.warn));
     let height = (lines.len() as u16 + 4).min(area.height.saturating_sub(2));
     let region = centered(70, height.max(8), area);
+    frame.render_widget(Clear, region);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        region,
+    );
+}
+
+/// `FL-05` step 2: the commit message prompt, required non-empty (`UD-01`) — its own step, before any
+/// confirmation exists to restate (RFC 014 §3). `reff` is shown so the prompt names what it targets.
+fn render_commit_message(
+    reff: &str,
+    typed: &str,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let lines = vec![
+        Line::from(Span::styled(
+            format!("  Commit to {}", inert(reff)),
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  A message is required — core does not yet persist it (it will not appear in `prikk \
+             log`).",
+            Style::default().fg(palette.dim),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  › ", Style::default().fg(palette.accent)),
+            Span::styled(inert(typed), Style::default().fg(palette.fg)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Enter to continue · Esc to cancel",
+            Style::default().fg(palette.accent),
+        )),
+    ];
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Commit message ")
+        .style(Style::default().fg(palette.fg));
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let region = centered(70, height.max(9), area);
+    frame.render_widget(Clear, region);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        region,
+    );
+}
+
+/// `FL-05` step 4's tail: prikk's own commit result, verbatim (`C-T4a`/`C-T4c`) — the patch id and
+/// counts prikk reported, every changed path, and every `note:` line, never summarised (`ER-02`).
+fn render_commit_result(
+    result: &stikk_prikk::CommitResult,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "  recorded worktree patch in active WAL",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  patch id: ", Style::default().fg(palette.dim)),
+            Span::styled(inert(&result.patch_id), Style::default().fg(palette.accent)),
+        ]),
+        Line::from(Span::styled(
+            format!(
+                "  operations {} · referenced blobs {} · text edits {}",
+                result.operations, result.referenced_blobs, result.text_edits
+            ),
+            Style::default().fg(palette.fg),
+        )),
+    ];
+    if !result.changes.is_empty() {
+        lines.push(Line::from(""));
+        for change in &result.changes {
+            lines.push(Line::from(Span::styled(
+                format!("    {} {}", inert(&change.operation), inert(&change.path)),
+                Style::default().fg(palette.fg),
+            )));
+        }
+    }
+    if !result.notes.is_empty() {
+        lines.push(Line::from(""));
+        for note in &result.notes {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", inert(note)),
+                Style::default().fg(palette.dim),
+            )));
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Enter · Esc to dismiss",
+        Style::default().fg(palette.accent),
+    )));
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Commit recorded ")
+        .style(Style::default().fg(palette.fg));
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let region = centered(78, height.max(8), area);
     frame.render_widget(Clear, region);
     frame.render_widget(
         Paragraph::new(lines)

@@ -89,6 +89,18 @@ pub enum StikkError {
         /// What was required and what was supplied, in stikk's own words.
         detail: String,
     },
+    /// A commit refused because the active WAL's queue targets a different ref than the one requested
+    /// (design RFC 014 F2/decision 2). **Never [`StikkError::LockConflict`]**, even though prikk words
+    /// it as one (`"lock conflict: active WAL is owned by …; requested ref …"`) — nothing is locked, no
+    /// other writer is active, and `LockConflict` will grow a jump to a lock inspector (`FR-102`) that
+    /// would show this condition no lock to find (RFC 012 F-b's overloaded-class shape, again). stikk
+    /// prevents this client-side before arming a commit (`Orientation::queued_target`); this class
+    /// exists for the race where the queue moves between preview and execute. `message` is prikk's own
+    /// wording, preserved verbatim (`ER-02`) — the same discipline as [`StikkError::Refusal`].
+    CrossRef {
+        /// prikk's verbatim cross-ref refusal message.
+        message: String,
+    },
 }
 
 impl StikkError {
@@ -126,14 +138,15 @@ impl StikkError {
             Self::Internal { .. } => "stikk-internal",
             Self::Stale { .. } => "stale",
             Self::Declined { .. } => "declined",
+            Self::CrossRef { .. } => "cross-ref",
         }
     }
 
     /// True when this class must never be auto-retried (design NFR-S04): a refusal, a lock conflict, a
-    /// not-ready condition, a stale precondition, or declined evidence is the user's to resolve, never
-    /// stikk's to retry silently. `Stale` in particular must never be retried as-is — its whole point is
-    /// that retrying the same execution is exactly the prohibited thing (RFC 013 decision 3); the user's
-    /// only correct next step is a fresh preview.
+    /// not-ready condition, a stale precondition, declined evidence, or a cross-ref conflict is the
+    /// user's to resolve, never stikk's to retry silently. `Stale` in particular must never be retried
+    /// as-is — its whole point is that retrying the same execution is exactly the prohibited thing (RFC
+    /// 013 decision 3); the user's only correct next step is a fresh preview.
     #[must_use]
     pub const fn is_user_resolved(&self) -> bool {
         matches!(
@@ -143,6 +156,7 @@ impl StikkError {
                 | Self::NotReady { .. }
                 | Self::Stale { .. }
                 | Self::Declined { .. }
+                | Self::CrossRef { .. }
         )
     }
 }
@@ -153,7 +167,8 @@ impl fmt::Display for StikkError {
             Self::Refusal { message }
             | Self::LockConflict { message }
             | Self::IntegrityFinding { message }
-            | Self::Limits { message } => write!(f, "{}: {message}", self.class()),
+            | Self::Limits { message }
+            | Self::CrossRef { message } => write!(f, "{}: {message}", self.class()),
             Self::NotReady { detail } | Self::Internal { detail } | Self::Declined { detail } => {
                 write!(f, "{}: {detail}", self.class())
             }

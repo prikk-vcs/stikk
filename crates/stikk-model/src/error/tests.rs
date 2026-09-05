@@ -6,7 +6,7 @@ use super::*;
 
 #[test]
 fn every_class_has_a_stable_name() {
-    let cases: [(StikkError, &str); 9] = [
+    let cases: [(StikkError, &str); 10] = [
         (
             StikkError::Refusal {
                 message: "m".into(),
@@ -44,6 +44,12 @@ fn every_class_has_a_stable_name() {
             "stale",
         ),
         (StikkError::Declined { detail: "m".into() }, "declined"),
+        (
+            StikkError::CrossRef {
+                message: "m".into(),
+            },
+            "cross-ref",
+        ),
     ];
     for (err, name) in cases {
         assert_eq!(err.class(), name);
@@ -103,6 +109,24 @@ fn stale_and_declined_are_never_auto_retried_either() {
         .is_user_resolved()
     );
     assert!(StikkError::Declined { detail: "x".into() }.is_user_resolved());
+}
+
+#[test]
+fn cross_ref_is_never_auto_retried_and_carries_prikks_message_verbatim() {
+    // RFC 014 F2/decision 2: distinct from LockConflict (nothing is locked), still verbatim (ER-02).
+    let err = StikkError::CrossRef {
+        message: "lock conflict: active WAL is owned by heads/main; requested ref heads/other"
+            .into(),
+    };
+    assert!(err.is_user_resolved());
+    assert!(err.to_string().contains("active WAL is owned by"));
+    assert_ne!(
+        err.class(),
+        StikkError::LockConflict {
+            message: String::new()
+        }
+        .class()
+    );
 }
 
 #[test]

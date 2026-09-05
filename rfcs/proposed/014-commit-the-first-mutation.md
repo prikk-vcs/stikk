@@ -71,6 +71,19 @@ prikk warns at `PRIKK_ACTIVE_PATCH_WARN` (800) and refuses at `_LIMIT` (1000). s
 queue count at every orientation. `C-D2a` is explicit that stikk *"surfaces the limit it is about to
 hit, not just the failure after"* — so the warning belongs in the preview, not in the refusal.
 
+### F6 — a clean-worktree commit also refuses, and also under an unrelated error class
+
+Verified alongside F2. A commit with nothing to author is refused — exit 1, queue unchanged, fails
+closed — with `error: invalid name: worktree has no node-addressed changes to commit`. Nothing about
+it involves a name.
+
+stikk's classifier matches none of its patterns, so it degrades to a verbatim `Refusal`, which is the
+honest outcome and needs no fix. But F2 and F6 together are **the same shape twice** on the same
+command: a precondition surfaced through whichever error variant sat nearest the call site, which
+becomes the only signal a message-classifying consumer has. That pattern — not either instance — is
+what we have written up for the prikk team
+(`.git-exclude/upstream/001-commit-precondition-error-classes.md`).
+
 ## Decisions
 
 1. **Refuse to arm a commit whose focused ref is not the queue's target** (F2), with a preview that
@@ -88,6 +101,9 @@ hit, not just the failure after"* — so the warning belongs in the preview, not
 4. **Transport prikk's message-fate note verbatim** (F4) into the commit result, alongside the patch id
    and operation counts `FR-050` requires. Do not paraphrase and do not suppress it.
 5. **Warn about the active-patch threshold in the preview** (F5), not after a refusal.
+5b. **A clean worktree makes commit unavailable-with-a-reason, not offered-then-refused** (F6). stikk
+   knows before arming anything; `C-T4d` requires the affordance be visibly disabled with its reason
+   rather than failing on use.
 6. **Do not offer `--text-edits`** (F1).
 7. **Unify `capability_gate` and the palette's affordance check** — RFC 013 deferred this with a
    deadline of "before the first mutating command enters the palette registry", and commit *is* that
@@ -101,7 +117,15 @@ hit, not just the failure after"* — so the warning belongs in the preview, not
 
 ## Upstream dependency
 
-No new one. `UD-01` (messages discarded) and `UD-06` (whole-worktree only) are surfaced honestly, as
+**No new blocking one**, but one letter sent (F2 + F6): both commit preconditions are reported under
+error classes that name a different condition, which matters because `UD-05`'s coarse exit codes leave
+message text as a consumer's only classification signal. The constructive ask is a machine-readable
+error surface on `commit`/`seal` — the `verify --format json` pattern — which would retire this class
+rather than narrow it. Recorded at
+`.git-exclude/upstream/001-commit-precondition-error-classes.md`; stikk is **not blocked** either way,
+since the classifier degrades to prikk's verbatim words and F2 is preventable client-side.
+
+Otherwise: no new one. `UD-01` (messages discarded) and `UD-06` (whole-worktree only) are surfaced honestly, as
 they have been since 0.1.0. RFC 013's queued-patch enumeration ask stands for the *seal* ceremony and
 is not needed here.
 
@@ -111,8 +135,12 @@ is not needed here.
   Re-reading is more current; reusing is what the user actually looked at. *Leaning: re-read inside
   `preview()`* — RFC 013's token stamps the change token at preview time, so a re-read is what makes
   that stamp meaningful. Settle in the handoff.
-- **What does stikk do when the worktree is clean?** prikk would author an empty patch, or refuse.
-  *Unverified* — check it before designing the empty-state copy, and do not assume either way.
+- ~~**What does stikk do when the worktree is clean?**~~ **Verified 2026-09-05: prikk refuses.**
+  `error: invalid name: worktree has no node-addressed changes to commit`, exit 1, queue unchanged — it
+  fails closed. So stikk's own decision is only about *when to say so*: the preview knows the worktree
+  is clean before anything is armed, so commit should be **unavailable with a reason** rather than
+  offered and then refused (`C-T4d` — capability honesty, disabled-with-reason, never a silent no-op).
+  Note the prefix contradicts the sentence; see F6.
 - **Where does the message input live** — a dedicated overlay, or a field inside the confirmation?
   `TU-09` describes a confirmation that restates facts, not one that collects input. *Leaning:
   separate*, so the confirmation stays a restatement.

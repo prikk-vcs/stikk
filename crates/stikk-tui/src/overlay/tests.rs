@@ -110,6 +110,40 @@ fn refusal_message_is_inert_and_forges_no_action() {
 }
 
 #[test]
+fn stale_names_the_operation_and_never_claims_prikk_reported_it() {
+    // design-review C1 (RFC 013 v1): stikk's own words must never render under a "prikk reported"
+    // label — this is the regression test for that finding.
+    let overlay = Overlay::Stale {
+        operation: "commit".into(),
+        gloss: "Another writer moved something in this repository between your preview and now."
+            .into(),
+        next_steps: vec![NextStep {
+            label: "Preview again".into(),
+            target: NextTarget::Refresh,
+        }],
+        cursor: 0,
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("stikk stopped"));
+    assert!(!text.contains("prikk reported"));
+    assert!(!text.contains("prikk refused"));
+    assert!(text.contains("commit"));
+    assert!(text.contains("Preview again"));
+}
+
+#[test]
+fn an_ordinary_refusal_still_says_prikk_reported() {
+    // The other half of the C1 regression: splitting `Stale` out must not have broken the label an
+    // actual prikk refusal still deserves.
+    let overlay = Overlay::Refusal {
+        card: card("ref \"heads/nope\" does not exist", None),
+        cursor: 0,
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("prikk reported"));
+}
+
+#[test]
 fn palette_lists_commands_and_disables_below_capability() {
     // A Viewer session sees every current (Viewer-level) command enabled.
     let overlay = Overlay::Palette {

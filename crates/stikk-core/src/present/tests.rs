@@ -274,20 +274,24 @@ fn a_refusal_with_no_surface_context_has_no_fabricated_gloss() {
 }
 
 #[test]
-fn stale_becomes_an_overlay_naming_the_operation_with_exactly_one_re_preview_next_step() {
+fn stale_becomes_its_own_presentation_naming_the_operation_with_exactly_one_re_preview_next_step() {
     // RFC 013 §5/decision 3: routed to a re-preview prompt, and the next-step set must contain no
     // action that re-runs the execution — this is the NFR-S04 regression test for this increment.
     let err = StikkError::Stale {
         operation: "commit".into(),
     };
-    let card = match present(&err, OperationContext::Other) {
-        Presentation::RefusalOverlay(card) => card,
-        other => panic!("expected RefusalOverlay, got {other:?}"),
+    let (operation, gloss, next_steps) = match present(&err, OperationContext::Other) {
+        Presentation::Stale {
+            operation,
+            gloss,
+            next_steps,
+        } => (operation, gloss, next_steps),
+        other => panic!("expected Presentation::Stale, got {other:?}"),
     };
-    assert!(card.verbatim.contains("commit"));
-    assert!(card.gloss.is_some());
-    assert_eq!(card.next_steps.len(), 1);
-    for step in &card.next_steps {
+    assert_eq!(operation, "commit");
+    assert!(!gloss.is_empty());
+    assert_eq!(next_steps.len(), 1);
+    for step in &next_steps {
         // Every next-step must be navigational (NFR-S04): none may re-run an execution. This
         // increment's `NextTarget` vocabulary has no "execute" variant at all, so the assertion is
         // that the one step present is `Refresh` (re-run the *preview*, a read) — never anything else.
@@ -296,18 +300,16 @@ fn stale_becomes_an_overlay_naming_the_operation_with_exactly_one_re_preview_nex
 }
 
 #[test]
-fn stale_is_the_one_documented_exception_that_puts_stikks_own_words_in_verbatim() {
-    // Distinguishing this from an ordinary Refusal: nothing here is prikk's text (prikk was never
-    // asked), which is exactly why `Stale` exists as its own class rather than reusing `Refusal`.
+fn stale_is_never_a_refusal_overlay_design_review_c1() {
+    // design-review C1 (RFC 013 v1): `Stale` must never be rendered under a label asserting prikk
+    // said it — the fix is that it cannot even reach `RefusalOverlay`'s match arm, structurally.
     let err = StikkError::Stale {
         operation: "seal".into(),
     };
-    let card = match present(&err, OperationContext::Other) {
-        Presentation::RefusalOverlay(card) => card,
-        other => panic!("expected RefusalOverlay, got {other:?}"),
-    };
-    assert!(card.verbatim.contains("repository changed"));
-    assert!(card.glossary_codes.is_empty());
+    match present(&err, OperationContext::Other) {
+        Presentation::Stale { operation, .. } => assert_eq!(operation, "seal"),
+        other => panic!("expected Presentation::Stale, not {other:?}"),
+    }
 }
 
 #[test]

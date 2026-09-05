@@ -310,6 +310,15 @@ impl App {
                     self.activate(target);
                 }
             }
+            Some(Overlay::Stale {
+                next_steps, cursor, ..
+            }) => {
+                if let Some(step) = next_steps.get(*cursor) {
+                    let target = step.target;
+                    self.overlays.pop();
+                    self.activate(target);
+                }
+            }
             Some(Overlay::Palette { filter, cursor, .. }) => {
                 let hits = stikk_core::palette::matching(filter);
                 if let Some(cmd) = hits.get(*cursor).copied() {
@@ -469,6 +478,7 @@ impl App {
         match self.overlays.last_mut() {
             Some(Overlay::RefPicker { cursor, .. })
             | Some(Overlay::Refusal { cursor, .. })
+            | Some(Overlay::Stale { cursor, .. })
             | Some(Overlay::Palette { cursor, .. })
             | Some(Overlay::Refusals { cursor, .. }) => *cursor = cursor.saturating_sub(1),
             // A confirmation overlay is a single prompt, not a list — no cursor to move (RFC 013 §6).
@@ -492,6 +502,11 @@ impl App {
             Some(Overlay::RefPicker { refs, cursor }) => *cursor = next_index(*cursor, refs.len()),
             Some(Overlay::Refusal { card, cursor }) => {
                 *cursor = next_index(*cursor, card.next_steps.len());
+            }
+            Some(Overlay::Stale {
+                next_steps, cursor, ..
+            }) => {
+                *cursor = next_index(*cursor, next_steps.len());
             }
             Some(Overlay::Refusals { records, cursor }) => {
                 *cursor = next_index(*cursor, records.len());
@@ -708,6 +723,20 @@ impl App {
             Presentation::RefusalOverlay(card) => {
                 self.refusals.record(card.verbatim.clone(), "refusal", op);
                 self.overlays.push(Overlay::Refusal { card, cursor: 0 });
+            }
+            // Never folded into `RefusalOverlay`/`refusals` (design-review C1): nothing here is
+            // prikk's message, so it must not be recorded as one nor rendered under prikk's label.
+            Presentation::Stale {
+                operation,
+                gloss,
+                next_steps,
+            } => {
+                self.overlays.push(Overlay::Stale {
+                    operation,
+                    gloss,
+                    next_steps,
+                    cursor: 0,
+                });
             }
             Presentation::Banner { message, .. }
             | Presentation::RoutedIntoView { message, .. }

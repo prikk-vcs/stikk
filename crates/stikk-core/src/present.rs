@@ -88,11 +88,10 @@ pub struct NextStep {
 /// The content of a refusal overlay (FR-110/TU-08). Everything is stikk-owned or verbatim prikk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefusalCard {
-    /// The operation's own stated reason, verbatim (shown inert and quoted by the frontend): prikk's
-    /// message for a [`StikkError::Refusal`] (never rewritten — `ER-02`), or **stikk's own words for a
-    /// [`StikkError::Stale`]** — the one documented exception, because prikk was never asked and has no
-    /// words to preserve (RFC 013 §5: "prikk did not refuse this — stikk did"). Both cases still satisfy
-    /// the invariant this field exists for: whichever voice produced the refusal, it is shown unedited.
+    /// prikk's own stated reason, verbatim and unedited — never rewritten by a layer above (`ER-02`).
+    /// Always prikk's words: a condition stikk itself detects (design-review C1, RFC 013) gets its own
+    /// [`Presentation`] variant instead of borrowing this one, so this field's invariant never has to
+    /// carry an exception.
     pub verbatim: String,
     /// A plain-language explanation in stikk's voice; `None` degrades to verbatim-only (RR-5).
     pub gloss: Option<String>,
@@ -145,6 +144,19 @@ pub enum Presentation {
     FaultScreen {
         /// The internal invariant that was violated.
         detail: String,
+    },
+    /// The repository changed between a preview and its confirmation, or between confirmation and
+    /// execution (`OPL-02`/`CT-05`; RFC 013 decision 3). **Never [`Presentation::RefusalOverlay`]**:
+    /// prikk was never asked, so there is no prikk message to show under a "prikk reported" label
+    /// (design-review C1) — every string here is stikk's own, and the renderer must say so.
+    Stale {
+        /// The operation whose preview no longer matches (stikk's own short name, e.g. `"commit"`).
+        operation: String,
+        /// stikk's explanation, in its own voice — never attributed to prikk.
+        gloss: String,
+        /// Next-steps that exist, stikk-authored (`C-T2b`) — today always exactly one: re-preview
+        /// (`NFR-S04` forbids any that re-runs the execution).
+        next_steps: Vec<NextStep>,
     },
 }
 
@@ -212,27 +224,19 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
         StikkError::Internal { detail } => Presentation::FaultScreen {
             detail: detail.clone(),
         },
-        StikkError::Stale { operation } => Presentation::RefusalOverlay(RefusalCard {
-            // The one documented exception to "verbatim is prikk's own words" (see the field's doc):
-            // prikk was never asked, so there is nothing of prikk's to preserve.
-            verbatim: format!(
-                "{operation}: the repository changed since this was last previewed. stikk stopped \
-                 rather than act on a preview that no longer matches."
-            ),
-            gloss: Some(
-                "Another writer moved something in this repository between your preview and now. \
+        StikkError::Stale { operation } => Presentation::Stale {
+            operation: operation.clone(),
+            gloss: "Another writer moved something in this repository between your preview and now. \
                  This is not a retry: previewing again re-reads the repository's current state, which \
                  is the only safe way forward."
-                    .to_string(),
-            ),
+                .to_string(),
             // RFC 013 §5 / NFR-S04: the only correct next step re-runs the *preview* (a read), never
             // the execution — `Refresh` already means exactly that everywhere else it is used.
             next_steps: vec![NextStep {
                 label: "Preview again".to_string(),
                 target: NextTarget::Refresh,
             }],
-            glossary_codes: Vec::new(),
-        }),
+        },
         StikkError::Declined { detail } => Presentation::InConfirmation {
             message: detail.clone(),
         },

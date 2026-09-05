@@ -12,7 +12,9 @@
 //!
 //! The refusal overlay is the load-bearing one: prikk's message is shown **verbatim and inert**, in a
 //! quoted content region visibly distinct from stikk's chrome (C-T2a/C-T2b); the gloss and the
-//! next-steps are stikk's own, separate from and below the message (ER-02/C-T4c).
+//! next-steps are stikk's own, separate from and below the message (ER-02/C-T4c). [`Overlay::Stale`]
+//! (RFC 013 §5) looks similar but is a **distinct type**, not a `Refusal` carrying stikk's own words:
+//! it exists precisely so nothing stikk itself says can be labelled as prikk's (design-review C1).
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
@@ -20,7 +22,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use stikk_core::{ConfirmationSummary, RefusalCard, RefusalRecord, glossary, palette};
+use stikk_core::{ConfirmationSummary, NextStep, RefusalCard, RefusalRecord, glossary, palette};
 use stikk_model::{Capability, Tier};
 
 use crate::app::{Operation, OperationStatus};
@@ -58,6 +60,19 @@ pub enum Overlay {
     Refusal {
         /// The card content (all stikk-owned or verbatim prikk).
         card: RefusalCard,
+        /// The highlighted next-step.
+        cursor: usize,
+    },
+    /// The repository moved between a preview and its confirmation, or confirmation and execution
+    /// (`OPL-02`/`CT-05`; RFC 013 decision 3; design-review C1). Deliberately **not** [`Self::Refusal`]:
+    /// every string here is stikk's own, and this overlay's renderer says so, never "prikk reported".
+    Stale {
+        /// The operation whose preview no longer matches (stikk's own short name).
+        operation: String,
+        /// stikk's explanation, in its own voice.
+        gloss: String,
+        /// Next-steps, stikk-authored — today always exactly one: re-preview.
+        next_steps: Vec<NextStep>,
         /// The highlighted next-step.
         cursor: usize,
     },
@@ -107,6 +122,7 @@ impl Overlay {
             Self::Operations { .. } => " Background operations ",
             Self::RefPicker { .. } => " Choose ref ",
             Self::Refusal { .. } => " prikk refused ",
+            Self::Stale { .. } => " stikk stopped ",
             Self::Palette { .. } => " Command palette ",
             Self::Refusals { .. } => " Recent refusals ",
             Self::Confirmation { .. } => " Confirm ",
@@ -124,6 +140,12 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
             render_ref_picker(refs, *cursor, palette, frame, area)
         }
         Overlay::Refusal { card, cursor } => render_refusal(card, *cursor, palette, frame, area),
+        Overlay::Stale {
+            operation,
+            gloss,
+            next_steps,
+            cursor,
+        } => render_stale(operation, gloss, next_steps, *cursor, palette, frame, area),
         Overlay::Palette {
             filter,
             cursor,
@@ -277,6 +299,69 @@ fn render_refusal(
         .style(Style::default().fg(palette.warn));
     // Headroom for wrapped lines (the gloss and a long verbatim can each wrap): budget a few extra
     // rows so no next-step is clipped.
+    let height = (lines.len() as u16 + 6).min(area.height.saturating_sub(2));
+    let region = centered(72, height.max(10), area);
+    frame.render_widget(Clear, region);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        region,
+    );
+}
+
+/// Render [`Overlay::Stale`] — deliberately its own function, not a `Stale`-flavoured
+/// [`render_refusal`]: every line here is stikk's own voice, so the label must say so, never "prikk
+/// reported" (design-review C1, RFC 013).
+fn render_stale(
+    operation: &str,
+    gloss: &str,
+    next_steps: &[NextStep],
+    cursor: usize,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut lines: Vec<Line> = Vec::new();
+
+    // ① stikk's own explanation — attributed to stikk, never to prikk (C-T2b/design-review C1).
+    lines.push(Line::from(Span::styled(
+        "  stikk stopped —",
+        Style::default().fg(palette.dim),
+    )));
+    lines.push(Line::from(vec![
+        Span::styled("  │ ", Style::default().fg(palette.warn)),
+        Span::styled(
+            inert(operation),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            ": the repository changed since this was last previewed.",
+            Style::default().fg(palette.fg),
+        ),
+    ]));
+    lines.push(Line::from(""));
+
+    // ② the gloss, in stikk's own voice — never quoted as if it were prikk's.
+    lines.push(Line::from(Span::styled(
+        format!("  {gloss}"),
+        Style::default().fg(palette.dim),
+    )));
+    lines.push(Line::from(""));
+
+    // ③ next-steps — stikk-authored, selectable (C-T2b); always exactly one this increment (`Refresh`).
+    lines.push(Line::from(Span::styled(
+        "  What you can do:",
+        Style::default().fg(palette.dim),
+    )));
+    for (i, step) in next_steps.iter().enumerate() {
+        lines.push(selectable(palette, i == cursor, step.label.clone()));
+    }
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" stikk stopped ")
+        .style(Style::default().fg(palette.warn));
     let height = (lines.len() as u16 + 6).min(area.height.saturating_sub(2));
     let region = centered(72, height.max(10), area);
     frame.render_widget(Clear, region);

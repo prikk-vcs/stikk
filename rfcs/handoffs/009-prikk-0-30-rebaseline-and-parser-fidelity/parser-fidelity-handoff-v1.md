@@ -149,7 +149,7 @@ marker; **refuse anything else** (`Environment`). Verified against prikk's own p
 
 **The tag gap — record it, do not close it here.** The existing `BRANCH_LIST_FIXTURE` contains a
 `tags/v1` line and a comment claiming it was "captured verbatim from `prikk branch list --all`
-(branches, a closed branch, and a tag)". **`branch list` cannot emit a tag** — prikk lists tags through
+(branches, a closed branch, and a tag)". ~~**`branch list` cannot emit a tag**~~ *(**corrected 2026-09-05**: it can — see RFC 009's F3 correction block; the fixture's fault was being invented, not its tag line)* — prikk lists tags through
 the separate `prikk tag list`. So the fixture is invented *and* falsely labelled, and it concealed a
 real gap: `RefEntry::is_tag()`, and the `Prikk::refs` doc comment ("lists every ref — branches, tags,
 received"), promise tags the ref picker will never show.

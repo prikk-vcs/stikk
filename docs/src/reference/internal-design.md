@@ -135,6 +135,15 @@ Two candidate transports exist; the design commits to the **trait**, not the tra
 | Decision | **v1 default** — parse-surface confined + version-gated | follow-up RFC once prikk libs stabilize |
 
 - **SEAM-02 — The `Prikk` trait** is the contract: nine methods matching CT-03's categories, plus `handshake()` (version + capability probe) and `change_token()`. Every method returns `Result<Response, StikkError>`; long/cancellable ones take a cancellation signal and report progress (OP-02). The trait is `Send + Sync`-bounded so the frontends can call it off the UI thread (CC-01).
+- **SEAM-03a — Newtypes are validators at the parse boundary, not carriers above it.** `stikk-model`'s
+  `ObjectId` and `RefName` exist to *reject* shapes prikk would never emit — a non-hex id, an empty or
+  control-character-bearing ref name. They are applied **inside `cli_backend/parse`**, which refuses
+  (`StikkError::Environment`, UD-02) on a bad value; the parsed structs then carry plain `String`
+  fields. This is deliberate and uniform: RFC 009 F2 chose it for `ObjectId`, RFC 012 F-d chose it for
+  `RefName` after measuring the alternative. Carrying the newtypes upward would add a wide mechanical
+  ripple — 17 files, including the four runnable examples whose readability is a deliverable — for a
+  guarantee already established at the only point untrusted values enter. Inert rendering (`C-T2a`)
+  remains independent and complementary: validation is not a reason to drop an `inert()` call.
 - **SEAM-03 — Output-parsing containment.** All parsing lives in `cli_backend/parse/` with one module per prikk command and a **golden-fixture** test per parser generation (TS-03). A parser that meets an unrecognized shape returns `StikkError::Environment` naming the mismatch and the prikk version — it never fabricates a partial result (UD-02). When prikk grows `--format json` on more commands, a new parser generation is added beside the old; the old is retired only when the supported version floor rises.
 - **SEAM-04 — Mutation calls are single-shot and pre-checked.** The seam never retries a mutating call (NFR-S04, INV via CT-05); the operation layer re-runs preconditions and lets the user decide. The seam surfaces `LockConflict` distinctly (FR-106) so the operation layer can present "another writer is active", not corruption.
 - **SEAM-05 — Version gate.** `handshake()` records prikk's version; outside the validated range the seam still permits read-category calls where safe and refuses mutation categories, feeding OP-06's disabled-with-reason presentation.

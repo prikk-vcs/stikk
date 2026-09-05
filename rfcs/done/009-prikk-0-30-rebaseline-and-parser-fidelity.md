@@ -13,8 +13,9 @@ round); 164 → 197 tests. **The release itself is the owner's**: the version bu
 tag and publish for 0.1.1 are not authorized by this RFC.
 **Deferred, carried forward (not built by this RFC):** the **real-binary integration suite** (`TS-07`) —
 without it the fixture-capture rule is enforced in *form* only (a provenance comment's shape), which is
-recorded as threat-model **RR-9**; **`FR-014`'s ref surface is corrected, not completed** — `branch
-list` cannot emit tags and a `prikk tag list` seam read is still unbuilt; **ref-name validation** —
+recorded as threat-model **RR-9**; ~~**`FR-014`'s ref surface is corrected, not completed** — `branch
+list` cannot emit tags and a `prikk tag list` seam read is still unbuilt~~ *(the "cannot emit tags" half
+was false — see the correction under F3; the `tag list` read was built by RFC 012)*; **ref-name validation** —
 `stikk_model::RefName` rejects control characters but is used nowhere, so every ref name from the seam
 travels as an unvalidated `String` (display is inert at every call site, validation is not); and a
 **richer `.prikkignore` surface** (viewing or editing rules). The off-thread seam is
@@ -89,6 +90,23 @@ change token (RFC 003).
 `parse::refs` accepts any line with two or more whitespace-separated tokens, so it produces
 `RefEntry { name: "no", id: "branches" }`. It is the one parser that does **not** refuse on an
 unrecognized shape — the others anchor on a required field, `refs` anchors on nothing.
+
+> **Correction — 2026-09-05 (RFC 012 FR-014).** This finding also asserted, in its handoff and in the
+> seam's doc comments, that **"`branch list` cannot emit a tag"**. **That was false.** prikk's
+> `RefStore::list_ref_pointers()` (`prikk-store/src/refs.rs:355`) maps the ref-pointer index with **no
+> namespace filter**, and a locally-created tag "is always the target of its own `tags/*` `RefState`"
+> (`prikk-store/src/tag_travel.rs`) — so a tag *does* appear in `branch list --all` output, confirmed
+> empirically on prikk 0.30.0 and 0.31.0 and against prikk's source.
+>
+> The claim was an **inference from absence**: the fixture happened to contain no tag, and a separate
+> `tag list` command exists, so a negative was concluded from neither. That is the same error this RFC
+> was written to correct — F1's fixture encoded a shape prikk never emits; F3 encoded a shape prikk
+> never withholds. Same mistake, opposite sign, inside the document meant to prevent it.
+>
+> What the correction changed: `stikk_core::list_refs` merges `refs()` and `tags()` **deduplicated by
+> name**, so tag coverage is right regardless of what an unspecified prikk behaviour does. The
+> documented surface (`tag list`) is depended on; the undocumented one is tolerated. Found by the
+> implementer while capturing FR-014's fixtures, by running a command they had no instruction to run.
 
 ### F4 — stikk drops the warning that exists to stop a user deleting real work *[serious]*
 

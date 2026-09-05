@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 013 | [Preview & tiered-confirmation machinery](./proposed/013-preview-and-confirmation-machinery.md) | the gate every 0.4.0 mutation sits behind: preview-first made structural, tiers derived from the request category, the preview↔execute binding on RFC 003's token. Finds `FR-052` unsatisfiable as written. **0.4.0, next** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,7 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None currently — 0.4.0's next increment (`OPL-02`, the preview↔execute machinery) has no RFC yet._
+| ID | Title | Decision | Handoff |
+|----|-------|----------|---------|
+| 013 | [Preview & tiered-confirmation machinery](./accepted/013-preview-and-confirmation-machinery.md) | preview-first **and** confirmation made structural — `execute` takes a token only `confirm` can produce; tiers derive from `RequestCategory`. Found `FR-052` unsatisfiable as written (2026-09-05) | [Preview & confirm](./handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md) |
 
 ## Done (implemented)
 

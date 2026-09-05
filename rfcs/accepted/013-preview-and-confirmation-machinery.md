@@ -1,6 +1,8 @@
 # RFC 013 — The preview and tiered-confirmation machinery
 
-**Status.** Proposed (2026-09-05) — build the gate every mutation in 0.4.0 sits behind: preview-first
+**Status.** Accepted (2026-09-05, by the owner) — handoff:
+[`../handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md`](../handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md).
+Originally proposed 2026-09-05 — build the gate every mutation in 0.4.0 sits behind: preview-first
 made **structural rather than disciplined**, confirmation tiers derived from the request category, and
 the preview↔execute binding on RFC 003's change token. **No mutation ships in this increment.**
 **Tracks.** `FR-120` (preview-first), `FR-121` (confirmation tiers), `OPL-01…05`, `TU-09` (the
@@ -111,20 +113,42 @@ whereas UD-09 blocks whole features.
 Until it lands, the seal ceremony states the count, the target ref, and the resulting block, and says
 plainly that stikk cannot enumerate them — the `UD-09` pattern applied to a ceremony.
 
-## Open questions
+## Open questions — all three settled at acceptance (2026-09-05)
 
-- **Does the `PreviewToken` carry the rendered preview, or only its identity?** Carrying it makes the
-  confirmation restate exactly what was previewed (`TU-09`, `C-T4e`); carrying only an id keeps the type
-  small. *Leaning: carry it* — `C-T4e` requires the confirmation to restate authoritative values, and
-  re-deriving them at confirm time would reintroduce the drift the token exists to prevent. Settle in
-  the handoff with the type in front of you.
-- **Where does the ceremony state machine live** (`OPL-03`)? Seal, rollback and the sync assistant are
-  multi-step and resumable. Not needed for this increment's single-step gate, but the shape should not
-  make ceremonies awkward later. Design the token so a ceremony is a *sequence* of gated steps rather
-  than a special case.
-- **Should tier 3-typed apply to `seal`?** `FR-121` puts typed confirmation on lock clearing and trust
-  changes only, and seal already has its own no-audit consent step (`FR-052`). *Leaning: no* — two
-  distinct deliberate acts is enough, and adding a third would be the fatigue `RR-6` warns about.
+**Q1 — does the `PreviewToken` carry the rendered preview, or only its identity?** **Ruled: neither, and
+the question was framed wrongly.** Separate two things it conflated:
+
+- **The preview** — a `ChangesView`, prikk's plan text, a merge evidence report — is large, per-operation,
+  and *the user is looking at it*. It stays in the view.
+- **What the confirmation restates** is small and uniform, and `TU-09` already specifies it exactly:
+  the operation, the target ids, the counts, the capability consumed, and the consequence class.
+
+So the token carries a **`ConfirmationSummary`** — that fixed set, composed at preview time from
+authoritative values — and the confirmation renders from it. This satisfies `C-T4e` (a confirmation
+restates prikk-authoritative values, never attacker-supplied display strings) without making the token
+generic over every preview type, and without re-deriving anything at confirm time, which would
+reintroduce exactly the drift the token exists to prevent.
+
+**Q2 — where does the ceremony state machine live (`OPL-03`)?** **Ruled: not built here, and the token
+is deliberately shaped so it never needs to span one.** A `PreviewToken` is **single-use and
+step-scoped**. A multi-step ceremony (seal, rollback, the sync assistant) is *N gated steps*, each with
+its own preview→confirm→execute and its own freshness check — never one token held across the whole
+ceremony. A ceremony spans user think-time by design; a token stamped at step one and executed at step
+four would assert a freshness it does not have, which is the precise failure `OPL-02` exists to prevent.
+
+**Q3 — should tier 3-typed apply to `seal`?** **Ruled: no** — accepted by the owner with the
+recommendation. `FR-121` reserves typed confirmation for lock clearing and trust changes; seal already
+carries its own unchecked-by-default no-audit consent step (`FR-052`). Two distinct deliberate acts is
+enough, and a third is the fatigue `RR-6` names. Cheap to revisit if sealing turns out to feel too easy
+in practice.
+
+**A decision that followed from Q1/Q2, and goes further than the RFC as proposed:** make **confirmation**
+structural too, not just preview. `preview()` yields a `PreviewToken`; `confirm()` consumes it and
+yields a **`ConfirmedToken`**; `execute()` takes only a `ConfirmedToken`. Since `confirm` is the only
+producer of the latter, and it is where the tier's evidence (an explicit yes, or the typed target name)
+and the read-only/capability checks live, **an execution that skipped confirmation is as unrepresentable
+as one that skipped the preview.** Decision 1 said preview-first should not be a rule reviewers
+remember; the same argument applies to the confirmation, and costs one more type.
 
 ## Consequences
 

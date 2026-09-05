@@ -120,7 +120,7 @@ log, and `INV-5`'s re-resolution already carries the protection it was meant to 
 ✅ Shipped to `main` 2026-09-05.
 
 **Then the preview + tiered-confirmation machinery**
-([RFC 013](rfcs/proposed/013-preview-and-confirmation-machinery.md), `FR-120`/`FR-121`, `OPL-01…05`) —
+([RFC 013](rfcs/accepted/013-preview-and-confirmation-machinery.md), `FR-120`/`FR-121`, `OPL-01…05`) —
 not an afterthought inside the commit flow: it is what every mutation below is gated on, and the first
 thing to consume the change token. Preview-first becomes **structural** — `execute` takes a token only
 a preview can produce — rather than a rule reviewers must remember.

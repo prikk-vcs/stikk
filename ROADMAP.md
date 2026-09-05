@@ -119,9 +119,17 @@ log, and `INV-5`'s re-resolution already carries the protection it was meant to 
 
 ✅ Shipped to `main` 2026-09-05.
 
-**Then the preview + tiered-confirmation machinery (`FR-120`/`FR-121`, `OPL-01…05`)** — not an
-afterthought inside the commit flow: it is what every mutation below is gated on, and the first thing
-to actually consume the change token. **This is 0.4.0's next increment; it has no RFC yet.**
+**Then the preview + tiered-confirmation machinery**
+([RFC 013](rfcs/proposed/013-preview-and-confirmation-machinery.md), `FR-120`/`FR-121`, `OPL-01…05`) —
+not an afterthought inside the commit flow: it is what every mutation below is gated on, and the first
+thing to consume the change token. Preview-first becomes **structural** — `execute` takes a token only
+a preview can produce — rather than a rule reviewers must remember.
+
+> Drafting it already found that **`FR-052` is not satisfiable as written**: the seal ceremony is
+> required to show "exactly which patches will seal", and prikk exposes the queued *count* and target
+> ref, never the patch ids. The requirement will be amended to what is honest, and the enumeration
+> surface is filed as an upstream ask — found before the seal ceremony was built against it, which is
+> why the machinery precedes the mutations it gates.
 
 Also carried into this release, both small and both found during review rather than planned:
 **19 rustdoc warnings** — several are public docs linking to private items, which render as dead

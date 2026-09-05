@@ -247,16 +247,28 @@ impl Prikk for CliBackend {
     }
 
     fn change_token(&self, repo: &Path) -> Result<ChangeToken> {
-        // RFC 003 decision 3: composed from `refs` + `orientation` — reads this backend already makes
-        // for the ref picker and Orientation — never a dedicated third invocation. The worktree marker
-        // is deliberately excluded (handoff §2): it would cost a `worktree-status` spawn per token, and
-        // the Changes view already carries its own worktree data, so a preview built from it is
-        // self-freshening without this token's help.
-        let refs = self.refs(repo)?;
+        // RFC 003 decision 3, corrected by review C1: the ref half is `refs()` **and** `tags()`,
+        // deduplicated by name — not `refs()` alone. RFC 012 F3 established that `prikk branch list
+        // --all`'s tag coverage is unspecified (its ref-pointer index carries no namespace filter, so a
+        // tag may or may not appear there depending on prikk's incidental behaviour); composing from
+        // `refs()` alone would make this token's own coverage of the tag namespace nondeterministic —
+        // worse than deliberately narrow, for the primitive every 0.4.0 mutation preview will be gated
+        // on. Deduplicating (the same merge `stikk_core::list_refs` performs) is what makes the token
+        // the same regardless of which way prikk's unspecified behaviour goes: a tag counted once via
+        // `refs()`'s leak or once via `tags()` composes identically either way.
+        //
+        // The worktree marker stays excluded (handoff §2): it would cost a `worktree-status` spawn per
+        // token, and the Changes view already carries its own worktree data, so a preview built from it
+        // is self-freshening without this token's help.
+        let branches = self.refs(repo)?;
+        let tags = self.tags(repo)?;
         let orientation = self.orientation(repo)?;
+        let merged = branches
+            .iter()
+            .filter(|entry| !tags.iter().any(|tag| tag.name == entry.name))
+            .chain(tags.iter());
         Ok(ChangeToken::compose(
-            refs.iter()
-                .map(|entry| (entry.name.as_str(), entry.id.as_str())),
+            merged.map(|entry| (entry.name.as_str(), entry.id.as_str())),
             orientation.queued_patches,
             orientation.queued_target.as_deref(),
         ))

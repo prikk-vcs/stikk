@@ -164,11 +164,12 @@ fn handshake_probes_the_program_at_most_once_per_backend() {
 
 #[cfg(unix)]
 #[test]
-fn change_token_drives_no_prikk_invocation_beyond_refs_and_orientation() {
-    // RFC 003 decision 3 / handoff §2: `change_token` must cost nothing beyond the `branch list` and
-    // `status` calls `Prikk::refs`/`Prikk::orientation` already make — no dedicated third invocation.
-    // A fake `prikk` that logs which subcommand it was called with, once per call, proves it: exactly
-    // one `branch` line and one `status` line, nothing else, after one `change_token()` call.
+fn change_token_drives_exactly_branch_status_and_tag_no_more_no_repeats() {
+    // Review C1: `change_token` composes from `refs()` + `tags()` (deduplicated) + `orientation` — not
+    // `refs()` alone, since RFC 012 F3 established `branch list --all`'s tag coverage is unspecified.
+    // "Zero additional spawns" was never the requirement; "no hidden or duplicated calls" is. A fake
+    // `prikk` that logs which subcommand it was called with, once per call, proves exactly one each of
+    // `branch`, `status`, `tag` — nothing else, none repeated — after one `change_token()` call.
     use std::os::unix::fs::PermissionsExt;
 
     let dir = std::env::temp_dir().join(format!("stikk-change-token-test-{}", std::process::id()));
@@ -184,6 +185,9 @@ fn change_token_drives_no_prikk_invocation_beyond_refs_and_orientation() {
              case \"$1\" in\n\
              branch)\n\
              echo 'heads/main {id}'\n\
+             ;;\n\
+             tag)\n\
+             echo 'no tags'\n\
              ;;\n\
              status)\n\
              printf 'prikk repository: /tmp/x/.prikk\\n\
@@ -208,7 +212,8 @@ fn change_token_drives_no_prikk_invocation_beyond_refs_and_orientation() {
     let backend = CliBackend::with_program(&script);
     let token =
         retrying_transient_exec_busy(|| backend.change_token(&dir)).expect("change_token succeeds");
-    // Composed from real (scripted) data, so it must equal a token built the same way by hand.
+    // Composed from real (scripted) data — no tags, one branch — so it must equal a token built the
+    // same way by hand.
     assert_eq!(
         token,
         stikk_model::ChangeToken::compose([("heads/main", "0".repeat(64).as_str())], 0, None)
@@ -220,8 +225,108 @@ fn change_token_drives_no_prikk_invocation_beyond_refs_and_orientation() {
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(
         lines,
-        vec!["branch", "status"],
-        "change_token must call exactly one branch-list and one status, nothing else"
+        vec!["branch", "status", "tag"],
+        "change_token must call exactly one branch-list, one status, and one tag-list — nothing else, \
+         none repeated"
+    );
+}
+
+/// Build a fake `prikk` answering `branch list --all` with `branch_output` and `tag list` with
+/// `tag_output` verbatim (each a complete, newline-terminated prikk-shaped report), and `status` with a
+/// fixed clean/empty report — for the `change_token` determinism tests below, where only the ref/tag
+/// listings vary. Returns the backend and its temp dir, which the caller must clean up.
+#[cfg(unix)]
+fn fake_prikk_backend(
+    name_suffix: &str,
+    branch_output: &str,
+    tag_output: &str,
+) -> (CliBackend, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!(
+        "stikk-change-token-{name_suffix}-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir); // see the handshake test above for why
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             case \"$1\" in\n\
+             branch)\n\
+             printf '{branch_output}'\n\
+             ;;\n\
+             tag)\n\
+             printf '{tag_output}'\n\
+             ;;\n\
+             status)\n\
+             printf 'prikk repository: /tmp/x/.prikk\\n\
+             active WAL records: 0\\n\
+             trailing partial WAL bytes: 0\\n\
+             heads/main RefState: <not published>\\n\
+             queued patches: 0\\n\
+             status: multi-operation text diff minimization and plugins not yet implemented\\n'\n\
+             ;;\n\
+             esac\n",
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (CliBackend::with_program(&script), dir)
+}
+
+#[cfg(unix)]
+#[test]
+fn a_moved_tag_changes_the_change_token() {
+    // Review C1's determinism requirement, positive case: a tag's id moving is a real repository
+    // change, and the merged token must catch it exactly as a moved branch would.
+    let tag_a = "a".repeat(64);
+    let tag_b = "b".repeat(64);
+    let branch = format!("heads/main {}\n", "0".repeat(64));
+    let (backend_a, dir_a) =
+        fake_prikk_backend("moved-tag-a", &branch, &format!("tags/v1 {tag_a}\n"));
+    let (backend_b, dir_b) =
+        fake_prikk_backend("moved-tag-b", &branch, &format!("tags/v1 {tag_b}\n"));
+
+    let token_a =
+        retrying_transient_exec_busy(|| backend_a.change_token(&dir_a)).expect("succeeds");
+    let token_b =
+        retrying_transient_exec_busy(|| backend_b.change_token(&dir_b)).expect("succeeds");
+    let _ = std::fs::remove_dir_all(&dir_a);
+    let _ = std::fs::remove_dir_all(&dir_b);
+    assert_ne!(token_a, token_b);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_tag_leaking_into_branch_list_yields_the_same_token_as_appearing_in_tag_list_only() {
+    // Review C1's determinism requirement, the property the fix exists for: RFC 012 F3 established
+    // that `branch list --all` may or may not also print a tag. Whichever way that unspecified
+    // behaviour goes, the merged, deduplicated token must be identical.
+    let tag_id = "a".repeat(64);
+    let branch_only = format!("heads/main {}\n", "0".repeat(64));
+    let branch_with_leak = format!("heads/main {}\ntags/v1 {tag_id}\n", "0".repeat(64));
+    let tag_output = format!("tags/v1 {tag_id}\n");
+
+    let (no_leak, dir_no_leak) = fake_prikk_backend("no-leak", &branch_only, &tag_output);
+    let (with_leak, dir_with_leak) =
+        fake_prikk_backend("with-leak", &branch_with_leak, &tag_output);
+
+    let token_no_leak =
+        retrying_transient_exec_busy(|| no_leak.change_token(&dir_no_leak)).expect("succeeds");
+    let token_with_leak =
+        retrying_transient_exec_busy(|| with_leak.change_token(&dir_with_leak)).expect("succeeds");
+    let _ = std::fs::remove_dir_all(&dir_no_leak);
+    let _ = std::fs::remove_dir_all(&dir_with_leak);
+    assert_eq!(
+        token_no_leak, token_with_leak,
+        "the token must be identical regardless of whether branch list also happens to leak the tag"
     );
 }
 

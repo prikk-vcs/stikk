@@ -252,11 +252,13 @@ pub trait Prikk: Send + Sync {
     /// genuine failure (bad ref, not a repository) classifies as for [`Prikk::orientation`].
     fn worktree_status(&self, repo: &Path, reff: &str) -> Result<WorktreeStatus>;
 
-    /// Compose a cheap "has anything changed?" signal from the ref pointers and queue state (design
-    /// `LC-4`; category `read-history`; RFC 003). Composed from the same calls
-    /// [`Prikk::refs`]/[`Prikk::orientation`] already make — no additional kind of prikk invocation is
-    /// introduced for this. Detection only, never a lock (`CT-05`/`NFR-R02`): the repository can still
-    /// change between reading this token and acting on it.
+    /// Compose a cheap "has anything changed?" signal from the ref pointers (branches **and** tags,
+    /// merged and deduplicated by name — never `Prikk::refs` alone, since its tag coverage is
+    /// unspecified) and queue state (design `LC-4`; category `read-history`; RFC 003, corrected by
+    /// review C1). Composed from the same calls [`Prikk::refs`]/[`Prikk::tags`]/[`Prikk::orientation`]
+    /// already make elsewhere in this trait — no *dedicated* prikk invocation is introduced beyond
+    /// those three. Detection only, never a lock (`CT-05`/`NFR-R02`): the repository can still change
+    /// between reading this token and acting on it.
     ///
     /// # Errors
     /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].

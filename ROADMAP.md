@@ -142,7 +142,12 @@ failing closed upstream), the message step before the confirmation per `FL-05`'s
 result and both `note:` lines transported verbatim, and the `capability_gate`/palette unification
 RFC 013 deferred with a deadline of exactly this increment.
 
-**Next — the prikk 0.32 re-baseline.** Not a chore; `UD-01` is retiring. Upstream RFC 123 landed
+**Next — the prikk 0.32 re-baseline** ([RFC 015](rfcs/proposed/015-prikk-0-32-rebaseline.md)). Not a
+chore; `UD-01` is retiring, and drafting it found more: **`prikk log` now prints a line per patch
+carrying its id and message**, so RFC 006's founding finding — that `log` has no per-patch detail and
+no patch ids — has stopped being true, and stikk is silently discarding both. `UD-09` therefore
+**narrows** rather than retires: patch *ids* are now enumerable, patch *content* still is not, so
+Patch detail stays deferred. Upstream RFC 123 landed
 **commit-message storage** in prikk 0.32, which falsifies the dependency stikk has carried since
 0.1.0 and makes one line of stikk's pre-commit copy false for anyone on that release. Separately,
 upstream **RFC 132 — prompted by a report we sent them, and landed within a day** — reclassifies both of RFC 014's refusal messages to `precondition not met:`; that is unreleased

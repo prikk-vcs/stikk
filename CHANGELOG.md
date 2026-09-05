@@ -2,6 +2,77 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## 0.3.0 — 2026-09-05
+
+Responsiveness and correctness (RFC 010 + RFC 012). The UI no longer blocks on a seam call, and five
+correctness/honesty defects found by review — not by test — are closed: read-only mode now actually
+denies recovery, version skew stops pointing users at their signing keys, config and state resolve on
+every platform stikk ships binaries for, ref names are validated at the seam boundary, and the ref
+picker finally shows tags. Still **no mutations**; cancellation stays deferred to `FR-100`.
+
+### Breaking
+
+| Crate | Change | Who it breaks |
+|---|---|---|
+| `stikk-prikk` | `Prikk` gained the `Send + Sync` supertrait | anyone implementing `Prikk` outside the crate |
+| `stikk-prikk` | `Prikk::tags` added (a required method) | same |
+| `stikk-model` | **`Capability::may_operate` removed**; `Readiness::may_operate` added in its place | anyone calling it — and the *semantics* changed too: read-only now denies recovery |
+| `stikk-tui` | `App`'s navigation methods no longer take `&impl Prikk`; results arrive via `App::apply` | anyone driving `App` directly |
+
+### Added
+
+- **The UI no longer blocks** (RFC 010; `NFR-P01` was a Must and was unmet). Every seam-driven read now
+  runs on a worker thread via `std::thread::scope`, one worker, no thread pool, no async runtime; the
+  render/input loop never waits on it. Load states that existed in the design but could never actually
+  be seen — `Loading` — are now real and observable, shown honestly rather than as a frozen or blank
+  pane. A response for a view the user has since navigated away from is discarded by sequence number
+  rather than surfacing over an unrelated screen — the correctness risk this increment exists to close.
+  The status bar's `⟳ n` indicator and the Background Operations overlay (a listing; no cancel action)
+  show what is in flight.
+- **Config and state now resolve on macOS and Windows** (RFC 012 F-c) — platforms 0.1.0 and 0.2.0
+  shipped binaries for without ever resolving paths for. macOS uses `~/Library/Application Support`;
+  Windows uses `%APPDATA%`/`%LOCALAPPDATA%`. Linux paths are byte-identical to before this release.
+  `STIKK_CONFIG`/`STIKK_STATE_DIR` still win outright. `stikk-state` stays dependency-free.
+- **Tags appear in the ref picker** (`FR-014` completed). A real `prikk tag list` read joins the
+  existing branch listing, merged and de-duplicated by name.
+
+### Fixed
+
+- **Read-only mode now actually denies recovery actions** (RFC 012 F-a; `FR-121`). The external design
+  had said Operator was "always tier 3" regardless of read-only mode, which the code could not even
+  implement correctly and, if it had, would have been a read-only mode that mutates — exactly the
+  confident-but-wrong picture this project refuses. `Readiness::may_operate` is `!read_only`; external
+  design `AC-04` is corrected to match.
+- **Version skew stops pointing users at their signing keys** (RFC 012 F-b). A too-old prikk opening
+  Changes now names the prikk-version gate as the target, not Trust & Keys.
+- **A repository written by a newer prikk gets an explanation, not a bare refusal** (RFC 012 F-e). prikk
+  0.31 is forward-incompatible (no CLI change, but its repositories cannot be read by 0.30 or earlier);
+  the resulting envelope-schema-skew refusal now resolves to a glossary entry and an "upgrade prikk"
+  next-step, recognized by the refusal's stable message shape rather than by widening the integrity
+  classifier.
+
+### Security
+
+- Every golden fixture in `stikk-prikk`'s parser tests was re-captured against a real prikk **0.31.0**
+  binary and diffed byte-for-byte against the committed 0.30.0 captures — identical in every case
+  (RFC 012 F-e).
+- **Ref names are now validated at the seam's parse boundary** (`INV-9`; RFC 012 F-d), the same
+  discipline 0.2.0 applied to object ids: an empty or control-character-bearing name refuses rather than
+  travelling further as an unvalidated string. Display was already inert (`C-T2a`) and remains so —
+  validation and inert rendering are complementary, not alternatives.
+- **RFC 009's "`branch list` cannot emit a tag" claim was found and corrected** while building the tag
+  list read above: prikk's own `branch list --all` does not filter by ref namespace, so a tag can appear
+  there too. This was an untested inference, not a checked fact — the same failure class RFC 009 itself
+  exists to prevent, just the opposite sign (assuming an absence rather than a fabricated presence).
+  stikk does not depend on `branch list` either including or excluding tags either way: the ref-list
+  merge de-duplicates by name so the result is correct regardless.
+
+### Changed
+
+- **The validated prikk range is now `>= 0.28`, through `0.31.0`** (RFC 012 F-e). A prikk above the
+  ceiling still runs; Orientation says its output shapes have not been checked, rather than assuming
+  they have.
+
 ## 0.2.0 — 2026-09-04
 
 The prikk 0.30 re-baseline and parser-fidelity corrections (RFC 009). Running shipped 0.1.0 against a

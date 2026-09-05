@@ -47,7 +47,7 @@ stikk config path          # where stikk's config and state live (never inside a
 stikk config check         # validate the config file
 ```
 
-stikk requires prikk **≥ 0.28** and is validated through **0.30.0**; a newer prikk still runs, but
+stikk requires prikk **≥ 0.28** and is validated through **0.31.0**; a newer prikk still runs, but
 stikk says its output shapes have not been checked against it, rather than assuming they have.
 
 Opening a repository on a terminal launches the interactive **TUI** — an Orientation view showing

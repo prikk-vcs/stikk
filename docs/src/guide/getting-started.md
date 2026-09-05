@@ -20,7 +20,7 @@ specific build:
 export STIKK_PRIKK_BIN=/path/to/prikk
 ```
 
-stikk requires prikk **≥ 0.28** and is validated through **0.30.0**. A prikk below the floor degrades
+stikk requires prikk **≥ 0.28** and is validated through **0.31.0**. A prikk below the floor degrades
 to read-only where it can; a prikk above the validated ceiling still runs, but Orientation says its
 output shapes have not actually been checked against it, rather than silently assuming they have.
 
@@ -38,8 +38,9 @@ way prikk does.
 
 Key reference: `Enter` opens History and drills into a block; `b` chooses which ref to view; `w` opens
 Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; `:` opens the command
-palette; `R` shows the session's recent refusals; `?` opens the glossary and full key reference; `r`
-refreshes the current view from prikk; `Esc`/`q` steps back, and quits at the root.
+palette; `R` shows the session's recent refusals; `o` lists background operations still in flight or
+recently finished (a listing only — there is no cancel action); `?` opens the glossary and full key
+reference; `r` refreshes the current view from prikk; `Esc`/`q` steps back, and quits at the root.
 
 Run `stikk` piped or in CI (no terminal) and you get the same orientation as a one-shot print instead.
 To see the TUI with no repository at all: `cargo run -p stikk-tui --example orientation_demo` (also see

@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 015 | [prikk 0.32 re-baseline](./proposed/015-prikk-0-32-rebaseline.md) | `UD-01` **retires** (messages are stored and shown in `log`); `UD-09` **narrows** — `log` now enumerates patch ids, which stikk currently discards. **0.4.0, next** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,8 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None currently — next is the **prikk 0.32 re-baseline** (`UD-01` retires; upstream RFC 132 reclassifies
-two error prefixes). No RFC yet._
+| ID | Title | Decision | Handoff |
+|----|-------|----------|---------|
+| 015 | [prikk 0.32 re-baseline](./accepted/015-prikk-0-32-rebaseline.md) | `UD-01` **retires** — messages are stored and `log` now enumerates patch ids, which stikk silently discards; `UD-09` **narrows** (ids yes, content still no). 0.4.0, next (2026-09-06) | [Re-baseline](./handoffs/015-prikk-0-32-rebaseline/rebaseline-handoff-v1.md) |
 
 ## Done (implemented)
 

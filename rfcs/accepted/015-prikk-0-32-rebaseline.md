@@ -1,6 +1,8 @@
 # RFC 015 — The prikk 0.32 re-baseline: `UD-01` retires and `UD-09` narrows
 
-**Status.** Proposed (2026-09-06) — re-baseline on prikk **0.32**, retire **`UD-01`**, narrow
+**Status.** Accepted (2026-09-06, by the owner) — handoff:
+[`../handoffs/015-prikk-0-32-rebaseline/rebaseline-handoff-v1.md`](../handoffs/015-prikk-0-32-rebaseline/rebaseline-handoff-v1.md).
+Originally proposed 2026-09-06 — re-baseline on prikk **0.32**, retire **`UD-01`**, narrow
 **`UD-09`**, and stop dropping information prikk now gives us. Not a version bump: two upstream
 dependencies this project has carried since 0.1.0 have changed, and one of them unlocks a surface
 RFC 006 deferred.
@@ -114,14 +116,22 @@ content surface stays stikk's highest-value ask — it is what still blocks Patc
 RFC 013's queued-patch enumeration ask (for the *seal* ceremony) is untouched by this: `status` still
 reports the queue as a count and a target ref. Sealed patches are now nameable; queued ones are not.
 
-## Open questions
+## Open questions — one settled, one deliberately left as work
 
-- **Does stikk show messages in the History list, in Block detail, or both?** `FR-011` puts per-patch
-  detail in the block row. *Leaning: Block detail carries the list; History shows the count as now* —
-  a lineage view stays scannable, and a message is long-form. Settle with the render in front of you.
-- **What does a repository straddling the upgrade look like in practice?** F4 is reasoned from prikk's
-  source, not observed. **Verify it** — build a block from a pre-0.32 patch and a 0.32 patch — before
-  writing the copy that explains it.
+**Q1 — History list, Block detail, or both?** **Ruled: Block detail carries the list; History keeps
+the count as it is.** A block holds N patches, so a History row would either show N messages (and stop
+being a scannable lineage — `NFR-U01`, `TU-12`) or show one and pick arbitrarily. Block detail is
+already where a block's contents live, and it is the view whose *"per-patch content inspection awaits
+prikk support (UD-09)"* note has become partly false and must be corrected anyway.
+
+A message summary *in the History row* is deliberately deferred, not rejected: it is the thing that
+would make a lineage of hex ids readable, but any summarization rule (first message? most recent?)
+would be invented against no real multi-patch blocks. Revisit with repositories in front of us.
+
+**Q2 — what does a repository straddling the upgrade actually look like?** **Deliberately not settled
+here.** F4 is reasoned from prikk's source, not observed, and it is the finding the user-facing copy
+depends on. It is *work for the increment*, not a decision for me: build the block, look at it, then
+write the copy. See the handoff §2.
 
 ## Consequences
 

@@ -142,7 +142,7 @@ failing closed upstream), the message step before the confirmation per `FL-05`'s
 result and both `note:` lines transported verbatim, and the `capability_gate`/palette unification
 RFC 013 deferred with a deadline of exactly this increment.
 
-**Next — the prikk 0.32 re-baseline** ([RFC 015](rfcs/proposed/015-prikk-0-32-rebaseline.md)). Not a
+**Next — the prikk 0.32 re-baseline** ([RFC 015](rfcs/accepted/015-prikk-0-32-rebaseline.md)). Not a
 chore; `UD-01` is retiring, and drafting it found more: **`prikk log` now prints a line per patch
 carrying its id and message**, so RFC 006's founding finding — that `log` has no per-patch detail and
 no patch ids — has stopped being true, and stikk is silently discarding both. `UD-09` therefore

@@ -1,6 +1,6 @@
 # RFC 013 — The preview and tiered-confirmation machinery
 
-**Status.** Accepted (2026-09-05, by the owner) — handoff:
+**Status.** Implemented (0.4.0 candidate; on `main` 2026-09-05, reviewed and approved) — handoff:
 [`../handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md`](../handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md).
 Originally proposed 2026-09-05 — build the gate every mutation in 0.4.0 sits behind: preview-first
 made **structural rather than disciplined**, confirmation tiers derived from the request category, and
@@ -8,6 +8,13 @@ the preview↔execute binding on RFC 003's change token. **No mutation ships in 
 **Tracks.** `FR-120` (preview-first), `FR-121` (confirmation tiers), `OPL-01…05`, `TU-09` (the
 confirmation overlay), `CT-05`, `CC-02`, and the threat model's `C-T4a…e` — the controls that have so
 far only had read surfaces to protect.
+**Deferred, carried forward (not built by this RFC):** the `capability_gate` / command-palette
+**unification** — `OPL-04` names `capability_gate` as the frontend's UI-affordance check, but RFC 007's
+palette still greys out on a bare `Capability` with no tier awareness, so the two could disagree once a
+mutating command exists (the palette would offer what `confirm` refuses under read-only). **Must land
+before the first mutating command enters the palette registry** — the commit increment. Also deferred:
+the ceremony state machines (`OPL-03`), and the seam-side half of `OPL-04`'s double check, which arrives
+with the first real mutation.
 **Touches.** `stikk-model` (a tier vocabulary, one new error class), `stikk-core` (`confirm`,
 `capability_gate`, the `PreviewToken`), `stikk-tui` (the `TU-09` overlay and the `InConfirmation`
 renderer RFC 007 deferred). No seam method; no mutation.

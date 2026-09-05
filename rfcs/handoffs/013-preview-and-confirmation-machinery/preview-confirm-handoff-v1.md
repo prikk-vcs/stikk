@@ -1,6 +1,6 @@
 # Handoff — the preview and tiered-confirmation machinery (v1)
 
-**Companion to:** [RFC 013](../../accepted/013-preview-and-confirmation-machinery.md) (Accepted
+**Companion to:** [RFC 013](../../done/013-preview-and-confirmation-machinery.md) (Accepted
 2026-09-05, by the owner). Inherits its state.
 **Realizes:** 0.4.0's second increment, after [RFC 003](../../done/003-repository-change-token.md)'s
 change token, which this consumes. **The gate every later mutation sits behind.**

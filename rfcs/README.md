@@ -29,9 +29,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Decision | Handoff |
-|----|-------|----------|---------|
-| 013 | [Preview & tiered-confirmation machinery](./accepted/013-preview-and-confirmation-machinery.md) | preview-first **and** confirmation made structural — `execute` takes a token only `confirm` can produce; tiers derive from `RequestCategory`. Found `FR-052` unsatisfiable as written (2026-09-05) | [Preview & confirm](./handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md) |
+_None currently — 0.4.0's next increment is **commit** (`FR-050`), the first real mutation. No RFC yet._
 
 ## Done (implemented)
 
@@ -42,6 +40,7 @@ _Design settled; implementer may start; work has not yet shipped._
 | 006 | [History & inspection seam](./done/006-history-and-inspection-seam.md) | 0.1.0 | Patch detail (`FR-030`), patch-id enumeration, diff-aware search — all `UD-09` | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |
 | 007 | [Explanation & discovery surface](./done/007-explanation-and-discovery-surface.md) | 0.1.0 | `RoutedIntoView`/`InConfirmation` renderers; merge/checkout/seal/trust next-steps + witness glossary; refusal-history persistence + `LC-8` gate | [Explanation surface](./handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md) |
 | 008 | [Worktree changes & the Compare ceiling](./done/008-worktree-changes-and-the-compare-ceiling.md) | 0.1.0 | Compare (`FR-033`); per-file content diffs (`UD-09`); the `C` commit action; status-bar worktree marker. **Amended by RFC 009** | [Changes view](./handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md) |
+| 013 | [Preview & tiered-confirmation machinery](./done/013-preview-and-confirmation-machinery.md) | 0.4.0 candidate (on `main`) | the `capability_gate`/palette unification — **must land before the first mutating palette command**; the `OPL-03` ceremony machines; `OPL-04`'s seam-side check | [Preview & confirm](./handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md) |
 | 003 | [Repository change token](./done/003-repository-change-token.md) | 0.4.0 candidate (on `main`) | the repository **fingerprint** — prikk has no repository identity by design; `INV-5` carries the protection it was meant to add | [Change token](./handoffs/003-repository-change-token/change-token-handoff-v1.md) |
 | 011 | [Pre-1.0 API stability policy](./done/011-pre-1-0-api-stability-policy.md) | adopted; in force from 0.2.0 | blanket `#[non_exhaustive]` — a 1.0-readiness task, with the analysis pre-done | [0.2.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-handoff-v1.md) · [0.3.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-0-3-0-handoff-v1.md) |
 | 012 | [Post-0.2.0 correctness sweep](./done/012-post-0-2-0-correctness-sweep.md) | 0.3.0 candidate (on `main`) | RFC 003 moved to 0.4.0; 19 rustdoc warnings + a rustdoc CI gate, scheduled with 0.4.0 planning | [Correctness sweep](./handoffs/012-post-0-2-0-correctness-sweep/correctness-sweep-handoff-v1.md) |

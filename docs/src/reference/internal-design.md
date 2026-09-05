@@ -71,7 +71,7 @@ Workspace members (Rust 2024, 2018+ module style throughout):
 - `config.rs` (+ `config/`) — DM-01 load/validate/atomic-write, unknown-key preservation (INV-4, LC-1/2).
 - `session.rs` — DM-04 SessionState, id-only anchors, focused-ref reconciliation (LC-6), private-mode gate (LC-8).
 - `recents.rs` — DM-03.
-- `handle.rs` — DM-02 RepositoryHandle + the fingerprint derivation (LC-9), which calls the seam only (never reads `.prikk/` — INV-1).
+- `handle.rs` — DM-02 RepositoryHandle: repository discovery and the **canonical path** that keys session state. *(The fingerprint derivation this line described was deferred — RFC 003, LC-9; there is no fingerprint to derive.)* It calls the seam only, never reading `.prikk/` (INV-1).
 - `sync_progress.rs` — DM-05 (artifact *paths* only).
 - `refusal_log.rs` — DM-06.
 - `export.rs` — DM-10 ReportExport writer: temp-then-atomic-rename (LC-12), verbatim passthrough vs. stamped `stikk-export-v1` (INV-7). Applies the **redaction rule** stikk inherits from prikk (threat model C-I3, `trust-threat-model.md:210-211`): a stikk-authored export never contains blob bytes, raw span/replacement text, absolute host paths, or `.prikk` private paths; the same rule gates any diagnostic log stikk writes.
@@ -199,7 +199,7 @@ Rule: design specs are the source of truth for tests (CON-6); test modules are s
 - **TS-03 — Golden-fixture parser tests** (SEAM-03): real prikk CLI outputs captured per command per version generation; a parser change that would misread a fixture fails. The `verify-report-v1` passthrough is byte-compared (INV-7/CT-02).
 - **TS-04 — Security invariants as tests:** no seam read of a `*_SEED` value (LC-13/DM-N1, C-I1); `stikk-state::paths` refuses any repository-internal path (INV-2, C-E2 — *primary* control since prikk has no foreign-file backstop); an export/log carries no redaction-listed content (C-I3) and is always stamped or byte-verbatim (INV-7); Unverifiable never maps to a pass state (FR-035, C-T2c′). These encode the threat model's key controls (`stikk-03`) as gates, echoing prikk's own boundary-gate discipline.
 - **TS-05 — Error-presentation tests** (ER-03): class → presentation mapping asserted per class.
-- **TS-06 — Round-trip state tests** (LC-*): SessionState with a now-missing focused ref degrades to default (INV-5); a moved-repository fingerprint discards stale cache (LC-9/10); a corrupt state file resets to defaults (NFR-R01).
+- **TS-06 — Round-trip state tests** (LC-*): SessionState with a now-missing focused ref degrades to default (INV-5); a derived cache is discarded when its stamped change token is no longer current (LC-4/LC-10) *(this line previously described a moved-repository fingerprint; deferred — RFC 003)*; a corrupt state file resets to defaults (NFR-R01).
 - **TS-07 — Integration (real prikk).** A small suite drives the real `prikk` binary through the CLI backend against a fixture repository (init→commit→seal→verify), mirroring prikk's own conformance approach; gated to the mutation platforms (NFR-T01). GUI testing uses the rules' `niri msg`/screenshot workflow (`project-instructions-gui-common.md`) at 1280×720.
 - **TS-08 — Frontend parity test** (FR-123): a shared table of operations asserted present in both frontends' intent maps — a build-time check that neither frontend omits or invents an operation.
 

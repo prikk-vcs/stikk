@@ -85,7 +85,7 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
 
 Two increments, in a load-bearing order: RFC 010 reshapes the seam trait, so anything landing after it
 would otherwise be re-touched. Recorded in
-[RFC 012](rfcs/accepted/012-post-0-2-0-correctness-sweep.md).
+[RFC 012](rfcs/done/012-post-0-2-0-correctness-sweep.md).
 
 1. ✅ **[RFC 010](rfcs/done/010-off-thread-seam-and-ui-responsiveness.md) — the off-thread seam.**
    Shipped to `main` 2026-09-04. `NFR-P01` was a **Must** and was **unmet**: every seam call blocked
@@ -93,7 +93,7 @@ would otherwise be re-touched. Recorded in
    its `Send + Sync` bound, a cached handshake, per-view load states with stale-response discarding,
    and the background-operation surfaces. `NFR-P02` (true cancellation) is deliberately deferred to
    `FR-100`, where it can be measured.
-2. **[RFC 012](rfcs/accepted/012-post-0-2-0-correctness-sweep.md) — the correctness sweep.** Read-only
+2. **[RFC 012](rfcs/done/012-post-0-2-0-correctness-sweep.md) — the correctness sweep.** Read-only
    must lock out recovery (`FR-121` over `AC-04`); version skew must stop pointing users at their
    signing keys; per-platform config/state paths on the platforms we already ship binaries for;
    `RefName` adopted so ref names are validated and not merely rendered inert; a gloss for prikk

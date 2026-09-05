@@ -1,6 +1,6 @@
 # Handoff — the post-0.2.0 correctness sweep (v1)
 
-**Companion to:** [RFC 012](../../accepted/012-post-0-2-0-correctness-sweep.md) (Accepted 2026-09-05).
+**Companion to:** [RFC 012](../../done/012-post-0-2-0-correctness-sweep.md) (Accepted 2026-09-05).
 Inherits its state.
 **Realizes:** the second increment of **0.3.0**, after
 [RFC 010](../../done/010-off-thread-seam-and-ui-responsiveness.md) (shipped to `main`).

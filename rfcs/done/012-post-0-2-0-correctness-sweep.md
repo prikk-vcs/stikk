@@ -1,6 +1,6 @@
 # RFC 012 — Post-0.2.0 correctness sweep, and the re-sequenced roadmap
 
-**Status.** Accepted (2026-09-05) — handoff:
+**Status.** Implemented (0.3.0 candidate; on `main` 2026-09-05, reviewed and approved) — handoff:
 [`../handoffs/012-post-0-2-0-correctness-sweep/correctness-sweep-handoff-v1.md`](../handoffs/012-post-0-2-0-correctness-sweep/correctness-sweep-handoff-v1.md).
 Originally proposed 2026-09-04 — collect the findings left over from the RFC 009 review plus one new
 upstream fact, rule the two that carry design questions, and record the **re-sequenced roadmap** the
@@ -22,6 +22,12 @@ code can be right; one is new upstream ground truth from prikk 0.31, released th
 The sequencing consequence is the useful part: **four of the five are breaking**, so they group into
 one release rather than trickling out. The owner ruled against a 0.2.1, so everything here lands in
 **0.3.0**.
+
+**Deferred, carried forward (not built by this RFC):** **RFC 003** (change token + repository
+fingerprint) moved to 0.4.0 by the release-boundary revision below; **19 rustdoc warnings** across the
+workspace, several of them public-doc links to private items that render dead — found while reviewing
+this increment, out of its scope, and scheduled with the 0.4.0 planning together with a **rustdoc lint
+gate in CI** (which prikk's own CI has and stikk's does not).
 
 ## The findings
 

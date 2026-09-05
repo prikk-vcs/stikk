@@ -26,7 +26,7 @@ use stikk_core::{
     BlockDetailView, ChangesView, Command, HistoryView, NextTarget, OperationContext, Presentation,
     RefusalHistory, Target, present,
 };
-use stikk_model::Capability;
+use stikk_model::{Capability, Tier};
 use stikk_state::Config;
 
 use crate::overlay::Overlay;
@@ -332,7 +332,15 @@ impl App {
                     }
                 }
             }
-            Some(Overlay::Glossary | Overlay::Operations { .. } | Overlay::Loading { .. })
+            // `Confirmation` has no wiring yet (RFC 013: the machinery, not a consumer) — there is no
+            // real `confirm()` call to dispatch, since nothing previews yet. Falls through with the
+            // other overlays that take no `Select` action.
+            Some(
+                Overlay::Glossary
+                | Overlay::Operations { .. }
+                | Overlay::Loading { .. }
+                | Overlay::Confirmation { .. },
+            )
             | None => {
                 if self.overlays.is_empty() {
                     self.select_screen();
@@ -414,26 +422,46 @@ impl App {
         }
     }
 
-    /// Type a character (only meaningful while the palette is open — text entry).
+    /// Type a character — the palette's filter, or a tier-3-typed confirmation's typed name (RFC 013
+    /// §6, reusing this same plumbing).
     pub fn input_char(&mut self, ch: char) {
-        if let Some(Overlay::Palette { filter, cursor, .. }) = self.overlays.last_mut() {
-            filter.push(ch);
-            *cursor = 0;
+        match self.overlays.last_mut() {
+            Some(Overlay::Palette { filter, cursor, .. }) => {
+                filter.push(ch);
+                *cursor = 0;
+            }
+            Some(Overlay::Confirmation { tier, typed, .. }) if *tier == Tier::ThreeTyped => {
+                typed.push(ch);
+            }
+            _ => {}
         }
     }
 
-    /// Delete the last filter character (palette text entry).
+    /// Delete the last typed character — the palette's filter, or a tier-3-typed confirmation's typed
+    /// name.
     pub fn backspace(&mut self) {
-        if let Some(Overlay::Palette { filter, cursor, .. }) = self.overlays.last_mut() {
-            filter.pop();
-            *cursor = 0;
+        match self.overlays.last_mut() {
+            Some(Overlay::Palette { filter, cursor, .. }) => {
+                filter.pop();
+                *cursor = 0;
+            }
+            Some(Overlay::Confirmation { tier, typed, .. }) if *tier == Tier::ThreeTyped => {
+                typed.pop();
+            }
+            _ => {}
         }
     }
 
-    /// Whether the top overlay is a text-entry surface (so the key layer routes chars to it).
+    /// Whether the top overlay is a text-entry surface (so the key layer routes chars to it). A
+    /// confirmation overlay wants text only at [`Tier::ThreeTyped`] (RFC 013 §6) — tiers 2/3 take a
+    /// plain yes/no, not typed input.
     #[must_use]
     pub fn wants_text_input(&self) -> bool {
         matches!(self.overlays.last(), Some(Overlay::Palette { .. }))
+            || matches!(
+                self.overlays.last(),
+                Some(Overlay::Confirmation { tier, .. }) if *tier == Tier::ThreeTyped
+            )
     }
 
     /// Move the selection up (the top overlay's cursor if it has one, else the History cursor).
@@ -443,7 +471,13 @@ impl App {
             | Some(Overlay::Refusal { cursor, .. })
             | Some(Overlay::Palette { cursor, .. })
             | Some(Overlay::Refusals { cursor, .. }) => *cursor = cursor.saturating_sub(1),
-            Some(Overlay::Glossary | Overlay::Operations { .. } | Overlay::Loading { .. }) => {}
+            // A confirmation overlay is a single prompt, not a list — no cursor to move (RFC 013 §6).
+            Some(
+                Overlay::Glossary
+                | Overlay::Operations { .. }
+                | Overlay::Loading { .. }
+                | Overlay::Confirmation { .. },
+            ) => {}
             None => {
                 if let Some(Screen::History { cursor, .. }) = self.screens.last_mut() {
                     *cursor = cursor.saturating_sub(1);
@@ -466,7 +500,12 @@ impl App {
                 let count = stikk_core::palette::matching(filter).len();
                 *cursor = next_index(*cursor, count);
             }
-            Some(Overlay::Glossary | Overlay::Operations { .. } | Overlay::Loading { .. }) => {}
+            Some(
+                Overlay::Glossary
+                | Overlay::Operations { .. }
+                | Overlay::Loading { .. }
+                | Overlay::Confirmation { .. },
+            ) => {}
             None => {
                 if let Some(Screen::History { view, cursor, .. }) = self.screens.last_mut() {
                     *cursor = next_index(*cursor, view.blocks.len());
@@ -849,6 +888,12 @@ impl App {
     #[cfg(test)]
     pub(crate) fn push_screen(&mut self, screen: Screen) {
         self.screens.push(screen);
+    }
+
+    /// Push an overlay directly — for tests (RFC 013's confirmation overlay has no live trigger yet).
+    #[cfg(test)]
+    pub(crate) fn push_overlay(&mut self, overlay: Overlay) {
+        self.overlays.push(overlay);
     }
 
     /// Surface a seam error directly — for tests (drives the ER-03 routing).

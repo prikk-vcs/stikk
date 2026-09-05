@@ -6,6 +6,25 @@
 //! the type: a mutating category never auto-retries (NFR-S04), and stikk holds a single per-repository
 //! mutation gate for all of them (design CC-02).
 
+/// The confirmation tier a request's category requires before it may execute (design `FR-121`; RFC 013
+/// decision 4). Derived from [`RequestCategory`] alone, **never** declared per operation, so a new
+/// operation cannot forget to be gated — the same mechanical guarantee `FR-123` gives frontend parity.
+///
+/// Ordering matters: `Tier::One < Tier::Two < Tier::Three < Tier::ThreeTyped`, so a `>=` comparison
+/// reads as "requires at least this much ceremony."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Tier {
+    /// Free — no confirmation, ever (RFC 013 decision 6: a standing constraint, not a default). Every
+    /// read category is this tier.
+    One,
+    /// Queue-affecting: an explicit yes.
+    Two,
+    /// History-publishing: restate the operation, then an explicit yes.
+    Three,
+    /// Recovery/trust: restate, then the typed target name, matched exactly (`FR-102`/`FR-103`).
+    ThreeTyped,
+}
+
 /// One of the nine categories every prikk request belongs to (design CT-03 table).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -42,6 +61,22 @@ impl RequestCategory {
             | Self::Exchange
             | Self::Trust
             | Self::Recovery => true,
+        }
+    }
+
+    /// The confirmation tier this category requires (design `FR-121`; RFC 013 decision 4). Every read
+    /// category is [`Tier::One`] (free — RFC 013 decision 6); every mutating category maps to
+    /// [`Tier::Two`], [`Tier::Three`], or [`Tier::ThreeTyped`], beside [`Self::mutates`] for the same
+    /// reason: a new category cannot be added here without a reviewer also deciding its tier.
+    #[must_use]
+    pub const fn tier(self) -> Tier {
+        match self {
+            Self::ReadHistory | Self::ReadState | Self::WorktreeAnalysis | Self::Integrity => {
+                Tier::One
+            }
+            Self::QueueMutation => Tier::Two,
+            Self::Publication | Self::Exchange => Tier::Three,
+            Self::Trust | Self::Recovery => Tier::ThreeTyped,
         }
     }
 

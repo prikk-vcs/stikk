@@ -5,8 +5,10 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
-use stikk_core::{NextStep, NextTarget, OperationContext, RefusalCard, RefusalRecord, Target};
-use stikk_model::Capability;
+use stikk_core::{
+    ConfirmationSummary, NextStep, NextTarget, OperationContext, RefusalCard, RefusalRecord, Target,
+};
+use stikk_model::{Capability, Tier};
 
 use super::*;
 use crate::test_util::buffer_text;
@@ -149,4 +151,90 @@ fn refusals_list_shows_remembered_messages() {
     let text = draw(&overlay);
     assert!(text.contains("Recent refusals"));
     assert!(text.contains("ref does not exist"));
+}
+
+fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSummary {
+    ConfirmationSummary {
+        operation: "Commit worktree changes".to_string(),
+        target_ids: target_ids.into_iter().map(str::to_string).collect(),
+        counts: vec![("patches", 3)],
+        capability: Capability::Author,
+        consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
+        target_name: target_name.map(str::to_string),
+    }
+}
+
+#[test]
+fn confirmation_restates_operation_targets_counts_and_consequence() {
+    let overlay = Overlay::Confirmation {
+        summary: summary(vec!["heads/main"], None),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("Confirm"));
+    assert!(text.contains("Commit worktree changes"));
+    assert!(text.contains("heads/main"));
+    assert!(text.contains("3 patches"));
+    assert!(text.contains("Queues patches for the next seal"));
+    assert!(text.contains("Enter to confirm"));
+    // Tier 2/3 take a plain yes/no — no typed-input prompt.
+    assert!(!text.contains("Type "));
+}
+
+#[test]
+fn confirmation_tier_three_typed_shows_the_prompt_and_typed_input_so_far() {
+    let overlay = Overlay::Confirmation {
+        summary: summary(vec!["heads/main"], Some("heads/main")),
+        tier: Tier::ThreeTyped,
+        typed: "heads/ma".to_string(),
+        error: None,
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("Type \"heads/main\""));
+    assert!(text.contains("heads/ma")); // what has been typed so far
+    assert!(!text.contains("Enter to confirm")); // that prompt is tier 2/3's, not this tier's
+}
+
+#[test]
+fn confirmation_shows_an_inline_declined_error_not_a_separate_popup() {
+    let overlay = Overlay::Confirmation {
+        summary: summary(vec!["heads/main"], Some("heads/main")),
+        tier: Tier::ThreeTyped,
+        typed: "wrong".to_string(),
+        error: Some("test-op was not confirmed as this tier requires".to_string()),
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("was not confirmed"));
+    // Still the one overlay — the error is a line inside it, not a second title/overlay.
+    assert_eq!(text.matches("Confirm").count(), 1);
+}
+
+#[test]
+fn confirmation_hostile_target_id_and_target_name_render_inert() {
+    // C-T4e: a ConfirmationSummary is built from prikk-authoritative values that a hostile
+    // repository could still shape (a ref name, say) — neither may forge chrome nor escape the pane.
+    let hostile_id = "heads/\u{1b}[2Jevil";
+    let overlay = Overlay::Confirmation {
+        summary: summary(vec![hostile_id], Some(hostile_id)),
+        tier: Tier::ThreeTyped,
+        typed: String::new(),
+        error: None,
+    };
+    let text = draw(&overlay);
+    assert!(!text.contains('\u{1b}'));
+    assert!(text.contains('\u{FFFD}'));
+}
+
+#[test]
+fn confirmation_hostile_typed_input_also_renders_inert() {
+    let overlay = Overlay::Confirmation {
+        summary: summary(vec!["heads/main"], Some("heads/main")),
+        tier: Tier::ThreeTyped,
+        typed: "\u{1b}[2Jpasted".to_string(),
+        error: None,
+    };
+    let text = draw(&overlay);
+    assert!(!text.contains('\u{1b}'));
 }

@@ -88,7 +88,11 @@ pub struct NextStep {
 /// The content of a refusal overlay (FR-110/TU-08). Everything is stikk-owned or verbatim prikk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefusalCard {
-    /// prikk's message, verbatim (shown inert and quoted by the frontend). Never rewritten (ER-02).
+    /// The operation's own stated reason, verbatim (shown inert and quoted by the frontend): prikk's
+    /// message for a [`StikkError::Refusal`] (never rewritten — `ER-02`), or **stikk's own words for a
+    /// [`StikkError::Stale`]** — the one documented exception, because prikk was never asked and has no
+    /// words to preserve (RFC 013 §5: "prikk did not refuse this — stikk did"). Both cases still satisfy
+    /// the invariant this field exists for: whichever voice produced the refusal, it is shown unedited.
     pub verbatim: String,
     /// A plain-language explanation in stikk's voice; `None` degrades to verbatim-only (RR-5).
     pub gloss: Option<String>,
@@ -207,6 +211,30 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
         },
         StikkError::Internal { detail } => Presentation::FaultScreen {
             detail: detail.clone(),
+        },
+        StikkError::Stale { operation } => Presentation::RefusalOverlay(RefusalCard {
+            // The one documented exception to "verbatim is prikk's own words" (see the field's doc):
+            // prikk was never asked, so there is nothing of prikk's to preserve.
+            verbatim: format!(
+                "{operation}: the repository changed since this was last previewed. stikk stopped \
+                 rather than act on a preview that no longer matches."
+            ),
+            gloss: Some(
+                "Another writer moved something in this repository between your preview and now. \
+                 This is not a retry: previewing again re-reads the repository's current state, which \
+                 is the only safe way forward."
+                    .to_string(),
+            ),
+            // RFC 013 §5 / NFR-S04: the only correct next step re-runs the *preview* (a read), never
+            // the execution — `Refresh` already means exactly that everywhere else it is used.
+            next_steps: vec![NextStep {
+                label: "Preview again".to_string(),
+                target: NextTarget::Refresh,
+            }],
+            glossary_codes: Vec::new(),
+        }),
+        StikkError::Declined { detail } => Presentation::InConfirmation {
+            message: detail.clone(),
         },
         // `StikkError` is `#[non_exhaustive]`: a class added later degrades to an honest plain
         // statement carrying its message, never a panic (RR-5 discipline applied to our own type).

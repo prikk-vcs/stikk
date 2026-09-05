@@ -10,9 +10,10 @@
 use std::sync::mpsc;
 
 use stikk_core::{
-    BlockDetailView, ChangeEntry, ChangeKind, ChangesView, HistoryView, OperationContext,
+    BlockDetailView, ChangeEntry, ChangeKind, ChangesView, ConfirmationSummary, HistoryView,
+    OperationContext,
 };
-use stikk_model::{Capability, Readiness, StikkError};
+use stikk_model::{Capability, Readiness, StikkError, Tier};
 use stikk_prikk::{BlockRow, StateFiles};
 use stikk_state::Config;
 
@@ -834,4 +835,128 @@ fn worker_stopped_records_a_dismissible_fault() {
     assert!(app.fault().is_some());
     app.back();
     assert!(app.fault().is_none());
+}
+
+fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
+    ConfirmationSummary {
+        operation: "Test operation".to_string(),
+        target_ids: vec!["abc123".to_string()],
+        counts: vec![("items", 1)],
+        capability: Capability::Author,
+        consequence: "Nothing real happens".to_string(),
+        target_name: target_name.map(str::to_string),
+    }
+}
+
+#[test]
+fn a_tier_three_typed_confirmation_wants_text_input_but_tier_two_does_not() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.push_overlay(Overlay::Confirmation {
+        summary: confirmation_summary(Some("heads/main")),
+        tier: Tier::ThreeTyped,
+        typed: String::new(),
+        error: None,
+    });
+    assert!(app.wants_text_input());
+
+    app.close_overlay();
+    app.push_overlay(Overlay::Confirmation {
+        summary: confirmation_summary(None),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    });
+    assert!(!app.wants_text_input());
+}
+
+#[test]
+fn typing_into_a_tier_three_typed_confirmation_builds_and_erases_the_typed_name() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.push_overlay(Overlay::Confirmation {
+        summary: confirmation_summary(Some("heads/main")),
+        tier: Tier::ThreeTyped,
+        typed: String::new(),
+        error: None,
+    });
+    app.input_char('h');
+    app.input_char('i');
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { typed, .. }) => assert_eq!(typed, "hi"),
+        other => panic!("expected Confirmation, got {other:?}"),
+    }
+    app.backspace();
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { typed, .. }) => assert_eq!(typed, "h"),
+        other => panic!("expected Confirmation, got {other:?}"),
+    }
+}
+
+#[test]
+fn typing_into_a_tier_two_confirmation_does_nothing() {
+    // Only tier-3-typed collects typed input (RFC 013 §6); tiers 2/3 take a plain yes/no.
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.push_overlay(Overlay::Confirmation {
+        summary: confirmation_summary(None),
+        tier: Tier::Three,
+        typed: String::new(),
+        error: None,
+    });
+    app.input_char('x');
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { typed, .. }) => assert!(typed.is_empty()),
+        other => panic!("expected Confirmation, got {other:?}"),
+    }
+}
+
+#[test]
+fn nav_up_and_down_do_not_panic_or_move_anything_on_a_confirmation_overlay() {
+    // A confirmation is a single prompt, not a list — nav keys must be safely absorbed as no-ops.
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.push_overlay(Overlay::Confirmation {
+        summary: confirmation_summary(Some("heads/main")),
+        tier: Tier::ThreeTyped,
+        typed: "partial".to_string(),
+        error: None,
+    });
+    app.nav_up();
+    app.nav_down();
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { typed, .. }) => assert_eq!(typed, "partial"),
+        other => panic!("expected Confirmation unchanged, got {other:?}"),
+    }
+}
+
+#[test]
+fn select_on_a_confirmation_overlay_is_a_no_op_this_increment() {
+    // RFC 013: the machinery, not a consumer — there is no real `confirm()` call to dispatch from
+    // here yet, since nothing previews. Documented as a deliberate, temporary no-op.
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.push_overlay(Overlay::Confirmation {
+        summary: confirmation_summary(None),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    });
+    app.select();
+    assert!(app.has_overlay(), "select() must not silently dismiss it");
 }

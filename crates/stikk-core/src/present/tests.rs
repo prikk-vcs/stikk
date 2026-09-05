@@ -272,3 +272,55 @@ fn a_refusal_with_no_surface_context_has_no_fabricated_gloss() {
         other => panic!("expected overlay, got {other:?}"),
     }
 }
+
+#[test]
+fn stale_becomes_an_overlay_naming_the_operation_with_exactly_one_re_preview_next_step() {
+    // RFC 013 §5/decision 3: routed to a re-preview prompt, and the next-step set must contain no
+    // action that re-runs the execution — this is the NFR-S04 regression test for this increment.
+    let err = StikkError::Stale {
+        operation: "commit".into(),
+    };
+    let card = match present(&err, OperationContext::Other) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    assert!(card.verbatim.contains("commit"));
+    assert!(card.gloss.is_some());
+    assert_eq!(card.next_steps.len(), 1);
+    for step in &card.next_steps {
+        // Every next-step must be navigational (NFR-S04): none may re-run an execution. This
+        // increment's `NextTarget` vocabulary has no "execute" variant at all, so the assertion is
+        // that the one step present is `Refresh` (re-run the *preview*, a read) — never anything else.
+        assert_eq!(step.target, NextTarget::Refresh);
+    }
+}
+
+#[test]
+fn stale_is_the_one_documented_exception_that_puts_stikks_own_words_in_verbatim() {
+    // Distinguishing this from an ordinary Refusal: nothing here is prikk's text (prikk was never
+    // asked), which is exactly why `Stale` exists as its own class rather than reusing `Refusal`.
+    let err = StikkError::Stale {
+        operation: "seal".into(),
+    };
+    let card = match present(&err, OperationContext::Other) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    assert!(card.verbatim.contains("repository changed"));
+    assert!(card.glossary_codes.is_empty());
+}
+
+#[test]
+fn declined_routes_to_in_confirmation_not_a_separate_popup() {
+    // RFC 013 §4: wrong/empty confirmation evidence belongs inside the confirmation surface that asked
+    // for it, not a new overlay — the user is still mid-confirmation, not facing an unrelated failure.
+    let err = StikkError::Declined {
+        detail: "typed name does not match".into(),
+    };
+    match present(&err, OperationContext::Other) {
+        Presentation::InConfirmation { message } => {
+            assert_eq!(message, "typed name does not match");
+        }
+        other => panic!("expected InConfirmation, got {other:?}"),
+    }
+}

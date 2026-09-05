@@ -20,8 +20,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use stikk_core::{RefusalCard, RefusalRecord, glossary, palette};
-use stikk_model::Capability;
+use stikk_core::{ConfirmationSummary, RefusalCard, RefusalRecord, glossary, palette};
+use stikk_model::{Capability, Tier};
 
 use crate::app::{Operation, OperationStatus};
 use crate::text::inert;
@@ -77,6 +77,24 @@ pub enum Overlay {
         /// The highlighted entry.
         cursor: usize,
     },
+    /// The `TU-09` confirmation overlay (RFC 013 §6): restates the operation from the preview's
+    /// [`ConfirmationSummary`] — never a fresh read, since the summary is the one true copy stamped at
+    /// preview time — and collects whatever evidence the tier requires. Chrome stays visibly stikk's
+    /// (`C-T2b`): a content pane must not be able to look like this. **No mutation is wired to this
+    /// overlay yet** (RFC 013: the machinery, not a consumer) — it exists to be pushed and rendered by
+    /// whichever real operation previews first.
+    Confirmation {
+        /// What to restate. Composed at preview time; never re-derived here (RFC 013 §3).
+        summary: ConfirmationSummary,
+        /// Which evidence shape this tier needs.
+        tier: Tier,
+        /// The user's typed input so far — meaningful only for [`Tier::ThreeTyped`].
+        typed: String,
+        /// An inline message from a declined confirmation attempt
+        /// ([`stikk_model::StikkError::Declined`]), shown in place — never a separate popup
+        /// (RFC 013 §4: the user is still mid-confirmation, not facing a new failure).
+        error: Option<String>,
+    },
 }
 
 impl Overlay {
@@ -91,6 +109,7 @@ impl Overlay {
             Self::Refusal { .. } => " prikk refused ",
             Self::Palette { .. } => " Command palette ",
             Self::Refusals { .. } => " Recent refusals ",
+            Self::Confirmation { .. } => " Confirm ",
         }
     }
 }
@@ -113,6 +132,20 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
         Overlay::Refusals { records, cursor } => {
             render_refusals(records, *cursor, palette, frame, area);
         }
+        Overlay::Confirmation {
+            summary,
+            tier,
+            typed,
+            error,
+        } => render_confirmation(
+            summary,
+            *tier,
+            typed,
+            error.as_deref(),
+            palette,
+            frame,
+            area,
+        ),
     }
 }
 
@@ -417,6 +450,128 @@ fn render_refusals(
     let region = centered(72, height.max(4), area);
     frame.render_widget(Clear, region);
     frame.render_widget(Paragraph::new(lines).block(block), region);
+}
+
+/// The `TU-09` confirmation overlay (RFC 013 §6): restates `summary` from the preview — never a fresh
+/// read (RFC 013 §3) — and shows the evidence shape `tier` requires. `typed` is the user's in-progress
+/// input for a tier-3-typed exact match (unused otherwise); `error` is an inline message from a
+/// declined confirmation attempt (`StikkError::Declined`), shown in place rather than as a separate
+/// popup (RFC 013 §4 — the user is still mid-confirmation, not facing a new failure).
+///
+/// `target_ids`, `target_name`, and the user's own `typed` input are rendered through [`inert`]
+/// (`C-T2a`/`C-T4e`): the first two are prikk-authoritative and a hostile repository must not be able
+/// to forge chrome through them; `typed` is defensive against a pasted control character. `operation`
+/// and `consequence` are stikk's own words and need no such treatment.
+fn render_confirmation(
+    summary: &ConfirmationSummary,
+    tier: Tier,
+    typed: &str,
+    error: Option<&str>,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            format!("  {}", summary.operation),
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+
+    if !summary.target_ids.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Targets:",
+            Style::default().fg(palette.dim),
+        )));
+        for id in &summary.target_ids {
+            lines.push(Line::from(Span::styled(
+                format!("    {}", inert(id)),
+                Style::default().fg(palette.accent),
+            )));
+        }
+        lines.push(Line::from(""));
+    }
+
+    if !summary.counts.is_empty() {
+        let counts_line = summary
+            .counts
+            .iter()
+            .map(|(label, count)| format!("{count} {label}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(Line::from(Span::styled(
+            format!("  {counts_line}"),
+            Style::default().fg(palette.fg),
+        )));
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(Span::styled(
+        format!("  Consumes: {}", capability_label(summary.capability)),
+        Style::default().fg(palette.dim),
+    )));
+    lines.push(Line::from(""));
+
+    // The consequence — stikk's own words. The operation's own plan/content (prikk's verbatim text,
+    // for Class A previews — RFC 013 F1) lives in the preview view itself, never restated here
+    // (RFC 013 Q1: the confirmation restates the fixed summary, not the preview).
+    lines.push(Line::from(Span::styled(
+        format!("  {}", summary.consequence),
+        Style::default().fg(palette.fg),
+    )));
+    lines.push(Line::from(""));
+
+    match tier {
+        Tier::One => {} // never reaches this overlay in practice — tier 1 has no confirmation
+        Tier::Two | Tier::Three => {
+            lines.push(Line::from(Span::styled(
+                "  Enter to confirm · Esc to cancel",
+                Style::default().fg(palette.accent),
+            )));
+        }
+        Tier::ThreeTyped => {
+            let target = summary.target_name.as_deref().unwrap_or("");
+            lines.push(Line::from(Span::styled(
+                format!("  Type \"{}\" to confirm:", inert(target)),
+                Style::default().fg(palette.dim),
+            )));
+            lines.push(Line::from(vec![
+                Span::styled("  › ", Style::default().fg(palette.accent)),
+                Span::styled(inert(typed), Style::default().fg(palette.fg)),
+            ]));
+        }
+    }
+
+    if let Some(error) = error {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            format!("  {error}"),
+            Style::default().fg(palette.warn),
+        )));
+    }
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Confirm ")
+        .style(Style::default().fg(palette.warn));
+    let height = (lines.len() as u16 + 4).min(area.height.saturating_sub(2));
+    let region = centered(70, height.max(8), area);
+    frame.render_widget(Clear, region);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        region,
+    );
+}
+
+fn capability_label(capability: Capability) -> &'static str {
+    match capability {
+        Capability::Viewer => "read-only (no signing needed)",
+        Capability::Author => "AUTHOR",
+        Capability::Maintainer => "MAINTAINER",
+    }
 }
 
 /// A selectable list row with a marker and consistent highlight styling.

@@ -67,6 +67,28 @@ pub enum StikkError {
         /// A description of the internal invariant that was violated.
         detail: String,
     },
+    /// The repository changed between a preview and its confirmation, or between confirmation and
+    /// execution (design `OPL-02`/`CT-05`; RFC 013 decision 3). **`prikk` did not refuse this — stikk
+    /// did**, on comparing the change token stamped at preview time against a freshly-read one. Never
+    /// `Refusal` (that would put stikk's own words in prikk's voice) and never `LockConflict` (nothing
+    /// is locked). The user's next action is to look again: `present()` routes this to a re-preview
+    /// prompt, and no next-step it offers may re-run the execution (`NFR-S04`).
+    Stale {
+        /// The operation whose preview or confirmation no longer matches the repository's current
+        /// state — stikk's own short name for it (e.g. `"commit"`), never prikk's words.
+        operation: String,
+    },
+    /// The confirmation evidence supplied did not satisfy the tier's requirement: a missing explicit
+    /// yes, or a typed name that does not exactly match the confirmation summary's target (design
+    /// `FR-121`; RFC 013 §4). Distinct from [`StikkError::Stale`] (nothing about the repository moved)
+    /// and from [`StikkError::NotReady`] (capability and read-only mode were both sufficient — the
+    /// *evidence itself* was not). Belongs inside the confirmation surface that asked for the evidence,
+    /// never a separate popup (`Presentation::InConfirmation`) — the user is still mid-confirmation, not
+    /// facing a new failure.
+    Declined {
+        /// What was required and what was supplied, in stikk's own words.
+        detail: String,
+    },
 }
 
 impl StikkError {
@@ -102,16 +124,25 @@ impl StikkError {
             Self::Limits { .. } => "limits",
             Self::Environment { .. } => "environment",
             Self::Internal { .. } => "stikk-internal",
+            Self::Stale { .. } => "stale",
+            Self::Declined { .. } => "declined",
         }
     }
 
-    /// True when this class must never be auto-retried (design NFR-S04): a refusal, a lock conflict,
-    /// or a not-ready condition is the user's to resolve, never stikk's to retry silently.
+    /// True when this class must never be auto-retried (design NFR-S04): a refusal, a lock conflict, a
+    /// not-ready condition, a stale precondition, or declined evidence is the user's to resolve, never
+    /// stikk's to retry silently. `Stale` in particular must never be retried as-is — its whole point is
+    /// that retrying the same execution is exactly the prohibited thing (RFC 013 decision 3); the user's
+    /// only correct next step is a fresh preview.
     #[must_use]
     pub const fn is_user_resolved(&self) -> bool {
         matches!(
             self,
-            Self::Refusal { .. } | Self::LockConflict { .. } | Self::NotReady { .. }
+            Self::Refusal { .. }
+                | Self::LockConflict { .. }
+                | Self::NotReady { .. }
+                | Self::Stale { .. }
+                | Self::Declined { .. }
         )
     }
 }
@@ -123,10 +154,16 @@ impl fmt::Display for StikkError {
             | Self::LockConflict { message }
             | Self::IntegrityFinding { message }
             | Self::Limits { message } => write!(f, "{}: {message}", self.class()),
-            Self::NotReady { detail } | Self::Internal { detail } => {
+            Self::NotReady { detail } | Self::Internal { detail } | Self::Declined { detail } => {
                 write!(f, "{}: {detail}", self.class())
             }
             Self::Environment { detail, .. } => write!(f, "environment: {detail}"),
+            Self::Stale { operation } => {
+                write!(
+                    f,
+                    "stale: {operation}'s preview no longer matches the repository"
+                )
+            }
         }
     }
 }

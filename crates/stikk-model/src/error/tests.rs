@@ -6,7 +6,7 @@ use super::*;
 
 #[test]
 fn every_class_has_a_stable_name() {
-    let cases: [(StikkError, &str); 7] = [
+    let cases: [(StikkError, &str); 9] = [
         (
             StikkError::Refusal {
                 message: "m".into(),
@@ -37,6 +37,13 @@ fn every_class_has_a_stable_name() {
             StikkError::Internal { detail: "m".into() },
             "stikk-internal",
         ),
+        (
+            StikkError::Stale {
+                operation: "commit".into(),
+            },
+            "stale",
+        ),
+        (StikkError::Declined { detail: "m".into() }, "declined"),
     ];
     for (err, name) in cases {
         assert_eq!(err.class(), name);
@@ -84,4 +91,26 @@ fn user_resolved_classes_are_never_auto_retried() {
     assert!(StikkError::NotReady { detail: "x".into() }.is_user_resolved());
     assert!(!StikkError::environment_msg("x").is_user_resolved());
     assert!(!StikkError::Internal { detail: "x".into() }.is_user_resolved());
+}
+
+#[test]
+fn stale_and_declined_are_never_auto_retried_either() {
+    // RFC 013 decision 3: retrying a Stale execution as-is is precisely the prohibited thing.
+    assert!(
+        StikkError::Stale {
+            operation: "commit".into()
+        }
+        .is_user_resolved()
+    );
+    assert!(StikkError::Declined { detail: "x".into() }.is_user_resolved());
+}
+
+#[test]
+fn stale_names_the_operation_never_prikks_words() {
+    // RFC 013 §5: Stale carries stikk's own name for the operation, not prikk's voice — there is none,
+    // since prikk was never asked.
+    let err = StikkError::Stale {
+        operation: "commit".into(),
+    };
+    assert!(err.to_string().contains("commit"));
 }

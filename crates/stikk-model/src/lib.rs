@@ -10,7 +10,8 @@
 //!   verbatim message (requirement NFR-I03, FR-110).
 //! - [`id`] — validated object-id and ref-name newtypes; stikk never fabricates an identifier.
 //! - [`category`] — the request-category vocabulary the seam and operation layer share, carrying
-//!   each category's mutation/cancellability/lock policy as data (design CT-03).
+//!   each category's mutation/cancellability/lock/confirmation-tier policy as data (design CT-03,
+//!   `FR-121`).
 //! - [`capability`] — the derived capability levels (Viewer/Author/Maintainer/Operator) that gate
 //!   what a session may do, computed from prikk-side signing readiness (design AC-01…04).
 //! - [`change_token`] — the repository-change detection primitive (design `LC-4`; RFC 003), composed
@@ -26,7 +27,7 @@ pub mod error;
 pub mod id;
 
 pub use capability::{Capability, Readiness};
-pub use category::RequestCategory;
+pub use category::{RequestCategory, Tier};
 pub use change_token::ChangeToken;
 pub use error::{Result, StikkError};
 pub use id::{ObjectId, RefName};

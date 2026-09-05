@@ -35,14 +35,33 @@ impl Readiness {
             read_only: false,
         }
     }
+
+    /// True when a human at the machine may run recovery actions (doctor repair, lock clearing,
+    /// compaction) under explicit confirmation (design AC-04; RFC 012 F-a).
+    ///
+    /// Lives here, not on [`Capability`], because the one fact that decides it — `read_only` — is
+    /// exactly what [`Capability::derive`] discards on the way to a [`Capability`]: by the time a
+    /// capability exists, a read-only session and a no-keys session are indistinguishable, so
+    /// `may_operate` could not be implemented correctly as a `Capability` method. `AC-04`'s
+    /// "orthogonal to the [mutating axis]" describes how Operator is *derived* — any human at the
+    /// machine, not a signing role — never an exemption from the global read-only switch: `FR-121`
+    /// governs, and a read-only mode that still permits clearing another writer's lock would itself be
+    /// the "confident-but-wrong picture" (`T-T4`) this project refuses. Each recovery action still
+    /// carries its own typed confirmation (`FR-102`) regardless of this check.
+    #[must_use]
+    pub const fn may_operate(self) -> bool {
+        !self.read_only
+    }
 }
 
 /// What a session may do, derived from [`Readiness`] (design AC-01…04).
 ///
 /// The levels are cumulative for the mutating axis (`Maintainer` implies `Author` implies `Viewer`).
 /// `Operator` is orthogonal — recovery actions available to any human at the machine under explicit
-/// confirmation — and is represented as a separate query ([`Capability::may_operate`]) rather than a
-/// point on the ladder.
+/// confirmation — and is represented as a separate query on [`Readiness`] itself
+/// ([`Readiness::may_operate`]) rather than a point on this ladder or a method here: `derive` below
+/// discards `read_only` on the way to a `Capability`, so the one fact `may_operate` needs does not
+/// survive to exist as a method on this type (RFC 012 F-a).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Capability {
     /// Every read surface. The default when signing readiness is absent or read-only mode is on.
@@ -81,15 +100,6 @@ impl Capability {
     #[must_use]
     pub const fn may_publish(self) -> bool {
         matches!(self, Self::Maintainer)
-    }
-
-    /// True when a human at the machine may run recovery actions (doctor repair, lock clearing,
-    /// compaction) under explicit confirmation. Orthogonal to the mutating axis: recovery is not a
-    /// signing act, it is an operator act, and read-only mode does not remove it (design AC-04) — but
-    /// each recovery action still carries its own typed confirmation (FR-102).
-    #[must_use]
-    pub const fn may_operate(self) -> bool {
-        true
     }
 
     /// The stable machine-readable name (design CL-07).

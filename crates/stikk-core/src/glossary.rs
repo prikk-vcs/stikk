@@ -5,9 +5,11 @@
 //!
 //! - **Terminology mapping** — Git → prikk, so Git-shaped expectations are redirected in copy and in
 //!   Help (external-design §0). Seeded in full now.
-//! - **Code entries** — witness kinds (merge, FR-080) and verify finding codes (FR-100), keyed by
-//!   prikk's own code. These arrive with the operations that surface them; a representative sample is
-//!   seeded now to build and test the lookup and its degradation.
+//! - **Code entries** — witness kinds (merge, FR-080), verify finding codes (FR-100), and stable
+//!   substrings of a known refusal shape (`.prikkignore`, RFC 009 F5; envelope-schema skew, RFC 012
+//!   F-e), keyed by whatever text of prikk's own reliably names the condition. These arrive with the
+//!   operations that surface them; a representative sample is seeded now to build and test the lookup
+//!   and its degradation.
 //!
 //! **The degradation is the point** (RR-5/NFR-I03): a code with no entry returns `None`, and the
 //! caller shows prikk's message verbatim — the message is never hidden behind a missing gloss.
@@ -95,6 +97,13 @@ static TERMS: &[TermMapping] = &[
     },
 ];
 
+/// The substring RFC 012 F-e's envelope-schema-skew refusal always contains, regardless of which
+/// schema-2 object kind (`Patch`, `Blob`, ...) is involved, which schema number was rejected, or
+/// whether prikk wrapped the message inside a `lifecycle replay:` context (as `worktree-status` does).
+/// Deliberately not the literal schema numbers or the "accepted: [...]" list — those change the moment
+/// prikk ships a new schema, and this string must not.
+pub(crate) const SCHEMA_SKEW_CODE: &str = "does not accept envelope schema";
+
 /// Code entries (witness/finding). A representative sample now; the full sets land with FR-080/FR-100.
 static CODE_ENTRIES: &[GlossaryEntry] = &[
     GlossaryEntry {
@@ -114,6 +123,17 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
                       rule it cannot use — an absolute path, for example — appears in it (RFC 009 F5). \
                       Fix or remove the offending line outside stikk, then retry: stikk itself never \
                       edits a repository file (CON-1).",
+        see_also: &[],
+    },
+    GlossaryEntry {
+        code: SCHEMA_SKEW_CODE,
+        title: "This repository was written by a newer prikk",
+        explanation: "prikk's compatibility guarantee runs one way: a newer prikk can always read what \
+                      an older one wrote, but an older prikk reading a newer one's schema is the \
+                      direction that is not promised (RFC 012 F-e). Some content here was sealed by a \
+                      prikk newer than the one this session is running, and this prikk cannot translate \
+                      that schema. stikk cannot change what prikk you run — upgrade the prikk binary \
+                      this session uses to one that supports the schema, then retry.",
         see_also: &[],
     },
 ];

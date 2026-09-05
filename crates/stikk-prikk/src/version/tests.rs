@@ -75,10 +75,11 @@ fn supported_range_starts_at_0_28() {
     );
 }
 
-/// RFC 009 decision 7: a prikk above the validated ceiling (0.30) still runs (`is_supported`), but
-/// `is_validated` says its output shapes have not actually been checked.
+/// RFC 009 decision 7 (ceiling raised to 0.31 by RFC 012 F-e): a prikk above the validated ceiling
+/// still runs (`is_supported`), but `is_validated` says its output shapes have not actually been
+/// checked.
 #[test]
-fn validated_ceiling_is_0_30_but_newer_still_runs() {
+fn validated_ceiling_is_0_31_but_newer_still_runs() {
     let below_floor = Version {
         major: 0,
         minor: 27,
@@ -95,14 +96,14 @@ fn validated_ceiling_is_0_30_but_newer_still_runs() {
 
     let at_ceiling = Version {
         major: 0,
-        minor: 30,
+        minor: 31,
         patch: 0,
     };
     assert!(at_ceiling.is_supported() && at_ceiling.is_validated());
 
     let above_ceiling = Version {
         major: 0,
-        minor: 31,
+        minor: 32,
         patch: 0,
     };
     assert!(above_ceiling.is_supported() && !above_ceiling.is_validated());

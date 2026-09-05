@@ -53,6 +53,10 @@ impl Prikk for SlowOrientation {
         self.0.block_state(repo, reff)
     }
 
+    fn tags(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+        self.0.tags(repo)
+    }
+
     fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {
         self.0.refs(repo)
     }

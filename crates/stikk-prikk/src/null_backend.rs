@@ -21,13 +21,15 @@ pub struct NullBackend {
     history: Scripted<History>,
     state: Scripted<StateFiles>,
     refs: Scripted<Vec<RefEntry>>,
+    tags: Scripted<Vec<RefEntry>>,
     worktree: Scripted<WorktreeStatus>,
 }
 
 impl NullBackend {
-    /// A backend reporting a supported, validated prikk (RFC 009: the floor is 0.28, validated through
-    /// 0.30.0 — this default is the ceiling itself) and a clean, empty repository — the common happy
-    /// path.
+    /// A backend reporting a supported, validated prikk (RFC 009: the floor is 0.28; the version
+    /// reported here, 0.30.0, is left as-is by RFC 012 F-e's ceiling raise to 0.31 — many render tests
+    /// assert this exact string, and moving it is unrelated churn this increment does not need) and a
+    /// clean, empty repository — the common happy path.
     #[must_use]
     pub fn supported() -> Self {
         Self {
@@ -62,6 +64,7 @@ impl NullBackend {
                 closed: false,
                 received: false,
             }]),
+            tags: Ok(Vec::new()),
             worktree: Ok(WorktreeStatus {
                 reff: "heads/main".to_string(),
                 clean: true,
@@ -153,10 +156,24 @@ impl NullBackend {
         self
     }
 
-    /// Replace the ref list this backend returns.
+    /// Replace the branch ref list this backend returns from [`Prikk::refs`].
     #[must_use]
     pub fn with_refs(mut self, refs: Vec<RefEntry>) -> Self {
         self.refs = Ok(refs);
+        self
+    }
+
+    /// Replace the tag list this backend returns from [`Prikk::tags`] (RFC 012 FR-014).
+    #[must_use]
+    pub fn with_tags(mut self, tags: Vec<RefEntry>) -> Self {
+        self.tags = Ok(tags);
+        self
+    }
+
+    /// Make the tag-list call fail with a refusal carrying `message`.
+    #[must_use]
+    pub fn with_tags_refusal(mut self, message: impl Into<String>) -> Self {
+        self.tags = Err(message.into());
         self
     }
 
@@ -193,6 +210,10 @@ impl Prikk for NullBackend {
 
     fn refs(&self, _repo: &Path) -> Result<Vec<RefEntry>> {
         deliver(&self.refs)
+    }
+
+    fn tags(&self, _repo: &Path) -> Result<Vec<RefEntry>> {
+        deliver(&self.tags)
     }
 
     fn worktree_status(&self, _repo: &Path, _reff: &str) -> Result<WorktreeStatus> {

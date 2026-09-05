@@ -74,6 +74,23 @@ fn an_integrity_finding_routes_only_for_the_integrity_category() {
 }
 
 #[test]
+fn a_schema_skew_message_stays_a_refusal_not_an_integrity_finding() {
+    // RFC 012 F-e: the handoff's explicit caution — do NOT widen `is_integrity_finding` to catch this.
+    // It would route ordinary version skew into the (nonexistent) Verify view instead of an explanation,
+    // and would catch genuine integrity findings in read contexts too. The gloss/next-step for this
+    // shape belong in `present()` (message-shape recognition on an already-correct `Refusal`), never
+    // here in the classifier. Message captured live from a real prikk 0.30.0 reading a repository a
+    // real prikk 0.31.0 had written.
+    let msg = "error: integrity error: format-2 patch does not accept envelope schema 3 \
+               (accepted: [1, 2])";
+    let as_read = classify("", msg, RequestCategory::ReadHistory);
+    assert_eq!(as_read.class(), "refusal");
+    // Even during an integrity read, this is not a *finding* — it is stikk failing to read at all.
+    let as_integrity = classify("", msg, RequestCategory::Integrity);
+    assert_eq!(as_integrity.class(), "refusal");
+}
+
+#[test]
 fn an_unrecognized_message_degrades_to_a_verbatim_refusal() {
     // RR-5 / NFR-I03: never a fabricated specific class, never a dropped message.
     let (out, err) = on_stderr("error: something entirely new prikk started saying");

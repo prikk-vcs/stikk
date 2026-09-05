@@ -220,11 +220,26 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
     fn block_state(&self, repo: &Path, reff: &str) -> Result<StateFiles>;
 
-    /// List every ref pointer in the repository (design FR-014; category `read-history`).
+    /// List every branch ref pointer in the repository (design FR-014; category `read-history`).
+    ///
+    /// **Does not reliably exclude tags** — `prikk branch list --all`'s own implementation lists every
+    /// ref pointer regardless of namespace, undocumented behavior stikk must not depend on either way
+    /// (RFC 012 FR-014, discovered empirically: RFC 009 F3's "`branch list` cannot emit a tag ... there
+    /// never can be one from this command" was untested, not true). `stikk_core::list_refs` is the
+    /// merge-and-deduplicate caller that makes tag coverage correct regardless of what this returns;
+    /// call [`Prikk::tags`] for the documented, stable way to list tags.
     ///
     /// # Errors
     /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
     fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>>;
+
+    /// List every tag pointer in the repository (design FR-014 completion; category `read-history`;
+    /// RFC 012). prikk's own stable, documented way to list tags (`prikk tag list`), as distinct from
+    /// [`Prikk::refs`]'s incidental (and not to be relied on) tag leakage.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
+    fn tags(&self, repo: &Path) -> Result<Vec<RefEntry>>;
 
     /// Read worktree-vs-baseline status for `reff` (design FR-034; category `worktree-analysis`;
     /// RFC 008). A dirty worktree is reported as success (`clean == false`), not a refusal — prikk's

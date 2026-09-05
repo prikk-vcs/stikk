@@ -1,13 +1,19 @@
-//! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7).
+//! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
+//! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.30.0` (owner ruling 2026-09-04, RFC 009). The
-//! range has two ends that behave differently: below the floor stikk degrades to read-only, because
-//! prikk's `worktree-status` is the UD-03 defect there and stikk already refuses to run it. **Above the
-//! validated ceiling stikk still runs** — refusing every prikk newer than the last stikk release would
-//! break users the day prikk ships a minor — but it says the range is unvalidated rather than silently
-//! asserting knowledge it does not have. An unbounded upper range is exactly how RFC 009's F1–F4
-//! defects went unnoticed for three releases: three of stikk's own parsers accepted shapes prikk never
-//! emitted, and no version signal ever said "this has not actually been checked."
+//! stikk targets prikk `>= 0.28`, validated through `0.31.0` (RFC 012 F-e, re-verified 2026-09-05
+//! against a real prikk 0.31.0 binary — every fixture in `cli_backend/parse/tests.rs` was re-captured
+//! and diffed byte-for-byte against the committed 0.30.0 ones; identical). The range has two ends that
+//! behave differently: below the floor stikk degrades to read-only, because prikk's `worktree-status` is
+//! the UD-03 defect there and stikk already refuses to run it. **Above the validated ceiling stikk still
+//! runs** — refusing every prikk newer than the last stikk release would break users the day prikk ships
+//! a minor — but it says the range is unvalidated rather than silently asserting knowledge it does not
+//! have. An unbounded upper range is exactly how RFC 009's F1–F4 defects went unnoticed for three
+//! releases: three of stikk's own parsers accepted shapes prikk never emitted, and no version signal
+//! ever said "this has not actually been checked." RFC 012 F-e is the ceiling's first real test: prikk
+//! 0.31.0 shipped the day after stikk 0.2.0 and is forward-incompatible (its repositories cannot be read
+//! by 0.30 or earlier) despite an unchanged CLI surface — a user on 0.31 correctly sees the unvalidated
+//! notice while stikk continues to open and parse the repository correctly.
 
 use stikk_model::{Result, StikkError};
 
@@ -17,8 +23,9 @@ use stikk_model::{Result, StikkError};
 const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated its output shapes against (RFC 009
-/// decision 7). A prikk above this still runs; [`Version::is_validated`] tells the caller to say so.
-const VALIDATED_MAX_MINOR: u32 = 30;
+/// decision 7; raised to 31 by RFC 012 F-e after an empirical fixture re-capture found no shape
+/// difference). A prikk above this still runs; [`Version::is_validated`] tells the caller to say so.
+const VALIDATED_MAX_MINOR: u32 = 31;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

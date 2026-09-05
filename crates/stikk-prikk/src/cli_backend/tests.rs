@@ -137,7 +137,14 @@ fn handshake_probes_the_program_at_most_once_per_backend() {
     std::fs::set_permissions(&script, perms).expect("make the script executable");
 
     let backend = CliBackend::with_program(&script);
-    let first = backend.handshake().expect("first handshake succeeds");
+    // Executing a script immediately after writing it is exactly the shape that can transiently race
+    // the kernel on a heavily loaded host (ETXTBSY / "text file busy": something else briefly held the
+    // inode open for reading right after creation) — observed under `cargo test --workspace`'s process
+    // churn, never in isolation, and never on a *second* attempt. This is a test-environment artifact
+    // of dynamically writing-then-immediately-executing a file, not a `CliBackend` behavior worth
+    // retrying in production (a real `prikk` binary has been on disk for a while by the time anyone
+    // runs stikk against it), so the retry lives here, not in the code under test.
+    let first = handshake_retrying_transient_exec_busy(&backend).expect("first handshake succeeds");
     let second = backend
         .handshake()
         .expect("second handshake succeeds (cached)");
@@ -152,6 +159,31 @@ fn handshake_probes_the_program_at_most_once_per_backend() {
         runs, 1,
         "the script must run exactly once across two handshake() calls"
     );
+}
+
+/// Retry `backend.handshake()` past a transient ETXTBSY ("text file busy") — see the call site's
+/// comment. Any other error returns immediately; this only absorbs the one specific, known-transient
+/// kernel race, never masks a real failure.
+#[cfg(unix)]
+fn handshake_retrying_transient_exec_busy(backend: &CliBackend) -> Result<Handshake> {
+    for attempt in 0..20 {
+        match backend.handshake() {
+            Ok(hs) => return Ok(hs),
+            Err(err) if attempt < 19 && is_transient_exec_busy(&err) => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            other => return other,
+        }
+    }
+    unreachable!("loop always returns on its last iteration")
+}
+
+#[cfg(unix)]
+fn is_transient_exec_busy(err: &stikk_model::StikkError) -> bool {
+    std::error::Error::source(err)
+        .and_then(|source| source.downcast_ref::<std::io::Error>())
+        .and_then(std::io::Error::raw_os_error)
+        == Some(26) // ETXTBSY on Linux
 }
 
 #[cfg(unix)]

@@ -51,6 +51,11 @@ pub enum Target {
     LockInspector,
     /// Trust &amp; Keys (FR-104) — renderer lands with trust.
     TrustKeys,
+    /// prikk itself is too old for the operation attempted (RFC 012 F-b) — distinct from
+    /// [`Target::TrustKeys`], which is about signing readiness, not the prikk binary's version. A user
+    /// on prikk 0.27 opening Changes was previously told to check their signing keys; their keys were
+    /// never the problem.
+    PrikkVersion,
     /// The Verify report (FR-100) — renderer lands with integrity.
     Verify,
     /// The Doctor view (FR-101) — renderer lands with recovery.
@@ -143,15 +148,35 @@ pub enum Presentation {
 #[must_use]
 pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
     match error {
-        StikkError::Refusal { message } => Presentation::RefusalOverlay(RefusalCard {
-            verbatim: message.clone(),
-            gloss: refusal_gloss(op),
-            next_steps: refusal_next_steps(op),
-            glossary_codes: glossary::codes_in(message)
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-        }),
+        StikkError::Refusal { message } => {
+            // Envelope-schema skew (RFC 012 F-e) can occur from *any* read — Orient, LoadHistory,
+            // LoadChanges, ... — so it is recognized by the message's stable shape and overrides the
+            // (class, operation) gloss/next-steps below, rather than being layered onto them the way
+            // `.prikkignore`'s next-step (RFC 009 F5) is added unconditionally for one operation only.
+            // The next-step's label and target are still entirely stikk-authored (C-T2b) — only the
+            // *decision to show this one instead of the generic pair* looks at the message text.
+            let is_schema_skew = message.contains(glossary::SCHEMA_SKEW_CODE);
+            Presentation::RefusalOverlay(RefusalCard {
+                verbatim: message.clone(),
+                gloss: if is_schema_skew {
+                    Some(SCHEMA_SKEW_GLOSS.to_string())
+                } else {
+                    refusal_gloss(op)
+                },
+                next_steps: if is_schema_skew {
+                    vec![NextStep {
+                        label: "Upgrade prikk (resolve outside stikk)".to_string(),
+                        target: NextTarget::DismissAndResolveExternally,
+                    }]
+                } else {
+                    refusal_next_steps(op)
+                },
+                glossary_codes: glossary::codes_in(message)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            })
+        }
         StikkError::LockConflict { message } => Presentation::Banner {
             message: message.clone(),
             // A jump to the Lock inspector lands with FR-102; None until then.
@@ -159,7 +184,15 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
         },
         StikkError::NotReady { detail } => Presentation::InlineGuidance {
             detail: detail.clone(),
-            toward: Target::TrustKeys,
+            // `NotReady` is overloaded for two unrelated conditions (RFC 012 F-b): absent signing
+            // readiness (Trust & Keys is genuinely the fix), and version skew (`changes_view`'s < 0.28
+            // gate, where signing has nothing to do with it). Disambiguated by `OperationContext`, never
+            // by the message text (C-T2b) — `LoadChanges` is, today, the only operation that constructs
+            // `NotReady` for the version-gate reason; every other `NotReady` still means Trust & Keys.
+            toward: match op {
+                OperationContext::LoadChanges => Target::PrikkVersion,
+                _ => Target::TrustKeys,
+            },
         },
         StikkError::IntegrityFinding { message } => Presentation::RoutedIntoView {
             target: Target::Verify,
@@ -183,6 +216,14 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
         },
     }
 }
+
+/// The gloss for an envelope-schema-skew refusal (RFC 012 F-e), shown regardless of which operation
+/// triggered it. `FR-003` requires stikk to refuse-and-explain version skew rather than let RR-5's safe
+/// verbatim-only degradation stand where a better explanation is actually possible.
+const SCHEMA_SKEW_GLOSS: &str = "This repository holds content sealed by a newer prikk than the one \
+     currently running here. prikk's compatibility guarantee runs one way — a newer prikk can always \
+     read what an older one wrote, not the reverse — so an older prikk cannot read this. stikk cannot \
+     translate the schema; upgrading the prikk binary this session uses is the only fix.";
 
 /// The plain-language gloss for a refusal, chosen by the surface it came from. Additive to prikk's
 /// message, never a replacement (ER-02). `None` where stikk has nothing honest to add (verbatim-only).

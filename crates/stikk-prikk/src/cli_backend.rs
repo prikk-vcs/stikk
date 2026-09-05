@@ -225,6 +225,11 @@ impl Prikk for CliBackend {
         parse::refs(&out)
     }
 
+    fn tags(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+        let out = self.run(Some(repo), RequestCategory::ReadHistory, ["tag", "list"])?;
+        parse::tags(&out)
+    }
+
     fn worktree_status(&self, repo: &Path, reff: &str) -> Result<WorktreeStatus> {
         // `worktree-status` exits 1 for a *dirty* tree and 0 for a clean one, writing the report to
         // stdout either way (RFC 008 finding 2). Capture without classifying, and parse stdout

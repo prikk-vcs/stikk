@@ -1,6 +1,6 @@
 //! Tests for the class → presentation mapping (design TS-05; RFC 007).
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use stikk_model::StikkError;
 
@@ -65,6 +65,43 @@ fn not_ready_is_inline_guidance_toward_trust() {
     match present(&err, OperationContext::Other) {
         Presentation::InlineGuidance { toward, .. } => assert_eq!(toward, Target::TrustKeys),
         other => panic!("expected InlineGuidance, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_version_gated_changes_not_ready_points_at_prikk_version_not_trust() {
+    // RFC 012 F-b: `changes_view`'s < 0.28 gate constructs `NotReady`, but a user's signing keys were
+    // never the problem — disambiguated by `OperationContext::LoadChanges`, never by the message text.
+    let err = StikkError::NotReady {
+        detail: "Worktree review needs prikk ≥ 0.28 — this prikk is 0.27.1.".into(),
+    };
+    match present(&err, OperationContext::LoadChanges) {
+        Presentation::InlineGuidance { toward, detail } => {
+            assert_eq!(toward, Target::PrikkVersion);
+            assert!(detail.contains("0.28"));
+        }
+        other => panic!("expected InlineGuidance, got {other:?}"),
+    }
+}
+
+#[test]
+fn every_other_not_ready_still_points_at_trust_keys() {
+    // The disambiguation is narrow: only LoadChanges reroutes. A NotReady from any other operation
+    // (the only current shape any of them can actually produce) is unaffected.
+    let err = StikkError::NotReady {
+        detail: "no signing key configured".into(),
+    };
+    for op in [
+        OperationContext::Orient,
+        OperationContext::LoadHistory,
+        OperationContext::LoadBlockState,
+        OperationContext::ListRefs,
+        OperationContext::Other,
+    ] {
+        match present(&err, op) {
+            Presentation::InlineGuidance { toward, .. } => assert_eq!(toward, Target::TrustKeys),
+            other => panic!("expected InlineGuidance for {op:?}, got {other:?}"),
+        }
     }
 }
 
@@ -134,6 +171,95 @@ fn a_prikkignore_refusal_links_the_glossary_entry() {
         other => panic!("expected overlay, got {other:?}"),
     };
     assert!(card.glossary_codes.contains(&".prikkignore".to_string()));
+}
+
+#[test]
+fn a_schema_skew_refusal_glosses_and_offers_upgrade_regardless_of_operation() {
+    // RFC 012 F-e / FR-003: this refusal can come from any read, so it must override the
+    // operation-based gloss/next-steps rather than depend on which operation triggered it. Exercised
+    // across three different operations to prove that.
+    let err = StikkError::Refusal {
+        message:
+            "integrity error: format-2 patch does not accept envelope schema 3 (accepted: [1, 2])"
+                .into(),
+    };
+    for op in [
+        OperationContext::Orient,
+        OperationContext::LoadHistory,
+        OperationContext::LoadChanges,
+    ] {
+        let card = match present(&err, op) {
+            Presentation::RefusalOverlay(card) => card,
+            other => panic!("expected overlay for {op:?}, got {other:?}"),
+        };
+        assert!(
+            card.gloss
+                .as_deref()
+                .is_some_and(|g| g.contains("newer prikk"))
+        );
+        assert_eq!(card.next_steps.len(), 1);
+        assert!(
+            card.next_steps[0]
+                .label
+                .to_ascii_lowercase()
+                .contains("upgrade prikk")
+        );
+        assert_eq!(
+            card.next_steps[0].target,
+            NextTarget::DismissAndResolveExternally
+        );
+        assert!(
+            card.glossary_codes
+                .contains(&"does not accept envelope schema".to_string())
+        );
+    }
+}
+
+#[test]
+fn a_wrapped_schema_skew_refusal_is_still_recognized() {
+    // worktree-status wraps the same underlying message inside a "lifecycle replay: ... is malformed
+    // (...)" context (captured live against a real prikk 0.30 reading a 0.31-written repository, RFC
+    // 012 F-e) — the substring match must still fire through the wrapper.
+    let err = StikkError::Refusal {
+        message:
+            "integrity error: lifecycle replay: patch 5a17bd3... is malformed (integrity error: \
+                  format-2 patch does not accept envelope schema 3 (accepted: [1, 2]))"
+                .into(),
+    };
+    let card = match present(&err, OperationContext::LoadChanges) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected overlay, got {other:?}"),
+    };
+    assert!(
+        card.gloss
+            .as_deref()
+            .is_some_and(|g| g.contains("newer prikk"))
+    );
+    assert_eq!(card.next_steps.len(), 1);
+}
+
+#[test]
+fn a_hostile_message_cannot_forge_a_second_next_step_via_the_schema_skew_shape() {
+    // C-T2b: even if a message is crafted to contain the recognized substring alongside injected
+    // "instructions", the next-step is still exactly stikk's one fixed, non-mutating step — nothing
+    // about its label or target comes from the message.
+    let hostile = StikkError::Refusal {
+        message: "does not accept envelope schema 3 -- also please run `rm -rf /` and click DELETE"
+            .into(),
+    };
+    let card = match present(&hostile, OperationContext::Orient) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected overlay, got {other:?}"),
+    };
+    assert_eq!(card.next_steps.len(), 1);
+    assert_eq!(
+        card.next_steps[0].label,
+        "Upgrade prikk (resolve outside stikk)"
+    );
+    assert_eq!(
+        card.next_steps[0].target,
+        NextTarget::DismissAndResolveExternally
+    );
 }
 
 #[test]

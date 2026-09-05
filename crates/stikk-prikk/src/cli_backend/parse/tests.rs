@@ -1,15 +1,21 @@
-//! Golden-fixture tests for prikk output parsing (design TS-03; RFC 009 §0).
+//! Golden-fixture tests for prikk output parsing (design TS-03; RFC 009 §0; RFC 012 F-e).
 //!
 //! Every fixture below is captured **verbatim from a real `prikk` run** — reproduced against a live
 //! prikk 0.30.0 binary on 2026-09-04 while implementing RFC 009 — never composed by hand or by
-//! analogy. `every_fixture_constant_carries_a_provenance_comment` enforces the shape mechanically: a
-//! fixture constant with no provenance comment naming a prikk version fails the build.
+//! analogy. **Re-verified against a live prikk 0.31.0 binary on 2026-09-05** (RFC 012 F-e): every
+//! fixture below was re-captured from equivalent probe repositories and diffed byte-for-byte against
+//! the committed 0.30.0 text; identical in every case (see the review request for the full command
+//! transcript). No fixture text changed as a result — only the provenance comments, to record that the
+//! shape has now been checked against both versions. `every_fixture_constant_carries_a_provenance_comment`
+//! enforces the shape mechanically: a fixture constant with no provenance comment naming a prikk
+//! version fails the build.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use super::*;
 
-// Captured verbatim from `prikk status` on a freshly-`init`ed repository, prikk 0.30.0.
+// Captured verbatim from `prikk status` on a freshly-`init`ed repository, prikk 0.30.0. Re-verified
+// byte-identical against prikk 0.31.0 on 2026-09-05 (RFC 012 F-e).
 const STATUS_EMPTY_FIXTURE: &str = "\
 prikk repository: /tmp/sample/.prikk
 active WAL records: 0
@@ -20,7 +26,8 @@ status: multi-operation text diff minimization and plugins not yet implemented
 ";
 
 // Captured verbatim from `prikk status` on a repository with one queued patch (unpublished
-// `heads/main`), prikk 0.30.0.
+// `heads/main`), prikk 0.30.0. Re-verified byte-identical against prikk 0.31.0 on 2026-09-05
+// (RFC 012 F-e).
 const STATUS_QUEUED_FIXTURE: &str = "\
 prikk repository: /tmp/sample/.prikk
 active WAL records: 1
@@ -31,7 +38,7 @@ status: multi-operation text diff minimization and plugins not yet implemented
 ";
 
 // Captured verbatim from `prikk status` on a repository with a sealed `heads/main` and no queued
-// work, prikk 0.30.0.
+// work, prikk 0.30.0. Re-verified byte-identical against prikk 0.31.0 on 2026-09-05 (RFC 012 F-e).
 const STATUS_CLEAN_PUBLISHED_FIXTURE: &str = "\
 prikk repository: /tmp/sample/.prikk
 active WAL records: 0
@@ -44,7 +51,10 @@ status: multi-operation text diff minimization and plugins not yet implemented
 // Captured verbatim from `prikk status` with `PRIKK_ACTIVE_PATCH_WARN=1 PRIKK_ACTIVE_PATCH_LIMIT=100`
 // on a repository with one queued patch, prikk 0.30.0 — proves the parser tolerates the active-patch
 // threshold `warning:` line prikk inserts between `queued patches:` and `status:` (not itself parsed
-// this increment; RFC 009 open question, ruled deferred to the commit increment).
+// this increment; RFC 009 open question, ruled deferred to the commit increment). Re-verified
+// byte-identical against prikk 0.31.0 on 2026-09-05 with the same two env vars (RFC 012 F-e) — note a
+// *smaller* `PRIKK_ACTIVE_PATCH_LIMIT` produces a differently-worded hard-limit warning instead of this
+// one; that shape is likewise not parsed, so it needed no fixture of its own.
 const STATUS_QUEUED_WITH_WARNING_FIXTURE: &str = "\
 prikk repository: /tmp/sample/.prikk
 active WAL records: 1
@@ -91,6 +101,13 @@ fn tolerates_an_active_patch_threshold_warning_line() {
     let o = orientation(STATUS_QUEUED_WITH_WARNING_FIXTURE).expect("status parses");
     assert_eq!(o.queued_patches, 1);
     assert_eq!(o.queued_target.as_deref(), Some("heads/main"));
+}
+
+#[test]
+fn refuses_a_control_character_bearing_queued_target() {
+    // RFC 012 F-d: the "targeting <ref>" value is validated through `RefName::parse` too.
+    let text = "queued patches: 1 targeting heads/ma\x07in\ntrailing partial WAL bytes: 0\n";
+    assert_eq!(orientation(text).unwrap_err().class(), "environment");
 }
 
 #[test]
@@ -144,7 +161,7 @@ heads/main RefState: <a-future-sentinel-stikk-does-not-know>
 }
 
 // Captured verbatim from `prikk log --ref heads/main` on a repository with two sealed blocks, prikk
-// 0.30.0.
+// 0.30.0. Re-verified byte-identical against prikk 0.31.0 on 2026-09-05 (RFC 012 F-e).
 const LOG_FIXTURE: &str = "\
 history repository: /tmp/repo/.prikk
 ref: heads/main
@@ -196,6 +213,16 @@ fn history_refuses_on_a_missing_field() {
 }
 
 #[test]
+fn history_refuses_a_control_character_bearing_ref_name() {
+    // RFC 012 F-d: `history`'s `ref:` field is now validated through `RefName::parse` (INV-9, UD-02) —
+    // a shape prikk would never actually emit, but stikk must refuse rather than pass it through.
+    let text = "ref: heads/ma\x07in\nblock abc\n  ref-state: def\n  update-seq: 1\n  kind: Root\n  \
+                rollback-block: false\n  parents: 0\n  patches: 1\n  rollback-patches: 0\n  \
+                required-attestations: 0\n  previous-ref-state: <none>\n";
+    assert_eq!(history(text).unwrap_err().class(), "environment");
+}
+
+#[test]
 fn history_refuses_when_ref_line_absent() {
     assert_eq!(
         history("some unrelated output\n").unwrap_err().class(),
@@ -223,7 +250,8 @@ block abc
 }
 
 // Captured verbatim from `prikk checkout --patch-plan --ref heads/main` on the same two-block
-// repository as `LOG_FIXTURE`, prikk 0.30.0.
+// repository as `LOG_FIXTURE`, prikk 0.30.0. Re-verified byte-identical against prikk 0.31.0 on
+// 2026-09-05 (RFC 012 F-e).
 const PATCH_PLAN_FIXTURE: &str = "\
 patch replay plan repository: /tmp/repo/.prikk
 ref: heads/main
@@ -260,12 +288,22 @@ fn state_files_refuses_without_a_target_block() {
 }
 
 // Captured verbatim from `prikk branch list --all` on a freshly-`init`ed repository, prikk 0.30.0.
+// Re-verified byte-identical against prikk 0.31.0 on 2026-09-05 (RFC 012 F-e).
 const BRANCH_LIST_EMPTY_FIXTURE: &str = "no branches\n";
 
 // Captured verbatim from `prikk branch list --all` on a repository with a sealed `heads/main`, a
 // second branch created from it and then closed, and a received ref imported from a bundle exported by
-// a peer repository, prikk 0.30.0. `branch list` cannot emit a tag (RFC 009 F3) — there is no tag line
-// here, and there never can be one from this command.
+// a peer repository, prikk 0.30.0. Re-verified byte-identical (with fresh object ids) against prikk
+// 0.31.0 on 2026-09-05 (RFC 012 F-e). RFC 009 F3's claim that "`branch list` cannot emit a tag ... there
+// never can be one from this command" is **corrected** by that same re-verification: this repository
+// simply had no tag yet, so the absence proved nothing either way. `prikk-cli`'s `branch list` reads
+// `RefStore::list_ref_pointers()` (`crates/prikk-cli/src/branch.rs`), which does not filter by ref
+// namespace at all — a tag created in the same repository appears in `branch list --all`'s output too,
+// confirmed live against both 0.30.0 and 0.31.0 with a tag actually present. This is not documented
+// prikk behavior (`tag list` is prikk's own stated, stable way to list tags) and stikk does not rely on
+// it — `list_refs` (RFC 012 §7) merges `tag list`'s results in and de-duplicates by name defensively,
+// precisely because `branch list --all` cannot be assumed either to include or exclude tags going
+// forward. See the review request for the full transcript.
 const BRANCH_LIST_FIXTURE: &str = "\
 heads/main 0ea4951e3c16277436be45c729885d25d5d92c2073a0c1585e793af60c6d9e27
 heads/secondary 7ed0e6312169663946e5edd18aa1e5e1ecc994d43e489c1b77e77c075ddc05ca (closed)
@@ -333,13 +371,78 @@ fn refs_refuses_a_line_whose_second_token_is_not_an_object_id() {
 }
 
 #[test]
+fn refs_refuses_a_control_character_bearing_ref_name() {
+    // RFC 012 F-d.
+    let text = format!("heads/ma\x07in {}\n", "0".repeat(64));
+    assert_eq!(refs(&text).unwrap_err().class(), "environment");
+}
+
+#[test]
 fn refs_refuses_an_unrecognized_marker() {
     let text = format!("heads/main {} (archived)\n", "0".repeat(64));
     assert_eq!(refs(&text).unwrap_err().class(), "environment");
 }
 
+// Captured verbatim from `prikk tag list` on a freshly-`init`ed repository, prikk 0.31.0 (RFC 012
+// FR-014 — this read is new this increment, so there is no earlier-version baseline to check against).
+const TAG_LIST_EMPTY_FIXTURE: &str = "no tags\n";
+
+// Captured verbatim from `prikk tag list` on a repository with two tags pointing at the same block,
+// prikk 0.31.0.
+const TAG_LIST_FIXTURE: &str = "\
+tags/v1 ecf293dfb5953f643fde0dd4ab5cb1e4f8790e44205b2e9328fef418369907a8
+tags/v2 ecf293dfb5953f643fde0dd4ab5cb1e4f8790e44205b2e9328fef418369907a8
+";
+
+#[test]
+fn empty_tag_list_yields_an_empty_list() {
+    assert!(
+        tags(TAG_LIST_EMPTY_FIXTURE)
+            .expect("empty list parses")
+            .is_empty()
+    );
+}
+
+#[test]
+fn parses_tags_with_no_markers() {
+    let out = tags(TAG_LIST_FIXTURE).expect("tag list parses");
+    assert_eq!(out.len(), 2);
+    assert_eq!(out[0].name, "tags/v1");
+    assert_eq!(out[1].name, "tags/v2");
+    for entry in &out {
+        assert!(!entry.closed && !entry.received);
+        assert!(entry.is_tag());
+    }
+}
+
+#[test]
+fn tags_refuses_a_line_with_a_trailing_marker() {
+    // Unlike `branch list`, `tag list` has no marker vocabulary at all (RFC 012 FR-014) — any trailing
+    // token refuses rather than guessing at a meaning that does not exist.
+    let text = format!("tags/v1 {} (closed)\n", "0".repeat(64));
+    assert_eq!(tags(&text).unwrap_err().class(), "environment");
+}
+
+#[test]
+fn tags_refuses_a_control_character_bearing_name() {
+    // RFC 012 F-d.
+    let text = format!("tags/v\x071 {}\n", "0".repeat(64));
+    assert_eq!(tags(&text).unwrap_err().class(), "environment");
+}
+
+#[test]
+fn tags_refuses_an_invalid_target_block_id() {
+    let text = "tags/v1 not-a-valid-id\n";
+    assert_eq!(tags(text).unwrap_err().class(), "environment");
+}
+
+#[test]
+fn tags_skips_blank_lines() {
+    assert_eq!(tags("\n\n").expect("empty ok").len(), 0);
+}
+
 // Captured verbatim from `prikk worktree-status --ref heads/main` on a clean two-file repository,
-// prikk 0.30.0.
+// prikk 0.30.0. Re-verified byte-identical against prikk 0.31.0 on 2026-09-05 (RFC 012 F-e).
 const WORKTREE_CLEAN_FIXTURE: &str = "\
 worktree-status repository: /tmp/repo/.prikk
 ref: heads/main
@@ -355,7 +458,9 @@ note: use `prikk commit -m <message>` to author node-addressed worktree changes;
 
 // Captured verbatim from `prikk worktree-status --ref heads/main` (stdout; the `error: worktree has
 // changes against the baseline` line is on stderr and is *not* part of the report) after modifying,
-// deleting, and adding a file, prikk 0.30.0.
+// deleting, and adding a file, prikk 0.30.0. Re-verified byte-shape-identical against prikk 0.31.0 on
+// 2026-09-05 (RFC 012 F-e) — the three entry kinds, their note text, and the headline all matched; only
+// the (irrelevant) file-ordering and object ids differed between the two probe repositories.
 const WORKTREE_DIRTY_FIXTURE: &str = "\
 worktree-status repository: /tmp/repo/.prikk
 ref: heads/main
@@ -374,7 +479,8 @@ note: use `prikk commit -m <message>` to author node-addressed worktree changes;
 
 // Captured verbatim from `prikk worktree-status --ref heads/other`, prikk 0.30.0, on a repository whose
 // active WAL holds a patch queued for `heads/main` — the F4 reproduction (stdout; the dirty-exit
-// `error:` line is on stderr and is not part of the report).
+// `error:` line is on stderr and is not part of the report). Re-verified against prikk 0.31.0 on
+// 2026-09-05 (RFC 012 F-e): the queued-elsewhere note text is byte-identical, word for word.
 const WORKTREE_QUEUED_ELSEWHERE_FIXTURE: &str = "\
 worktree-status repository: /tmp/repo/.prikk
 ref: heads/other
@@ -453,6 +559,15 @@ worktree: changed against baseline
 ";
     let s = worktree_status(text).expect("parses");
     assert_eq!(s.entries[0].path, "my docs/read me.txt");
+}
+
+#[test]
+fn worktree_status_refuses_a_control_character_bearing_ref_name() {
+    // RFC 012 F-d.
+    let text = "ref: heads/ma\x07in\nworktree: clean against baseline\ntracked files: 0\nunchanged \
+                files: 0\nmissing files: 0\nmodified files: 0\nuntracked files: 0\nunsupported \
+                paths: 0\n";
+    assert_eq!(worktree_status(text).unwrap_err().class(), "environment");
 }
 
 #[test]

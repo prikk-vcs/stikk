@@ -8,8 +8,17 @@
 //! from (RFC 009 §0). A hand-written fixture is a defect, not a shortcut: RFC 009's F1 was exactly
 //! that — a `queued patches: 3` fixture prikk has never emitted, which made Orientation's parser pass
 //! its test while refusing on every real repository with queued work.
+//!
+//! **Every ref name is validated through [`stikk_model::RefName::parse`] at this boundary** (`INV-9`;
+//! RFC 012 F-d), the same role [`ObjectId::parse`] already played for ids here (RFC 009 F2): an empty
+//! or control-character-bearing name is a shape prikk would never emit, so it refuses rather than
+//! travelling further as an unvalidated string. Struct fields (`History.reff`, `RefEntry.name`,
+//! `WorktreeStatus.reff`, `Orientation.queued_target`) stay plain `String` above this boundary —
+//! `RefName`'s guarantee lives here, at the parse boundary, not in every downstream type — matching
+//! `ObjectId`'s own precedent rather than the alternative of changing every field's type (see the RFC
+//! 012 review request for the diff-size measurement behind that call).
 
-use stikk_model::{ObjectId, Result, StikkError};
+use stikk_model::{ObjectId, RefName, Result, StikkError};
 
 use crate::{BlockRow, History, Orientation, RefEntry, StateFiles, WorktreeEntry, WorktreeStatus};
 
@@ -71,7 +80,16 @@ fn parse_queued(value: &str) -> Result<(u64, Option<String>)> {
     };
     let queued_target = match target.trim() {
         "<missing metadata>" | "<malformed metadata>" => None,
-        other => Some(other.to_string()),
+        other => {
+            // RFC 012 F-d: a target that is neither sentinel nor a shape prikk could ever emit as a
+            // ref name refuses (UD-02) rather than travelling as an unvalidated string.
+            RefName::parse(other).map_err(|_| {
+                StikkError::environment_msg(format!(
+                    "prikk field \"queued patches:\" targets an invalid ref name: {other:?}"
+                ))
+            })?;
+            Some(other.to_string())
+        }
     };
     Ok((count, queued_target))
 }
@@ -125,7 +143,7 @@ fn optional_object_id(text: &str, label: &str) -> Result<Option<String>> {
 /// `block <id>` line followed by indented `label: value` fields; a new `block` line, or end of input,
 /// ends the current block. Refuses (rather than guesses) on a malformed count or a truncated block.
 pub(super) fn history(text: &str) -> Result<History> {
-    let reff = required_field(text, "ref:")?;
+    let reff = required_ref_field(text, "ref:")?;
     let mut blocks = Vec::new();
     // `group[0]` is a block id; the following entries are that block's field lines. A `block <id>`
     // line starts a new group; lines before the first block (the `repository:`/`ref:` header) are
@@ -214,6 +232,12 @@ pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
         let id = parts.next().ok_or_else(|| {
             StikkError::environment_msg(format!("ref line missing an id: {line:?}"))
         })?;
+        // RFC 012 F-d: validated at this parse boundary (UD-02), same as the id below.
+        RefName::parse(name).map_err(|_| {
+            StikkError::environment_msg(format!(
+                "prikk branch list line has an unrecognized ref name: {line:?}"
+            ))
+        })?;
         ObjectId::parse(id).map_err(|_| {
             StikkError::environment_msg(format!(
                 "prikk branch list line has an unrecognized id: {line:?}"
@@ -244,6 +268,50 @@ pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
     Ok(out)
 }
 
+/// Parse `prikk tag list` into every tag pointer (RFC 012 FR-014 completion). Unlike `branch list`,
+/// prikk's own `--help` documents this command's shape as "name, target block" with no marker at all
+/// — tags are neither closeable nor received — so any trailing token past the id refuses rather than
+/// guessing at a meaning that does not exist. `no tags` is the recognized empty-list line, the same
+/// shape `refs` already tolerates for it (RFC 009 F3).
+pub(super) fn tags(text: &str) -> Result<Vec<RefEntry>> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line == "no tags" {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let name = parts
+            .next()
+            .ok_or_else(|| StikkError::environment_msg("empty tag line in prikk tag list"))?;
+        let id = parts.next().ok_or_else(|| {
+            StikkError::environment_msg(format!("tag line missing a target block id: {line:?}"))
+        })?;
+        RefName::parse(name).map_err(|_| {
+            StikkError::environment_msg(format!(
+                "prikk tag list line has an unrecognized ref name: {line:?}"
+            ))
+        })?;
+        ObjectId::parse(id).map_err(|_| {
+            StikkError::environment_msg(format!(
+                "prikk tag list line has an unrecognized target block id: {line:?}"
+            ))
+        })?;
+        if parts.next().is_some() {
+            return Err(StikkError::environment_msg(format!(
+                "prikk tag list line has unexpected trailing content: {line:?}"
+            )));
+        }
+        out.push(RefEntry {
+            name: name.to_string(),
+            id: id.to_string(),
+            closed: false,
+            received: false,
+        });
+    }
+    Ok(out)
+}
+
 /// The distinguishing prefix of prikk's queued-elsewhere warning (RFC 009 F4): present only when the
 /// active WAL holds queued patches for a **different** ref than the one `worktree-status` was asked
 /// about. Matched by prefix, not the full line, because the note names the specific refs involved.
@@ -267,7 +335,7 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         )
     })?;
     let clean = headline.starts_with("clean");
-    let reff = required_field(text, "ref:")?;
+    let reff = required_ref_field(text, "ref:")?;
     let entries = text
         .lines()
         .filter(|line| line.starts_with(' ') || line.starts_with('\t'))
@@ -318,6 +386,23 @@ fn required_field(text: &str, label: &str) -> Result<String> {
     Ok(field(text, label)
         .ok_or_else(|| StikkError::environment_msg(format!("prikk output is missing {label:?}")))?
         .to_string())
+}
+
+/// A required ref-name field: fetched like [`required_field`], then validated through
+/// [`RefName::parse`] (RFC 012 F-d, `INV-9`) — empty or control-character-bearing is a shape prikk
+/// would never emit, so it refuses (UD-02) rather than passing the raw text through. The validated
+/// value is still returned as a plain `String`: `RefName` exists to guard this parse boundary, the
+/// same role `ObjectId::parse` already plays for ids here (RFC 009 F2) — neither newtype's adoption
+/// changed the struct field types it validates, and this stays consistent with that precedent (see the
+/// review request for the fuller rationale, including the diff-size measurement behind it).
+fn required_ref_field(text: &str, label: &str) -> Result<String> {
+    let value = required_field(text, label)?;
+    RefName::parse(&value).map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk field {label:?} is not a valid ref name: {value:?}"
+        ))
+    })?;
+    Ok(value)
 }
 
 /// A required boolean field (`true`/`false`).

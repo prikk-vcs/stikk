@@ -622,7 +622,29 @@ fn open_changes_error_response_surfaces_as_a_banner_not_a_screen() {
     // No Changes screen was pushed (the Loading placeholder was removed); the guidance is a banner
     // (inline class), not a broken screen.
     assert!(matches!(app.focus(), Focus::Orientation(_)));
-    assert!(app.banner().unwrap().contains("0.28"));
+    let banner = app.banner().unwrap();
+    assert!(banner.contains("0.28"));
+    // RFC 012 F-b: version skew must not point at signing keys — they were never the problem.
+    assert!(!banner.contains("Trust & Keys"));
+}
+
+#[test]
+fn a_signing_readiness_not_ready_still_points_at_trust_and_keys() {
+    // RFC 012 F-b's disambiguation is narrow: only the LoadChanges version-gate reroutes (proven above
+    // in `open_changes_error_response_surfaces_as_a_banner_not_a_screen`); an ordinary signing-readiness
+    // `NotReady` from any other context is unaffected.
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.surface_error(
+        &StikkError::NotReady {
+            detail: "no signing key configured".into(),
+        },
+        OperationContext::Other,
+    );
+    assert!(app.banner().unwrap().contains("Trust & Keys"));
 }
 
 #[test]

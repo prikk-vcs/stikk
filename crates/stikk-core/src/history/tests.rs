@@ -82,23 +82,65 @@ fn a_history_refusal_propagates() {
     assert!(err.to_string().contains("retired format 3"));
 }
 
+fn ref_entry(name: &str, id: &str) -> RefEntry {
+    RefEntry {
+        name: name.to_string(),
+        id: id.to_string(),
+        closed: false,
+        received: false,
+    }
+}
+
 #[test]
-fn list_refs_passes_through() {
+fn list_refs_merges_branches_and_tags() {
+    // RFC 012 FR-014 completion: a tag comes from `Prikk::tags`, not (necessarily) `Prikk::refs`.
+    let backend = NullBackend::supported()
+        .with_refs(vec![ref_entry("heads/main", "x")])
+        .with_tags(vec![ref_entry("tags/v1", "y")]);
+    let refs = list_refs(&backend, Path::new("/r")).unwrap();
+    assert_eq!(refs.len(), 2);
+    assert!(!refs[0].is_tag());
+    assert!(refs[1].is_tag());
+}
+
+#[test]
+fn list_refs_passes_through_a_tag_that_leaked_into_refs_when_tags_is_empty() {
+    // `Prikk::refs`'s own contract says it does not reliably exclude tags (the real prikk `branch
+    // list --all` was found to leak them, RFC 012 FR-014) — if `tags` has nothing to say about a name,
+    // whatever `refs` reported for it still shows.
     let backend = NullBackend::supported().with_refs(vec![
-        RefEntry {
-            name: "heads/main".into(),
-            id: "x".into(),
-            closed: false,
-            received: false,
-        },
-        RefEntry {
-            name: "tags/v1".into(),
-            id: "y".into(),
-            closed: false,
-            received: false,
-        },
+        ref_entry("heads/main", "x"),
+        ref_entry("tags/v1", "y"),
     ]);
     let refs = list_refs(&backend, Path::new("/r")).unwrap();
     assert_eq!(refs.len(), 2);
     assert!(refs[1].is_tag());
+}
+
+#[test]
+fn list_refs_deduplicates_a_tag_that_leaked_into_refs_too() {
+    // The case the merge exists for: if `refs` ever leaks a tag (as the real `branch list --all` does
+    // today) *and* `tags` also reports it, the entry must appear exactly once — the `tags`-sourced one
+    // wins, since it is the documented, stable source.
+    let leaked_in_refs = RefEntry {
+        name: "tags/v1".into(),
+        id: "stale-if-this-one-shows".into(),
+        closed: false,
+        received: false,
+    };
+    let backend = NullBackend::supported()
+        .with_refs(vec![ref_entry("heads/main", "x"), leaked_in_refs])
+        .with_tags(vec![ref_entry("tags/v1", "authoritative")]);
+    let refs = list_refs(&backend, Path::new("/r")).unwrap();
+    assert_eq!(refs.len(), 2);
+    let tag = refs.iter().find(|r| r.name == "tags/v1").unwrap();
+    assert_eq!(tag.id, "authoritative");
+}
+
+#[test]
+fn a_tags_refusal_propagates() {
+    let backend = NullBackend::supported().with_tags_refusal("prikk refused to list tags");
+    let err = list_refs(&backend, Path::new("/r")).unwrap_err();
+    assert_eq!(err.class(), "refusal");
+    assert!(err.to_string().contains("prikk refused to list tags"));
 }

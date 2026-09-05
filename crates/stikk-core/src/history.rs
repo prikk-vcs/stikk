@@ -72,12 +72,27 @@ pub fn block_detail(
     Ok(BlockDetailView { row, is_tip, state })
 }
 
-/// List every ref pointer, for the ref picker (design FR-014).
+/// List every ref pointer — branches and tags — for the ref picker (design FR-014, completed RFC 012).
+///
+/// Merges [`Prikk::refs`] and [`Prikk::tags`], **de-duplicated by name**: `Prikk::refs`'s own
+/// documentation notes it does not reliably exclude tags (`prikk branch list --all`'s real
+/// implementation lists every ref pointer regardless of namespace — discovered empirically while
+/// building this very completion, not documented prikk behavior stikk can rely on), so naively
+/// concatenating the two lists would show every tag twice the day that leak is present, and merging by
+/// name is what stays correct whether or not it is. An entry from `tags` wins on a name collision (the
+/// documented, stable source for tags); order is `refs` first, then any `tags` entry not already named.
 ///
 /// # Errors
-/// Propagates any [`stikk_model::StikkError`] the seam raises.
+/// Propagates any [`stikk_model::StikkError`] the seam raises, from either read.
 pub fn list_refs(prikk: &impl Prikk, repo: &Path) -> Result<Vec<RefEntry>> {
-    prikk.refs(repo)
+    let branches = prikk.refs(repo)?;
+    let tags = prikk.tags(repo)?;
+    let mut merged: Vec<RefEntry> = branches
+        .into_iter()
+        .filter(|entry| !tags.iter().any(|tag| tag.name == entry.name))
+        .collect();
+    merged.extend(tags);
+    Ok(merged)
 }
 
 #[cfg(test)]

@@ -52,3 +52,15 @@ fn the_prikkignore_code_resolves_and_links_from_a_real_refusal() {
     );
     assert_eq!(named, vec![".prikkignore"]);
 }
+
+#[test]
+fn the_schema_skew_code_resolves_and_links_from_a_real_refusal() {
+    // RFC 012 F-e — captured live from a real prikk 0.30.0 reading a repository a real prikk 0.31.0
+    // had written.
+    let entry = lookup(SCHEMA_SKEW_CODE).expect("seeded code");
+    assert!(entry.explanation.contains("newer prikk"));
+    let named = codes_in(
+        "integrity error: format-2 patch does not accept envelope schema 3 (accepted: [1, 2])",
+    );
+    assert_eq!(named, vec![SCHEMA_SKEW_CODE]);
+}

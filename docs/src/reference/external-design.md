@@ -32,7 +32,7 @@ stikk has no accounts. Capability is derived per session from prikk-side facts �
 | AC-01 | **Viewer** | no signing readiness, or read-only mode on | Every read surface: browse, inspect, compare, verify, evidence, exchange inspection (FR-121 tier 1) |
 | AC-02 | **Author** | AUTHOR readiness present | Viewer + queue-affecting: commit (FR-050), rollback draft (FR-083 steps 1–3) (tier 2) |
 | AC-03 | **Maintainer** | MAINTAINER readiness present | Author + history-publishing: seal, merge execution, branch/tag publication, trust changes, tag adoption, sync build/seal (tier 3) |
-| AC-04 | **Operator** | any human at the machine, explicit confirmations | Recovery surfaces: doctor's safe repair, lock clearing, compaction (FR-101/102/105, NFR-S04). Orthogonal to the above; always tier 3 |
+| AC-04 | **Operator** | any human at the machine, explicit confirmations | Recovery surfaces: doctor's safe repair, lock clearing, compaction (FR-101/102/105, NFR-S04). Orthogonal to the *mutating* axis (AC-02/03) — no signing readiness is required — but **not** an exemption from the global read-only mode: `FR-121` locks tier 2–3, lock clearing included, out entirely when read-only is on (RFC 012 F-a; corrected 2026-09-05 — this row previously said "always tier 3", which contradicted FR-121) |
 
 Persona mapping (informative): P-1 ≈ Author, P-2/P-4 ≈ Viewer, P-3 ≈ Maintainer + Operator.
 

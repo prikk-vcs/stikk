@@ -673,8 +673,14 @@ impl App {
             Presentation::Banner { message, .. }
             | Presentation::RoutedIntoView { message, .. }
             | Presentation::InConfirmation { message } => self.banner = Some(message),
-            Presentation::InlineGuidance { detail, .. } => {
-                self.banner = Some(format!("{detail} — see Glossary → Trust & Keys"));
+            Presentation::InlineGuidance { detail, toward } => {
+                // RFC 012 F-b: the pointer is target-dependent — Trust & Keys is genuinely the fix for
+                // absent signing readiness, but says nothing useful for a prikk-version gate, whose
+                // `detail` is already the complete, actionable message on its own.
+                self.banner = Some(match toward {
+                    Target::TrustKeys => format!("{detail} — see Glossary → Trust & Keys"),
+                    _ => detail,
+                });
             }
             Presentation::PlainStatement { detail, original } => {
                 self.banner = Some(match original {

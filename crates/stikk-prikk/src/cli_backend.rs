@@ -24,7 +24,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::OnceLock;
 
-use stikk_model::{RequestCategory, Result, StikkError};
+use stikk_model::{ChangeToken, RequestCategory, Result, StikkError};
 
 use crate::version::Version;
 use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus};
@@ -244,6 +244,22 @@ impl Prikk for CliBackend {
                 RequestCategory::WorktreeAnalysis,
             )),
         }
+    }
+
+    fn change_token(&self, repo: &Path) -> Result<ChangeToken> {
+        // RFC 003 decision 3: composed from `refs` + `orientation` — reads this backend already makes
+        // for the ref picker and Orientation — never a dedicated third invocation. The worktree marker
+        // is deliberately excluded (handoff §2): it would cost a `worktree-status` spawn per token, and
+        // the Changes view already carries its own worktree data, so a preview built from it is
+        // self-freshening without this token's help.
+        let refs = self.refs(repo)?;
+        let orientation = self.orientation(repo)?;
+        Ok(ChangeToken::compose(
+            refs.iter()
+                .map(|entry| (entry.name.as_str(), entry.id.as_str())),
+            orientation.queued_patches,
+            orientation.queued_target.as_deref(),
+        ))
     }
 }
 

@@ -13,16 +13,20 @@
 //!   each category's mutation/cancellability/lock policy as data (design CT-03).
 //! - [`capability`] — the derived capability levels (Viewer/Author/Maintainer/Operator) that gate
 //!   what a session may do, computed from prikk-side signing readiness (design AC-01…04).
+//! - [`change_token`] — the repository-change detection primitive (design `LC-4`; RFC 003), composed
+//!   from prikk-observable state; a preview↔execute binding stamps and re-checks it, never a lock.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod capability;
 pub mod category;
+pub mod change_token;
 pub mod error;
 pub mod id;
 
 pub use capability::{Capability, Readiness};
 pub use category::RequestCategory;
+pub use change_token::ChangeToken;
 pub use error::{Result, StikkError};
 pub use id::{ObjectId, RefName};

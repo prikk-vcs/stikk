@@ -24,7 +24,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use stikk_model::Result;
+use stikk_model::{ChangeToken, Result};
 use stikk_prikk::{
     Handshake, History, NullBackend, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus,
 };
@@ -63,6 +63,10 @@ impl Prikk for SlowOrientation {
 
     fn worktree_status(&self, repo: &Path, reff: &str) -> Result<WorktreeStatus> {
         self.0.worktree_status(repo, reff)
+    }
+
+    fn change_token(&self, repo: &Path) -> Result<ChangeToken> {
+        self.0.change_token(repo)
     }
 }
 

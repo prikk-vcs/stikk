@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use stikk_model::{Result, StikkError};
+use stikk_model::{ChangeToken, Result, StikkError};
 
 use crate::version::Version;
 use crate::{Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus};
@@ -23,6 +23,7 @@ pub struct NullBackend {
     refs: Scripted<Vec<RefEntry>>,
     tags: Scripted<Vec<RefEntry>>,
     worktree: Scripted<WorktreeStatus>,
+    change_token: Scripted<ChangeToken>,
 }
 
 impl NullBackend {
@@ -77,6 +78,13 @@ impl NullBackend {
                 entries: Vec::new(),
                 queued_elsewhere: None,
             }),
+            // Matches the default `refs`/`orientation` above, so an un-scripted backend's token is
+            // internally consistent rather than an arbitrary placeholder.
+            change_token: Ok(ChangeToken::compose(
+                [("heads/main", "0".repeat(64).as_str())],
+                0,
+                None,
+            )),
         }
     }
 
@@ -177,6 +185,26 @@ impl NullBackend {
         self
     }
 
+    /// Replace the change token this backend returns from [`Prikk::change_token`] (RFC 003), so the
+    /// layers above can script staleness deterministically — set two backends (or a session's before
+    /// and after) to different tokens to exercise "the repository changed", or to the same one to
+    /// exercise "nothing changed". Independent of this backend's own `refs`/`orientation` fields: a
+    /// real `CliBackend` composes its token from those reads, but a script may want an arbitrary token
+    /// with no matching ref/orientation state, since only equality between two tokens is ever
+    /// load-bearing — never their contents.
+    #[must_use]
+    pub fn with_change_token(mut self, token: ChangeToken) -> Self {
+        self.change_token = Ok(token);
+        self
+    }
+
+    /// Make the change-token call fail with a refusal carrying `message`.
+    #[must_use]
+    pub fn with_change_token_refusal(mut self, message: impl Into<String>) -> Self {
+        self.change_token = Err(message.into());
+        self
+    }
+
     /// Mark the reported prikk version as unsupported (for testing the version-skew path).
     #[must_use]
     pub fn unsupported(mut self) -> Self {
@@ -218,6 +246,10 @@ impl Prikk for NullBackend {
 
     fn worktree_status(&self, _repo: &Path, _reff: &str) -> Result<WorktreeStatus> {
         deliver(&self.worktree)
+    }
+
+    fn change_token(&self, _repo: &Path) -> Result<ChangeToken> {
+        deliver(&self.change_token)
     }
 }
 

@@ -25,7 +25,7 @@ pub use version::Version;
 
 use std::path::Path;
 
-use stikk_model::Result;
+use stikk_model::{ChangeToken, Result};
 
 /// The result of the version-and-capability probe stikk performs when it first reaches prikk.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -251,6 +251,16 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError`]: an unrecognized report shape is an environment fault (UD-02); a
     /// genuine failure (bad ref, not a repository) classifies as for [`Prikk::orientation`].
     fn worktree_status(&self, repo: &Path, reff: &str) -> Result<WorktreeStatus>;
+
+    /// Compose a cheap "has anything changed?" signal from the ref pointers and queue state (design
+    /// `LC-4`; category `read-history`; RFC 003). Composed from the same calls
+    /// [`Prikk::refs`]/[`Prikk::orientation`] already make — no additional kind of prikk invocation is
+    /// introduced for this. Detection only, never a lock (`CT-05`/`NFR-R02`): the repository can still
+    /// change between reading this token and acting on it.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
+    fn change_token(&self, repo: &Path) -> Result<ChangeToken>;
 }
 
 #[cfg(test)]

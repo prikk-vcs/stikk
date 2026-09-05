@@ -39,7 +39,7 @@ All stikk-owned data is small, human-comprehensible, and non-secret (INV-3, belo
 
 ### 2.2 State store (stikk-managed, user-scope — CF-01)
 
-- **DM-02 — RepositoryHandle.** The identity stikk uses to recognize a repository across sessions and to key everything below. Fields: a canonical absolute path; a **content-derived repository fingerprint** (see LC-9) used to detect "same path, different repository" and "moved repository"; a display name; last-opened marker. **No repository content** — a handle names a repository, it does not describe it.
+- **DM-02 — RepositoryHandle.** The identity stikk uses to recognize a repository across sessions and to key everything below. Fields: a canonical absolute path (the key, for now — see LC-9); a display name; last-opened marker. **No repository content** — a handle names a repository, it does not describe it.
 - **DM-03 — RecentRepositories.** An ordered, bounded (CF-03 length) list of RepositoryHandles (FR-005). Pure convenience; losing it costs nothing.
 - **DM-04 — SessionState (per repository).** What UC-19/FR-122 resumes: focused ref name (a string, re-validated against prikk on load — LC-6), last active view id, active History filters (FR-012 predicate values only: ref/author-key/kind/purpose/path — all re-applied against fresh data), pane layout / advanced-mode override, and scroll/selection anchors expressed as **stable object ids**, not indices. **INV-5:** every stored reference into repository content is an id or a name that stikk re-resolves on load; a resolution miss degrades to a default, never an error (FR-122, NFR-R01).
 - **DM-05 — SyncAssistantProgress (per repository, per peer-exchange).** The resumable checklist state for FL-12: role (sender/receiver), current step, and the **paths** of the artifact files produced/consumed so far — never their contents (the bytes are prikk's/the peer's; stikk holds only where they are). A missing/moved artifact path invalidates the step with a re-pick prompt, never a crash.
@@ -48,12 +48,12 @@ All stikk-owned data is small, human-comprehensible, and non-secret (INV-3, belo
 
 ### 2.3 Cache store (derived, disposable — CF-01 state dir)
 
-- **DM-08 — DerivedViewCache (per repository).** Memoized results of expensive read-only derivations (block-state trees, comparisons, evidence reports) keyed by **(repository fingerprint, prikk version, input object ids, derivation kind)** and stamped with the **repository-change token** current when computed (LC-4). Never a source of truth: a cache hit is used only after the change token is confirmed still current; any mismatch discards it and re-derives (FR-106, NFR-P04). **INV-6:** deleting the entire cache store is always safe and only costs recomputation.
+- **DM-08 — DerivedViewCache (per repository).** Memoized results of expensive read-only derivations (block-state trees, comparisons, evidence reports) keyed by **(canonical repository path, prikk version, input object ids, derivation kind)** — the repository component follows `DM-02`'s own key; the fingerprint originally proposed here was deferred (LC-9) — and stamped with the **repository-change token** current when computed (LC-4). Never a source of truth: a cache hit is used only after the change token is confirmed still current; any mismatch discards it and re-derives (FR-106, NFR-P04). **INV-6:** deleting the entire cache store is always safe and only costs recomputation.
 - **DM-09 — GlossaryContent.** The witness-kind and verify-finding explanations (FR-111) plus the Git→prikk mapping. Ships *with* stikk (a product asset, versioned with the release), not user data; listed here because views bind to it. It is keyed by prikk finding/witness codes, so a prikk version introducing a new code that the glossary lacks must degrade to "no gloss yet — showing prikk's message only" (NFR-I03), never hide the message.
 
 ### 2.4 Export outputs (stikk-authored, user-directed — CT-02)
 
-- **DM-10 — ReportExport.** Two shapes, both written only on explicit user action to a user-chosen path: (a) prikk's `verify --format json` passed through **byte-verbatim** under prikk's own `verify-report-v1` label; (b) stikk-authored `stikk-export-v1` (evidence/report/refusal snapshots) as text and versioned JSON. **INV-7:** a stikk-authored export is a *labelled snapshot* — it carries the repository fingerprint, prikk version, and capture time, and states in-band that it is a point-in-time view, so it can never be mistaken for live repository authority when read back later or elsewhere.
+- **DM-10 — ReportExport.** Two shapes, both written only on explicit user action to a user-chosen path: (a) prikk's `verify --format json` passed through **byte-verbatim** under prikk's own `verify-report-v1` label; (b) stikk-authored `stikk-export-v1` (evidence/report/refusal snapshots) as text and versioned JSON. **INV-7:** a stikk-authored export is a *labelled snapshot* — it carries the repository's canonical path, prikk version, and capture time, and states in-band that it is a point-in-time view, so it can never be mistaken for live repository authority when read back later or elsewhere.
 
 ### 2.5 What stikk deliberately does NOT store (the negative model)
 
@@ -95,7 +95,7 @@ View-models exist only while a view is open; none are persisted (except as the i
 
 ### 4.2 Session lifecycle
 
-- **LC-3 — Open repository → SessionState.** Resolve DM-02 (path → fingerprint); locate DM-04 for that fingerprint; re-validate every stored reference against prikk (focused ref exists? filter targets resolvable?) — misses degrade to defaults (INV-5). Compute VW-01 within the NFR-P03 budget with **no implicit full verify** (NFR-P05).
+- **LC-3 — Open repository → SessionState.** Resolve DM-02 (canonical path); locate DM-04 for that path; re-validate every stored reference against prikk (focused ref exists? filter targets resolvable?) — misses degrade to defaults (INV-5). Compute VW-01 within the NFR-P03 budget with **no implicit full verify** (NFR-P05).
 - **LC-4 — Repository-change token.** On open, and on each refresh, stikk obtains a cheap change indicator from prikk's observable state (e.g., ref-pointer/index/WAL extents — the internal design binds the exact signals within CON-1) and stamps it as the current token. Any view or cache computed under an older token is stale: reads refresh passively with a notice (OP-04); armed mutation previews invalidate and their execute action disables until regenerated (CT-05, FR-120).
 - **LC-5 — Flush.** SessionState and UIPreferencesRuntime flush atomically on every meaningful transition (view change, focus change, filter change), not only at exit, so `kill -9` loses at most the last transition and never repository state (OP-05, NFR-R01).
 - **LC-6 — Focused-ref reconciliation.** The stored focused ref (DM-04) is re-checked against prikk on every load and after every external-change refresh; if the ref was closed or removed, stikk falls back to a present ref and notes it — it never acts on a focused ref prikk no longer has (FR-055, INV-5).
@@ -104,7 +104,7 @@ View-models exist only while a view is open; none are persisted (except as the i
 
 ### 4.3 Identity & cache lifecycle
 
-- **LC-9 — Repository fingerprint.** DM-02's fingerprint is derived from stable, cheap-to-read repository identity signals obtained through prikk (never a hash of `.prikk/` bytes stikk read directly — INV-1/CON-1). Its jobs: recognize the same repository at a moved path, and detect a *different* repository at a remembered path (so stale SessionState/cache for the old one is discarded, not misapplied). The exact signal set is an internal-design decision bounded by "must not require reading repository storage directly."
+- **LC-9 — Repository fingerprint: deferred (RFC 003 decision 4).** `DM-02` keys session state by **canonical path** for now, not a content-derived fingerprint. Three reasons, checked against prikk rather than assumed: prikk deliberately has **no repository identity** — "repositories are anonymous... that is a security property this design has, not a gap in it" (`trust-threat-model.md`) — so deriving one would work against prikk's own design intent, not merely be extra effort; the cheapest honest derivation (the genesis/root block) requires walking the entire sealed history, since `prikk log` has no oldest-first or "give me the root" query; and it would be `None` for exactly the repositories a user is most likely to be creating — one with no sealed blocks has no root block at all. **It is not load-bearing either way**: the "same path, different repository" risk it was meant to catch is already covered by `INV-5` (every stored reference is re-resolved against prikk on load; a miss degrades to a default) — a fingerprint would have been defence in depth behind a control that already exists, not the control itself. Revisit only if a future need cannot be met by path-keying plus `INV-5`.
 - **LC-10 — Cache validity.** A DerivedViewCache entry (DM-08) is usable only if its key matches **and** its stamped change token equals the current token (LC-4) **and** the prikk version is unchanged; otherwise discard and re-derive (INV-6). Caches are size-bounded with LRU eviction; eviction never affects correctness.
 - **LC-11 — Version skew.** On open, stikk records prikk's version; outside the validated range it enters read-only degradation (NFR-R03, OP-06) and invalidates all caches (their derivations may no longer match).
 
@@ -124,7 +124,7 @@ View-models exist only while a view is open; none are persisted (except as the i
 Config (DM-01, one, user-authored)
   └─ defaults & overrides consulted by every session
 
-RepositoryHandle (DM-02) ──1:N── SessionState (DM-04)          [keyed by fingerprint]
+RepositoryHandle (DM-02) ──1:N── SessionState (DM-04)          [keyed by canonical path — LC-9]
         │                          ├─ focused ref name (re-resolved: LC-6)
         │                          ├─ filters (re-applied)
         │                          └─ id-only anchors (re-resolved: INV-5)
@@ -150,7 +150,7 @@ GlossaryContent (DM-09, product asset) ── bound by ── VW-07/VW-08/refusa
 ## 6. Design-rule conformance (self-check)
 
 - **Long-term safety:** the two-world split (INV-1) and the negative model (DM-N1…N4) mean stikk cannot corrupt a repository or leak a secret through its own data, structurally.
-- **Maintainability:** ten owned entities, each single-purpose; view-models named once; one identity key (fingerprint) threads sessions, caches, and exports.
+- **Maintainability:** ten owned entities, each single-purpose; view-models named once; one identity key (canonical path — the fingerprint originally proposed here was deferred, LC-9) threads sessions, caches, and exports.
 - **Simplicity vs flexibility (the rules' explicit balance):** the model is not over-abstracted (no generic "object store" mirroring prikk — that would invite treating stikk data as authority) and not rigidly feature-coupled (SessionState carries predicate *values*, not view-specific widget state, so a new view reuses it). The one deliberate generality is the change-token guard (LC-4), which every derived/cached datum shares rather than each inventing its own staleness rule.
 
 *End of Data Model & Lifecycle v0.1. Consumed by the Threat Model (`stikk-03`, asset inventory) and the Internal Design (`stikk-04`, store components and the operation layer that re-derives from prikk).*

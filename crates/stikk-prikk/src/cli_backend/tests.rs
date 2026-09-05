@@ -144,7 +144,8 @@ fn handshake_probes_the_program_at_most_once_per_backend() {
     // of dynamically writing-then-immediately-executing a file, not a `CliBackend` behavior worth
     // retrying in production (a real `prikk` binary has been on disk for a while by the time anyone
     // runs stikk against it), so the retry lives here, not in the code under test.
-    let first = handshake_retrying_transient_exec_busy(&backend).expect("first handshake succeeds");
+    let first =
+        retrying_transient_exec_busy(|| backend.handshake()).expect("first handshake succeeds");
     let second = backend
         .handshake()
         .expect("second handshake succeeds (cached)");
@@ -161,14 +162,77 @@ fn handshake_probes_the_program_at_most_once_per_backend() {
     );
 }
 
-/// Retry `backend.handshake()` past a transient ETXTBSY ("text file busy") — see the call site's
-/// comment. Any other error returns immediately; this only absorbs the one specific, known-transient
-/// kernel race, never masks a real failure.
 #[cfg(unix)]
-fn handshake_retrying_transient_exec_busy(backend: &CliBackend) -> Result<Handshake> {
+#[test]
+fn change_token_drives_no_prikk_invocation_beyond_refs_and_orientation() {
+    // RFC 003 decision 3 / handoff §2: `change_token` must cost nothing beyond the `branch list` and
+    // `status` calls `Prikk::refs`/`Prikk::orientation` already make — no dedicated third invocation.
+    // A fake `prikk` that logs which subcommand it was called with, once per call, proves it: exactly
+    // one `branch` line and one `status` line, nothing else, after one `change_token()` call.
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-change-token-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir); // see the handshake test above for why
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let log = dir.join("calls");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo \"$1\" >> \"{log}\"\n\
+             case \"$1\" in\n\
+             branch)\n\
+             echo 'heads/main {id}'\n\
+             ;;\n\
+             status)\n\
+             printf 'prikk repository: /tmp/x/.prikk\\n\
+             active WAL records: 0\\n\
+             trailing partial WAL bytes: 0\\n\
+             heads/main RefState: <not published>\\n\
+             queued patches: 0\\n\
+             status: multi-operation text diff minimization and plugins not yet implemented\\n'\n\
+             ;;\n\
+             esac\n",
+            log = log.display(),
+            id = "0".repeat(64),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+
+    let backend = CliBackend::with_program(&script);
+    let token =
+        retrying_transient_exec_busy(|| backend.change_token(&dir)).expect("change_token succeeds");
+    // Composed from real (scripted) data, so it must equal a token built the same way by hand.
+    assert_eq!(
+        token,
+        stikk_model::ChangeToken::compose([("heads/main", "0".repeat(64).as_str())], 0, None)
+    );
+
+    let calls = std::fs::read_to_string(&log).unwrap_or_default();
+    let mut lines: Vec<&str> = calls.lines().collect();
+    lines.sort_unstable();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        lines,
+        vec!["branch", "status"],
+        "change_token must call exactly one branch-list and one status, nothing else"
+    );
+}
+
+/// Retry an operation against a just-written, just-made-executable script past a transient ETXTBSY
+/// ("text file busy") — see the call site's comment. Any other error returns immediately; this only
+/// absorbs the one specific, known-transient kernel race, never masks a real failure.
+#[cfg(unix)]
+fn retrying_transient_exec_busy<T>(mut op: impl FnMut() -> Result<T>) -> Result<T> {
     for attempt in 0..20 {
-        match backend.handshake() {
-            Ok(hs) => return Ok(hs),
+        match op() {
+            Ok(value) => return Ok(value),
             Err(err) if attempt < 19 && is_transient_exec_busy(&err) => {
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }

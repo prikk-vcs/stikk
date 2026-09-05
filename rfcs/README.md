@@ -32,7 +32,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Decision | Handoff |
 |----|-------|----------|---------|
-| 011 | [Pre-1.0 API stability policy](./accepted/011-pre-1-0-api-stability-policy.md) | a public struct gaining a field is a **minor** bump pre-1.0, so RFC 009 ships as **0.2.0**, not 0.1.1; blanket `#[non_exhaustive]` is deferred to 1.0 readiness (2026-09-04) | [0.2.0 release prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-handoff-v1.md) |
+| 011 | [Pre-1.0 API stability policy](./accepted/011-pre-1-0-api-stability-policy.md) | a public API break before 1.0 is a **minor** bump; blanket `#[non_exhaustive]` deferred to 1.0 readiness (2026-09-04). A **standing policy** — it stays here while its release-prep handoffs are in flight | [0.2.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-handoff-v1.md) · [0.3.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-0-3-0-handoff-v1.md) |
 
 ## Done (implemented)
 

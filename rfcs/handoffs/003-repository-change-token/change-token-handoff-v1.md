@@ -1,6 +1,6 @@
 # Handoff — the repository change token (v1)
 
-**Companion to:** [RFC 003](../../accepted/003-repository-change-token.md) (Accepted 2026-09-05).
+**Companion to:** [RFC 003](../../done/003-repository-change-token.md) (Accepted 2026-09-05).
 Inherits its state.
 **Realizes:** the first increment of **0.4.0** — the primitive `OPL-02`'s preview↔execute binding needs,
 and therefore the thing every mutation in that release is gated on.

@@ -29,10 +29,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Decision | Handoff |
-|----|-------|----------|---------|
-| 003 | [Repository change token](./accepted/003-repository-change-token.md) | the staleness primitive `OPL-02`'s preview↔execute binding needs. **Scope split at acceptance**: the fingerprint half is deferred — prikk has no repository identity *by design* (2026-09-05). **0.4.0, first** | [Change token](./handoffs/003-repository-change-token/change-token-handoff-v1.md) |
-| 011 | [Pre-1.0 API stability policy](./accepted/011-pre-1-0-api-stability-policy.md) | a public API break before 1.0 is a **minor** bump; blanket `#[non_exhaustive]` deferred to 1.0 readiness (2026-09-04). A **standing policy** — it stays here while its release-prep handoffs are in flight | [0.2.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-handoff-v1.md) · [0.3.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-0-3-0-handoff-v1.md) |
+_None currently — 0.4.0's next increment (`OPL-02`, the preview↔execute machinery) has no RFC yet._
 
 ## Done (implemented)
 
@@ -43,6 +40,8 @@ _Design settled; implementer may start; work has not yet shipped._
 | 006 | [History & inspection seam](./done/006-history-and-inspection-seam.md) | 0.1.0 | Patch detail (`FR-030`), patch-id enumeration, diff-aware search — all `UD-09` | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |
 | 007 | [Explanation & discovery surface](./done/007-explanation-and-discovery-surface.md) | 0.1.0 | `RoutedIntoView`/`InConfirmation` renderers; merge/checkout/seal/trust next-steps + witness glossary; refusal-history persistence + `LC-8` gate | [Explanation surface](./handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md) |
 | 008 | [Worktree changes & the Compare ceiling](./done/008-worktree-changes-and-the-compare-ceiling.md) | 0.1.0 | Compare (`FR-033`); per-file content diffs (`UD-09`); the `C` commit action; status-bar worktree marker. **Amended by RFC 009** | [Changes view](./handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md) |
+| 003 | [Repository change token](./done/003-repository-change-token.md) | 0.4.0 candidate (on `main`) | the repository **fingerprint** — prikk has no repository identity by design; `INV-5` carries the protection it was meant to add | [Change token](./handoffs/003-repository-change-token/change-token-handoff-v1.md) |
+| 011 | [Pre-1.0 API stability policy](./done/011-pre-1-0-api-stability-policy.md) | adopted; in force from 0.2.0 | blanket `#[non_exhaustive]` — a 1.0-readiness task, with the analysis pre-done | [0.2.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-handoff-v1.md) · [0.3.0 prep](./handoffs/011-pre-1-0-api-stability-policy/release-prep-0-3-0-handoff-v1.md) |
 | 012 | [Post-0.2.0 correctness sweep](./done/012-post-0-2-0-correctness-sweep.md) | 0.3.0 candidate (on `main`) | RFC 003 moved to 0.4.0; 19 rustdoc warnings + a rustdoc CI gate, scheduled with 0.4.0 planning | [Correctness sweep](./handoffs/012-post-0-2-0-correctness-sweep/correctness-sweep-handoff-v1.md) |
 | 010 | [Off-thread seam & UI responsiveness](./done/010-off-thread-seam-and-ui-responsiveness.md) | 0.3.0 candidate (on `main`) | `NFR-P02` true cancellation + the Background Operations overlay's cancel action — both land with `FR-100` (verify) | [Off-thread seam](./handoffs/010-off-thread-seam-and-ui-responsiveness/off-thread-seam-handoff-v1.md) |
 | 009 | [prikk 0.30 re-baseline & parser fidelity](./done/009-prikk-0-30-rebaseline-and-parser-fidelity.md) | 0.1.1 candidate (on `main`) | real-binary integration suite (`TS-07`, threat-model `RR-9`); `FR-014`'s ref surface corrected but not completed (no `tag list` read); ref-name validation (`RefName` unused); richer `.prikkignore` surface | [Parser fidelity](./handoffs/009-prikk-0-30-rebaseline-and-parser-fidelity/parser-fidelity-handoff-v1.md) |

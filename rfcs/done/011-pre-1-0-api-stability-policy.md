@@ -1,6 +1,7 @@
 # RFC 011 — Pre-1.0 API stability, and when `#[non_exhaustive]` is worth its cost
 
-**Status.** Accepted (2026-09-04) — record the compatibility policy stikk's published crates actually
+**Status.** Implemented (adopted and in force; both release-prep handoffs — 0.2.0 and 0.3.0 — have shipped)
+— originally accepted (2026-09-04) — record the compatibility policy stikk's published crates actually
 follow, decide **against** a blanket `#[non_exhaustive]` on data structs for now, and make it a
 **1.0-readiness task** instead. Written because the 0.2.0 release forced the question and the answer
 was not obvious in either direction. Handoff:

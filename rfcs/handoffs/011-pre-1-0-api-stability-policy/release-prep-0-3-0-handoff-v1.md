@@ -1,6 +1,6 @@
 # Handoff — 0.3.0 release preparation (v1)
 
-**Applies:** [RFC 011](../../accepted/011-pre-1-0-api-stability-policy.md)'s versioning policy — a
+**Applies:** [RFC 011](../../done/011-pre-1-0-api-stability-policy.md)'s versioning policy — a
 public API break before 1.0 is a **minor** bump. This is its second application; the first was
 [0.2.0's prep](./release-prep-handoff-v1.md), which is worth reading beside this one.
 **Release content:** [RFC 010](../../done/010-off-thread-seam-and-ui-responsiveness.md) +

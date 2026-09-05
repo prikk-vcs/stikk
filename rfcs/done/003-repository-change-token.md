@@ -1,7 +1,11 @@
 # RFC 003 — Repository change-token signal set
 
-**Status.** Accepted (2026-09-05) — **scope split at acceptance: build the change token, defer the
-fingerprint.** First increment of 0.4.0. Handoff:
+**Status.** Implemented (0.4.0 candidate; on `main` 2026-09-05, reviewed and approved) — **scope split
+at acceptance: built the change token, deferred the fingerprint.** First increment of 0.4.0.
+**Deferred, carried forward:** the **repository fingerprint** (decision 4) — prikk deliberately has no
+repository identity, deriving one means walking the entire sealed history, it would not exist for a
+repository with no sealed blocks, and `INV-5` already carries the protection it was meant to add.
+Revisit only if a need appears that path-keying plus `INV-5` cannot meet. Handoff:
 [`../handoffs/003-repository-change-token/change-token-handoff-v1.md`](../handoffs/003-repository-change-token/change-token-handoff-v1.md).
 Originally proposed
 **Tracks.** The concrete prikk-observable signals stikk uses to detect that a repository changed, so

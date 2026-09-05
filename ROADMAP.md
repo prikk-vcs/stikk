@@ -109,7 +109,7 @@ _Re-sequenced 2026-09-04: session persistence no longer precedes this. It was pl
 could not open a real repository; now that it can, being able to commit matters more than resuming a
 view — and after RFC 003 it is also cheaper to build._
 
-**[RFC 003](rfcs/accepted/003-repository-change-token.md) — the change token — opens this release**,
+**[RFC 003](rfcs/done/003-repository-change-token.md) — the change token — opens this release**,
 because `OPL-02`'s preview↔execute binding is built on it: a preview computed under one change token
 must refuse to execute if the repository moved underneath it. *(Moved here from 0.3.0 on 2026-09-05: it
 delivers nothing user-visible alone, and 0.4.0 breaks the seam trait anyway for the mutating methods.
@@ -117,8 +117,16 @@ delivers nothing user-visible alone, and 0.4.0 breaks the seam trait anyway for 
 repository identity and states that as a security property, deriving one would mean walking the entire
 log, and `INV-5`'s re-resolution already carries the protection it was meant to add.)*
 
+✅ Shipped to `main` 2026-09-05.
+
 **Then the preview + tiered-confirmation machinery (`FR-120`/`FR-121`, `OPL-01…05`)** — not an
-afterthought inside the commit flow: it is what every mutation below is gated on.
+afterthought inside the commit flow: it is what every mutation below is gated on, and the first thing
+to actually consume the change token. **This is 0.4.0's next increment; it has no RFC yet.**
+
+Also carried into this release, both small and both found during review rather than planned:
+**19 rustdoc warnings** — several are public docs linking to private items, which render as dead
+references in the published API docs — and a **rustdoc lint gate in CI**, which prikk's own CI has and
+stikk's does not, so the count can only grow without one.
 
 Mutations, always preview-first with tiered confirmation (`FR-120/121`):
 

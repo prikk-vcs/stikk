@@ -2,7 +2,7 @@
 
 **Governing decisions:** [RFC 009](../../done/009-prikk-0-30-rebaseline-and-parser-fidelity.md) (the
 content of this release, implemented and approved) and
-[RFC 011](../../accepted/011-pre-1-0-api-stability-policy.md) (why the version is **0.2.0**, and why
+[RFC 011](../../done/011-pre-1-0-api-stability-policy.md) (why the version is **0.2.0**, and why
 `#[non_exhaustive]` is *not* part of this increment).
 **Realizes:** the owner's release authorization of 2026-09-04. This is a **release-preparation**
 increment: no behaviour changes, no new surfaces — the version, the changelog, and three pieces of

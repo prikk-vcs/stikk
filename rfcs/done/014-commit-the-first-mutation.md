@@ -1,12 +1,30 @@
 # RFC 014 — Commit: the first mutation
 
-**Status.** Accepted (2026-09-05) — handoff:
+**Status.** Implemented (0.4.0 candidate; on `main` 2026-09-06, reviewed and approved with no
+corrections) — handoff:
 [`../handoffs/014-commit-the-first-mutation/commit-handoff-v1.md`](../handoffs/014-commit-the-first-mutation/commit-handoff-v1.md).
 Originally proposed 2026-09-05 — the first operation stikk performs that changes a repository, and
 the first consumer of RFC 013's gate. Also closes the `capability_gate`/palette divergence RFC 013
 deferred with a deadline of exactly this increment.
 **Tracks.** `FR-050` (commit), `FL-05` (the flow), `UD-01`/`UD-06`/`UD-08` (message, whole-worktree,
 ignore honesty), `OPL-04`'s seam-side half, and `C-D2a` (surface the limit before it is hit).
+**Deferred, carried forward (not built by this RFC):** the **AUTHOR key id in the confirmation**
+(`FL-05` step 5 / `FR-104`) — the id is public and *should* be shown, but reading it must not weaken
+`env.rs`'s unqualified no-value-materialization guard, so it belongs in its own module and lands with
+the seal ceremony's MAINTAINER key id; the **pre-commit `UD-01` copy**, now false for released prikk
+0.32 (see below), corrected in the 0.32 re-baseline where 0.32 is actually validated; and
+`StikkError::Declined`'s inline path, unreachable at tier 2 by construction and inherited by
+tier-3-typed.
+
+> **Superseded in part, 2026-09-06.** `UD-01`'s framing ("the message is validated, then discarded")
+> is **falsified for prikk ≥ 0.32**: upstream RFC 123 landed message storage and removed the very
+> `note:` line F4 quotes. Separately, upstream RFC 132 — prompted by
+> `.git-exclude/upstream/001-commit-precondition-error-classes.md` and landed within a day —
+> reclassifies both F2's and F6's messages to `precondition not met:`, unreleased as of the `0.32.0`
+> tag. Neither costs this increment a follow-up: the classifier matches the messages' stable semantic
+> part rather than their prefixes, and `CommitResult.notes` transports whatever prikk printed rather
+> than assuming two fixed notes. Both are carried into the **prikk 0.32 re-baseline**.
+
 **Touches.** `stikk-prikk` (a `commit` seam method — **the first that writes**), `stikk-model` (one new
 error class), `stikk-core` (the commit operation and its preview), `stikk-tui` (the message input, and
 the palette's tier-aware affordance).

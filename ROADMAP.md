@@ -129,7 +129,30 @@ a preview can produce — rather than a rule reviewers must remember.
 > required to show "exactly which patches will seal", and prikk exposes the queued *count* and target
 > ref, never the patch ids. The requirement will be amended to what is honest, and the enumeration
 > surface is filed as an upstream ask — found before the seal ceremony was built against it, which is
-> why the machinery precedes the mutations it gates.
+> why the machinery precedes the mutations it gates. **`FR-052` and `FL-06` were amended 2026-09-05** to
+> require what is knowable: how many patches, which ref, which resulting block, and that the ceremony
+> says it cannot enumerate.
+
+✅ Shipped to `main` 2026-09-05.
+
+**Then commit** ([RFC 014](rfcs/done/014-commit-the-first-mutation.md), `FR-050`/`FL-05`) — ✅ shipped
+to `main` 2026-09-06. **The first operation stikk performs that writes.** Two prikk refusals it
+*prevents* rather than classifies (a cross-ref commit, and a clean worktree — both verified, both
+failing closed upstream), the message step before the confirmation per `FL-05`'s own order, prikk's
+result and both `note:` lines transported verbatim, and the `capability_gate`/palette unification
+RFC 013 deferred with a deadline of exactly this increment.
+
+**Next — the prikk 0.32 re-baseline.** Not a chore; `UD-01` is retiring. Upstream RFC 123 landed
+**commit-message storage** in prikk 0.32, which falsifies the dependency stikk has carried since
+0.1.0 and makes one line of stikk's pre-commit copy false for anyone on that release. Separately,
+upstream **RFC 132 — prompted by a report we sent them, and landed within a day** — reclassifies both of RFC 014's refusal messages to `precondition not met:`; that is unreleased
+as of the `0.32.0` tag, so the two changes reach users at different times. Neither breaks stikk today,
+because the classifier matches what the messages *mean* rather than what they *say*, and commit
+results transport whatever notes prikk actually printed. The re-baseline validates 0.32, retires
+`UD-01`, and corrects the copy.
+
+**Then queue review (`FR-051`) and the seal ceremony (`FR-052`, as amended)** — the second and third
+mutations.
 
 Also carried into this release, both small and both found during review rather than planned:
 **19 rustdoc warnings** — several are public docs linking to private items, which render as dead
@@ -138,12 +161,7 @@ stikk's does not, so the count can only grow without one.
 
 Mutations, always preview-first with tiered confirmation (`FR-120/121`):
 
-- **Commit** (`FR-050`) — [RFC 014](rfcs/accepted/014-commit-the-first-mutation.md), the first
-  operation stikk performs that writes, arriving into RFC 013's gate. Drafting it found that a
-  cross-ref commit is refused by prikk in words stikk's classifier reads as a *lock conflict* — the
-  RFC 012 F-b shape again — and that `Orientation::queued_target`, added in 0.2.0 to make Orientation
-  honest, lets stikk **prevent** that refusal rather than explain it.
-- **Then queue review → seal ceremony** (`FR-051/052`), including the informed-consent
+- **Queue review → seal ceremony** (`FR-051/052`), including the informed-consent
   no-audit step and the capability gate re-checked at the seam.
 - **Verify report browser and doctor/recovery** (`FR-100/101/102`), with the three-valued
   author-signature outcome rendered precisely (Sound / Unverifiable / a blocking failure) and locks

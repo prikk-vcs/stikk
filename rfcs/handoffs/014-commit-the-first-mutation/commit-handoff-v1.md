@@ -1,6 +1,6 @@
 # Handoff — commit, the first mutation (v1)
 
-**Companion to:** [RFC 014](../../accepted/014-commit-the-first-mutation.md) (Accepted 2026-09-05).
+**Companion to:** [RFC 014](../../done/014-commit-the-first-mutation.md) (Accepted 2026-09-05).
 Inherits its state.
 **Realizes:** `FR-050` / `FL-05` — the first operation stikk performs that changes a repository,
 arriving into the gate [RFC 013](../../done/013-preview-and-confirmation-machinery.md) built.

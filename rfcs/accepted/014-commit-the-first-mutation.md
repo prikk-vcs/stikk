@@ -1,6 +1,8 @@
 # RFC 014 — Commit: the first mutation
 
-**Status.** Proposed (2026-09-05) — the first operation stikk performs that changes a repository, and
+**Status.** Accepted (2026-09-05) — handoff:
+[`../handoffs/014-commit-the-first-mutation/commit-handoff-v1.md`](../handoffs/014-commit-the-first-mutation/commit-handoff-v1.md).
+Originally proposed 2026-09-05 — the first operation stikk performs that changes a repository, and
 the first consumer of RFC 013's gate. Also closes the `capability_gate`/palette divergence RFC 013
 deferred with a deadline of exactly this increment.
 **Tracks.** `FR-050` (commit), `FL-05` (the flow), `UD-01`/`UD-06`/`UD-08` (message, whole-worktree,
@@ -129,21 +131,28 @@ Otherwise: no new one. `UD-01` (messages discarded) and `UD-06` (whole-worktree 
 they have been since 0.1.0. RFC 013's queued-patch enumeration ask stands for the *seal* ceremony and
 is not needed here.
 
-## Open questions
+## Open questions — settled 2026-09-05
 
-- **Does the commit preview re-read the worktree, or reuse the Changes view already on screen?**
-  Re-reading is more current; reusing is what the user actually looked at. *Leaning: re-read inside
-  `preview()`* — RFC 013's token stamps the change token at preview time, so a re-read is what makes
-  that stamp meaningful. Settle in the handoff.
-- ~~**What does stikk do when the worktree is clean?**~~ **Verified 2026-09-05: prikk refuses.**
-  `error: invalid name: worktree has no node-addressed changes to commit`, exit 1, queue unchanged — it
-  fails closed. So stikk's own decision is only about *when to say so*: the preview knows the worktree
-  is clean before anything is armed, so commit should be **unavailable with a reason** rather than
-  offered and then refused (`C-T4d` — capability honesty, disabled-with-reason, never a silent no-op).
-  Note the prefix contradicts the sentence; see F6.
-- **Where does the message input live** — a dedicated overlay, or a field inside the confirmation?
-  `TU-09` describes a confirmation that restates facts, not one that collects input. *Leaning:
-  separate*, so the confirmation stays a restatement.
+- ~~**What does stikk do when the worktree is clean?**~~ **Verified: prikk refuses** —
+  `error: invalid name: worktree has no node-addressed changes to commit`, exit 1, queue unchanged,
+  failing closed. stikk's decision is therefore only about *when to say so*: the preview knows before
+  anything is armed, so commit is **unavailable with a reason** rather than offered and then refused
+  (`C-T4d`). See F6 and decision 5b.
+
+- **Does the commit preview re-read the worktree, or reuse the Changes view on screen?**
+  **Ruled: re-read inside `preview()`.** RFC 013's token stamps the change token *at preview time*, so
+  the preview and the stamp must describe the same instant. Reusing a Changes view the user loaded
+  minutes ago while stamping freshness now would make the token assert something the view does not
+  have — the confident-but-wrong picture the token exists to prevent. The cost is one extra
+  `worktree-status` read at commit time, which is trivial and buys the token its meaning.
+
+- ~~**Where does the message input live?**~~ **The design set already answered this and I should have
+  checked before listing it as open.** `FL-05` steps 4 and 5 are explicit: the message prompt
+  ("required non-empty, with the notice that core does not yet persist it") comes *first*, and the
+  confirmation ("summarizes the whole-worktree capture and the AUTHOR key id") comes after. So the
+  message is its own step **before** the confirmation, which also keeps `TU-09`'s confirmation a
+  restatement rather than a form — a thing you are confirming should not change while you confirm it.
+  Build `FL-05`'s ordering as written.
 
 ## Consequences
 

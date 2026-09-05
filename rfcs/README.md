@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 014 | [Commit: the first mutation](./proposed/014-commit-the-first-mutation.md) | the first operation that writes, and RFC 013's first consumer. Found a cross-ref commit refusal prikk words as a lock conflict — which stikk can *prevent* rather than misclassify. **0.4.0, next** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,7 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None currently — 0.4.0's next increment is **commit** (`FR-050`), the first real mutation. No RFC yet._
+| ID | Title | Decision | Handoff |
+|----|-------|----------|---------|
+| 014 | [Commit: the first mutation](./accepted/014-commit-the-first-mutation.md) | the first operation that writes, RFC 013's first consumer. Two prikk refusals stikk **prevents** rather than classifies; also closes RFC 013's `capability_gate`/palette deadline (2026-09-05) | [Commit](./handoffs/014-commit-the-first-mutation/commit-handoff-v1.md) |
 
 ## Done (implemented)
 

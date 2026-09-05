@@ -138,7 +138,7 @@ stikk's does not, so the count can only grow without one.
 
 Mutations, always preview-first with tiered confirmation (`FR-120/121`):
 
-- **Commit** (`FR-050`) — [RFC 014](rfcs/proposed/014-commit-the-first-mutation.md), the first
+- **Commit** (`FR-050`) — [RFC 014](rfcs/accepted/014-commit-the-first-mutation.md), the first
   operation stikk performs that writes, arriving into RFC 013's gate. Drafting it found that a
   cross-ref commit is refused by prikk in words stikk's classifier reads as a *lock conflict* — the
   RFC 012 F-b shape again — and that `Orientation::queued_target`, added in 0.2.0 to make Orientation

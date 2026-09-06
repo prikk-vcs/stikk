@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 017 | [prikk 0.33 re-baseline & classifier provenance](./proposed/017-prikk-0-33-rebaseline-and-classifier-provenance.md) | the 0.33 re-baseline found **five classifier arms matching text prikk has never emitted** (RFC 009's rule never reached the classifier) and **one live wrong gloss on the commit path** — stikk says "another writer is active" above prikk's own "run `prikk seal`". **Gates 016; 0.4.0, first** |
 | 016 | [The seal ceremony](./proposed/016-the-seal-ceremony.md) | the first irreversible act. Found that stikk's **MAINTAINER readiness badge over-claims** — the gate needs trust adoption, stikk checks only env presence, and no supported prikk can check it. **Amended 2026-09-06** on prikk's replies: the gate is eight operations wide, not seal's. **0.4.0, after 017** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
@@ -31,9 +30,12 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None currently._ 0.4.0's remaining increments are the **0.33 re-baseline** (RFC 017), the **seal
-ceremony** (RFC 016, `FR-052` as amended), and **queue review** (`FR-051`) — the first two proposed and
-awaiting acceptance, in that order.
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 017 | [prikk 0.33 re-baseline & classifier provenance](./accepted/017-prikk-0-33-rebaseline-and-classifier-provenance.md) | **five classifier arms match text prikk has never emitted** (RFC 009's rule never reached the classifier), and **one live wrong gloss on the commit path** — stikk says "another writer is active" above prikk's own "run `prikk seal`". **Accepted 2026-09-06; gates RFC 016** | [Classifier provenance](./handoffs/017-prikk-0-33-rebaseline-and-classifier-provenance/classifier-provenance-handoff-v1.md) |
+
+0.4.0's remaining increments are RFC 017 (accepted, above), the **seal ceremony** (RFC 016, proposed —
+awaiting acceptance behind 017), and **queue review** (`FR-051`), in that order.
 
 ## Done (implemented)
 

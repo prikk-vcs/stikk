@@ -1,6 +1,6 @@
 # RFC 017 — The prikk 0.33 re-baseline, and five classifier arms with no upstream behind them
 
-**Status.** Proposed (2026-09-06). Opened to re-baseline on prikk 0.33.0 — a release stikk's own
+**Status.** **Accepted by the project owner 2026-09-06**, ahead of RFC 016. Originally proposed 2026-09-06. Opened to re-baseline on prikk 0.33.0 — a release stikk's own
 letter caused. Verifying that the two reworded messages still classify correctly meant reading prikk's
 whole error taxonomy for the first time, and **that** found the real problems: the failure classifier
 matches on five strings prikk has never emitted, one of its tests enshrines an invented message that

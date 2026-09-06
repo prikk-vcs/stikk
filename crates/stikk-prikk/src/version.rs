@@ -2,8 +2,11 @@
 //! RFC 012 F-e).
 //!
 //! stikk targets prikk `>= 0.28`, validated through `0.33.0` (RFC 017, re-verified 2026-09-06 against a
-//! real, **released** prikk 0.33.0 binary). Unlike RFC 009/012/015's re-baselines, 0.33 changed no
-//! output *shape* `cli_backend/parse/tests.rs` parses — its two message rewordings (`lock conflict:` →
+//! real, **released** prikk 0.33.0 binary — every `cli_backend/parse/tests.rs` fixture shape re-run
+//! against the same probe repositories and confirmed byte-identical to 0.32.0, not merely assumed
+//! unchanged because RFC 017's stated scope did not name `parse.rs`; see that module's own doc for the
+//! fourth re-verification paragraph). Unlike RFC 009/012/015's re-baselines, 0.33 changed no output
+//! *shape* `cli_backend/parse/tests.rs` parses — its two message rewordings (`lock conflict:` →
 //! `precondition not met:` on both messages our own letter reported) were already absorbed by design,
 //! because the classifier matches the stable semantic clause, never the class prefix (RFC 017 F1). What
 //! 0.33 actually cost was the classifier's own provenance: reading prikk's complete error taxonomy for

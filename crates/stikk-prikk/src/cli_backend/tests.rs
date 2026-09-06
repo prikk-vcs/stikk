@@ -356,26 +356,55 @@ fn is_transient_exec_busy(err: &stikk_model::StikkError) -> bool {
 }
 
 /// The `prikk key` / `prikk setup` boundary (threat model C-I1e, RFC 017 §7): stikk never invokes
-/// `prikk key generate` or `prikk key public --seed-env`, and never wraps `prikk setup`. Every
-/// subcommand stikk actually runs is a literal argument array in this module (`run`/`run_capturing`
-/// call sites above) — scanned at the source level, the way `env.rs`'s TS-04 test scans for a
-/// materialized seed value, so a future call site cannot add either subcommand unnoticed.
+/// `prikk key generate` or `prikk key public --seed-env`, and never wraps `prikk setup`. `run` and
+/// `run_capturing` are private methods on `CliBackend` defined in `cli_backend.rs`, but Rust's privacy
+/// rules let any **descendant** module reach a private ancestor item — so a future file added anywhere
+/// under `cli_backend/` (a `seal.rs` for RFC 016's seam method, say) could add a new spawn call this
+/// test would not see if it scanned `cli_backend.rs` alone. Scanned at the source level (the way
+/// `env.rs`'s TS-04 test scans for a materialized seed value), but walking the whole `cli_backend`
+/// module tree at test time — `cli_backend.rs` plus every `.rs` file under `cli_backend/`, current and
+/// future — rather than a fixed list of `include_str!` paths, so a new file is covered without anyone
+/// remembering to add it here.
 #[test]
 fn the_command_surface_never_names_key_or_setup() {
-    const SRC: &str = include_str!("../cli_backend.rs");
-    // Scan code only: this doc comment and others legitimately *name* the forbidden subcommands to
-    // explain the rule, so the invariant is enforced against non-comment source lines.
-    let code: String = SRC
-        .lines()
-        .filter(|line| !line.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    for forbidden in ["\"key\"", "\"setup\""] {
-        assert!(
-            !code.contains(forbidden),
-            "cli_backend.rs must never invoke `prikk {forbidden}` — key management is prikk's job, \
-             not a history browser's (C-I1e)"
-        );
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut files = vec![manifest_dir.join("src/cli_backend.rs")];
+    collect_rs_files(&manifest_dir.join("src/cli_backend"), &mut files);
+    assert!(
+        files.len() >= 6,
+        "sanity: expected to find cli_backend.rs plus at least classify.rs, parse.rs, tests.rs and \
+         their own tests.rs submodules; found {files:?} — did the module layout change?"
+    );
+    for path in &files {
+        let src = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("reading {path:?}: {e}"));
+        // Scan code only: this doc comment and others legitimately *name* the forbidden subcommands to
+        // explain the rule, so the invariant is enforced against non-comment source lines.
+        let code: String = src
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for forbidden in ["\"key\"", "\"setup\""] {
+            assert!(
+                !code.contains(forbidden),
+                "{path:?} must never invoke `prikk {forbidden}` — key management is prikk's job, not \
+                 a history browser's (C-I1e)"
+            );
+        }
+    }
+}
+
+/// Recursively collect every `.rs` file under `dir` (helper for the boundary test above).
+fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("reading dir {dir:?}: {e}")) {
+        let path = entry
+            .unwrap_or_else(|e| panic!("reading entry in {dir:?}: {e}"))
+            .path();
+        if path.is_dir() {
+            collect_rs_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            out.push(path);
+        }
     }
 }
 

@@ -40,7 +40,12 @@ pub enum StikkError {
         detail: String,
     },
     /// A verify/doctor finding — repository-content diagnostics. Routed into the verify/doctor views,
-    /// never a popup (design OP-03).
+    /// never a popup (design OP-03). **Currently unconstructible**: the seam's own arm that used to
+    /// build this (`is_integrity_finding`) had no captured message behind any of its three strings and
+    /// was removed rather than kept on a guess (RFC 017 F2/§3) — nothing in the workspace constructs
+    /// this variant today. It stays in the taxonomy because `present()`'s `RoutedIntoView` mapping is
+    /// the right forward shape for `FR-100`'s still-unbuilt Verify view, and a future classifier arm
+    /// grounded on real `verify`/`doctor` output will need somewhere to route to.
     IntegrityFinding {
         /// prikk's verbatim finding text.
         message: String,

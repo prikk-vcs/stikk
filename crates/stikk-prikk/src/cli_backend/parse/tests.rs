@@ -17,6 +17,22 @@
 //! pre-existing `LOG_FIXTURE` (still valid: its patches predate the feature) is unchanged. Also captured:
 //! the straddling case (RFC 015 F4, one block holding both a pre-0.32 and a 0.32 patch) and the
 //! bundle-decode skew refusal (RFC 015 F5).
+//!
+//! **Re-verified a fourth time against a real released prikk 0.33.0 binary on 2026-09-06** (RFC 017,
+//! the classifier-provenance re-baseline — see that review request's C2 for the full transcript and the
+//! independent source-diff check backing it). `status`, `log` (all three shapes), `commit`, `branch
+//! list`, `tag list`, `worktree-status`, and `checkout --patch-plan` were all re-run against the same
+//! probe repositories these fixtures were originally captured from; every shape is **unchanged from
+//! 0.32.0**, byte-for-byte. This is not merely "nothing broke": `git diff 0.32.0..0.33.0` touches
+//! exactly `prikk-cli`'s `branch.rs` (an internal error-match arm, RFC 017 F1, no output text),
+//! `commands.rs`/`main.rs` (registering the new `key`/`setup` subcommands stikk never calls, `C-I1e`),
+//! the new `key.rs`/`setup.rs` themselves, `prikk-error` (the `Precondition` variant), and two
+//! `prikk-store` sites for messages this classifier already accounts for (RFC 017 F1/F4) — no file
+//! implementing `status`, `log`, `branch list`, `tag list`, `worktree-status`, or `checkout
+//! --patch-plan`'s own output changed at all between the two tags. Fixture text and provenance comments
+//! below remain pinned to their original capture (0.30.0/0.31.0/0.32.0, per fixture) rather than
+//! re-stamped to 0.33.0 — re-verified unchanged is a different, and weaker, claim than re-captured, and
+//! this paragraph is where that distinction is recorded.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 

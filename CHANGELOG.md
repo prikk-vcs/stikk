@@ -2,6 +2,34 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+Classifier provenance and the prikk 0.33 re-baseline (RFC 017). Reading prikk's complete error taxonomy
+for the first time found five failure-classifier arms keyed on text prikk has never emitted, dead since
+0.1.0, and one arm firing on a real precondition today with a gloss that contradicted prikk's own
+verbatim words beside it.
+
+### Fixed
+
+- **stikk no longer claims another writer is active when the queue is simply full** (RFC 017 F4). The
+  commit path's full-queue precondition was classified as a lock conflict, rendering "another writer is
+  active" directly above prikk's own "run `prikk seal`"; it now reaches its own honest explanation
+  instead — nothing is locked, seal the queue.
+- Five classifier arms keyed on text prikk has never emitted at any supported version are removed
+  (`FR-003`'s invented retired-format string among them, replaced with one grounded on a live-captured
+  migration message); each degrades safely to a verbatim refusal, exactly as designed.
+- A foreign directory's `Environment` classification is now grounded on the arm that actually catches
+  it, not the differently-worded arm originally written for it.
+
+### Added
+
+- Maintainer-trust refusals now classify `NotReady` (classifier only; Trust & Keys presentation lands
+  with the seal ceremony).
+- The `prikk key` / `prikk setup` boundary is declared in the threat model and enforced by test: stikk
+  never invokes either and never quotes `setup`'s policy line.
+- Validated through prikk **0.33.0** (was 0.32.0) — no output shape changed; the parser fixtures were
+  re-run against the real binary and independently confirmed unchanged at the source level.
+
 ## 0.3.0 — 2026-09-05
 
 Responsiveness and correctness (RFC 010 + RFC 012). The UI no longer blocks on a seam call, and five

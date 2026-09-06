@@ -22,7 +22,8 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 016 | [The seal ceremony](./proposed/016-the-seal-ceremony.md) | the first irreversible act. Found that stikk's **MAINTAINER readiness badge over-claims** — seal needs trust adoption, stikk checks only env presence, and prikk has no `trust maintainer list` to check it with. **0.4.0, next** |
+| 017 | [prikk 0.33 re-baseline & classifier provenance](./proposed/017-prikk-0-33-rebaseline-and-classifier-provenance.md) | the 0.33 re-baseline found **five classifier arms matching text prikk has never emitted** (RFC 009's rule never reached the classifier) and **one live wrong gloss on the commit path** — stikk says "another writer is active" above prikk's own "run `prikk seal`". **Gates 016; 0.4.0, first** |
+| 016 | [The seal ceremony](./proposed/016-the-seal-ceremony.md) | the first irreversible act. Found that stikk's **MAINTAINER readiness badge over-claims** — the gate needs trust adoption, stikk checks only env presence, and no supported prikk can check it. **Amended 2026-09-06** on prikk's replies: the gate is eight operations wide, not seal's. **0.4.0, after 017** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,8 +31,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None currently — 0.4.0's remaining increments are **queue review** (`FR-051`) and the **seal ceremony**
-(`FR-052`, as amended). No RFC yet._
+_None currently._ 0.4.0's remaining increments are the **0.33 re-baseline** (RFC 017), the **seal
+ceremony** (RFC 016, `FR-052` as amended), and **queue review** (`FR-051`) — the first two proposed and
+awaiting acceptance, in that order.
 
 ## Done (implemented)
 

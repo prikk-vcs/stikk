@@ -434,6 +434,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "stikk-real-binary"
+version = "0.4.1"
+dependencies = [
+ "stikk-model",
+ "stikk-prikk",
+]
+
+[[package]]
 name = "stikk-state"
 version = "0.4.1"
 dependencies = [

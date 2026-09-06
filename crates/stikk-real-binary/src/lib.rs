@@ -1,0 +1,37 @@
+//! The real-binary integration suite (`TS-07`; RFC 019): drives the same [`stikk_prikk::CliBackend`]
+//! the product uses against a real `prikk` binary, through a temporary repository, at both ends of the
+//! range [`stikk_prikk::version::supported_minor_range`] reports — never a hardcoded version, so
+//! raising the validated ceiling widens what this suite exercises without anyone having to remember a
+//! second place to update.
+//!
+//! **Not a replacement for looking**, and it makes the manual verification ritual this project has
+//! performed three times *repeatable*, not obsolete: it asserts repository *state* after commit and
+//! seal (re-reading, never trusting stikk's own parse), and that the two refusals commit/seal prevent
+//! client-side are refusals a real prikk actually gives when the prevention is bypassed. The test
+//! functions themselves live in `tests/real_binary.rs`; this crate's own code is the machinery they
+//! share.
+//!
+//! **Does not run by default.** `cargo test --workspace --locked` (the workspace's existing gate) never
+//! runs the tests this crate's `tests/real_binary.rs` marks `#[ignore]`, and never needs a real `prikk`
+//! binary to build or pass the one test it does not ignore. See that file's own module doc for exactly
+//! how to run the rest on demand.
+//!
+//! **Why this crate exists separately from `stikk-prikk`'s own tests, rather than living in
+//! `stikk-prikk/tests/`:** driving `CliBackend`'s real signing-readiness gate means actually setting
+//! *this process's* environment variables (`stikk-prikk::env` reads them directly, by design — that is
+//! the product behaviour under test), and `std::env::set_var`/`remove_var` are `unsafe fn` under this
+//! workspace's edition (2024). Every other crate in this workspace forbids `unsafe_code` outright
+//! (`unsafe is forbidden (no FFI in stikk yet)`); rather than weaken that for code that ships, this
+//! crate holds the one narrow, well-justified exception, is never built into any shipped binary, is
+//! never a dependency of a published crate, and `cargo package` skips it (`publish = false`).
+//!
+//! **The `C-I1e` boundary, held structurally, not by comment, even here:** `prikk key generate`,
+//! `prikk key public --seed-env`, and `prikk setup` are invoked directly with [`std::process::Command`]
+//! in [`support`], never through [`stikk_prikk::CliBackend`] — the product's command surface never
+//! learns those subcommands, so `stikk-prikk`'s own
+//! `cli_backend::tests::the_command_surface_never_names_key_or_setup` keeps passing **unchanged**.
+//! Seed values are read into memory only long enough to set a child process's environment or write a
+//! `0600` file inside a temp directory this suite deletes on drop; they are never printed, matched into
+//! a panic message, or included in a [`std::process::Command`]'s echoed output.
+
+pub mod support;

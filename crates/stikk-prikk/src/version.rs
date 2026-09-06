@@ -114,6 +114,18 @@ pub fn validated_ceiling_display() -> String {
     format!("{SUPPORTED_MAJOR}.{VALIDATED_MAX_MINOR}")
 }
 
+/// The supported/validated minor-version bounds themselves (`SUPPORTED_MIN_MINOR`,
+/// `VALIDATED_MAX_MINOR`), for tooling that needs the numbers rather than a yes/no answer or a display
+/// string. Everything *inside* stikk keeps using [`Version::is_supported`]/[`Version::is_validated`]/
+/// [`validated_ceiling_display`] — this exists for what is outside stikk: the real-binary integration
+/// suite's CI workflow reads it (via `examples/print_version_matrix.rs`) to decide which two prikk
+/// versions to install, so raising or lowering either bound here widens or narrows what that suite
+/// exercises without anyone having to remember a second place to update (`TS-07`; RFC 019 §6).
+#[must_use]
+pub fn supported_minor_range() -> (u32, u32) {
+    (SUPPORTED_MIN_MINOR, VALIDATED_MAX_MINOR)
+}
+
 impl std::fmt::Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)

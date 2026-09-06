@@ -1,0 +1,66 @@
+name: Real-binary integration suite
+
+# RFC 019, Q1 ruled: on demand, and required in release prep. No nightly — a nightly nobody owns gets
+# muted, and a muted gate is worse than none; revisit once this suite has a maintainer. Never runs on
+# push/pull_request: an upstream prikk break or a crates.io outage must never redden a PR for a reason
+# stikk did not cause (`ci.yml`'s own `gates` job is untouched by this file).
+on:
+  workflow_dispatch:
+    inputs:
+      full_platform_matrix:
+        description: >-
+          Also run on macOS and Windows (RFC 019 Q2: Linux for the routine run, the full NFR-T01 matrix
+          in release prep only — RFC 012 F-c found platform-specific path breaks that every
+          platform-independent finding this project has otherwise made would have missed).
+        type: boolean
+        default: false
+
+jobs:
+  determine-matrix:
+    name: derive the prikk version matrix
+    runs-on: ubuntu-latest
+    outputs:
+      floor: ${{ steps.matrix.outputs.floor }}
+      ceiling: ${{ steps.matrix.outputs.ceiling }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust (pinned MSRV)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+      - name: Read the range from stikk-prikk::version, never hardcode it here
+        id: matrix
+        # RFC 019 §6: derived from `supported_minor_range`, not written in this workflow — raising the
+        # validated ceiling widens what gets installed and exercised automatically.
+        run: |
+          read -r FLOOR CEILING < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
+          echo "floor=0.${FLOOR}.0" >> "$GITHUB_OUTPUT"
+          echo "ceiling=0.${CEILING}.0" >> "$GITHUB_OUTPUT"
+
+  real-binary:
+    name: real prikk (${{ matrix.os }})
+    needs: determine-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.full_platform_matrix && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust (pinned MSRV)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+      - name: Install prikk (floor — ${{ needs.determine-matrix.outputs.floor }})
+        run: cargo install prikk --version ${{ needs.determine-matrix.outputs.floor }} --locked --root ${{ runner.temp }}/prikk-floor
+      - name: Install prikk (ceiling — ${{ needs.determine-matrix.outputs.ceiling }})
+        run: cargo install prikk --version ${{ needs.determine-matrix.outputs.ceiling }} --locked --root ${{ runner.temp }}/prikk-ceiling
+      - name: Run the real-binary integration suite
+        shell: bash
+        # --nocapture: every subprocess prikk invocation prints its own output, which is exactly the
+        # "artefact" the manual ritual never left behind (RFC 019 summary) — worth keeping in the log
+        # even on a pass, not only surfaced on a failure.
+        run: cargo test -p stikk-real-binary -- --ignored --test-threads=1 --nocapture
+        env:
+          STIKK_TEST_PRIKK_FLOOR_BIN: ${{ runner.temp }}/prikk-floor/bin/prikk${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          STIKK_TEST_PRIKK_CEILING_BIN: ${{ runner.temp }}/prikk-ceiling/bin/prikk${{ matrix.os == 'windows-latest' && '.exe' || '' }}

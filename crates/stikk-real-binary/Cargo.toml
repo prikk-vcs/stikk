@@ -1,0 +1,33 @@
+[package]
+name        = "stikk-real-binary"
+description = "The real-binary integration suite (TS-07; RFC 019): drives CliBackend against a real prikk binary through a temporary repository. Not published; not a dependency of any shipped crate."
+publish     = false
+
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
+
+[dependencies]
+stikk-model = { workspace = true }
+stikk-prikk = { workspace = true }
+
+# Deliberately NOT `workspace = true` (root Cargo.toml's `[workspace.lints]`), and specifically not its
+# `unsafe_code = "forbid"`. This is the one crate in the workspace that legitimately needs `unsafe`:
+# driving `CliBackend`'s real signing-readiness gate (`stikk-prikk::env`) means actually setting *this
+# process's* environment variables before spawning prikk, and `std::env::set_var`/`remove_var` became
+# `unsafe fn` under edition 2024 for reasons unrelated to repository or key safety (thread-safety of the
+# C `environ` array). This crate ships in no binary, is never a dependency of any published crate, and
+# is skipped by `cargo package` (`publish = false` above) — the blanket forbid stays exactly where it
+# protects something: every crate that actually ships. `src/lib.rs`'s module doc records the `C-I1e`
+# boundary this crate's use of that allowance is still held to regardless.
+[lints.rust]
+missing_docs = "warn"
+
+# unwrap_used/expect_used/indexing_slicing stay at clippy's own default (off) here, unlike every other
+# crate's `[lints.clippy]`: this whole crate is test-harness code, in the same spirit the project already
+# grants any `#[cfg(test)] mod tests` sibling file (`.git-exclude/specs/02-implementer-handoff.md` §3:
+# "production code may not use those patterns" — nothing here is production code). A panic in this
+# crate fails a test loudly; it never reaches a user's terminal.

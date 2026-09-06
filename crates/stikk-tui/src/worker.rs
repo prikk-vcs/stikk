@@ -10,11 +10,12 @@ use std::sync::mpsc;
 
 use stikk_core::{
     BlockDetailView, ChangesView, CommitPreviewOutcome, Evidence, HistoryView, OrientationView,
-    Outcome, PreviewToken, block_detail, changes_view, commit_confirm_and_execute, commit_preview,
-    history_view, list_refs, orient,
+    Outcome, PreviewToken, SealPreviewOutcome, block_detail, changes_view,
+    commit_confirm_and_execute, commit_preview, history_view, list_refs, orient,
+    seal_confirm_and_execute, seal_preview,
 };
 use stikk_model::{Readiness, Result};
-use stikk_prikk::{BlockRow, CommitResult, Prikk, RefEntry};
+use stikk_prikk::{BlockRow, CommitResult, Prikk, RefEntry, SealResult};
 
 /// How many blocks the History view requests at a time (design FR-011 caps the listing).
 pub(crate) const HISTORY_LIMIT: usize = 200;
@@ -75,6 +76,23 @@ pub(crate) enum RequestKind {
         /// The commit message, typed in the message step before this request was ever built.
         message: String,
     },
+    /// Build the seal preview for a ref (design `FL-06`; RFC 016 §5/§6).
+    SealPreview {
+        /// The ref to seal.
+        reff: String,
+    },
+    /// Confirm and execute a seal in one round trip (RFC 016 §5) — the no-audit consent step (§8) has
+    /// already happened client-side, as its own act, before this request is ever built.
+    SealConfirmExecute {
+        /// The token [`RequestKind::SealPreview`] minted.
+        token: PreviewToken,
+        /// The session's signing readiness, read on the UI thread immediately before dispatch.
+        readiness: Readiness,
+        /// The user's confirmation evidence (an explicit yes, at seal's tier 3 — untyped, RFC 013 Q3).
+        evidence: Evidence,
+        /// The ref to seal (must match the preview's).
+        reff: String,
+    },
 }
 
 /// The worker's answer to one [`Request`], echoing its `seq`.
@@ -101,6 +119,10 @@ pub(crate) enum ResponseKind {
     CommitPreview(Result<CommitPreviewOutcome>),
     /// Answers [`RequestKind::CommitConfirmExecute`].
     CommitConfirmExecute(Result<Outcome<CommitResult>>),
+    /// Answers [`RequestKind::SealPreview`].
+    SealPreview(Result<SealPreviewOutcome>),
+    /// Answers [`RequestKind::SealConfirmExecute`].
+    SealConfirmExecute(Result<Outcome<SealResult>>),
 }
 
 /// A short, display-only label for the kind of work a [`RequestKind`] represents — used for the
@@ -116,6 +138,8 @@ impl RequestKind {
             Self::Changes { .. } => "changes",
             Self::CommitPreview { .. } => "commit preview",
             Self::CommitConfirmExecute { .. } => "commit",
+            Self::SealPreview { .. } => "seal preview",
+            Self::SealConfirmExecute { .. } => "seal",
         }
     }
 }
@@ -158,6 +182,17 @@ pub(crate) fn run(
                 message,
             } => ResponseKind::CommitConfirmExecute(commit_confirm_and_execute(
                 prikk, repo, token, readiness, evidence, &reff, &message,
+            )),
+            RequestKind::SealPreview { reff } => {
+                ResponseKind::SealPreview(seal_preview(prikk, repo, &reff))
+            }
+            RequestKind::SealConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                reff,
+            } => ResponseKind::SealConfirmExecute(seal_confirm_and_execute(
+                prikk, repo, token, readiness, evidence, &reff,
             )),
         };
         // The UI thread has quit and dropped its receiver; nothing left to deliver to.

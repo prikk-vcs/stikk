@@ -2,14 +2,18 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
-use stikk_model::{Readiness, Tier};
+use stikk_model::{MaintainerReadiness, Readiness, Tier};
 
 use super::*;
 
 fn readiness(author: bool, maintainer: bool, read_only: bool) -> Readiness {
     Readiness {
         author_ready: author,
-        maintainer_ready: maintainer,
+        maintainer_readiness: if maintainer {
+            MaintainerReadiness::Unknown
+        } else {
+            MaintainerReadiness::NotReady
+        },
         read_only,
     }
 }

@@ -856,6 +856,72 @@ fn commit_refuses_an_invalid_patch_id() {
     assert_eq!(commit(text).unwrap_err().class(), "environment");
 }
 
+// Captured verbatim against real prikk **0.28.0** and **0.33.0** binaries, both via `prikk seal
+// --allow-no-audit --ref heads/main` on a repository with one queued patch (RFC 016 §2). The two are
+// byte-identical apart from the object ids — no version gate needed, unlike `log`'s RFC 015 F1 shape
+// change. This fixture is the 0.33.0 capture; the 0.28.0 capture is recorded only in the review
+// request (identical shape, different hashes), per the handoff's "report whether it differs" ask.
+const SEAL_FIXTURE: &str = "\
+sealed active WAL into block
+patches: 1
+block id: 2c41d10327f720346a40d8efae08e130ccf498bfae3a53b988a7403cc07e3ad1
+heads/main RefState: b4de76e6570a2f2366cfe2384b94929fb6d88e473e09f56ecd07458e72cd04fe
+note: audit plugins remain later PRs
+";
+
+// Captured verbatim against a real prikk 0.33.0 binary: `prikk seal --allow-no-audit --ref
+// heads/feature` — confirms the `RefState` line's ref half is **not** fixed to `heads/main` the way
+// `status`'s is (RFC 016 §5), unlike every other fixture in this file which happens to use main.
+const SEAL_FIXTURE_NON_MAIN_REF: &str = "\
+sealed active WAL into block
+patches: 1
+block id: 5c364a6095683687639e2e0307bba207f69c0ed3ec8a624154f069d2928b31bf
+heads/feature RefState: d6a87e1ec5cba68a1e5b75e2f77ddf9b23e47c19830c3d5d1f3276981c70e45c
+note: audit plugins remain later PRs
+";
+
+#[test]
+fn parses_a_seal_result() {
+    let r = seal(SEAL_FIXTURE).expect("seal output parses");
+    assert_eq!(r.patches, 1);
+    assert_eq!(
+        r.block_id,
+        "2c41d10327f720346a40d8efae08e130ccf498bfae3a53b988a7403cc07e3ad1"
+    );
+    assert_eq!(r.reff, "heads/main");
+    assert_eq!(
+        r.ref_state,
+        "b4de76e6570a2f2366cfe2384b94929fb6d88e473e09f56ecd07458e72cd04fe"
+    );
+    assert_eq!(r.notes, vec!["note: audit plugins remain later PRs"]);
+}
+
+#[test]
+fn a_seal_result_names_whichever_ref_was_actually_sealed() {
+    let r = seal(SEAL_FIXTURE_NON_MAIN_REF).expect("seal output parses");
+    assert_eq!(r.reff, "heads/feature");
+}
+
+#[test]
+fn seal_refuses_without_the_headline() {
+    let text = "some unrelated prikk output\n";
+    assert_eq!(seal(text).unwrap_err().class(), "environment");
+}
+
+#[test]
+fn seal_refuses_an_invalid_block_id() {
+    let text = "sealed active WAL into block\npatches: 1\nblock id: not-hex\n\
+                heads/main RefState: b4de76e6570a2f2366cfe2384b94929fb6d88e473e09f56ecd07458e72cd04fe\n";
+    assert_eq!(seal(text).unwrap_err().class(), "environment");
+}
+
+#[test]
+fn seal_refuses_a_missing_ref_state_line() {
+    let text = "sealed active WAL into block\npatches: 1\n\
+                block id: 2c41d10327f720346a40d8efae08e130ccf498bfae3a53b988a7403cc07e3ad1\n";
+    assert_eq!(seal(text).unwrap_err().class(), "environment");
+}
+
 /// RFC 009 §0's rule, enforced mechanically: every fixture constant in this file must carry a
 /// provenance comment block (one or more contiguous `//` lines immediately above it) naming a prikk
 /// version. A hand-written fixture with no such comment — or, worse, a false one — is exactly the

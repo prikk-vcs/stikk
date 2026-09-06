@@ -114,6 +114,19 @@ static COMMANDS: &[Command] = &[
         opens: None,
     },
     Command {
+        id: "op.seal",
+        name: "Seal the active WAL",
+        binding: "S",
+        // Matches `stikk_core::seal::SEAL_OPERATION` — the same word `confirm`/`execute` use for this
+        // operation, so a `capability_gate` message reads identically wherever it is shown.
+        operation: "seal",
+        // Derived from `RequestCategory::Publication` (RFC 016 §7) — seal's own category, stated once
+        // in `stikk_core::seal::seal_preview`'s `Intent`; matched here by hand, same caveat as
+        // `op.commit`'s own comment above.
+        tier: Tier::Three,
+        opens: None,
+    },
+    Command {
         id: "view.glossary",
         name: "Glossary & Help",
         binding: "?",

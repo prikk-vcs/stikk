@@ -9,17 +9,57 @@
 //! Critically, [`Readiness`] records only **whether** a role's key material is present, never the
 //! material itself (threat model C-I1, data model LC-13). This type cannot hold a secret.
 
+/// Whether prikk's repository-side trust policy has adopted a MAINTAINER key (design `FR-104`; RFC
+/// 016 F2/F3).
+///
+/// Presence of `PRIKK_MAINTAINER_KEY_ID`/`_SEED` in the environment is necessary but not sufficient:
+/// prikk's `verify_signer_trusted` also requires the key to be **adopted** in the repository's trust
+/// policy before a MAINTAINER-gated operation succeeds. **Adoption is object trust, not ref
+/// authority** — prikk accepts that key's signatures on objects; adopting a key never lets it move a
+/// ref (`RefStore::publish` still requires this operator's own signature). Say so wherever this state
+/// is named; wording that lets a reader conclude "may publish here" is a defect (prikk RFC 138 §7.3).
+///
+/// No supported prikk (0.28–0.33) exposes a way to check adoption ahead of attempting the gated
+/// operation itself (RFC 016 F3): `prikk trust maintainer` offers only `add`/`remove`, and `verify`'s
+/// `sealed-block <id>: <key_id>` line is historical signer attribution — a since-revoked key still
+/// prints — not current policy, and does not exist before a repository's first seal, which is exactly
+/// when this question is asked. So today only two of the three states below are reachable; **no
+/// future increment may resolve `Unknown` from `verify` output** (RFC 016's own named trap).
+///
+/// This is the gate for all **eight** of prikk's `GatedOperation` variants — `Seal`, `Merge`,
+/// `SyncBuild`, `SyncSeal`, `SyncAdoptTag`, `TagCreate`, `BranchCreate`, `BranchClose` — not seal's
+/// alone; seal is only stikk's first consumer of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaintainerReadiness {
+    /// Key material present **and** adopted in the repository's trust policy. **Unconstructible
+    /// today** — see this type's own doc — and that is correct, not a gap: no supported prikk can
+    /// answer the adoption question, so `stikk-prikk::env` never produces this variant. It exists
+    /// because it is the shape the answer arrives in once `prikk trust maintainer check` ships
+    /// (upstream RFC 138, accepted and ruled, unreleased), documented the way RFC 017 documented
+    /// `StikkError::IntegrityFinding`: unreachable now, present because it is the shape of the answer.
+    Ready,
+    /// Key material absent — no `PRIKK_MAINTAINER_KEY_ID`/`_SEED` pair in the environment.
+    NotReady,
+    /// Key material present; adoption is **unverifiable** on any supported prikk (RFC 016 F3). This
+    /// is what `stikk-prikk::env` returns whenever both variables are set — never a caveat layered on
+    /// a boolean, because `Unknown` must never render as a pass (`C-T2c′`, the same rule this
+    /// project's design already applies to `FR-035`'s three-valued author-signature outcome).
+    Unknown,
+}
+
 /// Whether each signing role's key material is available to the current session, plus whether the
 /// session is in read-only mode.
 ///
-/// This carries no key material — only presence flags. It is the input to [`Capability::derive`].
+/// This carries no key material — only presence flags (and, for MAINTAINER, the further-unverifiable
+/// adoption question — see [`MaintainerReadiness`]). It is the input to [`Capability::derive`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Readiness {
     /// True when an AUTHOR key id and seed are both present in the environment (presence only — the
     /// seed value is never read; see `stikk-prikk::env`).
     pub author_ready: bool,
-    /// True when a MAINTAINER key id and seed are both present in the environment (presence only).
-    pub maintainer_ready: bool,
+    /// Whether a MAINTAINER key is ready to sign — see [`MaintainerReadiness`] for why this is
+    /// three-valued rather than a presence-only bool the way `author_ready` is.
+    pub maintainer_readiness: MaintainerReadiness,
     /// True when the session is in read-only mode (a global override, or the default when no signing
     /// readiness is present). When set, no capability above [`Capability::Viewer`] is granted.
     pub read_only: bool,
@@ -31,7 +71,7 @@ impl Readiness {
     pub const fn none() -> Self {
         Self {
             author_ready: false,
-            maintainer_ready: false,
+            maintainer_readiness: MaintainerReadiness::NotReady,
             read_only: false,
         }
     }
@@ -75,17 +115,26 @@ pub enum Capability {
 impl Capability {
     /// Derive the mutating-axis capability from readiness. Read-only mode collapses everything to
     /// [`Capability::Viewer`] regardless of key presence (design NFR-S01).
+    ///
+    /// Grants `Maintainer` on [`MaintainerReadiness::Ready`] **or** [`MaintainerReadiness::Unknown`]
+    /// (RFC 016 Q1): the affordance is still offered, since hiding seal from someone whose key *is*
+    /// adopted would be its own confident-but-wrong picture (`C-T4d`). What `Unknown` changes is what
+    /// stikk *claims* about the outcome, not what it *offers* — the badge and the ceremony's own copy
+    /// carry that distinction; this method does not.
     #[must_use]
     pub const fn derive(readiness: Readiness) -> Self {
         if readiness.read_only {
             return Self::Viewer;
         }
-        if readiness.maintainer_ready {
-            Self::Maintainer
-        } else if readiness.author_ready {
-            Self::Author
-        } else {
-            Self::Viewer
+        match readiness.maintainer_readiness {
+            MaintainerReadiness::Ready | MaintainerReadiness::Unknown => Self::Maintainer,
+            MaintainerReadiness::NotReady => {
+                if readiness.author_ready {
+                    Self::Author
+                } else {
+                    Self::Viewer
+                }
+            }
         }
     }
 

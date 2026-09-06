@@ -26,7 +26,7 @@ pub mod change_token;
 pub mod error;
 pub mod id;
 
-pub use capability::{Capability, Readiness};
+pub use capability::{Capability, MaintainerReadiness, Readiness};
 pub use category::{RequestCategory, Tier};
 pub use change_token::ChangeToken;
 pub use error::{Result, StikkError};

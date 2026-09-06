@@ -63,7 +63,54 @@ fn not_ready_is_inline_guidance_toward_trust() {
         detail: "MAINTAINER key not ready".into(),
     };
     match present(&err, OperationContext::Other) {
-        Presentation::InlineGuidance { toward, .. } => assert_eq!(toward, Target::TrustKeys),
+        Presentation::InlineGuidance { toward, gloss, .. } => {
+            assert_eq!(toward, Target::TrustKeys);
+            // Not a trust refusal — RR-5, nothing invented.
+            assert!(gloss.is_none());
+        }
+        other => panic!("expected InlineGuidance, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_trust_refusal_gets_adoption_guidance_admitting_what_stikk_cannot_verify() {
+    // RFC 016 §9 / RFC 017 F5's other half: both captured wordings must get the same gloss.
+    for message in [
+        "invalid signature: maintainer signer key id different-maintainer is not trusted by policy",
+        "invalid signature: maintainer signer public key does not match trusted key maintainer",
+    ] {
+        let err = StikkError::NotReady {
+            detail: message.to_string(),
+        };
+        match present(&err, OperationContext::Other) {
+            Presentation::InlineGuidance {
+                detail,
+                toward,
+                gloss,
+            } => {
+                assert_eq!(detail, message); // ER-02: prikk's verbatim words, untouched
+                assert_eq!(toward, Target::TrustKeys);
+                let gloss = gloss.expect("a trust refusal must get adoption guidance");
+                assert!(gloss.contains("adopted"));
+                assert!(gloss.contains("object trust"));
+                assert!(!gloss.to_ascii_lowercase().contains("may publish"));
+                assert!(gloss.contains("cannot verify"));
+            }
+            other => panic!("expected InlineGuidance, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn an_absent_signing_key_gets_no_adoption_gloss() {
+    // The narrow-match discipline (C-T2b): only the two captured trust-refusal clauses get the gloss —
+    // a plain absent-key message must not accidentally match a substring and invent guidance for it.
+    let err = StikkError::NotReady {
+        detail: "author signing is required: set PRIKK_AUTHOR_KEY_ID (no signing key configured)"
+            .to_string(),
+    };
+    match present(&err, OperationContext::Other) {
+        Presentation::InlineGuidance { gloss, .. } => assert!(gloss.is_none()),
         other => panic!("expected InlineGuidance, got {other:?}"),
     }
 }
@@ -76,7 +123,7 @@ fn a_version_gated_changes_not_ready_points_at_prikk_version_not_trust() {
         detail: "Worktree review needs prikk ≥ 0.28 — this prikk is 0.27.1.".into(),
     };
     match present(&err, OperationContext::LoadChanges) {
-        Presentation::InlineGuidance { toward, detail } => {
+        Presentation::InlineGuidance { toward, detail, .. } => {
             assert_eq!(toward, Target::PrikkVersion);
             assert!(detail.contains("0.28"));
         }
@@ -297,8 +344,14 @@ fn the_full_queue_precondition_gets_an_honest_gloss_never_another_writer() {
             .is_some_and(|g| g.contains("Nothing is locked"))
     );
     assert!(card.verbatim.contains("run `prikk seal`"));
-    assert_eq!(card.next_steps.len(), 1);
-    assert_eq!(card.next_steps[0].target, NextTarget::Refresh);
+    // RFC 016 §10 closes the gap RFC 017 left open: a seal-ceremony next-step now exists alongside
+    // Refresh — never a retry of this refusal itself (NFR-S04 is intact; sealing is its own ceremony).
+    assert_eq!(card.next_steps.len(), 2);
+    assert_eq!(
+        card.next_steps[0].target,
+        NextTarget::OpenView(Target::Seal)
+    );
+    assert_eq!(card.next_steps[1].target, NextTarget::Refresh);
 }
 
 #[test]
@@ -324,6 +377,11 @@ fn the_active_rs_full_queue_wording_gets_the_same_gloss() {
         card.gloss
             .as_deref()
             .is_some_and(|g| g.contains("Nothing is locked"))
+    );
+    assert_eq!(card.next_steps.len(), 2);
+    assert_eq!(
+        card.next_steps[0].target,
+        NextTarget::OpenView(Target::Seal)
     );
 }
 

@@ -29,7 +29,8 @@ use stikk_model::{Capability, ChangeToken, RequestCategory, Result, StikkError};
 use crate::env;
 use crate::version::Version;
 use crate::{
-    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus,
+    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, SealResult, StateFiles,
+    WorktreeStatus,
 };
 
 mod classify;
@@ -299,6 +300,28 @@ impl Prikk for CliBackend {
             orientation.queued_patches,
             orientation.queued_target.as_deref(),
         ))
+    }
+
+    fn seal(&self, repo: &Path, reff: &str) -> Result<SealResult> {
+        // OPL-04's seam-side half, the same fold `commit` applies (RFC 014 handoff §7): `MaintainerReadiness`
+        // can genuinely change out from under a running session once prikk ships adoption-checking
+        // (RFC 016 F3), so the seam is the right place for this re-check regardless of what triggers it.
+        // `Capability::derive` (not a bare readiness read) so `STIKK_READ_ONLY=1` is honoured here too.
+        let readiness = env::read_readiness(env::read_only_override());
+        if !Capability::derive(readiness).may_publish() {
+            return Err(StikkError::NotReady {
+                detail: "seal needs MAINTAINER signing readiness".to_string(),
+            });
+        }
+        // `--allow-no-audit` unconditionally, every time (RFC 016 F1) — there is no configuration for
+        // this and no code path that omits it: prikk refuses without it as a usage error (exit 2),
+        // which per RFC 014 F6 is a stikk bug, never a user-facing refusal.
+        let out = self.run(
+            Some(repo),
+            RequestCategory::Publication,
+            ["seal", "--allow-no-audit", "--ref", reff],
+        )?;
+        parse::seal(&out)
     }
 }
 

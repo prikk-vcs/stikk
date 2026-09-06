@@ -253,6 +253,28 @@ pub struct CommitResult {
     pub notes: Vec<String>,
 }
 
+/// The result of `prikk seal` (design `FR-052`; RFC 016 §5) — the second `Prikk` method that writes,
+/// and the first that publishes history. Every field is prikk's own fact, transported rather than
+/// summarised (`C-T4a`/`C-T4c`), following [`CommitResult`]'s own precedent: `notes` carries **every**
+/// `note:` line prikk printed, verbatim and in order, never fixed named fields — captured at 0.28.0 and
+/// 0.33.0, both print exactly one (`"audit plugins remain later PRs"`), but a note is prose, not a
+/// stable field, and `CommitResult`'s own history is the reason this project never assumes a note set
+/// is fixed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SealResult {
+    /// Number of patches sealed into the new block.
+    pub patches: u64,
+    /// The new block's object id.
+    pub block_id: String,
+    /// The ref that was sealed — echoes the seam's own argument, transported rather than merely
+    /// assumed (the same discipline [`CommitResult::baseline_ref`] applies).
+    pub reff: String,
+    /// The ref's new `RefState` object id after this seal.
+    pub ref_state: String,
+    /// Every `note:` line prikk printed, verbatim, in the order printed (`ER-02`).
+    pub notes: Vec<String>,
+}
+
 /// The entire prikk contract stikk depends on. Every method returns [`stikk_model::StikkError`] on
 /// failure, classified into the presentation taxonomy the operation layer consumes.
 ///
@@ -351,6 +373,32 @@ pub trait Prikk: Send + Sync {
     /// risk exists to fix). [`stikk_model::StikkError::NotReady`] when AUTHOR signing readiness is
     /// absent (`OPL-04`'s seam-side re-check). Otherwise classified as for [`Prikk::orientation`].
     fn commit(&self, repo: &Path, reff: &str, message: &str) -> Result<CommitResult>;
+
+    /// Seal the active WAL into a new, MAINTAINER-signed block (design `FR-052`; category
+    /// `Publication`; RFC 016 §5) — **the second method on this trait that writes, and the first that
+    /// publishes history**. There is no undo, in stikk or in prikk.
+    ///
+    /// **Passes `--allow-no-audit` unconditionally, every time, with no configuration to omit it.**
+    /// prikk refuses without it as a **usage error (exit 2)** — per RFC 014 F6 an exit 2 from stikk is
+    /// a stikk bug, never a user-facing refusal — so there is no code path that could omit the flag and
+    /// still reach a real answer. The flag's own meaning is scaffolding prikk may retire; the reason
+    /// stikk always passes it is structural, not a policy choice this trait exposes (RFC 016 F1).
+    ///
+    /// **Single-shot: never retried** (`SEAM-04`/`NFR-S04`), the same discipline [`Prikk::commit`]
+    /// follows.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError::CrossRef`] when the active WAL's queue targets a different ref than
+    /// `reff` — worded differently from commit's own cross-ref refusal (RFC 016 F4: seal says
+    /// `"requested seal ref is"`, commit says `"requested ref"`, and at 0.33.0 seal's message carries
+    /// no class prefix at all where commit's does), which is why the classifier matches the clause both
+    /// share (`"active wal is owned by"`) rather than either's trailing phrase. An empty queue is
+    /// likewise prevented client-side and, reaching here anyway, degrades to a verbatim
+    /// [`stikk_model::StikkError::Refusal`]. [`stikk_model::StikkError::NotReady`] when MAINTAINER
+    /// signing readiness is absent, or when prikk refuses the signer as untrusted (RFC 017 F5/F6 — the
+    /// classification; the ceremony's guidance is RFC 016 §9). Otherwise classified as for
+    /// [`Prikk::orientation`].
+    fn seal(&self, repo: &Path, reff: &str) -> Result<SealResult>;
 }
 
 #[cfg(test)]

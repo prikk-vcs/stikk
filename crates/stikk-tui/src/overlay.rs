@@ -133,6 +133,24 @@ pub enum Overlay {
         /// prikk's result, transported unchanged.
         result: stikk_prikk::CommitResult,
     },
+    /// `FL-06`'s consent step (RFC 016 §8) — the no-audit acknowledgement, its own distinct act after
+    /// [`Self::Confirmation`]'s evidence and before execution, because the act it precedes is
+    /// irreversible. **Unchecked and cannot be defaulted**: `acknowledged` starts `false`, only a
+    /// dedicated toggle key sets it, and `Enter` here does nothing while it is still `false` — a bare
+    /// `Enter` carried over by habit from the previous screen confirms nothing.
+    SealConsent {
+        /// The ref this seal will target (snapshotted at open time, like every other overlay here).
+        reff: String,
+        /// Whether the user has explicitly acknowledged [`stikk_core::SEAL_CONSENT_COPY`]. Toggled by
+        /// its own key, never implied by reaching this screen or by any other input.
+        acknowledged: bool,
+    },
+    /// `FL-06`'s tail: prikk's own seal result, shown verbatim (`C-T4a`/`C-T4c`) — the new block id,
+    /// the ref's new `RefState`, and every `note:` line it printed, in order (RFC 016 §5).
+    SealResult {
+        /// prikk's result, transported unchanged.
+        result: stikk_prikk::SealResult,
+    },
 }
 
 impl Overlay {
@@ -151,6 +169,8 @@ impl Overlay {
             Self::Confirmation { .. } => " Confirm ",
             Self::CommitMessage { .. } => " Commit message ",
             Self::CommitResult { .. } => " Commit recorded ",
+            Self::SealConsent { .. } => " Before you seal ",
+            Self::SealResult { .. } => " Sealed ",
         }
     }
 }
@@ -201,6 +221,10 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
             render_commit_message(reff, typed, *messages_persist, palette, frame, area);
         }
         Overlay::CommitResult { result } => render_commit_result(result, palette, frame, area),
+        Overlay::SealConsent { reff, acknowledged } => {
+            render_seal_consent(reff, *acknowledged, palette, frame, area);
+        }
+        Overlay::SealResult { result } => render_seal_result(result, palette, frame, area),
     }
 }
 
@@ -217,6 +241,8 @@ fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
         key_line(palette, "b", "choose which ref to view"),
         key_line(palette, "w", "changes — worktree vs baseline"),
         key_line(palette, "u", "toggle untracked (in Changes)"),
+        key_line(palette, "C", "commit worktree changes"),
+        key_line(palette, "S", "seal the active WAL"),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
         key_line(palette, "o", "background operations"),
@@ -791,6 +817,135 @@ fn render_commit_result(
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Commit recorded ")
+        .style(Style::default().fg(palette.fg));
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let region = centered(78, height.max(8), area);
+    frame.render_widget(Clear, region);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        region,
+    );
+}
+
+/// `FL-06`'s consent step (RFC 016 §8): its own act, unchecked and undefaultable. The copy is
+/// [`stikk_core::SEAL_CONSENT_COPY`] verbatim — stikk's own words, not repository content, so it needs
+/// no `inert()` — tied to the ceremony's own irreversibility, never to prikk's `--allow-no-audit` flag
+/// (that flag is scaffolding prikk may retire; a claim tied to it would go false the day it does).
+fn render_seal_consent(
+    reff: &str,
+    acknowledged: bool,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let (mark, mark_style) = if acknowledged {
+        ("[x]", Style::default().fg(palette.ok))
+    } else {
+        ("[ ]", Style::default().fg(palette.warn))
+    };
+    let lines = vec![
+        Line::from(Span::styled(
+            format!("  Seal {}", inert(reff)),
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  {}", stikk_core::SEAL_CONSENT_COPY),
+            Style::default().fg(palette.fg),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(format!("  {mark} "), mark_style),
+            Span::styled(
+                "I understand — Space to toggle",
+                Style::default().fg(palette.dim),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            if acknowledged {
+                "  Enter to seal · Esc to cancel"
+            } else {
+                "  Space to acknowledge before Enter will do anything · Esc to cancel"
+            },
+            Style::default().fg(if acknowledged {
+                palette.accent
+            } else {
+                palette.dim
+            }),
+        )),
+    ];
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Before you seal ")
+        .style(Style::default().fg(palette.warn));
+    // `lines.len()` counts `Line` values, not the rows `Wrap` actually renders — `SEAL_CONSENT_COPY`
+    // is long enough to wrap across several rows in a 78-wide box, so a few extra rows of headroom are
+    // added here rather than sized to the unwrapped count (which clipped the acknowledgement mark and
+    // the Enter hint below it, caught by this overlay's own render tests).
+    let height = (lines.len() as u16 + 6).min(area.height);
+    let region = centered(78, height.max(13), area);
+    frame.render_widget(Clear, region);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        region,
+    );
+}
+
+/// `FL-06`'s tail: prikk's own seal result, verbatim (`C-T4a`/`C-T4c`) — the block id, the ref's new
+/// `RefState`, and every `note:` line, never summarised (`ER-02`).
+fn render_seal_result(
+    result: &stikk_prikk::SealResult,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "  sealed active WAL into block",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  block id: ", Style::default().fg(palette.dim)),
+            Span::styled(inert(&result.block_id), Style::default().fg(palette.accent)),
+        ]),
+        Line::from(Span::styled(
+            format!("  patches {}", result.patches),
+            Style::default().fg(palette.fg),
+        )),
+        Line::from(vec![
+            Span::styled(
+                format!("  {} RefState: ", inert(&result.reff)),
+                Style::default().fg(palette.dim),
+            ),
+            Span::styled(
+                inert(&result.ref_state),
+                Style::default().fg(palette.accent),
+            ),
+        ]),
+    ];
+    if !result.notes.is_empty() {
+        lines.push(Line::from(""));
+        for note in &result.notes {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", inert(note)),
+                Style::default().fg(palette.dim),
+            )));
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Enter · Esc to dismiss",
+        Style::default().fg(palette.accent),
+    )));
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Sealed ")
         .style(Style::default().fg(palette.fg));
     let height = (lines.len() as u16 + 2).min(area.height);
     let region = centered(78, height.max(8), area);

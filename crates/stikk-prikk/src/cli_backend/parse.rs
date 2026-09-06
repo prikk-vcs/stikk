@@ -21,8 +21,8 @@
 use stikk_model::{ObjectId, RefName, Result, StikkError};
 
 use crate::{
-    BlockRow, CommitChange, CommitResult, History, Orientation, PatchMessage, RefEntry, StateFiles,
-    WorktreeEntry, WorktreeStatus,
+    BlockRow, CommitChange, CommitResult, History, Orientation, PatchMessage, RefEntry, SealResult,
+    StateFiles, WorktreeEntry, WorktreeStatus,
 };
 
 /// The per-path change kinds `worktree-status` emits; used to tell an indented entry line from a
@@ -533,6 +533,68 @@ pub(super) fn commit(text: &str) -> Result<CommitResult> {
         referenced_blobs,
         text_edits,
         changes,
+        notes,
+    })
+}
+
+/// Parse `prikk seal --allow-no-audit` output into a [`SealResult`] (design `FR-052`; RFC 016 §5/§2).
+///
+/// Expected shape, identical at 0.28.0 and 0.33.0 (re-verified live at both ends of the supported
+/// range — no version gate needed, unlike `log`'s RFC 015 F1 shape change):
+/// ```text
+/// sealed active WAL into block
+/// patches: <n>
+/// block id: <64-hex>
+/// <ref> RefState: <64-hex>
+/// note: …
+/// [note: …]
+/// ```
+/// The headline anchors the shape. The `RefState` line's label is **not** a fixed `"heads/main
+/// RefState:"` the way `status`'s is — seal can target any branch — so it is found by its stable
+/// `" RefState: "` infix rather than a `field()`-style fixed prefix, and the ref half is validated
+/// through [`RefName::parse`] like every other ref this boundary reads (`INV-9`). `SealResult.reff` is
+/// **this parsed ref**, prikk's own stated fact, not merely the caller's argument echoed back —
+/// [`CommitResult::baseline_ref`]'s own precedent.
+pub(super) fn seal(text: &str) -> Result<SealResult> {
+    if !text
+        .lines()
+        .any(|line| line.trim() == "sealed active WAL into block")
+    {
+        return Err(StikkError::environment_msg(
+            "prikk seal output is missing its \"sealed active WAL into block\" headline",
+        ));
+    }
+    let patches = required_u64(text, "patches:")?;
+    let block_id = required_object_id_field(text, "block id:")?;
+    let ref_state_line = text
+        .lines()
+        .map(str::trim)
+        .find_map(|line| line.split_once(" RefState: "))
+        .ok_or_else(|| {
+            StikkError::environment_msg("prikk seal output is missing its \"<ref> RefState:\" line")
+        })?;
+    let (sealed_ref, ref_state) = ref_state_line;
+    RefName::parse(sealed_ref).map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk seal's RefState line names an invalid ref: {sealed_ref:?}"
+        ))
+    })?;
+    ObjectId::parse(ref_state).map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk seal's RefState line carries an invalid object id: {ref_state:?}"
+        ))
+    })?;
+    let notes = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("note:"))
+        .map(str::to_string)
+        .collect();
+    Ok(SealResult {
+        patches,
+        block_id,
+        reff: sealed_ref.to_string(),
+        ref_state: ref_state.to_string(),
         notes,
     })
 }

@@ -24,7 +24,8 @@ use std::sync::mpsc;
 
 use stikk_core::{
     BlockDetailView, ChangesView, Command, CommitPreviewOutcome, HistoryView, NextTarget,
-    OperationContext, Presentation, RefusalHistory, Target, present,
+    OperationContext, Presentation, RefusalHistory, SEAL_OPERATION, SealPreviewOutcome, Target,
+    present,
 };
 use stikk_model::Tier;
 use stikk_state::Config;
@@ -159,6 +160,10 @@ pub struct App {
     /// so it cannot live on a type ([`Overlay`]) that derives those. `App` is the one place that holds
     /// it, across exactly the two round trips the flow needs (preview, then confirm+execute).
     pending_commit: Option<PendingCommit>,
+    /// The seal flow's state between overlays (RFC 016 §5/§8) — the same reason [`Self::pending_commit`]
+    /// exists, across the **three** round trips seal's own extra consent step needs (preview, then the
+    /// consent act, then confirm+execute).
+    pending_seal: Option<PendingSeal>,
 }
 
 /// See [`App::pending_commit`].
@@ -179,6 +184,31 @@ enum PendingCommit {
         reff: String,
         /// The message the user typed.
         message: String,
+    },
+}
+
+/// See [`App::pending_seal`].
+enum PendingSeal {
+    /// `Overlay::Loading` is on the stack; a [`RequestKind::SealPreview`] is in flight for `reff`.
+    AwaitingPreview {
+        /// The ref this seal targets.
+        reff: String,
+    },
+    /// The preview succeeded; `token` is armed and `Overlay::Confirmation` is on the stack awaiting the
+    /// ceremony's first act (an explicit yes, tier 3 — RFC 013 Q3 keeps seal untyped).
+    Confirming {
+        /// Feed this into [`stikk_core::seal_confirm_and_execute`] once both acts are supplied.
+        token: stikk_core::PreviewToken,
+        /// The ref this seal targets (must match the preview's).
+        reff: String,
+    },
+    /// The first act is done; `Overlay::SealConsent` is on the stack awaiting the second, distinct act
+    /// (RFC 016 §8) before [`RequestKind::SealConfirmExecute`] is ever dispatched.
+    AwaitingConsent {
+        /// Carried through from `Confirming` unchanged.
+        token: stikk_core::PreviewToken,
+        /// The ref this seal targets.
+        reff: String,
     },
 }
 
@@ -238,6 +268,7 @@ impl App {
             req_tx,
             operations: Vec::new(),
             pending_commit: None,
+            pending_seal: None,
         }
     }
 
@@ -389,6 +420,81 @@ impl App {
         });
     }
 
+    /// Begin the seal flow (`FL-06` step 1; the `S` key; RFC 016 §5). Checked here, before anything is
+    /// dispatched (`C-T4d`), the same [`stikk_core::capability_gate`] check the palette's `op.seal`
+    /// entry uses — the two must agree, matching `begin_commit`'s own precedent.
+    pub fn begin_seal(&mut self) {
+        self.banner = None;
+        let readiness = self.readiness();
+        match stikk_core::capability_gate(SEAL_OPERATION, Tier::Three, readiness) {
+            Ok(()) => {
+                let reff = self.focused_ref.clone();
+                let seq = self.dispatch(RequestKind::SealPreview { reff: reff.clone() });
+                self.overlays.push(Overlay::Loading {
+                    what: "seal preview",
+                    seq,
+                });
+                self.pending_seal = Some(PendingSeal::AwaitingPreview { reff });
+            }
+            Err(stikk_model::StikkError::NotReady { detail }) => self.banner = Some(detail),
+            // `capability_gate` only ever returns `NotReady`; kept exhaustive so a future change to
+            // that contract fails here loudly rather than silently swallowing a new error shape.
+            Err(other) => self.banner = Some(other.to_string()),
+        }
+    }
+
+    /// The confirmation step's `Enter` for a pending seal (RFC 016 §5's first act). **Does not**
+    /// dispatch anything yet — unlike commit, seal has a second, distinct act still to come (the
+    /// no-audit consent, RFC 016 §8), so this only records the evidence and opens
+    /// [`Overlay::SealConsent`]. Seal stays untyped (RFC 013 Q3), so `tier`/`typed` are accepted for
+    /// shape parity with [`Self::submit_commit_confirmation`] but only `Evidence::ExplicitYes` is ever
+    /// produced in practice.
+    fn submit_seal_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingSeal::Confirming { token, reff }) = self.pending_seal.take() else {
+            return; // no seal is actually pending — a stray Enter on a Confirmation this app did not open
+        };
+        let _ = (tier, typed); // seal's confirm() evidence is always ExplicitYes (RFC 013 Q3)
+        self.overlays.pop();
+        self.overlays.push(Overlay::SealConsent {
+            reff: reff.clone(),
+            acknowledged: false,
+        });
+        self.pending_seal = Some(PendingSeal::AwaitingConsent { token, reff });
+    }
+
+    /// Toggle the seal consent acknowledgement (RFC 016 §8; the Space key) — the only way
+    /// `Overlay::SealConsent.acknowledged` ever changes. Reaching this screen implies nothing; only
+    /// this explicit act does.
+    pub fn toggle_seal_consent(&mut self) {
+        if let Some(Overlay::SealConsent { acknowledged, .. }) = self.overlays.last_mut() {
+            *acknowledged = !*acknowledged;
+        }
+    }
+
+    /// The consent step's `Enter` (RFC 016 §8's second act): dispatches confirm+execute **only when
+    /// acknowledged is true** — an unacknowledged `Enter` does nothing, which is the whole point of
+    /// this step existing (cannot be defaulted).
+    fn submit_seal_consent(&mut self) {
+        let Some(Overlay::SealConsent { acknowledged, .. }) = self.overlays.last() else {
+            return;
+        };
+        if !*acknowledged {
+            return;
+        }
+        let Some(PendingSeal::AwaitingConsent { token, reff }) = self.pending_seal.take() else {
+            return; // defensive: should not happen if SealConsent is on the stack at all
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let seq = self.dispatch(RequestKind::SealConfirmExecute {
+            token,
+            readiness,
+            evidence: stikk_core::Evidence::ExplicitYes,
+            reff,
+        });
+        self.overlays.push(Overlay::Loading { what: "seal", seq });
+    }
+
     /// The context-sensitive select/drill-in action (the `Enter` key). Overlays take priority.
     pub fn select(&mut self) {
         match self.overlays.last() {
@@ -444,17 +550,27 @@ impl App {
                 let (reff, typed) = (reff.clone(), typed.clone());
                 self.submit_commit_message(reff, &typed);
             }
-            // RFC 014 §3: commit is this overlay's first consumer (RFC 013 shipped it unwired).
+            // Shared by commit (RFC 014 §3, this overlay's first consumer) and seal (RFC 016 §5) —
+            // routed by whichever pending flow is actually waiting, never by the overlay's own content
+            // (both use tier/typed identically; only what happens next differs). Neither should ever be
+            // `Some` at once (each flow pops its own message/consent step before pushing this one), so
+            // checking commit first is a tie-break that cannot actually occur, not a real ambiguity.
             Some(Overlay::Confirmation { tier, typed, .. }) => {
                 let (tier, typed) = (*tier, typed.clone());
-                self.submit_commit_confirmation(tier, &typed);
+                if self.pending_commit.is_some() {
+                    self.submit_commit_confirmation(tier, &typed);
+                } else if self.pending_seal.is_some() {
+                    self.submit_seal_confirmation(tier, &typed);
+                }
             }
-            // A commit result is dismissed like any other content overlay — no drill-in.
+            Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
+            // A commit/seal result is dismissed like any other content overlay — no drill-in.
             Some(
                 Overlay::Glossary
                 | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
-                | Overlay::CommitResult { .. },
+                | Overlay::CommitResult { .. }
+                | Overlay::SealResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -600,7 +716,9 @@ impl App {
                 | Overlay::Loading { .. }
                 | Overlay::Confirmation { .. }
                 | Overlay::CommitMessage { .. }
-                | Overlay::CommitResult { .. },
+                | Overlay::CommitResult { .. }
+                | Overlay::SealConsent { .. }
+                | Overlay::SealResult { .. },
             ) => {}
             None => {
                 if let Some(Screen::History { cursor, .. }) = self.screens.last_mut() {
@@ -635,7 +753,9 @@ impl App {
                 | Overlay::Loading { .. }
                 | Overlay::Confirmation { .. }
                 | Overlay::CommitMessage { .. }
-                | Overlay::CommitResult { .. },
+                | Overlay::CommitResult { .. }
+                | Overlay::SealConsent { .. }
+                | Overlay::SealResult { .. },
             ) => {}
             None => {
                 if let Some(Screen::History { view, cursor, .. }) = self.screens.last_mut() {
@@ -656,12 +776,20 @@ impl App {
             // Cancelling the message step or a confirmation abandons the commit it belonged to (RFC
             // 014 §3) — otherwise a stale `PreviewToken` would sit unused until a later, unrelated
             // commit's response arrived and (harmlessly, but confusingly) found nothing to attach it
-            // to. Popping either overlay is exactly "the user is not doing this anymore."
+            // to. Popping either overlay is exactly "the user is not doing this anymore." `Confirmation`
+            // is shared with seal (RFC 016 §5), so clear both pending flows unconditionally — only the
+            // one actually in flight is ever `Some`.
             if matches!(
                 overlay,
                 Overlay::CommitMessage { .. } | Overlay::Confirmation { .. }
             ) {
                 self.pending_commit = None;
+                self.pending_seal = None;
+            }
+            // Cancelling the consent step abandons the seal it belonged to (RFC 016 §8) — the same
+            // posture, one step later in seal's own flow.
+            if matches!(overlay, Overlay::SealConsent { .. }) {
+                self.pending_seal = None;
             }
             return;
         }
@@ -688,6 +816,8 @@ impl App {
             ResponseKind::Changes(r) => r.is_ok(),
             ResponseKind::CommitPreview(r) => r.is_ok(),
             ResponseKind::CommitConfirmExecute(r) => r.is_ok(),
+            ResponseKind::SealPreview(r) => r.is_ok(),
+            ResponseKind::SealConfirmExecute(r) => r.is_ok(),
         };
         self.record_finished(seq, ok);
         match kind {
@@ -699,6 +829,10 @@ impl App {
             ResponseKind::CommitPreview(result) => self.apply_commit_preview(seq, result),
             ResponseKind::CommitConfirmExecute(result) => {
                 self.apply_commit_confirm_execute(seq, result);
+            }
+            ResponseKind::SealPreview(result) => self.apply_seal_preview(seq, result),
+            ResponseKind::SealConfirmExecute(result) => {
+                self.apply_seal_confirm_execute(seq, result);
             }
         }
     }
@@ -918,6 +1052,83 @@ impl App {
         }
     }
 
+    /// Answers [`RequestKind::SealPreview`] (RFC 016 §5/§6). Mirrors
+    /// [`Self::apply_commit_preview`]'s three-outcome shape: blocked (`C-T4d`, an empty queue or a
+    /// cross-ref target, stikk's own words, never routed through `present()`), ready (opens the
+    /// confirmation — seal's first act), or a genuine seam failure (the usual `present()` routing).
+    fn apply_seal_preview(&mut self, seq: u64, result: stikk_model::Result<SealPreviewOutcome>) {
+        let index = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
+        let Some(index) = index else {
+            return; // stale: the user navigated away before the preview resolved
+        };
+        // Consumed regardless of outcome: a blocked or failed preview leaves nothing to confirm, and a
+        // ready one hands its pieces to the new `Confirming` state below — never both.
+        let pending = self.pending_seal.take();
+        match result {
+            Ok(SealPreviewOutcome::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            Ok(SealPreviewOutcome::Ready { token }) => {
+                let Some(PendingSeal::AwaitingPreview { reff }) = pending else {
+                    self.overlays.remove(index);
+                    return; // defensive: should not happen, but nothing to confirm without this
+                };
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::Confirmation {
+                        summary: token.summary().clone(),
+                        tier: token.tier(),
+                        typed: String::new(),
+                        error: None,
+                    };
+                }
+                self.pending_seal = Some(PendingSeal::Confirming {
+                    token: *token,
+                    reff,
+                });
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Other);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::SealConfirmExecute`] (RFC 016 §5, the ceremony's tail — both acts already
+    /// happened client-side before this was ever dispatched). On success, shows prikk's result verbatim
+    /// and refreshes Orientation so the queue count reflects the seal; on failure (`Stale`, `Declined`,
+    /// the `CrossRef` race, a trust refusal, or a genuine refusal), the usual `present()` routing.
+    fn apply_seal_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::SealResult>>,
+    ) {
+        let index = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
+        let Some(index) = index else {
+            return; // stale: the user navigated away before the response arrived
+        };
+        match result {
+            Ok(outcome) => {
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::SealResult {
+                        result: outcome.result,
+                    };
+                }
+                self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Other);
+            }
+        }
+    }
+
     /// Record that the worker thread itself has stopped (RFC 010 §7/ER-04) — there is no
     /// [`stikk_model::StikkError`] to route through `present()` for "the channel closed", so this is a
     /// direct fault, stated exactly once by the caller (repeating it on every subsequent poll would
@@ -954,13 +1165,24 @@ impl App {
             Presentation::Banner { message, .. }
             | Presentation::RoutedIntoView { message, .. }
             | Presentation::InConfirmation { message } => self.banner = Some(message),
-            Presentation::InlineGuidance { detail, toward } => {
+            Presentation::InlineGuidance {
+                detail,
+                toward,
+                gloss,
+            } => {
                 // RFC 012 F-b: the pointer is target-dependent — Trust & Keys is genuinely the fix for
                 // absent signing readiness, but says nothing useful for a prikk-version gate, whose
-                // `detail` is already the complete, actionable message on its own.
-                self.banner = Some(match toward {
+                // `detail` is already the complete, actionable message on its own. RFC 016 §9: `gloss`,
+                // when present (the trust-refusal shape), is stikk's own addition — appended after the
+                // pointer, never merged into `detail` itself (`ER-02`: `detail` is prikk's verbatim
+                // words where it has any).
+                let base = match toward {
                     Target::TrustKeys => format!("{detail} — see Glossary → Trust & Keys"),
                     _ => detail,
+                };
+                self.banner = Some(match gloss {
+                    Some(gloss) => format!("{base} — {gloss}"),
+                    None => base,
                 });
             }
             Presentation::PlainStatement { detail, original } => {
@@ -995,6 +1217,10 @@ impl App {
             Target::RefPicker => self.open_ref_picker(),
             Target::Changes => self.open_changes(),
             Target::Glossary => self.overlays.push(Overlay::Glossary),
+            // RFC 016: the full-queue refusal's own next-step lands here — the same entry point the
+            // palette's `op.seal` command uses (`Self::begin_seal`'s own capability pre-check applies
+            // either way, so a session that cannot seal sees why, not a silently-armed ceremony).
+            Target::Seal => self.begin_seal(),
             // Targets whose views land in later increments: no-op for now (the mapping is complete).
             Target::LockInspector | Target::TrustKeys | Target::Verify | Target::Doctor => {}
             _ => {}
@@ -1011,6 +1237,7 @@ impl App {
             "view.refresh" => self.reload(),
             "session.refusals" => self.open_refusals(),
             "op.commit" => self.begin_commit(),
+            "op.seal" => self.begin_seal(),
             "app.quit" => self.should_quit = true,
             _ => {}
         }

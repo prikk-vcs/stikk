@@ -23,6 +23,7 @@ pub mod orient;
 pub mod palette;
 pub mod present;
 pub mod refusal_history;
+pub mod seal;
 
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{ChangeEntry, ChangeKind, ChangesView, changes_view};
@@ -42,3 +43,6 @@ pub use present::{
     NextStep, NextTarget, OperationContext, Presentation, RefusalCard, Target, present,
 };
 pub use refusal_history::{RefusalHistory, RefusalRecord};
+pub use seal::{
+    SEAL_CONSENT_COPY, SEAL_OPERATION, SealPreviewOutcome, seal_confirm_and_execute, seal_preview,
+};

@@ -17,7 +17,9 @@
 
 use std::path::Path;
 
-use stikk_model::{Capability, ChangeToken, Readiness, RequestCategory, StikkError};
+use stikk_model::{
+    Capability, ChangeToken, MaintainerReadiness, Readiness, RequestCategory, StikkError,
+};
 use stikk_prikk::NullBackend;
 
 use super::*;
@@ -64,7 +66,11 @@ fn backend_with_token(seed: &str) -> NullBackend {
 fn ready(author: bool, maintainer: bool, read_only: bool) -> Readiness {
     Readiness {
         author_ready: author,
-        maintainer_ready: maintainer,
+        maintainer_readiness: if maintainer {
+            MaintainerReadiness::Unknown
+        } else {
+            MaintainerReadiness::NotReady
+        },
         read_only,
     }
 }

@@ -35,6 +35,11 @@ pub enum Action {
     ToggleUntracked,
     /// Begin the commit flow (`FL-05` step 1; RFC 014).
     Commit,
+    /// Begin the seal flow (`FL-06` step 1; RFC 016).
+    Seal,
+    /// Toggle the seal consent acknowledgement (RFC 016 §8) — meaningful only while
+    /// [`crate::overlay::Overlay::SealConsent`] is on top; a no-op everywhere else.
+    ToggleSealConsent,
     /// Open the glossary / help browser.
     OpenGlossary,
     /// Open the command palette.
@@ -79,6 +84,8 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('w') => Action::OpenChanges,
         KeyCode::Char('u') => Action::ToggleUntracked,
         KeyCode::Char('C') => Action::Commit,
+        KeyCode::Char('S') => Action::Seal,
+        KeyCode::Char(' ') => Action::ToggleSealConsent,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,
         KeyCode::Char('R') => Action::OpenRefusals,

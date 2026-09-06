@@ -114,6 +114,23 @@ fn a_cross_ref_commit_refusal_at_0_33_0_is_still_not_a_lock_conflict() {
 }
 
 #[test]
+fn seals_own_cross_ref_wording_also_classifies_cross_ref_rfc_016_f4() {
+    // RFC 016 F4/§6: seal's cross-ref refusal is worded differently from commit's in **both** the
+    // class prefix (seal carries none at 0.33.0, where commit's became `precondition not met:`) and
+    // the trailing clause (`"requested seal ref is …"` vs commit's `"requested ref …"`). Captured live:
+    // `prikk seal --allow-no-audit --ref heads/other` against a repository whose active WAL owns
+    // `heads/main`, prikk 0.33.0 — no class prefix at all, confirmed byte-for-byte at 0.28.0 too. The
+    // old two-clause match (`"active wal is owned by"` **and** `"requested ref"`) would never have
+    // fired here, since seal's trailing text is "requested seal ref is", not "requested ref" — this is
+    // the regression test for the widening in `is_cross_ref_conflict`.
+    let (out, err) =
+        on_stderr("error: active WAL is owned by heads/main; requested seal ref is heads/other");
+    let e = classify(out, err, RequestCategory::Publication);
+    assert_eq!(e.class(), "cross-ref");
+    assert!(e.to_string().contains("requested seal ref is"));
+}
+
+#[test]
 fn a_genuine_held_lock_is_still_a_lock_conflict() {
     // Captured live: an `active.lock` file pre-placed at the path prikk expects, then
     // `prikk commit --from-worktree --ref heads/main -m x`, prikk 0.33.0.
@@ -210,9 +227,10 @@ fn the_active_rs_full_queue_wording_also_falls_through() {
 fn the_other_five_captured_preconditions_are_refusals_not_lock_conflicts() {
     // RFC 017 F4's remaining five sites: `refs.rs:133`, `rollback_verify.rs:178`,
     // `seal_from_accepted.rs:189`, and `rollback_draft.rs:158` at the `0.33.0` tag — all source-read,
-    // none live-provoked (none has a UI path in stikk today: no Queue/Seal ceremony, no rollback flow,
-    // no sync). All must fall through to a verbatim refusal, exactly like the full-queue case, since
-    // none is a lock and none has a view to route into yet (RFC 017 §3's rule, applied uniformly).
+    // none live-provoked (none has a UI path in stikk today: RFC 016 builds only the ordinary seal
+    // ceremony, not rollback-verify, sync's accepted-claim seal, or rollback-draft). All must fall
+    // through to a verbatim refusal, exactly like the full-queue case, since none is a lock and none
+    // has a view to route into yet (RFC 017 §3's rule, applied uniformly).
     for msg in [
         "error: lock conflict: repository mutation is blocked by incomplete ref publication; run \
          verify/doctor and use signer-backed seal retry",
@@ -230,6 +248,19 @@ fn the_other_five_captured_preconditions_are_refusals_not_lock_conflicts() {
             "expected {msg:?} to degrade, got {e:?}"
         );
     }
+}
+
+#[test]
+fn seals_empty_queue_refusal_degrades_to_a_verbatim_refusal() {
+    // RFC 016 §2/§6: captured live — `prikk seal --allow-no-audit` with nothing queued, byte-identical
+    // at both prikk 0.28.0 and 0.33.0. Not among RFC 017 F4's six preconditions (a distinct refusal,
+    // never carrying prikk's `lock conflict:`/`precondition not met:` class word at either version) —
+    // stikk prevents this client-side from the queue count it already knows (RFC 016 decision 4), and
+    // the classifier's job is only to make the rare race that survives prevention land honestly.
+    let (out, err) = on_stderr("error: active WAL has no patch records to seal");
+    let e = classify(out, err, RequestCategory::Publication);
+    assert_eq!(e.class(), "refusal");
+    assert!(e.to_string().contains("no patch records to seal"));
 }
 
 #[test]

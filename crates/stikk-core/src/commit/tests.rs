@@ -35,7 +35,7 @@ fn orientation(queued_patches: u64, queued_target: Option<&str>) -> Orientation 
 fn author_readiness() -> stikk_model::Readiness {
     stikk_model::Readiness {
         author_ready: true,
-        maintainer_ready: false,
+        maintainer_readiness: stikk_model::MaintainerReadiness::NotReady,
         read_only: false,
     }
 }
@@ -218,7 +218,7 @@ fn read_only_refuses_even_with_author_keys_present() {
     };
     let read_only = stikk_model::Readiness {
         author_ready: true,
-        maintainer_ready: false,
+        maintainer_readiness: stikk_model::MaintainerReadiness::NotReady,
         read_only: true,
     };
     let err = commit_confirm_and_execute(

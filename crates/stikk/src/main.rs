@@ -192,7 +192,7 @@ fn print_orientation(root: &Path, view: &orient::OrientationView) {
     println!(
         "  signing:     author {} · maintainer {}{}",
         ready(view.readiness.author_ready),
-        ready(view.readiness.maintainer_ready),
+        maintainer_readiness_word(view.readiness.maintainer_readiness),
         if view.readiness.read_only {
             " · read-only"
         } else {
@@ -254,6 +254,16 @@ fn support_line(supported: bool, validated: bool, validated_through: &str) -> St
 
 fn ready(flag: bool) -> &'static str {
     if flag { "ready" } else { "not ready" }
+}
+
+/// MAINTAINER's three-valued word (RFC 016 §3), matching the TUI Orientation view's own wording —
+/// `Unknown` must never say bare "ready" (`C-T2c′`).
+fn maintainer_readiness_word(readiness: stikk_model::MaintainerReadiness) -> &'static str {
+    match readiness {
+        stikk_model::MaintainerReadiness::Ready => "ready",
+        stikk_model::MaintainerReadiness::NotReady => "not ready",
+        stikk_model::MaintainerReadiness::Unknown => "present, adoption unknown",
+    }
 }
 
 fn fail(message: &str) -> ExitCode {

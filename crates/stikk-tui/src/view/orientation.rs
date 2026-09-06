@@ -12,6 +12,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use stikk_core::OrientationView;
+use stikk_model::MaintainerReadiness;
 
 use crate::text::inert;
 use crate::theme::Palette;
@@ -133,13 +134,19 @@ fn field<'a>(palette: &Palette, label: &'a str, mut value: Vec<Span<'a>>) -> Lin
     Line::from(spans)
 }
 
-/// The signing-readiness summary (never key material — presence only, design C-I1).
+/// The signing-readiness summary (never key material — presence only, design C-I1). MAINTAINER's
+/// three-valued state (RFC 016 §3) is spelled out in full, never collapsed toward "ready" — `Unknown`
+/// must never render as a pass (`C-T2c′`).
 fn signing_line(view: &OrientationView) -> String {
     let ready = |flag: bool| if flag { "ready" } else { "not ready" };
+    let maintainer = match view.readiness.maintainer_readiness {
+        MaintainerReadiness::Ready => "ready",
+        MaintainerReadiness::NotReady => "not ready",
+        MaintainerReadiness::Unknown => "present, adoption unknown",
+    };
     let mut s = format!(
-        "author {} · maintainer {}",
+        "author {} · maintainer {maintainer}",
         ready(view.readiness.author_ready),
-        ready(view.readiness.maintainer_ready)
     );
     if view.readiness.read_only {
         s.push_str(" · read-only");

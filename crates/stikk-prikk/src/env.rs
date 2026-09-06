@@ -13,7 +13,7 @@
 //! this module contains no value-materializing call (`env::var(`, `into_string`, `to_string_lossy`,
 //! …). The one intentional value comparison is on stikk's own non-secret `STIKK_READ_ONLY` flag.
 
-use stikk_model::Readiness;
+use stikk_model::{MaintainerReadiness, Readiness};
 
 /// The environment variable names prikk reads for signing. stikk reads only their **presence**.
 const AUTHOR_KEY_ID: &str = "PRIKK_AUTHOR_KEY_ID";
@@ -29,10 +29,19 @@ const READ_ONLY: &str = "STIKK_READ_ONLY";
 /// point supplies the real environment lookup. Keeping it injectable means the presence rules are
 /// tested without touching process-global state, and the security invariant (no value read) is a
 /// property of the *real* lookup, checked separately.
+///
+/// `MaintainerReadiness::Ready` is never returned here (RFC 016 F3): no supported prikk exposes a way
+/// to check trust-policy adoption, so key-material presence alone can only ever mean `Unknown`, never
+/// `Ready`. See [`stikk_model::MaintainerReadiness`] for why that is correct, not a shortfall.
 fn read_readiness_with(is_set: impl Fn(&str) -> bool, read_only: bool) -> Readiness {
+    let maintainer_present = is_set(MAINTAINER_KEY_ID) && is_set(MAINTAINER_SEED);
     Readiness {
         author_ready: is_set(AUTHOR_KEY_ID) && is_set(AUTHOR_SEED),
-        maintainer_ready: is_set(MAINTAINER_KEY_ID) && is_set(MAINTAINER_SEED),
+        maintainer_readiness: if maintainer_present {
+            MaintainerReadiness::Unknown
+        } else {
+            MaintainerReadiness::NotReady
+        },
         read_only,
     }
 }

@@ -63,6 +63,11 @@ pub enum Target {
     Verify,
     /// The Doctor view (FR-101) — renderer lands with recovery.
     Doctor,
+    /// The seal ceremony (`FR-052`; RFC 016) — begins `FL-06` from wherever a next-step opens it (the
+    /// full-queue refusal's own "run `prikk seal`" among them), the same tier-3, fully-confirmed
+    /// operation the palette's `op.seal` entry starts. Never a retry of the refusal itself (`NFR-S04`):
+    /// this is navigation to a separate operation that happens to resolve the same condition.
+    Seal,
 }
 
 /// What activating a next-step does. Increment 4's set is **navigational only** (NFR-S04): open a
@@ -119,10 +124,15 @@ pub enum Presentation {
     },
     /// Inline guidance toward a surface (not-ready → Trust &amp; Keys).
     InlineGuidance {
-        /// What is missing.
+        /// What is missing — prikk's verbatim words when it has any (a trust refusal), or stikk's own
+        /// short statement when it does not (absent key material; the version gate).
         detail: String,
         /// The surface that resolves it.
         toward: Target,
+        /// stikk's own explanation, additive and separate from `detail` — never a rewrite (`ER-02`,
+        /// the same discipline [`RefusalCard::gloss`] follows). `None` where stikk has nothing honest
+        /// to add beyond `detail` itself (RR-5).
+        gloss: Option<String>,
     },
     /// Routed into a content view, never a popup (integrity-finding → Verify/Doctor).
     RoutedIntoView {
@@ -207,12 +217,20 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
                         target: NextTarget::DismissAndResolveExternally,
                     }]
                 } else if is_full_queue {
-                    // No Seal ceremony exists yet to jump to (RFC 016) — a re-check is the one honest,
-                    // non-mutating action available today (NFR-S04).
-                    vec![NextStep {
-                        label: "Refresh".to_string(),
-                        target: NextTarget::Refresh,
-                    }]
+                    // RFC 016 §10 closes this gap: the seal ceremony now exists, and prikk's own words
+                    // beside this refusal already say to run it. A navigation to a separate,
+                    // fully-confirmed operation — never a retry of this refusal itself (`NFR-S04` is
+                    // intact; sealing is its own tier-3 ceremony with its own consent step).
+                    vec![
+                        NextStep {
+                            label: "Seal the active WAL".to_string(),
+                            target: NextTarget::OpenView(Target::Seal),
+                        },
+                        NextStep {
+                            label: "Refresh".to_string(),
+                            target: NextTarget::Refresh,
+                        },
+                    ]
                 } else {
                     refusal_next_steps(op)
                 },
@@ -227,18 +245,39 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
             // A jump to the Lock inspector lands with FR-102; None until then.
             jump: None,
         },
-        StikkError::NotReady { detail } => Presentation::InlineGuidance {
-            detail: detail.clone(),
-            // `NotReady` is overloaded for two unrelated conditions (RFC 012 F-b): absent signing
-            // readiness (Trust & Keys is genuinely the fix), and version skew (`changes_view`'s < 0.28
-            // gate, where signing has nothing to do with it). Disambiguated by `OperationContext`, never
-            // by the message text (C-T2b) — `LoadChanges` is, today, the only operation that constructs
-            // `NotReady` for the version-gate reason; every other `NotReady` still means Trust & Keys.
-            toward: match op {
-                OperationContext::LoadChanges => Target::PrikkVersion,
-                _ => Target::TrustKeys,
-            },
-        },
+        StikkError::NotReady { detail } => {
+            // The trust-refusal shape (RFC 017 F5/F6; RFC 016 §9) — matched on the same clauses
+            // `classify.rs`'s `is_trust_not_ready` uses, never a new class: this is a *gloss*, layered
+            // beside prikk's verbatim `detail` exactly like the schema-skew/full-queue shapes are
+            // layered onto `Refusal` above, not a next-step derived from the message (`C-T2b` is about
+            // actions, not explanatory prose keyed on a stable, captured shape).
+            let is_trust_refusal =
+                detail.contains("is not trusted by policy") || detail.contains("does not match trusted key");
+            Presentation::InlineGuidance {
+                detail: detail.clone(),
+                // `NotReady` is overloaded for two unrelated conditions (RFC 012 F-b): absent signing
+                // readiness (Trust & Keys is genuinely the fix), and version skew (`changes_view`'s
+                // < 0.28 gate, where signing has nothing to do with it). Disambiguated by
+                // `OperationContext`, never by the message text (C-T2b) — `LoadChanges` is, today, the
+                // only operation that constructs `NotReady` for the version-gate reason; every other
+                // `NotReady` still means Trust & Keys.
+                toward: match op {
+                    OperationContext::LoadChanges => Target::PrikkVersion,
+                    _ => Target::TrustKeys,
+                },
+                // RFC 016 §9: say what actually has to happen (adopt the key outside stikk), and admit
+                // what stikk cannot do (verify adoption afterwards, on any supported prikk) — so a user
+                // who adopts the key and comes back to an unchanged `Unknown` badge does not think
+                // stikk is broken. `None` for every other `NotReady` — RR-5, nothing invented.
+                gloss: is_trust_refusal.then(|| {
+                    "The MAINTAINER key named above must be adopted in this repository's trust policy \
+                     — object trust, not ref authority — which is done outside stikk (`prikk trust \
+                     maintainer add`). stikk cannot verify adoption afterwards on any supported prikk: \
+                     the badge may still read \"adoption unknown\" once the key genuinely is trusted."
+                        .to_string()
+                }),
+            }
+        }
         StikkError::IntegrityFinding { message } => Presentation::RoutedIntoView {
             target: Target::Verify,
             message: message.clone(),

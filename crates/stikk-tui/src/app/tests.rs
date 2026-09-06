@@ -11,10 +11,13 @@ use std::sync::mpsc;
 
 use stikk_core::{
     BlockDetailView, ChangeEntry, ChangeKind, ChangesView, CommitPreviewOutcome,
-    ConfirmationSummary, HistoryView, OperationContext, Outcome, commit_preview,
+    ConfirmationSummary, HistoryView, OperationContext, Outcome, SealPreviewOutcome,
+    commit_preview, seal_preview,
 };
-use stikk_model::{Capability, Readiness, StikkError, Tier};
-use stikk_prikk::{BlockRow, CommitResult, NullBackend, Orientation, StateFiles, WorktreeStatus};
+use stikk_model::{Capability, MaintainerReadiness, Readiness, StikkError, Tier};
+use stikk_prikk::{
+    BlockRow, CommitResult, NullBackend, Orientation, SealResult, StateFiles, WorktreeStatus,
+};
 use stikk_state::Config;
 
 use super::*;
@@ -71,7 +74,7 @@ fn loaded(view: stikk_core::OrientationView) -> OrientationState {
 fn author_orientation_view() -> stikk_core::OrientationView {
     let readiness = Readiness {
         author_ready: true,
-        maintainer_ready: false,
+        maintainer_readiness: MaintainerReadiness::NotReady,
         read_only: false,
     };
     stikk_core::OrientationView {
@@ -84,6 +87,33 @@ fn author_orientation_view() -> stikk_core::OrientationView {
         queued_target: None,
         trailing_partial_wal_bytes: 0,
         main_ref_state: None,
+        capability: Capability::derive(readiness),
+        readiness,
+    }
+}
+
+/// An orientation view with MAINTAINER readiness `Unknown` (RFC 016's seal ceremony tests need this —
+/// `Unknown` is the only value `stikk-prikk::env` can ever produce for MAINTAINER presence, RFC 016
+/// F3, and `Capability::derive` grants `Maintainer` on it, RFC 016 Q1).
+fn maintainer_orientation_view(
+    queued_patches: u64,
+    queued_target: Option<&str>,
+) -> stikk_core::OrientationView {
+    let readiness = Readiness {
+        author_ready: true,
+        maintainer_readiness: MaintainerReadiness::Unknown,
+        read_only: false,
+    };
+    stikk_core::OrientationView {
+        prikk_version: "prikk 0.33.0".to_string(),
+        prikk_supported: true,
+        prikk_validated: true,
+        validated_through: "0.33".to_string(),
+        prikk_persists_messages: true,
+        queued_patches,
+        queued_target: queued_target.map(str::to_string),
+        trailing_partial_wal_bytes: 0,
+        main_ref_state: Some("237d0681".repeat(8)),
         capability: Capability::derive(readiness),
         readiness,
     }
@@ -1251,4 +1281,294 @@ fn back_on_the_message_prompt_clears_the_pending_commit() {
         app.top_overlay(),
         Some(Overlay::CommitMessage { .. })
     ));
+}
+
+fn seal_backend() -> NullBackend {
+    NullBackend::supported().with_orientation(Orientation {
+        queued_patches: 1,
+        queued_target: Some("heads/main".to_string()),
+        main_ref_state: None,
+        trailing_partial_wal_bytes: 0,
+        active_patch_warning: None,
+    })
+}
+
+#[test]
+fn begin_seal_dispatches_a_preview_request_when_maintainer_ready() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+        Palette::default(),
+    );
+    app.begin_seal();
+    let req = next_request(&rx);
+    assert!(matches!(req.kind, RequestKind::SealPreview { reff } if reff == "heads/main"));
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::Loading {
+            what: "seal preview",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn begin_seal_refuses_with_a_banner_when_not_maintainer_ready() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()), // AUTHOR only — not enough for seal's tier 3
+        Palette::default(),
+    );
+    app.begin_seal();
+    assert!(!app.has_overlay(), "no preview should be requested");
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("needs MAINTAINER signing readiness"))
+    );
+}
+
+#[test]
+fn a_blocked_seal_preview_shows_a_banner_and_closes_the_overlay() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(0, None)), // empty queue
+        Palette::default(),
+    );
+    app.begin_seal();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::SealPreview(Ok(SealPreviewOutcome::Blocked(
+            "nothing is queued for this ref — there is nothing to seal".to_string(),
+        ))),
+    });
+    assert!(!app.has_overlay());
+    assert!(app.banner().is_some_and(|b| b.contains("nothing to seal")));
+}
+
+#[test]
+fn a_ready_seal_preview_opens_the_confirmation_overlay_at_tier_three() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+        Palette::default(),
+    );
+    app.begin_seal();
+    let req = next_request(&rx);
+    let backend = seal_backend();
+    let outcome = seal_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("a scripted backend's preview always succeeds");
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::SealPreview(Ok(outcome)),
+    });
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { summary, tier, .. }) => {
+            assert_eq!(*tier, Tier::Three);
+            assert!(summary.target_ids.contains(&"heads/main".to_string()));
+        }
+        other => panic!("expected Confirmation, got {other:?}"),
+    }
+}
+
+/// The acceptance-critical sequencing test (RFC 016 §8): confirming does **not** dispatch
+/// confirm+execute directly — it opens the consent step, and only the consent step's own `Enter`,
+/// with `acknowledged` true, dispatches anything.
+#[test]
+fn confirming_a_seal_opens_consent_not_confirm_execute() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+        Palette::default(),
+    );
+    app.begin_seal();
+    let preview_req = next_request(&rx);
+    let backend = seal_backend();
+    let outcome = seal_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SealPreview(Ok(outcome)),
+    });
+
+    app.select(); // the confirmation's own Enter — the ceremony's first act
+    match app.top_overlay() {
+        Some(Overlay::SealConsent { reff, acknowledged }) => {
+            assert_eq!(reff, "heads/main");
+            assert!(
+                !acknowledged,
+                "must start unacknowledged — cannot be defaulted"
+            );
+        }
+        other => panic!("expected SealConsent, got {other:?}"),
+    }
+    assert!(
+        rx.try_recv().is_err(),
+        "no confirm+execute request before the consent act"
+    );
+}
+
+#[test]
+fn an_unacknowledged_enter_on_consent_does_nothing() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+        Palette::default(),
+    );
+    app.begin_seal();
+    let preview_req = next_request(&rx);
+    let backend = seal_backend();
+    let outcome = seal_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SealPreview(Ok(outcome)),
+    });
+    app.select(); // -> SealConsent, unacknowledged
+    app.select(); // Enter again, still unacknowledged
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::SealConsent { .. })),
+        "the consent step must stay open"
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "an unacknowledged Enter must dispatch nothing — this is the whole point of the step"
+    );
+}
+
+#[test]
+fn toggling_then_confirming_consent_dispatches_confirm_execute() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+        Palette::default(),
+    );
+    app.begin_seal();
+    let preview_req = next_request(&rx);
+    let backend = seal_backend();
+    let outcome = seal_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SealPreview(Ok(outcome)),
+    });
+    app.select(); // -> SealConsent
+    app.toggle_seal_consent();
+    match app.top_overlay() {
+        Some(Overlay::SealConsent { acknowledged, .. }) => assert!(*acknowledged),
+        other => panic!("expected SealConsent, got {other:?}"),
+    }
+    app.select(); // consent's own Enter — the ceremony's second act
+    let confirm_req = next_request(&rx);
+    assert!(matches!(
+        confirm_req.kind,
+        RequestKind::SealConfirmExecute { .. }
+    ));
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::Loading { what: "seal", .. })
+    ));
+}
+
+#[test]
+fn a_successful_seal_shows_the_result_verbatim_and_refreshes_orientation() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+        Palette::default(),
+    );
+    app.begin_seal();
+    let preview_req = next_request(&rx);
+    let backend = seal_backend();
+    let outcome = seal_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SealPreview(Ok(outcome)),
+    });
+    app.select();
+    app.toggle_seal_consent();
+    app.select();
+    let confirm_req = next_request(&rx);
+
+    let result = SealResult {
+        patches: 1,
+        block_id: "1".repeat(64),
+        reff: "heads/main".to_string(),
+        ref_state: "2".repeat(64),
+        notes: vec!["note: audit plugins remain later PRs".to_string()],
+    };
+    app.apply(Response {
+        seq: confirm_req.seq,
+        kind: ResponseKind::SealConfirmExecute(Ok(Outcome {
+            operation: "seal".to_string(),
+            result: result.clone(),
+        })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::SealResult { result: shown }) => assert_eq!(shown, &result),
+        other => panic!("expected SealResult, got {other:?}"),
+    }
+    let orient_req = next_request(&rx);
+    assert!(matches!(orient_req.kind, RequestKind::Orient));
+}
+
+#[test]
+fn a_trust_refusal_mid_ceremony_surfaces_with_adoption_guidance() {
+    // RFC 016 §9: the trust refusal must reach the ceremony as `NotReady` with adoption guidance, not
+    // a bare refusal.
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+        Palette::default(),
+    );
+    app.begin_seal();
+    let preview_req = next_request(&rx);
+    let backend = seal_backend();
+    let outcome = seal_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SealPreview(Ok(outcome)),
+    });
+    app.select();
+    app.toggle_seal_consent();
+    app.select();
+    let confirm_req = next_request(&rx);
+    app.apply(Response {
+        seq: confirm_req.seq,
+        kind: ResponseKind::SealConfirmExecute(Err(StikkError::NotReady {
+            detail: "invalid signature: maintainer signer key id x is not trusted by policy"
+                .to_string(),
+        })),
+    });
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("is not trusted by policy") && b.contains("adopted"))
+    );
+}
+
+#[test]
+fn back_on_the_consent_step_clears_the_pending_seal() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+        Palette::default(),
+    );
+    app.begin_seal();
+    let preview_req = next_request(&rx);
+    let backend = seal_backend();
+    let outcome = seal_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SealPreview(Ok(outcome)),
+    });
+    app.select(); // -> SealConsent
+    app.back();
+    assert!(!app.has_overlay());
+    // Re-opening must still work — nothing from the abandoned attempt lingers to interfere.
+    app.begin_seal();
+    let second_req = next_request(&rx);
+    assert!(matches!(second_req.kind, RequestKind::SealPreview { .. }));
 }

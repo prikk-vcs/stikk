@@ -14,7 +14,10 @@ use super::*;
 use crate::test_util::buffer_text;
 
 fn draw(overlay: &Overlay) -> String {
-    let backend = TestBackend::new(90, 30);
+    // 45 rows, not 30: the glossary's key list grew by two lines (RFC 016's `C`/`S` additions) and
+    // needs the room to keep every terminology entry visible in this fixed-size render rather than
+    // scrolled out of the test's view (`render_glossary` caps its own height at `area.height - 2`).
+    let backend = TestBackend::new(90, 45);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| render(overlay, &Palette::default(), f, f.area()))
@@ -146,7 +149,7 @@ fn an_ordinary_refusal_still_says_prikk_reported() {
 fn viewer_readiness() -> stikk_model::Readiness {
     stikk_model::Readiness {
         author_ready: false,
-        maintainer_ready: false,
+        maintainer_readiness: stikk_model::MaintainerReadiness::NotReady,
         read_only: false,
     }
 }
@@ -195,7 +198,7 @@ fn palette_disables_commit_under_read_only_even_with_author_keys_present() {
         cursor: 0,
         readiness: stikk_model::Readiness {
             author_ready: true,
-            maintainer_ready: false,
+            maintainer_readiness: stikk_model::MaintainerReadiness::NotReady,
             read_only: true,
         },
     };
@@ -407,6 +410,83 @@ fn commit_result_hostile_patch_id_and_path_render_inert() {
     result.patch_id = "\u{1b}[2Jevil".to_string();
     result.changes[0].path = "\u{1b}[2Jpwned.txt".to_string();
     let overlay = Overlay::CommitResult { result };
+    let text = draw(&overlay);
+    assert!(!text.contains('\u{1b}'));
+    assert!(text.contains('\u{FFFD}'));
+}
+
+#[test]
+fn seal_consent_shows_the_copy_and_the_unacknowledged_mark() {
+    let overlay = Overlay::SealConsent {
+        reff: "heads/main".to_string(),
+        acknowledged: false,
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("Before you seal"));
+    // The full copy wraps across several rows in the fixed-width render, so `buffer_text`'s row-joined
+    // output does not contain it as one contiguous substring — checked in fragments instead, the same
+    // way other long-text render tests here check distinguishing substrings, not exact whole strings.
+    assert!(text.contains("independent audit"));
+    assert!(text.contains("cannot be undone"));
+    assert!(text.contains("[ ]"));
+    assert!(!text.contains("[x]"));
+    // RFC 016 §8: Enter must not read as ready to go while unacknowledged.
+    assert!(text.contains("Space to acknowledge"));
+    assert!(!text.contains("Enter to seal"));
+}
+
+#[test]
+fn seal_consent_shows_the_acknowledged_mark_and_enter_hint() {
+    let overlay = Overlay::SealConsent {
+        reff: "heads/main".to_string(),
+        acknowledged: true,
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("[x]"));
+    assert!(!text.contains("[ ]"));
+    assert!(text.contains("Enter to seal"));
+}
+
+#[test]
+fn seal_consent_hostile_ref_renders_inert() {
+    let overlay = Overlay::SealConsent {
+        reff: "heads/\u{1b}[2Jevil".to_string(),
+        acknowledged: false,
+    };
+    let text = draw(&overlay);
+    assert!(!text.contains('\u{1b}'));
+    assert!(text.contains('\u{FFFD}'));
+}
+
+fn seal_result(notes: Vec<&str>) -> stikk_prikk::SealResult {
+    stikk_prikk::SealResult {
+        patches: 2,
+        block_id: "b".repeat(64),
+        reff: "heads/main".to_string(),
+        ref_state: "c".repeat(64),
+        notes: notes.into_iter().map(str::to_string).collect(),
+    }
+}
+
+#[test]
+fn seal_result_shows_the_block_id_ref_state_and_every_note_verbatim() {
+    let overlay = Overlay::SealResult {
+        result: seal_result(vec!["note: audit plugins remain later PRs"]),
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("Sealed"));
+    assert!(text.contains(&"b".repeat(64)));
+    assert!(text.contains(&"c".repeat(64)));
+    assert!(text.contains("patches 2"));
+    assert!(text.contains("audit plugins remain later PRs"));
+}
+
+#[test]
+fn seal_result_hostile_block_id_and_ref_render_inert() {
+    let mut result = seal_result(vec![]);
+    result.block_id = "\u{1b}[2Jevil".to_string();
+    result.reff = "heads/\u{1b}[2Jpwned".to_string();
+    let overlay = Overlay::SealResult { result };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
     assert!(text.contains('\u{FFFD}'));

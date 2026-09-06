@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use stikk_core::OrientationView;
-use stikk_model::{Capability, Readiness};
+use stikk_model::{Capability, MaintainerReadiness, Readiness};
 use stikk_state::Config;
 
 use super::*;
@@ -41,7 +41,7 @@ fn shows_repo_focused_ref_and_hint() {
 fn shows_queue_and_maintainer_badge() {
     let r = Readiness {
         author_ready: true,
-        maintainer_ready: true,
+        maintainer_readiness: MaintainerReadiness::Unknown,
         read_only: false,
     };
     let view = OrientationView {
@@ -68,11 +68,69 @@ fn shows_queue_and_maintainer_badge() {
     assert!(text.contains("AUT"));
 }
 
+/// The acceptance-critical assertion (RFC 016 §4/`C-T2c′`): `Unknown` renders **distinctly** from
+/// `Ready`, and — the actual prohibition, not merely "looks different" — the `Unknown` badge contains
+/// no pass/`✓` marker at all. Asserting the absence, not merely the presence of a different glyph,
+/// because `C-T2c′` is a prohibition on a claim stikk cannot verify, not a request for variety.
+#[test]
+fn maintainer_unknown_never_renders_as_a_pass() {
+    let view_with = |maintainer_readiness| {
+        let r = Readiness {
+            author_ready: false,
+            maintainer_readiness,
+            read_only: false,
+        };
+        OrientationView {
+            prikk_version: "prikk 0.33.0".into(),
+            prikk_supported: true,
+            prikk_validated: true,
+            validated_through: "0.33".to_string(),
+            prikk_persists_messages: true,
+            queued_patches: 0,
+            queued_target: None,
+            trailing_partial_wal_bytes: 0,
+            main_ref_state: None,
+            capability: Capability::derive(r),
+            readiness: r,
+        }
+    };
+
+    let unknown_text = render_app(&from_state(
+        "/x/repo",
+        OrientationState::Loaded(view_with(MaintainerReadiness::Unknown)),
+        Palette::default(),
+    ));
+    let not_ready_text = render_app(&from_state(
+        "/x/repo",
+        OrientationState::Loaded(view_with(MaintainerReadiness::NotReady)),
+        Palette::default(),
+    ));
+    // `Ready` cannot be produced by `stikk-prikk::env` today (RFC 016 F3), but the render path must
+    // still be exercised for it now, so the day it becomes reachable this test already covers it.
+    let ready_text = render_app(&from_state(
+        "/x/repo",
+        OrientationState::Loaded(view_with(MaintainerReadiness::Ready)),
+        Palette::default(),
+    ));
+
+    assert!(
+        !unknown_text.contains("[MNT ✓]"),
+        "an unverifiable adoption must never render the pass mark: {unknown_text:?}"
+    );
+    assert!(ready_text.contains("[MNT ✓]"));
+    assert!(not_ready_text.contains("[MNT –]"));
+    assert!(unknown_text.contains("[MNT ?]"));
+    // All three are textually distinct from one another (NFR-A03: never colour alone).
+    assert_ne!(unknown_text, ready_text);
+    assert_ne!(unknown_text, not_ready_text);
+    assert_ne!(ready_text, not_ready_text);
+}
+
 #[test]
 fn read_only_badge_appears_and_no_queue_when_zero() {
     let r = Readiness {
         author_ready: false,
-        maintainer_ready: true,
+        maintainer_readiness: MaintainerReadiness::Unknown,
         read_only: true,
     };
     let view = OrientationView {
@@ -102,7 +160,7 @@ fn read_only_badge_appears_and_no_queue_when_zero() {
 fn the_in_flight_indicator_appears_while_a_request_is_pending_and_clears_once_answered() {
     let r = Readiness {
         author_ready: true,
-        maintainer_ready: true,
+        maintainer_readiness: MaintainerReadiness::Unknown,
         read_only: false,
     };
     let view = OrientationView {

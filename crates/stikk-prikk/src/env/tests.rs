@@ -48,7 +48,7 @@ fn present(names: &[&'static str]) -> impl Fn(&str) -> bool {
 fn no_variables_means_no_readiness() {
     let r = read_readiness_with(present(&[]), false);
     assert!(!r.author_ready);
-    assert!(!r.maintainer_ready);
+    assert_eq!(r.maintainer_readiness, MaintainerReadiness::NotReady);
 }
 
 #[test]
@@ -62,17 +62,25 @@ fn author_ready_needs_both_key_id_and_seed() {
         false,
     );
     assert!(r.author_ready);
-    assert!(!r.maintainer_ready);
+    assert_eq!(r.maintainer_readiness, MaintainerReadiness::NotReady);
 }
 
 #[test]
-fn maintainer_ready_is_independent_of_author() {
+fn maintainer_presence_is_independent_of_author_but_never_reaches_ready() {
+    // RFC 016 F3: presence alone can only ever mean `Unknown`, never `Ready` — no supported prikk
+    // exposes a way to check trust-policy adoption, so this module must not claim more than presence.
     let r = read_readiness_with(
         present(&["PRIKK_MAINTAINER_KEY_ID", "PRIKK_MAINTAINER_SEED"]),
         false,
     );
-    assert!(r.maintainer_ready);
+    assert_eq!(r.maintainer_readiness, MaintainerReadiness::Unknown);
     assert!(!r.author_ready);
+}
+
+#[test]
+fn maintainer_needs_both_key_id_and_seed_too() {
+    let r = read_readiness_with(present(&["PRIKK_MAINTAINER_KEY_ID"]), false);
+    assert_eq!(r.maintainer_readiness, MaintainerReadiness::NotReady);
 }
 
 #[test]

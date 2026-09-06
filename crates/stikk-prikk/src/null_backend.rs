@@ -10,7 +10,8 @@ use stikk_model::{ChangeToken, Result, StikkError};
 
 use crate::version::Version;
 use crate::{
-    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, StateFiles, WorktreeStatus,
+    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, SealResult, StateFiles,
+    WorktreeStatus,
 };
 
 type Scripted<T> = std::result::Result<T, String>;
@@ -26,6 +27,18 @@ enum ScriptedCommit {
     CrossRef(String),
 }
 
+/// A scripted seal outcome (RFC 016 §5). `NotReady` covers both shapes stikk's classifier produces for
+/// seal: absent MAINTAINER signing readiness (the seam-side re-check) and prikk's trust refusal (RFC
+/// 017 F5/F6) — the ceremony must render either one the same way (`present()` already routes both
+/// identically), so one scripted variant suffices for both.
+#[derive(Debug, Clone)]
+enum ScriptedSeal {
+    Ok(SealResult),
+    Refusal(String),
+    CrossRef(String),
+    NotReady(String),
+}
+
 /// A [`Prikk`] whose answers are set up front.
 #[derive(Debug, Clone)]
 pub struct NullBackend {
@@ -38,6 +51,7 @@ pub struct NullBackend {
     worktree: Scripted<WorktreeStatus>,
     change_token: Scripted<ChangeToken>,
     commit: ScriptedCommit,
+    seal: ScriptedSeal,
 }
 
 impl NullBackend {
@@ -109,6 +123,13 @@ impl NullBackend {
                 text_edits: 0,
                 changes: Vec::new(),
                 notes: Vec::new(),
+            }),
+            seal: ScriptedSeal::Ok(SealResult {
+                patches: 1,
+                block_id: "2".repeat(64),
+                reff: "heads/main".to_string(),
+                ref_state: "3".repeat(64),
+                notes: vec!["note: audit plugins remain later PRs".to_string()],
             }),
         }
     }
@@ -258,6 +279,37 @@ impl NullBackend {
         self.handshake.supported = false;
         self
     }
+
+    /// Replace the seal result this backend returns from [`Prikk::seal`] (RFC 016 §5).
+    #[must_use]
+    pub fn with_seal(mut self, result: SealResult) -> Self {
+        self.seal = ScriptedSeal::Ok(result);
+        self
+    }
+
+    /// Make the seal call fail with an ordinary refusal carrying `message`.
+    #[must_use]
+    pub fn with_seal_refusal(mut self, message: impl Into<String>) -> Self {
+        self.seal = ScriptedSeal::Refusal(message.into());
+        self
+    }
+
+    /// Make the seal call fail with the RFC 016 F4 cross-ref race ([`StikkError::CrossRef`]) — the
+    /// queue moved to a different ref between preview and this call.
+    #[must_use]
+    pub fn with_seal_cross_ref(mut self, message: impl Into<String>) -> Self {
+        self.seal = ScriptedSeal::CrossRef(message.into());
+        self
+    }
+
+    /// Make the seal call fail as [`StikkError::NotReady`] — either absent MAINTAINER signing
+    /// readiness or prikk's trust refusal (RFC 016 §9; RFC 017 F5/F6); both reach the ceremony the
+    /// same way, so this one builder covers both.
+    #[must_use]
+    pub fn with_seal_not_ready(mut self, message: impl Into<String>) -> Self {
+        self.seal = ScriptedSeal::NotReady(message.into());
+        self
+    }
 }
 
 fn deliver<T: Clone>(scripted: &Scripted<T>) -> Result<T> {
@@ -304,6 +356,15 @@ impl Prikk for NullBackend {
             ScriptedCommit::Ok(result) => Ok(result),
             ScriptedCommit::Refusal(message) => Err(StikkError::Refusal { message }),
             ScriptedCommit::CrossRef(message) => Err(StikkError::CrossRef { message }),
+        }
+    }
+
+    fn seal(&self, _repo: &Path, _reff: &str) -> Result<SealResult> {
+        match self.seal.clone() {
+            ScriptedSeal::Ok(result) => Ok(result),
+            ScriptedSeal::Refusal(message) => Err(StikkError::Refusal { message }),
+            ScriptedSeal::CrossRef(message) => Err(StikkError::CrossRef { message }),
+            ScriptedSeal::NotReady(detail) => Err(StikkError::NotReady { detail }),
         }
     }
 }

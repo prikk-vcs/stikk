@@ -12,7 +12,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use stikk_model::Readiness;
+use stikk_model::{MaintainerReadiness, Readiness};
 
 use crate::app::{App, OrientationState};
 use crate::text::inert;
@@ -100,7 +100,7 @@ fn badges(palette: &Palette, readiness: Readiness) -> Vec<Span<'static>> {
     }
     out.push(badge(palette, "AUT", readiness.author_ready));
     out.push(Span::raw(" "));
-    out.push(badge(palette, "MNT", readiness.maintainer_ready));
+    out.push(maintainer_badge(palette, readiness.maintainer_readiness));
     out
 }
 
@@ -111,6 +111,20 @@ fn badge(palette: &Palette, label: &str, ready: bool) -> Span<'static> {
         ("–", Style::default().fg(palette.dim))
     };
     Span::styled(format!("[{label} {mark}]"), style)
+}
+
+/// The MAINTAINER badge (RFC 016 §4): three states rendered distinctly, never two. `Unknown` gets its
+/// own glyph (`?`) and its own colour (`palette.warn`, shared with other "needs attention, not
+/// necessarily wrong" states like an unvalidated prikk ceiling) — it must never share `Ready`'s `✓` or
+/// `palette.ok`, which is exactly what `C-T2c′` forbids: a claim stikk cannot verify must never render
+/// as a pass.
+fn maintainer_badge(palette: &Palette, readiness: MaintainerReadiness) -> Span<'static> {
+    let (mark, style) = match readiness {
+        MaintainerReadiness::Ready => ("✓", Style::default().fg(palette.ok)),
+        MaintainerReadiness::NotReady => ("–", Style::default().fg(palette.dim)),
+        MaintainerReadiness::Unknown => ("?", Style::default().fg(palette.warn)),
+    };
+    Span::styled(format!("[MNT {mark}]"), style)
 }
 
 #[cfg(test)]

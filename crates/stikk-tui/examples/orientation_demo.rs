@@ -26,8 +26,8 @@ use std::time::Duration;
 
 use stikk_model::{ChangeToken, Result};
 use stikk_prikk::{
-    CommitResult, Handshake, History, NullBackend, Orientation, Prikk, RefEntry, StateFiles,
-    WorktreeStatus,
+    CommitResult, Handshake, History, NullBackend, Orientation, Prikk, RefEntry, SealResult,
+    StateFiles, WorktreeStatus,
 };
 use stikk_state::Config;
 
@@ -72,6 +72,10 @@ impl Prikk for SlowOrientation {
 
     fn commit(&self, repo: &Path, reff: &str, message: &str) -> Result<CommitResult> {
         self.0.commit(repo, reff, message)
+    }
+
+    fn seal(&self, repo: &Path, reff: &str) -> Result<SealResult> {
+        self.0.seal(repo, reff)
     }
 }
 

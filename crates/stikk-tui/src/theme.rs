@@ -50,7 +50,8 @@ impl Palette {
         }
     }
 
-    /// The light-terminal palette. `fg`/`dim` are fixed RGB for the same contrast reason as [`dark`].
+    /// The light-terminal palette. `fg`/`dim` are fixed RGB for the same contrast reason as
+    /// [`Self::dark`].
     #[must_use]
     pub fn light() -> Self {
         Self {

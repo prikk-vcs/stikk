@@ -2,55 +2,125 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.4.0 — 2026-09-06
 
-Classifier provenance and the prikk 0.33 re-baseline (RFC 017). Reading prikk's complete error taxonomy
-for the first time found five failure-classifier arms keyed on text prikk has never emitted, dead since
-0.1.0, and one arm firing on a real precondition today with a gloss that contradicted prikk's own
-verbatim words beside it.
+**stikk writes.** 0.1.0 through 0.3.0 were read-only by design; this release is where that changes.
+Six increments: **commit** authors a worktree capture into prikk's active queue (RFC 014); **seal**
+freezes that queue into permanent, MAINTAINER-signed history (RFC 016); both mutations sit behind
+machinery that makes skipping a step a compile error, not a review finding (RFC 013), stamped with a
+change token that refuses to execute against a repository that moved since preview (RFC 003); two
+re-baselines (prikk 0.32, RFC 015; prikk 0.33, RFC 017) keep every parsed shape and classified error
+grounded in what a real prikk binary actually emits, never in what stikk assumed it would. Preview-first
+is not a convention this release's reviewers enforced — it is a property of the type system.
 
-The seal ceremony (RFC 016) — the first irreversible action stikk offers, built on top of a correction:
-investigating what sealing actually requires found that stikk's MAINTAINER readiness badge had been
-claiming something it could not check since 0.1.0.
+It also corrects four things stikk had been getting wrong, three of them since 0.1.0, all found by
+review rather than by a user — see Fixed.
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position; 0.4.0 carries these:
+
+| Crate | Change | Who it breaks |
+|---|---|---|
+| `stikk-prikk` | `Prikk` gained **three required methods**: `change_token`, `commit`, `seal` | anyone implementing `Prikk` outside the crate |
+| `stikk-prikk` | `Orientation` gained the field `active_patch_warning: Option<String>` | anyone constructing it |
+| `stikk-prikk` | `BlockRow` gained the field `messages: Vec<PatchMessage>` | anyone constructing it |
+| `stikk-model` | `Readiness::maintainer_ready: bool` → `maintainer_readiness: MaintainerReadiness` (a new three-valued enum) | anyone constructing or reading it |
+| `stikk-core` | The palette's `Command` struct: `min_capability: Capability` removed; `operation: &'static str` and `tier: Tier` added | anyone constructing a `Command` or driving the palette |
+| `stikk-core` | `Command::available_to`/`unmet_reason` now take `Readiness`, not `Capability` | anyone calling them |
+| `stikk-core` | `OrientationView` gained the fields `validated_through: String`, `prikk_persists_messages: bool` | anyone constructing it |
+
+`StikkError`, `Presentation`, `OperationContext`, and `Target` all gained variants in this release
+(`Stale`, `Declined`, `CrossRef`; `Presentation::Stale`; `OperationContext::Commit`; `Target::Seal`) —
+**not breaking**: all four are `#[non_exhaustive]`, which is exactly what that attribute is for.
 
 ### Added
 
-- Maintainer-trust refusals now classify `NotReady` (classifier only; Trust & Keys presentation lands
-  with the seal ceremony).
-- The `prikk key` / `prikk setup` boundary is declared in the threat model and enforced by test: stikk
-  never invokes either and never quotes `setup`'s policy line.
-- Validated through prikk **0.33.0** (was 0.32.0) — no output shape changed; the parser fixtures were
-  re-run against the real binary and independently confirmed unchanged at the source level.
+- **Commit** — the first mutation stikk performs. `Prikk::commit` authors the whole worktree capture
+  (there is no staging) as a new patch in the active WAL, previewed against a fresh read of the real
+  worktree and queue — never a stale on-screen view — and gated behind an explicit AUTHOR-tier
+  confirmation restating what changes. Two refusals prikk would otherwise give are **prevented**
+  client-side, before anything is offered, rather than classified after the fact: a commit whose focused
+  ref does not match the active WAL's queue target, and a commit against a clean worktree with nothing to
+  author. Every note prikk prints — the perpetual diff-minimization caveat, and, on a prikk below 0.32,
+  that the message is validated but not stored — is carried through verbatim as a list, never fixed
+  fields, since which notes a given prikk prints is not stable across versions (RFC 014).
+- **Preview-first and tiered confirmation** — the gate every mutation in this release sits behind,
+  enforced by the type system rather than by convention: `preview() → PreviewToken → confirm() →
+  ConfirmedToken → execute()`, where neither token has a public constructor and `execute` takes
+  `ConfirmedToken` by value, so code that skips the preview or the confirmation does not compile. The
+  confirmation tier is derived from the request's category alone, never declared per operation, so a new
+  mutating operation cannot be added un-gated. A repository that changed between preview and
+  confirmation, or between confirmation and execution, refuses as its own distinct outcome — attributed
+  to stikk, never rendered under prikk's own "reported" label — with exactly one next step: preview
+  again, never a retry of the execution (RFC 013).
+- **The repository change token** — the primitive the machinery above sits on. A preview is stamped with
+  a token composed from every ref's current pointer plus the active queue's depth and target; confirming
+  or executing re-reads that same signal set and refuses on any difference, so a preview computed under
+  one repository state cannot execute against another. A repository **fingerprint** — a coarser,
+  persistent identity for session/cache keying — was proposed alongside the token and deliberately not
+  built: prikk states as a documented security property that repositories are anonymous, deriving one
+  client-side would mean walking a repository's entire history on every open, and it would be absent for
+  exactly the repositories most likely to be newly created (RFC 003).
+- **`UD-01` retires.** Commit messages are validated and discarded below prikk 0.32; at 0.32 and above,
+  prikk persists them, and `prikk log` names a patch id and message for every patch that carries one.
+  stikk supports both sides of that boundary rather than asserting either blanket claim: the
+  commit-message prompt's copy reads this session's own handshake, and Block detail shows the id/message
+  list a messaged patch carries, always beside the block's own patch count — so a pre-0.32 patch's
+  absence from the message list is never mistaken for its absence from history (RFC 015).
 - **Seal.** Freezes the active WAL's queued patches into new, MAINTAINER-signed history — behind a
   preview that prevents an empty queue or a wrong-ref target client-side, a tier-3 confirmation stating
   plainly that a trust refusal is possible and that success is never promised, and a separate, unchecked,
   undefaultable no-audit acknowledgement. Two deliberate acts, never collapsed into one keypress: the
   confirmation and the acknowledgement are distinct screens, and the second cannot be skipped by a
   reflexive `Enter` carried over from the first (RFC 016).
+- Maintainer-trust refusals now classify `NotReady` (classifier only; Trust & Keys presentation lands
+  with the seal ceremony) (RFC 017).
 
 ### Fixed
 
-- **stikk no longer claims another writer is active when the queue is simply full** (RFC 017 F4). The
-  commit path's full-queue precondition was classified as a lock conflict, rendering "another writer is
-  active" directly above prikk's own "run `prikk seal`"; it now reaches its own honest explanation
-  instead — nothing is locked, seal the queue. It now also offers to seal directly.
-- Five classifier arms keyed on text prikk has never emitted at any supported version are removed
-  (`FR-003`'s invented retired-format string among them, replaced with one grounded on a live-captured
-  migration message); each degrades safely to a verbatim refusal, exactly as designed.
-- A foreign directory's `Environment` classification is now grounded on the arm that actually catches
-  it, not the differently-worded arm originally written for it.
 - **The `[MNT]` badge has been claiming a readiness it could not verify since 0.1.0.** It showed
   MAINTAINER as ready from signing-key presence alone, never checking whether the repository's trust
   policy had actually adopted that key — a fact no currently supported prikk exposes a way to check
   either. The badge is now three-valued: `✓` (adopted), `–` (no key material), `?` (key material
   present, adoption unverifiable on any supported prikk). `?` never renders as a pass (RFC 016).
+- **stikk no longer claims another writer is active when the queue is simply full** (RFC 017 F4). The
+  commit path's full-queue precondition was classified as a lock conflict, rendering "another writer is
+  active" directly above prikk's own "run `prikk seal`"; it now reaches its own honest explanation
+  instead — nothing is locked, seal the queue — and now also offers to seal directly.
+- **Five classifier arms matched text prikk has never emitted**, at any version, written from prikk's
+  prose rather than captured from its output — dead since 0.1.0. All five are removed (`FR-003`'s
+  invented retired-format string, asserting a `prikk migrate` command that does not exist, among them,
+  replaced with one grounded on a live-captured migration message); each degrades safely to a verbatim
+  refusal, exactly as designed. A foreign directory's `Environment` classification is now grounded on
+  the arm that actually catches it, not the differently-worded arm originally written for it (RFC 017).
+- **A refusal card's next-step could be silently clipped off screen.** Schema skew's "Upgrade prikk" has
+  been invisible at ordinary terminal widths since 0.3.0 — the card's box height was sized from a count
+  of logical lines, not the rows a long gloss or verbatim message actually wraps to, found while building
+  the seal ceremony's own trust-refusal card. Every refusal card's next-step list now has its own region,
+  sized exactly and never squeezed out by wrapped prose (RFC 016).
 - A trust refusal reaching the seal ceremony now names what adoption actually requires (`prikk trust
   maintainer add`, done outside stikk) and admits stikk cannot verify it afterwards — rather than
-  degrading to a bare, unexplained refusal.
-- A refusal card's next-step (e.g. schema skew's "Upgrade prikk") could be silently clipped off screen
-  by a long gloss or verbatim message at ordinary terminal widths — shipping since 0.3.0, caught while
-  building the seal ceremony's own trust-refusal card. Every refusal card's next-step list now has its
-  own region, sized exactly and never squeezed out by wrapped prose.
+  degrading to a bare, unexplained refusal (RFC 016; RFC 017 F5).
+- **Both the TUI's Orientation view and the launcher's one-shot print stated a stale validated ceiling**
+  ("0.30") through all of 0.3.0, after RFC 012 had already raised it to 0.31 within that same release —
+  the notice built specifically for version honesty was itself stale. Both now read
+  `validated_ceiling_display()`, the single source, with a regression test at each call site asserting
+  against an arbitrary sentinel rather than against whatever the ceiling currently is — the pattern that
+  let the original drift go unnoticed for a release (RFC 015).
+
+### Security
+
+- The `prikk key` / `prikk setup` boundary is declared in the threat model and enforced by test: stikk
+  never invokes either, and never quotes `setup`'s hard-coded `policy: required=1` line as if it were
+  read policy (RFC 016/017).
+
+### Changed
+
+- **The validated prikk range is now `>= 0.28`, through `0.33.0`** (was `0.31.0`). No output shape
+  changed between 0.31 and 0.33 for any command stikk parses; every parser fixture was re-run against
+  real 0.32.0 and 0.33.0 binaries and confirmed unchanged, and independently confirmed unchanged at the
+  source level for 0.33 (RFC 015, RFC 017).
 
 ## 0.3.0 — 2026-09-05
 

@@ -13,7 +13,7 @@
 //!   `2` usage error (a bad argument list, detected before any repository work). Exit `2` means *stikk*
 //!   built a bad command, not that prikk refused something; it is never classified as prikk's voice.
 //! - **SEAM-05 (handshake caching, RFC 010)** — the version probe runs at most once per backend
-//!   instance, cached in a [`OnceLock`](std::sync::OnceLock), matching the design's "recorded at open"
+//!   instance, cached in a [`std::sync::OnceLock`], matching the design's "recorded at open"
 //!   semantics: a session does not notice prikk being upgraded underneath it, which is correct.
 //!
 //! The program invoked defaults to `prikk` on `PATH`, overridable with `STIKK_PRIKK_BIN` for testing

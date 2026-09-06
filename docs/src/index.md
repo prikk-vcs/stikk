@@ -20,12 +20,16 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.3.0 is a read-only preview whose UI no longer blocks.** The security-critical layers (shared model,
-prikk seam, state layer), the interactive **TUI** (shell + Orientation, built on `ratatui` — RFC 001),
-**History** + Block detail (RFC 006), the refusal-explanation and glossary surfaces (RFC 007), and
-**worktree Changes** (RFC 008) are all implemented and tested; every seam read now runs off the UI
-thread (RFC 010), and config/state resolve per platform on Linux, macOS, and Windows (RFC 012).
-Piped/CI invocation keeps the one-shot orientation. stikk targets prikk **≥ 0.28**, validated through
-**0.33.0**. **Patch detail** is deferred behind `UD-09` — prikk exposes no per-patch content yet — and
-**Compare** is deferred behind the same ceiling, with a recorded future route (RFC 008); neither is
-"next", both are named gaps.
+**0.4.0 is where stikk writes.** The security-critical layers (shared model, prikk seam, state layer),
+the interactive **TUI** (shell + Orientation, built on `ratatui` — RFC 001), **History** + Block detail
+(RFC 006), the refusal-explanation and glossary surfaces (RFC 007), and **worktree Changes** (RFC 008)
+are all implemented and tested; every seam read runs off the UI thread (RFC 010), and config/state
+resolve per platform on Linux, macOS, and Windows (RFC 012). stikk can now **commit** a worktree
+capture into prikk's active queue (RFC 014) and **seal** that queue into permanent, MAINTAINER-signed
+history (RFC 016) — both behind preview-first, tiered-confirmation machinery that makes skipping a step
+a compile error, not a review finding (RFC 013). Piped/CI invocation keeps the one-shot orientation.
+stikk targets prikk **≥ 0.28**, validated through **0.33.0**. **Patch detail** is deferred behind
+`UD-09` — prikk exposes no per-patch content yet — and **Compare** is deferred behind the same ceiling,
+with a recorded future route (RFC 008); neither is "next", both are named gaps. Merge, sync, tag
+create, and branch create/close remain unbuilt; a **Queue view** and **Trust & Keys** view are named
+gaps too.

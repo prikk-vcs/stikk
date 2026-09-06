@@ -7,7 +7,7 @@
 //! drives the `prikk` binary; a linked-library backend is deferred behind the same trait.
 //!
 //! Two security properties live here and nowhere else:
-//! - [`env`] reads signing-key **presence only, never values** (threat model C-I1, data model LC-13).
+//! - [`mod@env`] reads signing-key **presence only, never values** (threat model C-I1, data model LC-13).
 //! - No key material ever crosses the seam: prikk reads its own environment when it signs; stikk
 //!   hands it nothing, because it holds nothing (design SEAM-06).
 

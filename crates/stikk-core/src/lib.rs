@@ -7,7 +7,7 @@
 //! and neither defines operations of its own, an operation present in one frontend and not the other
 //! is impossible (the mechanical guarantee behind TUI/GUI parity, FR-123).
 //!
-//! This foundation increment implements one operation — [`orient`] — the read-only orientation a
+//! This foundation increment implements one operation — [`fn@orient`] — the read-only orientation a
 //! session opens with. More operation families land against the same shape.
 
 #![forbid(unsafe_code)]

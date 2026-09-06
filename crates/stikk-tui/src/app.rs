@@ -4,12 +4,13 @@
 //! and the palette colours. It **holds no repository authority** (design INV-8): every view-model is a
 //! rendered snapshot of what prikk reported, re-sourced on demand. The only repository facts come from
 //! `stikk_core` — the app computes nothing, and every seam error is routed through the one
-//! [`stikk_core::present`] mapping (ER-03), never presented ad hoc.
+//! [`fn@stikk_core::present`] mapping (ER-03), never presented ad hoc.
 //!
 //! **The seam runs off the UI thread (RFC 010).** `App` no longer calls `stikk-core` directly: every
-//! method that used to take `prikk: &impl Prikk` now *sends* a [`crate::worker::Request`] to the worker
-//! over a channel it owns, and [`App::apply`] is the one entry point for the eventual
-//! [`crate::worker::Response`]. A request carries a sequence number; a response for a sequence the app
+//! method that used to take `prikk: &impl Prikk` now *sends* a `Request` (`crate::worker`) to the
+//! worker over a channel it owns, and `App::apply` (crate-private — the worker's `Response` never
+//! crosses this crate's boundary) is the one entry point for the eventual answer. A request carries a
+//! sequence number; a response for a sequence the app
 //! is no longer waiting on is stale — the user has navigated away — and is discarded (§ stale
 //! responses, below). This is not optional polish: without it, a slow read whose result lands after the
 //! user has moved on would push a screen or overlay they never asked for.
@@ -56,9 +57,10 @@ pub enum OrientationState {
 /// A screen pushed above the Orientation root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Screen {
-    /// A screen asked for but not yet arrived (RFC 010 §5). [`App::apply`] replaces it on success or
-    /// removes it on error (surfacing the error via the usual overlay/banner); [`App::back`] pops it
-    /// directly like any other screen — the "stop waiting" semantics (RFC 010 decision 4).
+    /// A screen asked for but not yet arrived (RFC 010 §5). `App::apply` (crate-private) replaces it
+    /// on success or removes it on error (surfacing the error via the usual overlay/banner);
+    /// [`App::back`] pops it directly like any other screen — the "stop waiting" semantics (RFC 010
+    /// decision 4).
     Loading {
         /// A short label for what is loading (e.g. `"history"`), for the loading note and the
         /// Background Operations overlay.

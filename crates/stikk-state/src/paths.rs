@@ -12,8 +12,9 @@
 //! RFC for why that was wrong twice, not quietly edited). `stikk-state`'s only edge is `stikk-model`,
 //! and this is the crate holding [`ensure_outside_repository`], the threat model's **primary** control
 //! (`C-E2`) — worth real effort to keep dependency-free. The resolution logic
-//! ([`config_base_with`]/[`state_base_with`]) is written against an injected lookup and an explicit
-//! [`Platform`], mirroring `stikk_prikk::env`'s `read_readiness_with` pattern: all three platform
+//! (`config_base_with`/`state_base_with`) is written against an injected lookup and an explicit
+//! platform enum (`Platform`), mirroring `stikk_prikk::env`'s `read_readiness_with` pattern: all three
+//! platform
 //! branches are exercised hermetically on any host, without touching process-global state or `#[cfg]`
 //! in the test logic itself. `STIKK_CONFIG`/`STIKK_STATE_DIR` are still checked before any of this
 //! (`CF-04` precedence), and the Linux branch is unchanged from before this RFC — an upgrading user's

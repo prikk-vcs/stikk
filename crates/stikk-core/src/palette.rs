@@ -6,7 +6,8 @@
 //! discoverability parity (FR-125): a future operation appears in the palette the moment it registers,
 //! and the TUI/GUI share one list.
 //!
-//! Increment 4 seeded the registry with Viewer-level reads only, gated on a bare [`Capability`]. RFC
+//! Increment 4 seeded the registry with Viewer-level reads only, gated on a bare
+//! [`stikk_model::Capability`]. RFC
 //! 014 §6 unifies that affordance check with [`crate::confirm::capability_gate`] — the same tier-aware
 //! check `confirm` enforces — because commit is the first mutating command entering this registry, and
 //! RFC 013 deferred the unification with a deadline of exactly this moment: left as a bare `Capability`

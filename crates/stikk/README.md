@@ -41,9 +41,10 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.1.x is a read-only preview**: orientation, ref history, block detail, worktree changes, and the
-refusal-explanation / glossary surfaces. It performs no repository mutations yet — those land in later
-increments, always preview-first with tiered confirmation.
+**v0.4.0 is where stikk writes.** Orientation, ref history, block detail, worktree changes, and the
+refusal-explanation / glossary surfaces, plus two mutations: **commit** (author a worktree capture into
+the active queue) and **seal** (freeze that queue into permanent, MAINTAINER-signed history) — both
+always preview-first, with tiered confirmation a compile error can't let you skip.
 
 ## Links
 

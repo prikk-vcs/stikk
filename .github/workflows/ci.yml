@@ -6,7 +6,7 @@ on:
 
 jobs:
   gates:
-    name: fmt · clippy · test
+    name: fmt · clippy · test · rustdoc
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,3 +21,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test
         run: cargo test --workspace --locked
+      - name: Rustdoc
+        # RFC 011 §4 (0.4.0 release prep): deferred by RFC 012 "with 0.4.0 planning" and grown from 19
+        # warnings to 23 while nothing gated it. A docs-publishing failure (docs.yml) is a broken site;
+        # a CI failure here is a caught regression before it ships — which is what this is for.
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --locked

@@ -6,8 +6,9 @@
 //! `PRIKK_*_SEED` **value** into an inspectable string — only whether the variable is set — and
 //! prikk, not stikk, reads seeds when it signs (design SEAM-06, data model LC-13).
 //!
-//! The readiness computation is written against an injected presence lookup ([`read_readiness_with`])
-//! so it is tested hermetically, without mutating the process environment. The public
+//! The readiness computation is written against an injected presence lookup
+//! (`read_readiness_with`) so it is tested hermetically, without mutating the process environment.
+//! The public
 //! [`read_readiness`] supplies the real lookup, which reads presence via `var_os(...).is_some()` and
 //! drops the value immediately. The invariant is guarded by a source-level test in `env/tests.rs`:
 //! this module contains no value-materializing call (`env::var(`, `into_string`, `to_string_lossy`,

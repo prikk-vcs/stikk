@@ -61,7 +61,7 @@ pub struct OrientationView {
 /// Produce the orientation view for the repository rooted at `repo`, driving `prikk` through the seam.
 ///
 /// Signing readiness is read from the environment as **presence only** (never seed values) via the
-/// seam's [`env`] module (threat model C-I1); the read-only override is folded in.
+/// seam's [`mod@stikk_prikk::env`] module (threat model C-I1); the read-only override is folded in.
 ///
 /// # Errors
 /// Propagates any [`stikk_model::StikkError`] the seam raises (an environment fault reaching prikk,

@@ -8,7 +8,7 @@
 //!
 //! [`Overlay::Loading`] is the pending-overlay counterpart to [`crate::app::Screen::Loading`] (RFC 010
 //! §5): pushed immediately for an overlay-bound request (currently only the ref picker's), replaced or
-//! removed by [`crate::app::App::apply`], and popped directly by `back()` like any other overlay.
+//! removed by `App::apply` (crate-private), and popped directly by `back()` like any other overlay.
 //!
 //! The refusal overlay is the load-bearing one: prikk's message is shown **verbatim and inert**, in a
 //! quoted content region visibly distinct from stikk's chrome (C-T2a/C-T2b); the gloss and the

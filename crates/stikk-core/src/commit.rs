@@ -10,9 +10,9 @@
 //! decisions 1/5b): a cross-ref commit (the focused ref is not the active WAL's queue target) and a
 //! clean-worktree commit (nothing to author) both make commit **unavailable with a reason**
 //! ([`CommitPreviewOutcome::Blocked`], `C-T4d`) before any [`PreviewToken`] exists — never offered and
-//! then refused. Both reads (`orientation`, `worktree-status`) happen inside [`preview`]'s `compute`
-//! closure, i.e. **after** the change token is stamped, so the token and the blocking decision describe
-//! the same instant.
+//! then refused. Both reads (`orientation`, `worktree-status`) happen inside [`crate::confirm::preview`]'s
+//! `compute` closure, i.e. **after** the change token is stamped, so the token and the blocking decision
+//! describe the same instant.
 
 use std::path::Path;
 

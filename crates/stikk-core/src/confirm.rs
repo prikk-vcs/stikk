@@ -185,9 +185,9 @@ pub fn capability_gate(operation: &str, tier: Tier, readiness: Readiness) -> Res
 /// Consume a preview and produce a [`ConfirmedToken`] — the only way to get one (RFC 013, "a decision
 /// that followed from Q1/Q2"). This is where every gate lives (`OPL-04`'s first check): read-only and
 /// capability ([`capability_gate`]), then a fresh change-token comparison
-/// ([`StikkError::Stale`](stikk_model::StikkError::Stale) on any difference — the world moved while the
+/// ([`StikkError::Stale`] on any difference — the world moved while the
 /// user was looking at the preview), then the evidence itself
-/// ([`StikkError::Declined`](stikk_model::StikkError::Declined) if it does not satisfy the tier).
+/// ([`StikkError::Declined`] if it does not satisfy the tier).
 ///
 /// # Errors
 /// [`StikkError::NotReady`] if read-only mode or capability is insufficient; [`StikkError::Stale`] if

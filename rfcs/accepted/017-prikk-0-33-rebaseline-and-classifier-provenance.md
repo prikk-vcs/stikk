@@ -264,6 +264,23 @@ the Verify view.** Until then the arm should be narrowed to what can be captured
 **It does not touch the version gate's floor.** stikk supports prikk ≥ 0.28; every decision here must
 hold across 0.28–0.33, which is why none of them depends on a 0.33-only surface.
 
+## Amended 2026-09-06, during review of v1 — the "Touches" list was wrong
+
+**This RFC's "Touches" list omitted `cli_backend/parse.rs`, and it should not have.** The implementer
+correctly read that omission as scope and left the parser fixtures pinned at 0.32.0, stating in
+`version.rs` that 0.33 changed no shape they parse. **The statement is true** — verified during review
+by diffing prikk's CLI across the tags: `0.32.0..0.33.0` adds `key.rs`/`setup.rs`, registers them, and
+changes `branch.rs`'s match arm (the control-flow bug our own letter caused). No command stikk parses
+changed shape.
+
+**But it was known from a scope document, not from the binary**, and a re-baseline whose parser half is
+never re-run is a re-baseline on trust — which is the failure this RFC exists to remove, one module
+over.
+
+**Standing rule from here: every re-baseline RFC names parser re-verification explicitly, and expects
+"unchanged" as a normal result.** The expectation that nothing moved is exactly what makes skipping the
+check feel reasonable; RFC 015 found `log` had gained a line when nobody expected it to.
+
 ## Consequences
 
 - The rule RFC 009 established — **captured, never written** — becomes a property of the whole seam

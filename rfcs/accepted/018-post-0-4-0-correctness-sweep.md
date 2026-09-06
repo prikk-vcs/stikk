@@ -1,6 +1,6 @@
 # RFC 018 — Post-0.4.0 correctness sweep: the files nobody greps
 
-**Status.** Proposed (2026-09-06), **hours after 0.4.0 published.** Opened on a finding made while
+**Status.** **Accepted by the project owner 2026-09-06.** Proposed the same day, **hours after 0.4.0 published.** Opened on a finding made while
 sequencing 0.5.0: **stikk's Glossary tells users it never writes their repository, four lines above
 the keybindings for commit and seal.** Two further stale claims found by the sweep that followed.
 **Proposes 0.4.1** — non-breaking, string-and-docs only.

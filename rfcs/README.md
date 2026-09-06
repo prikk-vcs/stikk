@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 018 | [Post-0.4.0 correctness sweep](./proposed/018-post-0-4-0-correctness-sweep.md) | **0.4.0 shipped a Glossary saying stikk "never writes your repository" — four lines above the `C` and `S` keybindings for commit and seal.** Plus a "Trust & Keys" pointer to a keybinding table, and `ROADMAP.md` outside every version grep. **Proposes 0.4.1** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,7 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None currently._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 018 | [Post-0.4.0 correctness sweep](./accepted/018-post-0-4-0-correctness-sweep.md) | **0.4.0 shipped a Glossary saying stikk "never writes your repository" — four lines above the `C` and `S` keybindings for commit and seal.** Plus a "Trust & Keys" pointer that lands on the keyboard-shortcut table, and `ROADMAP.md` outside every version grep. **Accepted 2026-09-06 → 0.4.1** | [Correctness sweep](./handoffs/018-post-0-4-0-correctness-sweep/correctness-sweep-handoff-v1.md) |
 
 **RFC 016 has shipped — 0.4.0 is content-complete** — on its landing, 0.4.0 is content-complete. `FR-051` (queue
 review) is **not** queued behind it: the requirement was amended 2026-09-06 and its knowable half is

@@ -22,6 +22,13 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   stopped being true at prikk 0.32 (RFC 015); the entry now states the version boundary and that author
   name/email/date remain permanently absent by design, not "not yet" (found sweeping the same panel for
   RFC 018 F1).
+- **The same table's two longest terms ran straight into their own descriptions, with no separator**
+  (`checkout / switch branch`, `merge conflict / resolve` — both 24 characters against a hardcoded
+  22-character column pad). The column width is now computed from the longest term. **The table's notes
+  still truncate at the box edge** — wrapping them was tried and reverted: without a way to scroll past
+  what wrapping pushes down, it turned truncated-but-present into absent, leaving as few as one of eleven
+  terms reachable at all on an ordinary 80×24 terminal. Wrap and scroll are filed together for 0.5.0, not
+  shipped separately (RFC 018 C1/C2).
 - **`ROADMAP.md` held a validated-ceiling claim three releases stale** (`0.30.0`, current since RFC 015
   raised it to 0.31 and RFC 017 to 0.33) **and two un-retired `UD-` rows** (`UD-01`'s messages, retired
   at prikk 0.32; `UD-09`'s per-patch enumeration, narrowed at the same version) — outside every version

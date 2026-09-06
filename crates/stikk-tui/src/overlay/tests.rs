@@ -15,12 +15,11 @@ use super::*;
 use crate::test_util::buffer_text;
 
 fn draw(overlay: &Overlay) -> String {
-    // 60 rows: review v1 C1 wraps a long note across two rows instead of clipping it, which needs more
-    // vertical room than the flat line-per-term layout this height was originally sized for. The
-    // Glossary overlay has no scroll interaction (a named gap, not built here), so a term past whatever
-    // height the box gets is simply invisible — this needs to be tall enough to keep every terminology
-    // entry visible in this fixed-size render, not merely tall enough for the *previous* layout's needs.
-    let backend = TestBackend::new(90, 60);
+    // 45 rows: the glossary's key list grew by two lines (RFC 016's `C`/`S` additions) and needs the
+    // room to keep every terminology entry visible in this fixed-size render rather than cut off by the
+    // box's own height cap (review v2 C2 removed that cap; content here is still one row per line, no
+    // wrap — see `render_glossary`'s own comment for why wrap was tried and reverted).
+    let backend = TestBackend::new(90, 45);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| render(overlay, &Palette::default(), f, f.area()))
@@ -38,19 +37,21 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
 }
 
 /// Review v1, C1: a literal `{:<22}` pad broke the moment a term ran 24 chars ("checkout / switch
-/// branch", "merge conflict / resolve"), and with no `.wrap(...)` the notes — the section's entire
-/// teaching content — were truncated at the box edge, four of them mid-word. Both defects were visible
-/// in the review request's own before/after renders and went unreported because nothing asserted past
-/// the first few characters of either the git/prikk pair or a note. Asserting the note's *tail* is the
-/// point: a head-only assertion passes on truncated content too, which is exactly why C1 shipped.
+/// branch", "merge conflict / resolve") — the prikk half ran straight into it, unseparated. This is the
+/// regression guard for that fix, and the reason it was caught in the first place: a first attempt at
+/// the computed width (no `+ 2`) padded a 24-char term to exactly 24, reproducing the identical
+/// collision in miniature, and this test failed on `branchfocused` the same hour it was written.
+///
+/// Review v2, C2: this test used to also assert a wrapped note's tail (`"plan-first checkout."`), pinning
+/// a `.wrap(...)` that made the panel *less* reachable overall — at 80×24 it left exactly one term
+/// (`HEAD`) visible, because wrapping without scroll turns truncated-but-present into absent. The wrap
+/// was reverted; that assertion is not replaced with a weaker one, since the truncation it would have to
+/// assert around is now a known, recorded gap (filed for 0.5.0 with scroll), not a property to pin.
 #[test]
-fn glossary_pads_the_longest_term_and_wraps_a_long_note_to_its_end() {
+fn glossary_pads_the_longest_term_without_colliding_into_its_prikk_column() {
     let text = draw(&Overlay::Glossary);
-    // The git/prikk columns must not run together for a 24-char term (the old fixed pad was 22).
     assert!(text.contains("checkout / switch branch"));
     assert!(!text.contains("branchfocused"));
-    // The note's tail, not its head: proof the whole sentence reached a cell, not just its opening.
-    assert!(text.contains("plan-first checkout."));
 }
 
 /// RFC 018 F1: the panel claimed stikk "never writes your repository" four lines above the `C`/`S`

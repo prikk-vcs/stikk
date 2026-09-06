@@ -238,7 +238,7 @@ fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
     // after, and true of whatever mutation lands next.
     let mut lines: Vec<Line> = vec![
         Line::from(Span::styled(
-            "  stikk drives prikk; every repository write happens inside prikk itself.",
+            "  Every repository write happens inside prikk itself, never in stikk.",
             Style::default().fg(palette.dim),
         )),
         Line::from(""),

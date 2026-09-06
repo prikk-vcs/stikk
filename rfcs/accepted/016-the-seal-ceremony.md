@@ -1,6 +1,6 @@
 # RFC 016 — The seal ceremony, and the readiness stikk has been over-claiming
 
-**Status.** Proposed (2026-09-06) — the most consequential action stikk will ever offer: freezing
+**Status.** **Accepted by the project owner 2026-09-06**, behind RFC 017 (now done). Originally proposed 2026-09-06 — the most consequential action stikk will ever offer: freezing
 queued patches into immutable, MAINTAINER-signed history. Investigating it found that **stikk's
 MAINTAINER readiness badge claims something it cannot know**, which must be fixed before the ceremony
 can honestly gate on it.

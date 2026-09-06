@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 016 | [The seal ceremony](./proposed/016-the-seal-ceremony.md) | the first irreversible act. Found that stikk's **MAINTAINER readiness badge over-claims** — the gate needs trust adoption, stikk checks only env presence, and no supported prikk can check it. **Amended 2026-09-06** on prikk's replies: the gate is eight operations wide, not seal's. **0.4.0, after 017** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -32,10 +31,11 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 017 | [prikk 0.33 re-baseline & classifier provenance](./accepted/017-prikk-0-33-rebaseline-and-classifier-provenance.md) | **five classifier arms match text prikk has never emitted** (RFC 009's rule never reached the classifier), and **one live wrong gloss on the commit path** — stikk says "another writer is active" above prikk's own "run `prikk seal`". **Accepted 2026-09-06; gates RFC 016** | [Classifier provenance](./handoffs/017-prikk-0-33-rebaseline-and-classifier-provenance/classifier-provenance-handoff-v1.md) |
+| 016 | [The seal ceremony](./accepted/016-the-seal-ceremony.md) | the first irreversible act stikk offers. Found that stikk's **MAINTAINER readiness badge over-claims** — the gate needs trust adoption in the repository's policy, stikk checks only env presence, and no supported prikk can check it. **Amended 2026-09-06** on prikk's replies: adoption is object trust rather than ref authority, and the gate is **eight operations wide**, not seal's alone. **Accepted 2026-09-06** | [Seal ceremony](./handoffs/016-the-seal-ceremony/seal-ceremony-handoff-v1.md) |
 
-0.4.0's remaining increments are RFC 017 (accepted, above), the **seal ceremony** (RFC 016, proposed —
-awaiting acceptance behind 017), and **queue review** (`FR-051`), in that order.
+0.4.0's remaining increments are RFC 016 (accepted, above) and **queue review** (`FR-051`), in that
+order. Release prep carries a **changelog backfill**: RFCs 003, 013, 014 and 015 shipped to `main` with
+no `## Unreleased` entry.
 
 ## Done (implemented)
 
@@ -46,6 +46,7 @@ awaiting acceptance behind 017), and **queue review** (`FR-051`), in that order.
 | 006 | [History & inspection seam](./done/006-history-and-inspection-seam.md) | 0.1.0 | Patch detail (`FR-030`), patch-id enumeration, diff-aware search — all `UD-09` | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |
 | 007 | [Explanation & discovery surface](./done/007-explanation-and-discovery-surface.md) | 0.1.0 | `RoutedIntoView`/`InConfirmation` renderers; merge/checkout/seal/trust next-steps + witness glossary; refusal-history persistence + `LC-8` gate | [Explanation surface](./handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md) |
 | 008 | [Worktree changes & the Compare ceiling](./done/008-worktree-changes-and-the-compare-ceiling.md) | 0.1.0 | Compare (`FR-033`); per-file content diffs (`UD-09`); the `C` commit action; status-bar worktree marker. **Amended by RFC 009** | [Changes view](./handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md) |
+| 017 | [prikk 0.33 re-baseline & classifier provenance](./done/017-prikk-0-33-rebaseline-and-classifier-provenance.md) | 0.4.0 candidate (on `main`) | `is_integrity_finding` re-grounded on real `verify` output (with `FR-100`); glosses for the five preconditions with no view to route into yet; the Trust & Keys **presentation** of a trust refusal (RFC 016) | [Classifier provenance](./handoffs/017-prikk-0-33-rebaseline-and-classifier-provenance/classifier-provenance-handoff-v1.md) |
 | 015 | [prikk 0.32 re-baseline](./done/015-prikk-0-32-rebaseline.md) | 0.4.0 candidate (on `main`) | `FR-012`'s message filter (now possible); RFC 006 3b Patch detail (still blocked — `UD-09`'s content half); a message summary in the History row | [Re-baseline](./handoffs/015-prikk-0-32-rebaseline/rebaseline-handoff-v1.md) |
 | 014 | [Commit: the first mutation](./done/014-commit-the-first-mutation.md) | 0.4.0 candidate (on `main`) | AUTHOR key id in the confirmation (own module, not by weakening `env.rs`'s guard); the pre-commit `UD-01` copy, now false for prikk ≥ 0.32; `Declined`'s inline path | [Commit](./handoffs/014-commit-the-first-mutation/commit-handoff-v1.md) |
 | 013 | [Preview & tiered-confirmation machinery](./done/013-preview-and-confirmation-machinery.md) | 0.4.0 candidate (on `main`) | the `capability_gate`/palette unification — **must land before the first mutating palette command**; the `OPL-03` ceremony machines; `OPL-04`'s seam-side check | [Preview & confirm](./handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md) |

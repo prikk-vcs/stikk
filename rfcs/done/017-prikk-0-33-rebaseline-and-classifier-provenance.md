@@ -1,6 +1,7 @@
 # RFC 017 — The prikk 0.33 re-baseline, and five classifier arms with no upstream behind them
 
-**Status.** **Accepted by the project owner 2026-09-06**, ahead of RFC 016. Originally proposed 2026-09-06. Opened to re-baseline on prikk 0.33.0 — a release stikk's own
+**Status.** **Done** — shipped on `main` as a 0.4.0 candidate, 2026-09-06 (`42e98d5` + `87d7d44`). Accepted by the project owner 2026-09-06 ahead of RFC 016; originally proposed the same day.
+**Deferred, carried forward:** `is_integrity_finding` re-grounded on real `verify` output (with `FR-100`'s Verify view); glosses for the five preconditions that have no view to route into yet (with those views); the Trust & Keys *presentation* of a trust refusal (RFC 016). Opened to re-baseline on prikk 0.33.0 — a release stikk's own
 letter caused. Verifying that the two reworded messages still classify correctly meant reading prikk's
 whole error taxonomy for the first time, and **that** found the real problems: the failure classifier
 matches on five strings prikk has never emitted, one of its tests enshrines an invented message that

@@ -80,11 +80,10 @@ and stikk already knows the count.
 
 ## Decisions
 
-1. **Stop claiming MAINTAINER readiness stikk cannot verify** (F2/F3). `Readiness` splits what it
-   knows from what it does not: key material **present** is knowable; **trust adoption** is not. The
-   badge and the capability derive from presence, and the UI says what that means — *"key material
-   present; whether this repository trusts it is not knowable until you seal."* No invented state, no
-   silent over-claim.
+1. **Stop claiming MAINTAINER readiness stikk cannot verify** (F2/F3), with a **three-valued**
+   readiness — ready / not ready / **unknown** — never a boolean caveated in prose. The unknown state
+   must never render as a pass, applying `C-T2c′`'s existing rule to the second place it belongs. See
+   Q1, which settles the shape and why.
 2. **The ceremony gates on presence, warns about adoption, and never promises success.** Tier 3
    (`FR-121`), MAINTAINER capability required, and the confirmation states plainly that a trust
    refusal is possible and would come from prikk.
@@ -104,17 +103,48 @@ and stikk already knows the count.
 enumeration ask and below `UD-09`'s content surface: it does not block seal, it makes seal's
 readiness truthful.
 
-## Open questions
+## Open questions — settled 2026-09-06, one by reversal
 
-- **Should `Capability::Maintainer` still be derived from presence alone?** It gates *affordance*, and
-  offering a seal that may be refused is arguably right (`C-T4d` prefers disabled-with-reason to hidden,
-  but this is enabled-with-caveat). *Leaning: yes, derive from presence and caveat it* — hiding seal
-  from someone whose key *is* adopted would be worse than offering one that may refuse. Settle in the
-  handoff.
-- **Does the ceremony re-read orientation between the consent step and execute?** RFC 013's token
-  already stamps a change token, so the machinery covers staleness; this asks whether the *queue count*
-  shown at step 1 should be re-read before executing. *Leaning: no* — the token is the mechanism, and a
-  second read would imply a guarantee it cannot give.
+**Q1 — should `Capability::Maintainer` derive from presence alone, caveated in copy?**
+**Ruled: no. Readiness becomes three-valued, and the unknown state must never render as a pass.**
+
+*(This reverses my own lean, on the owner's challenge that it did not meet the project's "clean, safe
+and secure, robust and sophisticated" bar. It did not, and the design set already said why.)*
+
+The lean collapsed **three** states into two. Maintainer readiness is:
+
+| | |
+|---|---|
+| key material present **and** adopted in trust | **ready** |
+| key material absent | **not ready** |
+| present, adoption **unverifiable** (F3 — prikk offers no `trust maintainer list`) | **unknown** |
+
+Rendering *unknown* as `[MNT ✓]` is precisely what `C-T2c′` forbids in the one place this project has
+already faced the same shape: the three-valued author-signature outcome, where **Unverifiable**
+*"must never render as a pass/green state"*. A green check on a claim stikk cannot verify is the same
+error, and I proposed it.
+
+So: a three-valued `MaintainerReadiness`, not a boolean plus a sentence. That is
+
+- **clean** — one concept reused from `FR-035`'s precedent rather than a second, prose-only mechanism;
+- **safe** — the unknown state cannot be mistaken for a pass, by construction rather than by wording;
+- **robust** — when prikk grows `trust maintainer list`, *unknown* resolves into *ready*/*not ready*
+  with no change to the type or the UI's shape. The boolean-plus-caveat would have had to be
+  re-architected at that point;
+- **sophisticated** in the way this project means it — the absence of an upstream surface becomes
+  visible in the type system instead of hidden in a caveat someone will eventually delete.
+
+`Capability::Maintainer` therefore derives from **ready or unknown** (the affordance is still offered —
+hiding seal from someone whose key *is* adopted would be its own wrong picture, `C-T4d`), but the badge
+and the ceremony render the three states distinctly, and the ceremony's copy is driven by the state
+rather than shown unconditionally.
+
+**Q2 — does the ceremony re-read orientation between the consent step and execute?**
+**Ruled: no, and because the token already covers it, not merely to keep things small.** RFC 003's
+change token includes the queued count and its target ref, so a queue that moves between consent and
+execute *is* caught, by the mechanism built for exactly that. A second read would be a second mechanism
+for one property — less clean — and would imply an atomicity guarantee stikk cannot give, since it holds
+no lock across think-time (`NFR-R02`, `CT-05`).
 
 ## Consequences
 

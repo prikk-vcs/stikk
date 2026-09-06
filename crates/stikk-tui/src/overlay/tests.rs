@@ -85,16 +85,27 @@ fn refusal_shows_verbatim_gloss_and_next_steps() {
     assert!(text.contains("Refresh"));
 }
 
+/// Render `overlay` at a plain 80×24 `TestBackend` — the width review v2 measured the C1 failure at,
+/// and the fixed height every "is the next-step still on screen" assertion in this file now uses
+/// (review v2, C2: a render test needs at least one assertion about the **end** of the content, not
+/// only its middle, since fragment matching alone cannot tell you what fell off the bottom).
+fn draw_80x24(overlay: &Overlay) -> String {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| render(overlay, &Palette::default(), f, f.area()))
+        .unwrap();
+    buffer_text(terminal.backend().buffer())
+}
+
 /// The acceptance-critical render test review v2 (C1) asked for: v1's fix was correct in the data
 /// model — `present()` already produced prikk's verbatim `detail` and stikk's own separate `gloss` —
 /// but nothing checked what actually reached a cell, and `InlineGuidance`'s one-row, non-wrapping
 /// banner cut the gloss off entirely at every realistic terminal width. This drives the *real*
-/// `present()` (not a hand-built `RefusalCard`) at a plain **80-column** `TestBackend` — the width the
-/// review measured the failure at — and checks the gloss's key sentence in short fragments rather than
-/// as one long contiguous string, since the fix makes it wrap across several rows (and
-/// `buffer_text` joins rows with `\n`, so a long contiguous match would fail for the same
-/// reason `seal_consent_shows_the_copy_and_the_unacknowledged_mark` checks fragments, not the whole
-/// string).
+/// `present()` (not a hand-built `RefusalCard`) and checks the gloss's key sentence in short fragments
+/// rather than as one long contiguous string, since the fix makes it wrap across several rows (and
+/// `buffer_text` joins rows with `\n`, so a long contiguous match would fail for the same reason
+/// `seal_consent_shows_the_copy_and_the_unacknowledged_mark` checks fragments, not the whole string).
 #[test]
 fn trust_refusal_gloss_is_reachable_at_80_columns() {
     let err = StikkError::NotReady {
@@ -107,14 +118,7 @@ fn trust_refusal_gloss_is_reachable_at_80_columns() {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
-    let overlay = Overlay::Refusal { card, cursor: 0 };
-
-    let backend = TestBackend::new(80, 24);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|f| render(&overlay, &Palette::default(), f, f.area()))
-        .unwrap();
-    let text = buffer_text(terminal.backend().buffer());
+    let text = draw_80x24(&Overlay::Refusal { card, cursor: 0 });
 
     // prikk's own words, verbatim.
     assert!(text.contains("maintainer signer key id"));
@@ -129,6 +133,56 @@ fn trust_refusal_gloss_is_reachable_at_80_columns() {
     // Attribution stays distinguishable: prikk's line is quoted, stikk's is separate prose below it —
     // not flattened into one run the way the v1 banner joined them with em-dashes.
     assert!(text.contains("prikk reported"));
+    // C2, the acceptance-critical assertion this test was missing: the gloss being reachable is not
+    // the same claim as the next-step being reachable — the one thing this card exists to make
+    // actionable must also survive being on screen at all, at the very bottom of the content.
+    assert!(text.contains("What you can do"));
+    assert!(text.contains("Refresh"));
+}
+
+/// Review v2 C2's named regression: this exact shape has been shipping since 0.3.0. `SCHEMA_SKEW`'s
+/// own real message plus its one next-step (`Upgrade prikk`) — the schema-skew and full-queue fixtures
+/// below match `present/tests.rs`'s own captured messages, so this is the same content that crate's
+/// tests already exercise for the *model*, now exercised for the *render*.
+#[test]
+fn schema_skew_next_step_is_reachable_at_80_columns() {
+    let err = stikk_model::StikkError::Refusal {
+        message:
+            "integrity error: format-2 patch does not accept envelope schema 3 (accepted: [1, 2])"
+                .to_string(),
+    };
+    let card = match present(&err, OperationContext::Orient) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    let text = draw_80x24(&Overlay::Refusal { card, cursor: 0 });
+    assert!(text.contains("does not accept envelope schema"));
+    assert!(text.contains("newer prikk")); // the gloss
+    assert!(text.contains("What you can do"));
+    assert!(text.contains("Upgrade prikk"));
+}
+
+/// Review v2 C2: the full-queue card already had both next-steps visible before this fix (its gloss
+/// happens to be short enough that the old `+6` heuristic did not starve it) — kept as the "this was
+/// already fine, and the fix must not regress it" control.
+#[test]
+fn full_queue_next_steps_are_reachable_at_80_columns() {
+    let err = stikk_model::StikkError::Refusal {
+        message:
+            "lock conflict: active WAL has 1 queued patches, at or above the configured limit \
+                  (1); run `prikk seal` before committing again"
+                .to_string(),
+    };
+    let card = match present(&err, OperationContext::Commit) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    let text = draw_80x24(&Overlay::Refusal { card, cursor: 0 });
+    assert!(text.contains("at or above the configured limit"));
+    assert!(text.contains("Nothing is locked")); // the gloss
+    assert!(text.contains("What you can do"));
+    assert!(text.contains("Seal the active WAL"));
+    assert!(text.contains("Refresh"));
 }
 
 #[test]

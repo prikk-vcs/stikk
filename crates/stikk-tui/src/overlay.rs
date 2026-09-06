@@ -310,63 +310,75 @@ fn render_refusal(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut lines: Vec<Line> = Vec::new();
+    // Two regions, not one `Paragraph` sized by a guess (review v2, C2): `lines.len()` counts
+    // *logical* lines, but a long verbatim or gloss wraps to several rows each, and a `+N` headroom
+    // guess starves whichever section it under-counts — which turned out to be the next-step list,
+    // the one thing this card exists to make actionable, silently clipped since 0.3.0 on any card long
+    // enough to wrap (schema-skew's `Upgrade prikk` step among them). Laying the next-steps out as
+    // their own region, sized to their exact known height and anchored at the bottom, makes them
+    // structurally unclippable: whatever runs out of room under pressure is prose, in the region above,
+    // never an action.
 
     // ① prikk's message, verbatim and inert, in a quoted region distinct from stikk chrome (C-T2b).
-    lines.push(Line::from(Span::styled(
+    let mut prose: Vec<Line> = vec![Line::from(Span::styled(
         "  prikk reported —",
         Style::default().fg(palette.dim),
-    )));
+    ))];
     for raw in card.verbatim.lines() {
-        lines.push(Line::from(vec![
+        prose.push(Line::from(vec![
             Span::styled("  │ ", Style::default().fg(palette.warn)),
             Span::styled(inert(raw), Style::default().fg(palette.fg)),
         ]));
     }
-    lines.push(Line::from(""));
+    prose.push(Line::from(""));
 
     // ② the gloss — stikk's own voice, separate and below (ER-02). Absent ⇒ verbatim-only (RR-5).
     if let Some(gloss) = &card.gloss {
-        lines.push(Line::from(Span::styled(
+        prose.push(Line::from(Span::styled(
             format!("  {gloss}"),
             Style::default().fg(palette.dim),
         )));
-        lines.push(Line::from(""));
+        prose.push(Line::from(""));
     }
 
     // ④ glossary links for any named code (FR-111).
     if !card.glossary_codes.is_empty() {
-        lines.push(Line::from(Span::styled(
+        prose.push(Line::from(Span::styled(
             format!("  glossary: {}", card.glossary_codes.join(", ")),
             Style::default().fg(palette.accent),
         )));
-        lines.push(Line::from(""));
     }
 
-    // ③ next-steps — stikk-authored, selectable (C-T2b).
-    lines.push(Line::from(Span::styled(
+    // ③ next-steps — stikk-authored, selectable (C-T2b). Their own region, below.
+    let mut actions: Vec<Line> = vec![Line::from(Span::styled(
         "  What you can do:",
         Style::default().fg(palette.dim),
-    )));
+    ))];
     for (i, step) in card.next_steps.iter().enumerate() {
-        lines.push(selectable(palette, i == cursor, step.label.clone()));
+        actions.push(selectable(palette, i == cursor, step.label.clone()));
     }
+    let actions_height = actions.len() as u16;
 
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" prikk refused ")
         .style(Style::default().fg(palette.warn));
-    // Headroom for wrapped lines (the gloss and a long verbatim can each wrap): budget a few extra
-    // rows so no next-step is clipped.
-    let height = (lines.len() as u16 + 6).min(area.height.saturating_sub(2));
+    // Headroom for the prose region's own wrapping — still an estimate (`lines.len()` counts logical
+    // lines, a long gloss wraps to several rows), but no longer load-bearing for the actions'
+    // visibility the way it was before this fix: `Constraint::Length(actions_height)` below reserves
+    // their exact height regardless of how wrong this estimate turns out to be, so an under-estimate
+    // here costs prose, never a next-step. Sized generously (comfortably above the longest gloss this
+    // codebase ships today, the trust-refusal one at ~280 characters/5 wrapped rows) so the ordinary
+    // case shows everything; a future gloss long enough to exceed this would still degrade safely.
+    let height = (prose.len() as u16 + actions_height + 12).min(area.height.saturating_sub(2));
     let region = centered(72, height.max(10), area);
     frame.render_widget(Clear, region);
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false }),
-        region,
-    );
+    let inner = block.inner(region);
+    frame.render_widget(block, region);
+    let [prose_area, actions_area] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(actions_height)]).areas(inner);
+    frame.render_widget(Paragraph::new(prose).wrap(Wrap { trim: false }), prose_area);
+    frame.render_widget(Paragraph::new(actions), actions_area);
 }
 
 /// Render [`Overlay::Stale`] — deliberately its own function, not a `Stale`-flavoured

@@ -216,6 +216,57 @@ fn a_schema_skew_refusal_glosses_and_offers_upgrade_regardless_of_operation() {
 }
 
 #[test]
+fn a_bundle_decode_skew_refusal_glosses_and_offers_upgrade() {
+    // RFC 015 F5 — captured live: a real prikk 0.31.1 verifying a bundle a real prikk 0.32.0 exported.
+    let err = StikkError::Refusal {
+        message:
+            "malformed persisted data: invalid PatchPurpose canonical form: canonical encoding \
+                  error: unknown PatchPayload field tag: 6"
+                .into(),
+    };
+    let card = match present(&err, OperationContext::Other) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected overlay, got {other:?}"),
+    };
+    assert!(
+        card.gloss
+            .as_deref()
+            .is_some_and(|g| g.contains("newer prikk"))
+    );
+    assert!(card.gloss.as_deref().is_some_and(|g| g.contains("bundle")));
+    assert_eq!(card.next_steps.len(), 1);
+    assert!(
+        card.next_steps[0]
+            .label
+            .to_ascii_lowercase()
+            .contains("upgrade prikk")
+    );
+    assert_eq!(
+        card.next_steps[0].target,
+        NextTarget::DismissAndResolveExternally
+    );
+    assert!(
+        card.glossary_codes
+            .contains(&"canonical encoding error: unknown".to_string())
+    );
+}
+
+#[test]
+fn a_bundle_decode_skew_refusal_is_distinct_from_the_repository_level_shape() {
+    // The two shapes must not collide: a repository-level schema-skew message must not trigger the
+    // bundle-decode gloss, and vice versa.
+    let repo_level = StikkError::Refusal {
+        message: "integrity error: format-2 patch does not accept envelope schema 4 (accepted: [1, 2, 3])"
+            .into(),
+    };
+    let card = match present(&repo_level, OperationContext::Other) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected overlay, got {other:?}"),
+    };
+    assert!(card.gloss.as_deref().is_some_and(|g| !g.contains("bundle")));
+}
+
+#[test]
 fn a_wrapped_schema_skew_refusal_is_still_recognized() {
     // worktree-status wraps the same underlying message inside a "lifecycle replay: ... is malformed
     // (...)" context (captured live against a real prikk 0.30 reading a 0.31-written repository, RFC

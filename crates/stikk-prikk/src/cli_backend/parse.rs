@@ -21,7 +21,7 @@
 use stikk_model::{ObjectId, RefName, Result, StikkError};
 
 use crate::{
-    BlockRow, CommitChange, CommitResult, History, Orientation, RefEntry, StateFiles,
+    BlockRow, CommitChange, CommitResult, History, Orientation, PatchMessage, RefEntry, StateFiles,
     WorktreeEntry, WorktreeStatus,
 };
 
@@ -195,8 +195,38 @@ fn decode_block(lines: &[&str]) -> Result<BlockRow> {
         patches: required_u64(&group, "patches:")?,
         rollback_patches: required_u64(&group, "rollback-patches:")?,
         required_attestations: required_u64(&group, "required-attestations:")?,
+        messages: parse_patch_messages(&group)?,
         previous_ref_state: optional_object_id(&group, "previous-ref-state:")?,
     })
+}
+
+/// Parse every `patch <id>: <message>` line in a block group (design FR-011; RFC 015 F1). One line per
+/// patch **that carries a message** — `-m` has always been mandatory, but the message was validated
+/// and discarded below prikk 0.32 (`UD-01`), so an older patch contributes no line at all: an empty
+/// result is normal (RFC 015 F4), not a shape error. The message is everything after the id's **first**
+/// `": "` (RFC 015 §3) — it may itself contain colons, or text resembling a field label, and cannot
+/// forge one, because every line here starts with the fixed prefix `patch `, which no other field
+/// shares (`patches:`, the count, has no space after `patch`).
+fn parse_patch_messages(text: &str) -> Result<Vec<PatchMessage>> {
+    text.lines()
+        .filter_map(|line| line.strip_prefix("patch "))
+        .map(|rest| {
+            let (id, message) = rest.split_once(": ").ok_or_else(|| {
+                StikkError::environment_msg(format!(
+                    "prikk log's patch line has no \": \" separator: {rest:?}"
+                ))
+            })?;
+            ObjectId::parse(id).map_err(|_| {
+                StikkError::environment_msg(format!(
+                    "prikk log's patch line has an invalid patch id: {id:?}"
+                ))
+            })?;
+            Ok(PatchMessage {
+                patch_id: id.to_string(),
+                message: message.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// Parse `prikk checkout --patch-plan` into the tip state file set (RFC 006). File paths are the

@@ -330,6 +330,7 @@ impl App {
                 self.overlays.push(Overlay::CommitMessage {
                     reff: self.focused_ref.clone(),
                     typed: String::new(),
+                    messages_persist: self.messages_persist(),
                 });
             }
             Err(stikk_model::StikkError::NotReady { detail }) => self.banner = Some(detail),
@@ -439,7 +440,7 @@ impl App {
                     }
                 }
             }
-            Some(Overlay::CommitMessage { reff, typed }) => {
+            Some(Overlay::CommitMessage { reff, typed, .. }) => {
                 let (reff, typed) = (reff.clone(), typed.clone());
                 self.submit_commit_message(reff, &typed);
             }
@@ -1026,6 +1027,18 @@ impl App {
         match &self.state {
             OrientationState::Loaded(view) => view.readiness,
             _ => stikk_model::Readiness::none(),
+        }
+    }
+
+    /// Whether this session's prikk persists a commit message (RFC 015 F2) — the commit-message
+    /// prompt's copy needs this. Defaults to `false` (the pre-0.32 claim) if orientation has not
+    /// loaded, which cannot actually happen in practice: [`Self::begin_commit`] is unreachable before
+    /// then, since every key/palette path to it requires a loaded, non-Viewer capability first.
+    #[must_use]
+    fn messages_persist(&self) -> bool {
+        match &self.state {
+            OrientationState::Loaded(view) => view.prikk_persists_messages,
+            _ => false,
         }
     }
 

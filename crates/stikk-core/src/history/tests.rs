@@ -19,6 +19,7 @@ fn block(id: &str, seq: u64, kind: &str, parents: u64) -> BlockRow {
         patches: 1,
         rollback_patches: 0,
         required_attestations: 0,
+        messages: Vec::new(),
         previous_ref_state: if seq > 1 { Some("prev".into()) } else { None },
     }
 }

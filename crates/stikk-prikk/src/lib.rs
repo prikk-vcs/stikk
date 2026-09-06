@@ -21,7 +21,7 @@ pub mod version;
 
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
-pub use version::Version;
+pub use version::{Version, validated_ceiling_display};
 
 use std::path::Path;
 
@@ -69,10 +69,26 @@ pub struct Orientation {
     pub active_patch_warning: Option<String>,
 }
 
+/// One patch id and its message, as `prikk log` names it (design FR-011; RFC 015 F1). Only patches
+/// authored by prikk ≥ 0.32 carry a line at all: `-m` has always been mandatory, but the message was
+/// validated and discarded below that version (`UD-01`, retired at 0.32) — an older patch contributes
+/// **no entry**, which is absence, not an empty message (RFC 015 F4). `BlockRow::patches` (the count)
+/// can therefore legitimately exceed `messages.len()`; never render one without the other (`C-T4d`
+/// via `T-T4`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchMessage {
+    /// The patch's object id.
+    pub patch_id: String,
+    /// The message, verbatim — repository content (`C-T2a`): render inert, never as a next-step or a
+    /// glossary trigger (`C-T2b`).
+    pub message: String,
+}
+
 /// One sealed block in a ref's lineage, as `prikk log` reports it (design FR-011; RFC 006). Block
-/// granularity is prikk's ceiling: there are **no patch ids and no per-patch detail** here — prikk
-/// emits only counts — and, by prikk's no-clock, message-not-yet-persisted design, no message,
-/// author, or date (RFC 006, UD-09).
+/// granularity is prikk's ceiling — no per-patch *content* (operations, preimages) and no
+/// `log --format json` (`UD-09`, narrowed RFC 015 F3) — but patch **ids and messages** are no longer
+/// beyond it for a messaged patch (`messages`, RFC 015 F1); no author or date either way, by prikk's
+/// no-clock design.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockRow {
     /// The block's object id.
@@ -88,12 +104,18 @@ pub struct BlockRow {
     pub rollback_block: bool,
     /// Number of parent blocks.
     pub parents: u64,
-    /// Number of patches sealed in this block (a count only — prikk does not expose their ids).
+    /// Number of patches sealed in this block. May legitimately exceed `messages.len()` — a patch
+    /// authored below prikk 0.32 carries no message and so no entry there (RFC 015 F4); this count is
+    /// the authoritative total either way.
     pub patches: u64,
     /// Number of rollback patches.
     pub rollback_patches: u64,
     /// Number of required attestations.
     pub required_attestations: u64,
+    /// The patch id and message for every patch in this block that carries one (RFC 015 F1) — never
+    /// the block's full patch count; see [`Self::patches`] for that. Empty for a block sealed entirely
+    /// below prikk 0.32, which is normal, not an error.
+    pub messages: Vec<PatchMessage>,
     /// The previous RefState in the chain, or `None` at genesis.
     pub previous_ref_state: Option<String>,
 }

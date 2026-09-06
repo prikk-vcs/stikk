@@ -172,6 +172,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
                     patches: 4,
                     rollback_patches: 0,
                     required_attestations: 0,
+                    messages: Vec::new(),
                     previous_ref_state: Some("rs-a".into()),
                 },
                 BlockRow {
@@ -184,6 +185,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
                     patches: 1,
                     rollback_patches: 0,
                     required_attestations: 0,
+                    messages: Vec::new(),
                     previous_ref_state: None,
                 },
             ],
@@ -217,6 +219,7 @@ fn block_detail_screen_shows_tip_state_and_the_ud09_note() {
                 patches: 4,
                 rollback_patches: 0,
                 required_attestations: 0,
+                messages: Vec::new(),
                 previous_ref_state: Some("rs-a".into()),
             }],
         })

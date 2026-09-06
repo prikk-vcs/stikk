@@ -175,14 +175,22 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
             // The next-step's label and target are still entirely stikk-authored (C-T2b) — only the
             // *decision to show this one instead of the generic pair* looks at the message text.
             let is_schema_skew = message.contains(glossary::SCHEMA_SKEW_CODE);
+            // The bundle-decode shape (RFC 015 F5) is the same override, kept as a second, distinct
+            // flag rather than folded into `is_schema_skew`: the two messages are mutually exclusive
+            // in practice, but treating them as one condition would blur two different failure sites
+            // (repository-level vs. bundle-decode) the moment one of the two glosses needs to diverge.
+            let is_bundle_decode_skew = message.contains(glossary::BUNDLE_DECODE_SKEW_CODE);
+            let is_upgrade_skew = is_schema_skew || is_bundle_decode_skew;
             Presentation::RefusalOverlay(RefusalCard {
                 verbatim: message.clone(),
                 gloss: if is_schema_skew {
                     Some(SCHEMA_SKEW_GLOSS.to_string())
+                } else if is_bundle_decode_skew {
+                    Some(BUNDLE_DECODE_SKEW_GLOSS.to_string())
                 } else {
                     refusal_gloss(op)
                 },
-                next_steps: if is_schema_skew {
+                next_steps: if is_upgrade_skew {
                     vec![NextStep {
                         label: "Upgrade prikk (resolve outside stikk)".to_string(),
                         target: NextTarget::DismissAndResolveExternally,
@@ -284,6 +292,14 @@ const SCHEMA_SKEW_GLOSS: &str = "This repository holds content sealed by a newer
      currently running here. prikk's compatibility guarantee runs one way — a newer prikk can always \
      read what an older one wrote, not the reverse — so an older prikk cannot read this. stikk cannot \
      translate the schema; upgrading the prikk binary this session uses is the only fix.";
+
+/// The gloss for a bundle-decode-skew refusal (RFC 015 F5) — the same one-way compatibility story as
+/// [`SCHEMA_SKEW_GLOSS`], but a bundle fails earlier, while decoding its own canonical form, before any
+/// repository is opened.
+const BUNDLE_DECODE_SKEW_GLOSS: &str = "This bundle was written by a newer prikk than the one \
+     currently running here. prikk's compatibility guarantee runs one way — a newer prikk can always \
+     read what an older one wrote, not the reverse — so an older prikk cannot decode this bundle. stikk \
+     cannot translate the schema; upgrading the prikk binary this session uses is the only fix.";
 
 /// The plain-language gloss for a refusal, chosen by the surface it came from. Additive to prikk's
 /// message, never a replacement (ER-02). `None` where stikk has nothing honest to add (verbatim-only).

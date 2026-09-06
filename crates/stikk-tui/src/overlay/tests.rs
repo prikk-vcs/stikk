@@ -318,16 +318,31 @@ fn confirmation_hostile_typed_input_also_renders_inert() {
 }
 
 #[test]
-fn commit_message_shows_the_target_ref_the_ud01_notice_and_typed_text() {
+fn commit_message_below_0_32_says_the_message_is_not_persisted() {
     let overlay = Overlay::CommitMessage {
         reff: "heads/main".to_string(),
         typed: "fix the thing".to_string(),
+        messages_persist: false,
     };
     let text = draw(&overlay);
     assert!(text.contains("Commit message"));
     assert!(text.contains("heads/main"));
     assert!(text.contains("required"));
+    assert!(text.contains("does not yet persist"));
     assert!(text.contains("fix the thing"));
+}
+
+#[test]
+fn commit_message_at_0_32_says_the_message_is_stored() {
+    // RFC 015 F2: `UD-01` retires at 0.32 — the copy must not keep asserting the old claim.
+    let overlay = Overlay::CommitMessage {
+        reff: "heads/main".to_string(),
+        typed: "fix the thing".to_string(),
+        messages_persist: true,
+    };
+    let text = draw(&overlay);
+    assert!(text.contains("is stored"));
+    assert!(!text.contains("does not yet persist"));
 }
 
 #[test]
@@ -335,6 +350,7 @@ fn commit_message_hostile_ref_and_typed_text_render_inert() {
     let overlay = Overlay::CommitMessage {
         reff: "heads/\u{1b}[2Jevil".to_string(),
         typed: "\u{1b}[2Jpasted".to_string(),
+        messages_persist: false,
     };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));

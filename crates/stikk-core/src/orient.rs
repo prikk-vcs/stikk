@@ -12,6 +12,13 @@ use std::path::Path;
 use stikk_model::{Capability, Readiness, Result};
 use stikk_prikk::{Prikk, env};
 
+/// The lowest prikk version where a commit message actually persists (schema 4, upstream RFC 123;
+/// RFC 015 F2) rather than being validated and discarded (`UD-01`, retired at this version). Named
+/// here rather than on `stikk_prikk::Version` itself: that type's own floor/ceiling
+/// (`SUPPORTED_MIN_MINOR`/`VALIDATED_MAX_MINOR`) are about what stikk has validated *its own parsing*
+/// against, a different question from what a specific prikk release does with a message.
+const MESSAGES_PERSIST_MIN: (u32, u32, u32) = (0, 32, 0);
+
 /// Everything the Orientation view shows (design VW-01). A plain value handed to a frontend to
 /// render; it is never authority and is re-derived on refresh (data model INV-8).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +33,16 @@ pub struct OrientationView {
     /// runs; the UI states that its shapes have not been checked, rather than asserting a validation
     /// stikk has not done.
     pub prikk_validated: bool,
+    /// The validated ceiling as a display string (e.g. `"0.32"`), for the `!prikk_validated` UI copy
+    /// (`NFR-R03`) — read from [`stikk_prikk::validated_ceiling_display`] rather than hardcoded, so a
+    /// renderer can never carry a stale number the way `stikk-tui`'s Orientation view once did (RFC
+    /// 015: still said "0.30" after RFC 012 F-e had already raised the ceiling to 31).
+    pub validated_through: String,
+    /// Whether this prikk version persists a commit message (schema 4, upstream RFC 123) rather than
+    /// validating and discarding it (`UD-01`, retired at prikk 0.32 — RFC 015 F2). stikk supports both
+    /// sides of that boundary, so the commit message prompt's copy reads this rather than asserting
+    /// either blanket claim.
+    pub prikk_persists_messages: bool,
     /// Patches queued in the active WAL, not yet sealed.
     pub queued_patches: u64,
     /// The ref the queue targets, when prikk reports one — absent only when the queue is empty
@@ -54,10 +71,15 @@ pub fn orient(prikk: &impl Prikk, repo: &Path) -> Result<OrientationView> {
     let orientation = prikk.orientation(repo)?;
     let readiness = env::read_readiness(env::read_only_override());
     let capability = Capability::derive(readiness);
+    let version = handshake.version;
+    let prikk_persists_messages =
+        (version.major, version.minor, version.patch) >= MESSAGES_PERSIST_MIN;
     Ok(OrientationView {
         prikk_version: handshake.raw_version,
         prikk_supported: handshake.supported,
         prikk_validated: handshake.validated,
+        validated_through: stikk_prikk::validated_ceiling_display(),
+        prikk_persists_messages,
         queued_patches: orientation.queued_patches,
         queued_target: orientation.queued_target,
         trailing_partial_wal_bytes: orientation.trailing_partial_wal_bytes,

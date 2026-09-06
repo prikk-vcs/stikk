@@ -121,6 +121,11 @@ pub enum Overlay {
         reff: String,
         /// The message typed so far.
         typed: String,
+        /// Whether this session's prikk persists the message (schema 4, upstream RFC 123) rather than
+        /// validating and discarding it (`UD-01`, retired at prikk 0.32 — RFC 015 F2). Snapshotted at
+        /// open time from [`stikk_core::OrientationView::prikk_persists_messages`] — stikk supports
+        /// both sides of that boundary, so this copy is version-conditional, not a blanket claim.
+        messages_persist: bool,
     },
     /// `FL-05` step 4's tail: prikk's own commit result, shown verbatim (`C-T4a`/`C-T4c`) — patch id,
     /// operation counts, and every `note:` line it printed, in order (RFC 014 F4).
@@ -188,8 +193,12 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
             frame,
             area,
         ),
-        Overlay::CommitMessage { reff, typed } => {
-            render_commit_message(reff, typed, palette, frame, area);
+        Overlay::CommitMessage {
+            reff,
+            typed,
+            messages_persist,
+        } => {
+            render_commit_message(reff, typed, *messages_persist, palette, frame, area);
         }
         Overlay::CommitResult { result } => render_commit_result(result, palette, frame, area),
     }
@@ -684,21 +693,26 @@ fn render_confirmation(
 fn render_commit_message(
     reff: &str,
     typed: &str,
+    messages_persist: bool,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
 ) {
+    // `UD-01` retired at prikk 0.32 (RFC 015 F2): stikk supports prikk on both sides of that boundary,
+    // so neither a blanket "not persisted" nor a blanket "persisted" claim is true — this session's own
+    // handshake decides which sentence is honest here.
+    let notice = if messages_persist {
+        "  A message is required — it is stored and will appear in `prikk log`."
+    } else {
+        "  A message is required — core does not yet persist it (it will not appear in `prikk log`)."
+    };
     let lines = vec![
         Line::from(Span::styled(
             format!("  Commit to {}", inert(reff)),
             Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(Span::styled(
-            "  A message is required — core does not yet persist it (it will not appear in `prikk \
-             log`).",
-            Style::default().fg(palette.dim),
-        )),
+        Line::from(Span::styled(notice, Style::default().fg(palette.dim))),
         Line::from(""),
         Line::from(vec![
             Span::styled("  › ", Style::default().fg(palette.accent)),

@@ -104,6 +104,14 @@ static TERMS: &[TermMapping] = &[
 /// prikk ships a new schema, and this string must not.
 pub(crate) const SCHEMA_SKEW_CODE: &str = "does not accept envelope schema";
 
+/// The substring a **bundle** offered directly refuses with when it was written by a newer prikk than
+/// the one decoding it (RFC 015 F5) — a different, earlier refusal shape than [`SCHEMA_SKEW_CODE`]'s,
+/// because a bundle decodes its canonical form before any repository-level schema check ever runs
+/// (`bundle verify` "writes nothing, needs no repository"). Deliberately not the literal field-tag
+/// number or object-kind name (`PatchPayload`, here; a future schema bump could skew a different kind)
+/// — those change with the specific field added, and this string must not.
+pub(crate) const BUNDLE_DECODE_SKEW_CODE: &str = "canonical encoding error: unknown";
+
 /// Code entries (witness/finding). A representative sample now; the full sets land with FR-080/FR-100.
 static CODE_ENTRIES: &[GlossaryEntry] = &[
     GlossaryEntry {
@@ -134,7 +142,17 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
                       prikk newer than the one this session is running, and this prikk cannot translate \
                       that schema. stikk cannot change what prikk you run — upgrade the prikk binary \
                       this session uses to one that supports the schema, then retry.",
-        see_also: &[],
+        see_also: &[BUNDLE_DECODE_SKEW_CODE],
+    },
+    GlossaryEntry {
+        code: BUNDLE_DECODE_SKEW_CODE,
+        title: "This bundle was written by a newer prikk",
+        explanation: "The same one-way compatibility guarantee as an ordinary repository (a newer \
+                      prikk can always read what an older one wrote, never the reverse), but a bundle \
+                      hits it earlier: it fails while decoding the bundle's own canonical form, before \
+                      any repository is even opened (RFC 015 F5). stikk cannot translate the schema — \
+                      upgrade the prikk binary this session uses to one that supports it, then retry.",
+        see_also: &[SCHEMA_SKEW_CODE],
     },
 ];
 

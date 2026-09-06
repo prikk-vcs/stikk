@@ -51,6 +51,8 @@ fn orientation_view(
         prikk_version: "prikk 0.30.0".to_string(),
         prikk_supported: true,
         prikk_validated: true,
+        validated_through: "0.32".to_string(),
+        prikk_persists_messages: true,
         queued_patches,
         queued_target: queued_target.map(str::to_string),
         trailing_partial_wal_bytes: 0,
@@ -76,6 +78,8 @@ fn author_orientation_view() -> stikk_core::OrientationView {
         prikk_version: "prikk 0.30.0".to_string(),
         prikk_supported: true,
         prikk_validated: true,
+        validated_through: "0.32".to_string(),
+        prikk_persists_messages: true,
         queued_patches: 0,
         queued_target: None,
         trailing_partial_wal_bytes: 0,
@@ -96,6 +100,7 @@ fn block(id: &str, seq: u64) -> BlockRow {
         patches: 1,
         rollback_patches: 0,
         required_attestations: 0,
+        messages: Vec::new(),
         previous_ref_state: Some("prev".to_string()),
     }
 }
@@ -1021,7 +1026,7 @@ fn begin_commit_opens_the_message_prompt_when_author_ready() {
     );
     app.begin_commit();
     match app.top_overlay() {
-        Some(Overlay::CommitMessage { reff, typed }) => {
+        Some(Overlay::CommitMessage { reff, typed, .. }) => {
             assert_eq!(reff, "heads/main");
             assert!(typed.is_empty());
         }

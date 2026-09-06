@@ -53,3 +53,35 @@ fn an_unsupported_prikk_is_flagged_not_hidden() {
     let view = orient(&backend, Path::new("/repo")).expect("still orients read-only");
     assert!(!view.prikk_supported);
 }
+
+#[test]
+fn validated_through_reflects_the_real_ceiling_never_a_hardcoded_copy() {
+    // RFC 015: a hardcoded copy of this number in a renderer is exactly the staleness this field
+    // exists to prevent (stikk-tui's Orientation view once said "0.30" after the real ceiling had
+    // already moved to 31 — see stikk_prikk::version's own doc). Assert it comes from the shared
+    // source, not a value this test also guesses.
+    let backend = NullBackend::supported();
+    let view = orient(&backend, Path::new("/repo")).expect("orients");
+    assert_eq!(
+        view.validated_through,
+        stikk_prikk::validated_ceiling_display()
+    );
+}
+
+#[test]
+fn a_prikk_below_0_32_does_not_persist_messages() {
+    // `NullBackend::supported()`'s default (0.30.0) is deliberately below the boundary (RFC 015 F2).
+    let backend = NullBackend::supported();
+    let view = orient(&backend, Path::new("/repo")).expect("orients");
+    assert!(!view.prikk_persists_messages);
+}
+
+#[test]
+fn a_prikk_at_or_above_0_32_persists_messages() {
+    let backend = NullBackend::supported().with_version(0, 32, 0);
+    let view = orient(&backend, Path::new("/repo")).expect("orients");
+    assert!(view.prikk_persists_messages);
+    let newer = NullBackend::supported().with_version(0, 33, 1);
+    let view = orient(&newer, Path::new("/repo")).expect("orients");
+    assert!(view.prikk_persists_messages);
+}

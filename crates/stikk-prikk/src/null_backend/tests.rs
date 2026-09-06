@@ -38,8 +38,8 @@ fn with_version_recomputes_both_supported_and_validated() {
     let hs = below_floor.handshake().unwrap();
     assert!(!hs.supported && !hs.validated);
 
-    // RFC 012 F-e raised the validated ceiling to 0.31; the above-ceiling case moves with it.
-    let above_ceiling = NullBackend::supported().with_version(0, 32, 0);
+    // RFC 015 raised the validated ceiling to 0.32; the above-ceiling case moves with it.
+    let above_ceiling = NullBackend::supported().with_version(0, 33, 0);
     let hs = above_ceiling.handshake().unwrap();
     assert!(hs.supported && !hs.validated);
 }

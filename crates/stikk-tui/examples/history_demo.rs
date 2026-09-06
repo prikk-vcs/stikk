@@ -42,6 +42,7 @@ fn block(
         patches,
         rollback_patches: 0,
         required_attestations: 0,
+        messages: Vec::new(),
         previous_ref_state: prev.map(str::to_string),
     }
 }

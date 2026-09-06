@@ -1,19 +1,22 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.31.0` (RFC 012 F-e, re-verified 2026-09-05
-//! against a real prikk 0.31.0 binary — every fixture in `cli_backend/parse/tests.rs` was re-captured
-//! and diffed byte-for-byte against the committed 0.30.0 ones; identical). The range has two ends that
-//! behave differently: below the floor stikk degrades to read-only, because prikk's `worktree-status` is
-//! the UD-03 defect there and stikk already refuses to run it. **Above the validated ceiling stikk still
+//! stikk targets prikk `>= 0.28`, validated through `0.32.0` (RFC 015, re-verified 2026-09-06 against a
+//! real, **released** prikk 0.32.0 binary — every fixture in `cli_backend/parse/tests.rs` was
+//! re-captured and diffed against the committed text; identical except `log`, which gained the
+//! `patch <id>: <message>` line RFC 015 F1 found and now parses). The range has two ends that behave
+//! differently: below the floor stikk degrades to read-only, because prikk's `worktree-status` is the
+//! UD-03 defect there and stikk already refuses to run it. **Above the validated ceiling stikk still
 //! runs** — refusing every prikk newer than the last stikk release would break users the day prikk ships
 //! a minor — but it says the range is unvalidated rather than silently asserting knowledge it does not
 //! have. An unbounded upper range is exactly how RFC 009's F1–F4 defects went unnoticed for three
 //! releases: three of stikk's own parsers accepted shapes prikk never emitted, and no version signal
-//! ever said "this has not actually been checked." RFC 012 F-e is the ceiling's first real test: prikk
-//! 0.31.0 shipped the day after stikk 0.2.0 and is forward-incompatible (its repositories cannot be read
-//! by 0.30 or earlier) despite an unchanged CLI surface — a user on 0.31 correctly sees the unvalidated
-//! notice while stikk continues to open and parse the repository correctly.
+//! ever said "this has not actually been checked." RFC 012 F-e was the ceiling's first real test (prikk
+//! 0.31.0's forward-incompatible schema, unchanged CLI surface); RFC 015 is its second, raised only
+//! after the fixture re-capture came back clean (RFC 009's own rule) — prikk 0.32.0 is itself
+//! forward-incompatible again (schema 4) and also the release where `UD-01` retired: two upstream
+//! dependencies changed in one minor, found by re-validating rather than trusting either a changelog or
+//! an assumption that nothing had moved.
 
 use stikk_model::{Result, StikkError};
 
@@ -23,9 +26,11 @@ use stikk_model::{Result, StikkError};
 const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated its output shapes against (RFC 009
-/// decision 7; raised to 31 by RFC 012 F-e after an empirical fixture re-capture found no shape
-/// difference). A prikk above this still runs; [`Version::is_validated`] tells the caller to say so.
-const VALIDATED_MAX_MINOR: u32 = 31;
+/// decision 7; raised to 31 by RFC 012 F-e, then to 32 by RFC 015 §2/§8 — both only after an empirical
+/// fixture re-capture, RFC 015's finding `log`'s new `patch <id>: <message>` line and nothing else
+/// shape-different). A prikk above this still runs; [`Version::is_validated`] tells the caller to say
+/// so.
+const VALIDATED_MAX_MINOR: u32 = 32;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -94,6 +99,16 @@ impl Version {
     pub fn is_validated(self) -> bool {
         self.is_supported() && self.minor <= VALIDATED_MAX_MINOR
     }
+}
+
+/// The validated ceiling as a display string (`"0.32"`), for UI copy that says what range stikk has
+/// actually checked its shapes against. **Nothing else may hardcode this number**: a renderer that
+/// copies it as a string literal instead of calling this drifts the moment the ceiling moves again —
+/// exactly what RFC 015 found in `stikk-tui`'s own Orientation view, still reading "0.30" after RFC 012
+/// F-e had already raised the ceiling to 31 and no one had touched the copy.
+#[must_use]
+pub fn validated_ceiling_display() -> String {
+    format!("{SUPPORTED_MAJOR}.{VALIDATED_MAX_MINOR}")
 }
 
 impl std::fmt::Display for Version {

@@ -9,6 +9,14 @@
 //! shape has now been checked against both versions. `every_fixture_constant_carries_a_provenance_comment`
 //! enforces the shape mechanically: a fixture constant with no provenance comment naming a prikk
 //! version fails the build.
+//!
+//! **Re-verified a third time against a real released prikk 0.32.0 binary on 2026-09-06** (RFC 015,
+//! the ceiling raise) — see the review request for the full command transcript. Every shape re-captured
+//! byte-identical to the 0.30.0/0.31.0 text **except `log`**, which now emits a `patch <id>: <message>`
+//! line for every patch that carries one (RFC 015 F1) — new fixtures below capture that shape, and the
+//! pre-existing `LOG_FIXTURE` (still valid: its patches predate the feature) is unchanged. Also captured:
+//! the straddling case (RFC 015 F4, one block holding both a pre-0.32 and a 0.32 patch) and the
+//! bundle-decode skew refusal (RFC 015 F5).
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
@@ -262,6 +270,140 @@ fn history_refuses_when_ref_line_absent() {
         history("some unrelated output\n").unwrap_err().class(),
         "environment"
     );
+}
+
+// Captured verbatim from `prikk log --ref heads/main` on a repository with one block sealing two
+// patches authored by prikk 0.32.0, on 2026-09-06 (RFC 015 F1). Messages deliberately include colons
+// ("first message: with a colon", "second: message") to exercise §3's "first `\": \"`" rule.
+const LOG_FIXTURE_WITH_MESSAGES: &str = "\
+history repository: /tmp/sample/.prikk
+ref: heads/main
+block 5633ed28be156ea46929e6450764fe290354773f2e7072f0a59489a0e714d86b
+  ref-state: c1c6ae60e26dfbb92f957bc75d99310624282eed0cc7bb4802348d18eb7675f3
+  update-seq: 1
+  kind: Root
+  rollback-block: false
+  parents: 0
+  patches: 2
+  rollback-patches: 0
+  required-attestations: 0
+  patch 2a4dfcf49d9ca967a7cdf462e8d43d09a475a687c1c46c253a00851c12e5ec55: first message: with a colon
+  patch 5f20740a94f8e9cc88ef5205838babf643dc19b176e1b1b51b6dd43b4b5112ee: second: message
+  previous-ref-state: <none>
+";
+
+// Captured verbatim from `prikk log --ref heads/main` on 2026-09-06 (RFC 015 F4, the honesty-critical
+// finding) — a repository where one patch was authored by a real prikk 0.31.1 binary (no message
+// stored) and a second by a real prikk 0.32.0 binary (message stored), both queued together and sealed
+// by 0.32.0 into **one block**. `patches: 2`, but exactly **one** `patch …:` line — the pre-0.32 patch
+// contributes no line at all. This is the disagreement Block detail must never render silently.
+const LOG_FIXTURE_STRADDLING: &str = "\
+history repository: /tmp/sample/.prikk
+ref: heads/main
+block 14834f8e3c5488f860908700d2ae5cbd596d3b14f2e1b4c1de4ac3ec64d16548
+  ref-state: d5dd45f6710c67bfb7e7ba6a8f9a6814b0d4b62a07f05dc8f22c5712dddae592
+  update-seq: 1
+  kind: Root
+  rollback-block: false
+  parents: 0
+  patches: 2
+  rollback-patches: 0
+  required-attestations: 0
+  patch ed0c918b28c06cada620b7800ab0ba83a845ddd4f13378e61be92aee4ab3ae24: post-0.32 patch, message stored
+  previous-ref-state: <none>
+";
+
+// Captured verbatim from `prikk log --ref heads/main` on 2026-09-06 (RFC 015 §3) — a message chosen to
+// resemble a field label (`kind: Normal, parents: 0`), to prove it cannot forge one: the line still
+// starts with the fixed `patch ` prefix, which no field label shares.
+const LOG_FIXTURE_LABEL_LIKE_MESSAGE: &str = "\
+history repository: /tmp/sample/.prikk
+ref: heads/main
+block 7c379a2c523028d6cf573ccc044290be9b4d04552db4bffa8aff3e046bf3c8ed
+  ref-state: 857bee1bdde8e729f4c8afe7e88fdb40c6c4ab69e7a9091db598b0fcf1b238ca
+  update-seq: 1
+  kind: Root
+  rollback-block: false
+  parents: 0
+  patches: 1
+  rollback-patches: 0
+  required-attestations: 0
+  patch 13066875f51e72a19afe81fa2eac1c5f2d8d5ecb39083fc8a35e0a9d909a2e68: kind: Normal, parents: 0
+  previous-ref-state: <none>
+";
+
+#[test]
+fn parses_two_messaged_patches_including_colons_in_the_message() {
+    let h = history(LOG_FIXTURE_WITH_MESSAGES).expect("log parses");
+    let block = &h.blocks[0];
+    assert_eq!(block.patches, 2);
+    assert_eq!(block.messages.len(), 2);
+    assert_eq!(
+        block.messages[0].patch_id,
+        "2a4dfcf49d9ca967a7cdf462e8d43d09a475a687c1c46c253a00851c12e5ec55"
+    );
+    assert_eq!(block.messages[0].message, "first message: with a colon");
+    assert_eq!(block.messages[1].message, "second: message");
+}
+
+#[test]
+fn a_pre_0_32_block_has_no_messages_at_all_thats_normal_not_an_error() {
+    let h = history(LOG_FIXTURE).expect("log parses");
+    assert!(h.blocks.iter().all(|b| b.messages.is_empty()));
+}
+
+#[test]
+fn a_straddling_block_reports_the_count_and_the_shorter_message_list_disagreeing() {
+    // RFC 015 F4: this is the observed reality the acceptance-critical rendering (§4) is built on.
+    let h = history(LOG_FIXTURE_STRADDLING).expect("log parses");
+    let block = &h.blocks[0];
+    assert_eq!(block.patches, 2);
+    assert_eq!(block.messages.len(), 1); // the pre-0.32 patch contributes nothing
+    assert_eq!(block.messages[0].message, "post-0.32 patch, message stored");
+}
+
+#[test]
+fn a_message_resembling_a_field_label_parses_intact_and_forges_nothing() {
+    let h = history(LOG_FIXTURE_LABEL_LIKE_MESSAGE).expect("log parses");
+    assert_eq!(h.blocks[0].messages[0].message, "kind: Normal, parents: 0");
+}
+
+#[test]
+fn a_malformed_patch_id_refuses() {
+    let text = "\
+ref: heads/main
+block abc
+  ref-state: def
+  update-seq: 1
+  kind: Root
+  rollback-block: false
+  parents: 0
+  patches: 1
+  rollback-patches: 0
+  required-attestations: 0
+  patch not-a-valid-id: some message
+  previous-ref-state: <none>
+";
+    assert_eq!(history(text).unwrap_err().class(), "environment");
+}
+
+#[test]
+fn a_patch_line_with_no_colon_space_separator_refuses() {
+    let text = "\
+ref: heads/main
+block abc
+  ref-state: def
+  update-seq: 1
+  kind: Root
+  rollback-block: false
+  parents: 0
+  patches: 1
+  rollback-patches: 0
+  required-attestations: 0
+  patch justanid-no-separator-here
+  previous-ref-state: <none>
+";
+    assert_eq!(history(text).unwrap_err().class(), "environment");
 }
 
 #[test]

@@ -14,6 +14,8 @@ fn view(readiness: Readiness, supported: bool, queued: u64, partial: u64) -> Ori
         prikk_version: "prikk 0.27.1".to_string(),
         prikk_supported: supported,
         prikk_validated: supported,
+        validated_through: "0.32".to_string(),
+        prikk_persists_messages: false, // fixed "prikk 0.27.1" above is well below the 0.32 threshold
         queued_patches: queued,
         queued_target: None,
         trailing_partial_wal_bytes: partial,
@@ -74,10 +76,15 @@ fn a_supported_but_unvalidated_prikk_says_so_without_degrading() {
     // been checked — never silently asserting a validation it has not done. The notice is long enough
     // to wrap across rows (it is now `Wrap`-enabled — TU-11), so join rows before matching a phrase
     // that could otherwise straddle a wrap point.
+    //
+    // `validated_through` is read here, never hardcoded (RFC 015: this exact literal drifted once
+    // already — the render still said "0.30" after RFC 012 F-e had raised the real ceiling to 31, and
+    // no test caught it because this test hardcoded the same stale number the renderer did).
     let mut v = view(Readiness::none(), true, 0, 0);
     v.prikk_validated = false;
+    v.validated_through = "0.99".to_string();
     let text = render_to_text(&v).replace('\n', " ");
-    assert!(text.contains("validated through 0.30"));
+    assert!(text.contains("validated through 0.99"));
     assert!(text.contains("have not been checked"));
     assert!(!text.contains("outside stikk's validated range")); // still runs, not degraded
 }

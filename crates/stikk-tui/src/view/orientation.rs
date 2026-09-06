@@ -25,19 +25,26 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
     // silently asserting a validation it has not done (text-first, NFR-A03 — never colour alone).
     let (support_text, support_style) = if !view.prikk_supported {
         (
-            "outside stikk's validated range — read-only",
+            "outside stikk's validated range — read-only".to_string(),
             Style::default()
                 .fg(palette.warn)
                 .add_modifier(Modifier::BOLD),
         )
     } else if !view.prikk_validated {
         (
-            "validated through 0.30 — this prikk is newer; its output shapes have not been checked \
-             against stikk",
+            // `validated_through` comes from `stikk_prikk::validated_ceiling_display` (RFC 015) —
+            // never hardcode this number here again: it drifted silently once already (still said
+            // "0.30" after RFC 012 F-e had raised the real ceiling to 31, caught only while re-basing
+            // to 0.32) precisely because nothing forced this copy to move with the constant.
+            format!(
+                "validated through {} — this prikk is newer; its output shapes have not been checked \
+                 against stikk",
+                view.validated_through
+            ),
             Style::default().fg(palette.warn),
         )
     } else {
-        ("supported", Style::default().fg(palette.dim))
+        ("supported".to_string(), Style::default().fg(palette.dim))
     };
     lines.push(field(
         palette,

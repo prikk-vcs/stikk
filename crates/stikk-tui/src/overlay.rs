@@ -258,10 +258,21 @@ fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
         Line::from(""),
         section(palette, "Git → prikk"),
     ];
+    // Review C1: a literal `22` broke the moment a term ("checkout / switch branch", "merge conflict /
+    // resolve") ran 24 chars long, with no wrap to catch the overrun — the prikk half ran straight into
+    // it, unseparated. Computed from the actual terms so a future long one still lines up — `+ 2` for a
+    // real gap, since padding a term to *exactly* its own length (the first fix attempt here) leaves
+    // zero space before the next column for whichever term is longest, the same defect in miniature.
+    let git_column_width = glossary::terminology()
+        .iter()
+        .map(|term| term.git.chars().count())
+        .max()
+        .unwrap_or(0)
+        + 2;
     for term in glossary::terminology() {
         lines.push(Line::from(vec![
             Span::styled(
-                format!("  {:<22}", term.git),
+                format!("  {:<git_column_width$}", term.git),
                 Style::default().fg(palette.accent),
             ),
             Span::styled(term.prikk, Style::default().fg(palette.fg)),
@@ -276,10 +287,21 @@ fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
         .borders(Borders::ALL)
         .title(" Glossary & Help ")
         .style(Style::default().fg(palette.fg));
-    // Tall content: give it most of the height and let it scroll from the top.
-    let region = centered(74, area.height.saturating_sub(2).min(30), area);
+    // Tall content, and no scroll interaction exists for this overlay today (a named gap, not this
+    // patch's to build): a fixed height cap silently hid content below it, with nothing to reveal the
+    // rest. Wrapping a long note (review C1) only made that worse — the same content now needs more
+    // rows, so a magic ceiling would hide *more* of it, not less. Sized to the actual terminal instead.
+    let region = centered(74, area.height.saturating_sub(2), area);
     frame.render_widget(Clear, region);
-    frame.render_widget(Paragraph::new(lines).block(block).scroll((0, 0)), region);
+    // Review C1: no `.wrap(...)` truncated every note at the box edge, four of them mid-word — the
+    // section's entire teaching content. Wrapped exactly as `render_refusal`'s prose already is.
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false })
+            .scroll((0, 0)),
+        region,
+    );
 }
 
 fn render_ref_picker(

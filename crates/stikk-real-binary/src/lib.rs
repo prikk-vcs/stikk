@@ -22,8 +22,12 @@
 //! the product behaviour under test), and `std::env::set_var`/`remove_var` are `unsafe fn` under this
 //! workspace's edition (2024). Every other crate in this workspace forbids `unsafe_code` outright
 //! (`unsafe is forbidden (no FFI in stikk yet)`); rather than weaken that for code that ships, this
-//! crate holds the one narrow, well-justified exception, is never built into any shipped binary, is
-//! never a dependency of a published crate, and `cargo package` skips it (`publish = false`).
+//! crate's own `Cargo.toml` `deny`s it instead (review C2: `deny`, unlike `forbid`, can be locally
+//! overridden) with `#[allow(unsafe_code)]` on exactly the three `set_var`/`remove_var` call sites in
+//! [`support`] that need it — a fourth `unsafe` anywhere else in this crate still fails the build. This
+//! crate is never built into any shipped binary, is never a dependency of a published crate, and is
+//! excluded from `cargo package --workspace` (`publish = false`; see the release-prep checklist in
+//! `.git-exclude/specs/` for the exact invocation, review C3).
 //!
 //! **The `C-I1e` boundary, held structurally, not by comment, even here:** `prikk key generate`,
 //! `prikk key public --seed-env`, and `prikk setup` are invoked directly with [`std::process::Command`]

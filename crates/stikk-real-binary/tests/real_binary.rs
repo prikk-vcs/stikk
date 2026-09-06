@@ -37,6 +37,14 @@ use stikk_prikk::{CliBackend, Prikk};
 use stikk_real_binary::support::{Fixture, PrikkBin, assert_matches_fixture};
 
 /// Serializes every test that touches process environment variables — see this file's own module doc.
+///
+/// Review C1: lock **recovery**, not just acquisition, matters here. Every call site takes the guard
+/// with `unwrap_or_else(PoisonError::into_inner)` rather than `unwrap()` — a panicked test must not
+/// poison this mutex for every test that runs after it, or one real failure (the case this suite exists
+/// to surface) turns into a cascade of `PoisonError`s that hide the four other real failures sitting
+/// behind it. Recovery is safe: every test that reaches this lock immediately clears, then sets, only
+/// the environment it needs (`Fixture::clear_env` at both entry and exit — see each test), so a guard
+/// inherited from a panicked predecessor carries no state that matters.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// `init → commit → seal → verify`, asserting repository **state** by re-reading it through
@@ -46,7 +54,11 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn full_lifecycle_asserts_repository_state_at_both_ends() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Deterministic starting state regardless of how a predecessor under this same guard died.
+    Fixture::clear_env();
     for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
         let fixture = Fixture::build(&bin);
         let backend = CliBackend::with_program(&bin.path);
@@ -135,7 +147,11 @@ fn full_lifecycle_asserts_repository_state_at_both_ends() {
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn commit_cross_ref_is_a_real_refusal_prikk_would_also_give() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Deterministic starting state regardless of how a predecessor under this same guard died.
+    Fixture::clear_env();
     for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
         let fixture = Fixture::build(&bin);
         let backend = CliBackend::with_program(&bin.path);
@@ -174,7 +190,11 @@ fn commit_cross_ref_is_a_real_refusal_prikk_would_also_give() {
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn commit_on_a_clean_worktree_is_a_real_refusal_prikk_would_also_give() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Deterministic starting state regardless of how a predecessor under this same guard died.
+    Fixture::clear_env();
     for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
         let fixture = Fixture::build(&bin);
         let backend = CliBackend::with_program(&bin.path);
@@ -216,7 +236,11 @@ fn commit_on_a_clean_worktree_is_a_real_refusal_prikk_would_also_give() {
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn seal_on_an_empty_queue_is_a_real_refusal_prikk_would_also_give() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Deterministic starting state regardless of how a predecessor under this same guard died.
+    Fixture::clear_env();
     for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
         let fixture = Fixture::build(&bin);
         let backend = CliBackend::with_program(&bin.path);
@@ -245,7 +269,11 @@ fn seal_on_an_empty_queue_is_a_real_refusal_prikk_would_also_give() {
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn seal_cross_ref_is_a_real_refusal_prikk_would_also_give() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Deterministic starting state regardless of how a predecessor under this same guard died.
+    Fixture::clear_env();
     for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
         let fixture = Fixture::build(&bin);
         let backend = CliBackend::with_program(&bin.path);

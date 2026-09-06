@@ -15,16 +15,21 @@ stikk-model = { workspace = true }
 stikk-prikk = { workspace = true }
 
 # Deliberately NOT `workspace = true` (root Cargo.toml's `[workspace.lints]`), and specifically not its
-# `unsafe_code = "forbid"`. This is the one crate in the workspace that legitimately needs `unsafe`:
-# driving `CliBackend`'s real signing-readiness gate (`stikk-prikk::env`) means actually setting *this
-# process's* environment variables before spawning prikk, and `std::env::set_var`/`remove_var` became
-# `unsafe fn` under edition 2024 for reasons unrelated to repository or key safety (thread-safety of the
-# C `environ` array). This crate ships in no binary, is never a dependency of any published crate, and
-# is skipped by `cargo package` (`publish = false` above) — the blanket forbid stays exactly where it
-# protects something: every crate that actually ships. `src/lib.rs`'s module doc records the `C-I1e`
-# boundary this crate's use of that allowance is still held to regardless.
+# `unsafe_code = "forbid"` — `deny` here instead (review C2). This is the one crate in the workspace that
+# legitimately needs `unsafe`: driving `CliBackend`'s real signing-readiness gate (`stikk-prikk::env`)
+# means actually setting *this process's* environment variables before spawning prikk, and
+# `std::env::set_var`/`remove_var` became `unsafe fn` under edition 2024 for reasons unrelated to
+# repository or key safety (thread-safety of the C `environ` array). `deny`, not `forbid`, so the
+# exception can sit on exactly the three call sites that earned it (each carries its own
+# `#[allow(unsafe_code)]`, in `src/support.rs`) rather than being unenforced for the whole crate — a
+# fourth `unsafe` anywhere else still fails the build. This crate ships in no binary, is never a
+# dependency of any published crate, and is excluded from `cargo package --workspace` (see the
+# release-prep checklist in `.git-exclude/specs/`) — the blanket forbid stays exactly where it protects
+# something: every crate that actually ships. `src/lib.rs`'s module doc records the `C-I1e` boundary this
+# crate's use of that allowance is still held to regardless.
 [lints.rust]
 missing_docs = "warn"
+unsafe_code  = "deny"
 
 # unwrap_used/expect_used/indexing_slicing stay at clippy's own default (off) here, unlike every other
 # crate's `[lints.clippy]`: this whole crate is test-harness code, in the same spirit the project already

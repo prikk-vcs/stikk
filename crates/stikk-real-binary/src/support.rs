@@ -321,15 +321,16 @@ impl Fixture {
     }
 
     /// Set this process's environment to AUTHOR signing readiness (design `env.rs`: presence of both
-    /// `PRIKK_AUTHOR_KEY_ID` and `PRIKK_AUTHOR_SEED`). The one `unsafe` this crate exists to hold — see
-    /// `lib.rs`'s module doc — and callers must hold `real_binary::ENV_LOCK` for the duration, since
-    /// process environment mutation is not safe across concurrent test threads.
+    /// `PRIKK_AUTHOR_KEY_ID` and `PRIKK_AUTHOR_SEED`). One of the three call sites `unsafe_code = "deny"`
+    /// (this crate's `Cargo.toml`, review C2) allows explicitly — see `lib.rs`'s module doc — and callers
+    /// must hold `real_binary::ENV_LOCK` for the duration, since process environment mutation is not
+    /// safe across concurrent test threads.
     pub fn set_author_env(&self) {
-        // SAFETY: not literally required by the compiler to justify (this crate does not forbid
-        // `unsafe_code`), but held to the same discipline as if it were: the caller (asserted by every
-        // call site in `tests/real_binary.rs`) holds `ENV_LOCK` for as long as these values are set, and
-        // `Fixture::clear_env` unsets them before the guard is released. Never printed, never read back
-        // through any accessor.
+        // SAFETY: the caller (every call site in `tests/real_binary.rs`) holds `ENV_LOCK` for as long as
+        // these values are set, and clears them (`Fixture::clear_env`, at both entry and exit of every
+        // test that calls this) before the guard is released. Never printed, never read back through
+        // any accessor.
+        #[allow(unsafe_code)]
         unsafe {
             env::set_var("PRIKK_AUTHOR_KEY_ID", &self.author_key_id);
             env::set_var("PRIKK_AUTHOR_SEED", &self.author_seed);
@@ -339,17 +340,23 @@ impl Fixture {
     /// Set this process's environment to MAINTAINER signing readiness. See [`Fixture::set_author_env`]
     /// for the safety discipline this holds to.
     pub fn set_maintainer_env(&self) {
+        // SAFETY: see `set_author_env`.
+        #[allow(unsafe_code)]
         unsafe {
             env::set_var("PRIKK_MAINTAINER_KEY_ID", &self.maintainer_key_id);
             env::set_var("PRIKK_MAINTAINER_SEED", &self.maintainer_seed);
         }
     }
 
-    /// Clear every `PRIKK_*_KEY_ID`/`PRIKK_*_SEED` variable this fixture may have set. Called at the end
-    /// of every test that calls [`Fixture::set_author_env`]/[`Fixture::set_maintainer_env`], still under
-    /// the same `ENV_LOCK` guard, so the next test (real-binary or otherwise, in whichever process runs
-    /// next) never inherits leftover readiness from this one.
+    /// Clear every `PRIKK_*_KEY_ID`/`PRIKK_*_SEED` variable this fixture may have set. Called at both the
+    /// start and the end of every test that calls [`Fixture::set_author_env`]/
+    /// [`Fixture::set_maintainer_env`], still under the same `ENV_LOCK` guard: at the end so the next
+    /// test never inherits this one's leftover readiness, and at the start so a test's own starting state
+    /// is deterministic even when the previous holder of the guard panicked before reaching its own exit
+    /// call (review C1).
     pub fn clear_env() {
+        // SAFETY: see `set_author_env`.
+        #[allow(unsafe_code)]
         unsafe {
             env::remove_var("PRIKK_AUTHOR_KEY_ID");
             env::remove_var("PRIKK_AUTHOR_SEED");

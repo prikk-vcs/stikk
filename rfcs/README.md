@@ -33,9 +33,15 @@ _Design settled; implementer may start; work has not yet shipped._
 |----|-------|-----------|---------|
 | 016 | [The seal ceremony](./accepted/016-the-seal-ceremony.md) | the first irreversible act stikk offers. Found that stikk's **MAINTAINER readiness badge over-claims** — the gate needs trust adoption in the repository's policy, stikk checks only env presence, and no supported prikk can check it. **Amended 2026-09-06** on prikk's replies: adoption is object trust rather than ref authority, and the gate is **eight operations wide**, not seal's alone. **Accepted 2026-09-06** | [Seal ceremony](./handoffs/016-the-seal-ceremony/seal-ceremony-handoff-v1.md) |
 
-0.4.0's remaining increments are RFC 016 (accepted, above) and **queue review** (`FR-051`), in that
-order. Release prep carries a **changelog backfill**: RFCs 003, 013, 014 and 015 shipped to `main` with
-no `## Unreleased` entry.
+**RFC 016 is 0.4.0's last increment** — on its landing, 0.4.0 is content-complete. `FR-051` (queue
+review) is **not** queued behind it: the requirement was amended 2026-09-06 and its knowable half is
+already delivered, distributed across Orientation, History and the commit preview; a dedicated Queue
+view waits on upstream queued-patch enumeration rather than shipping a view that lists nothing
+(ROADMAP, and `FR-051`'s own amendment).
+
+Release prep then carries two carried items: the **changelog backfill** (RFCs 003, 013, 014, 015 and
+017 shipped to `main` with no entry until 017's own) and the **rustdoc warnings + CI rustdoc gate**
+deferred by RFC 012.
 
 ## Done (implemented)
 

@@ -182,15 +182,11 @@ fn open_handle(start: &Path) -> stikk_model::Result<RepositoryHandle> {
 fn print_orientation(root: &Path, view: &orient::OrientationView) {
     println!("stikk — orientation");
     println!("  repository:  {}", root.display());
-    // RFC 009 decisions 6-7: below the floor stikk degrades; above the validated ceiling it still
-    // runs, but says so rather than silently asserting a validation it has not done.
-    let support = if !view.prikk_supported {
-        "OUTSIDE stikk's validated range — read-only"
-    } else if !view.prikk_validated {
-        "validated through 0.30 — this prikk is newer; its output shapes have not been checked"
-    } else {
-        "supported"
-    };
+    let support = support_line(
+        view.prikk_supported,
+        view.prikk_validated,
+        &view.validated_through,
+    );
     println!("  prikk:       {} ({support})", view.prikk_version);
     println!("  capability:  {}", view.capability.name());
     println!(
@@ -234,6 +230,25 @@ fn queued_line(patches: u64, target: Option<&str>) -> String {
             stikk_tui::text::inert(target)
         ),
         None => format!("  queued:      {patches}"),
+    }
+}
+
+/// Format the `prikk:` line's support/validation clause (design NFR-R03; RFC 009 decisions 6–7).
+/// `validated_through` **must** come from [`stikk_prikk::validated_ceiling_display`] — never a literal
+/// here: this exact sentence in the TUI's own Orientation view drifted silently for a release (still
+/// said "0.30" after RFC 012 F-e raised the real ceiling to 31, caught only in RFC 015) because it was
+/// hardcoded instead of reading this field. The launcher is the same user-facing surface and carried an
+/// independent copy of the identical bug (RFC 015 C1) — extracted here so a sentinel can test it.
+fn support_line(supported: bool, validated: bool, validated_through: &str) -> String {
+    if !supported {
+        "OUTSIDE stikk's validated range — read-only".to_string()
+    } else if !validated {
+        format!(
+            "validated through {validated_through} — this prikk is newer; its output shapes have not \
+             been checked"
+        )
+    } else {
+        "supported".to_string()
     }
 }
 

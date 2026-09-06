@@ -64,7 +64,7 @@ Persona mapping (informative): P-1 ≈ Author, P-2/P-4 ≈ Viewer, P-3 ≈ Maint
 | Block Detail & State Tree | block metadata, signatures, file tree at block, file content at state | FR-031/032 |
 | Compare | two-block state difference, expandable to content diffs | UC-04, FR-033 |
 | Changes | worktree-vs-baseline for the focused ref, per-file diffs | UC-05, FR-034 |
-| Queue | queued patches, thresholds, entry to Seal ceremony | UC-06, FR-051 |
+| Queue | *(not built — see `FR-051` as amended 2026-09-06: prikk exposes no queued-patch ids, so this view would list nothing. Its knowable content — depth, target ref, thresholds, the "not yet history" tier — is delivered in Orientation, History and the commit preview. Entry to the Seal ceremony is from History's queue tier meanwhile.)* | UC-06, FR-051 |
 | Refs | branches (open/closed/received) and tags; create/close/tag actions | UC-08/09, FR-070/071 |
 | Merge Evidence | baseline/left/right slots; evidence report; plan; execute entry | UC-11, FR-080–082 |
 | Exchange | bundle export/verify/import; sync-loop checklist; pending claims; peer dashboard | UC-13/14, FR-090–094 |
@@ -88,7 +88,7 @@ Persona mapping (informative): P-1 ≈ Author, P-2/P-4 ≈ Viewer, P-3 ≈ Maint
 | History / Refs | send block to Compare slot | Compare (armed when both slots filled) |
 | History / Refs | send ref-or-block to Merge slot | Merge Evidence |
 | Changes | commit action | Commit confirmation → Queue |
-| Queue | seal action | Seal ceremony → History (on success) |
+| History (queue tier) | seal action | Seal ceremony → History (on success) *(was "Queue"; that view is not built — `FR-051` as amended)* |
 | Merge Evidence | execute (confluent only) | Confirmation → History |
 | Merge Evidence | outcome is a refusal | Refusal Explanation overlay |
 | any refused operation | automatic | Refusal Explanation overlay (FR-110) |

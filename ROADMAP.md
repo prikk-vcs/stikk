@@ -153,8 +153,24 @@ survived a release *inside the feature built for version honesty*: both renderin
 the tests asserted the same stale number. Both now read one shared source, guarded by tests that assert
 against a sentinel rather than the answer.
 
-**Next — queue review (`FR-051`), then the seal ceremony (`FR-052`, as amended).** Then 0.4.0 is
-content-complete. Upstream RFC 123 landed
+**Next — the seal ceremony** ([RFC 016](rfcs/proposed/016-the-seal-ceremony.md), `FR-052` as
+amended). Then 0.4.0 is content-complete.
+
+> **Queue review (`FR-051`) is not a separate increment**, and checking rather than assuming is why.
+> Its core clause — *"list queued patches with full patch detail"* — is **not satisfiable**: prikk
+> reports the active WAL only as `queued patches: N targeting <ref>` and exposes no queued-patch ids
+> (verified at 0.32.0). RFC 015's `log` enumeration covers **sealed** patches only, never the WAL. Its
+> knowable half is already delivered, distributed rather than in a dedicated view — depth and target
+> ref in Orientation, the "not yet history" tier in History, prikk's threshold warning in the commit
+> preview — so `FR-051` was **amended 2026-09-06** and the Queue view waits for an upstream
+> enumeration surface rather than shipping a view that lists nothing.
+
+Drafting the seal RFC then found a **shipped defect unrelated to seal**: stikk's `[MNT ✓]` badge means
+"key material is present", but sealing also requires the maintainer key to be **adopted in the
+repository's trust policy** — and prikk offers `trust maintainer add`/`remove` with **no `list`**, so
+stikk cannot check it. The badge has been claiming a capability stikk cannot verify. RFC 016 stops the
+over-claim; `FR-103`'s "adopted maintainer keys list" is the third requirement now amended against
+prikk's real surface. Upstream RFC 123 landed
 **commit-message storage** in prikk 0.32, which falsifies the dependency stikk has carried since
 0.1.0 and makes one line of stikk's pre-commit copy false for anyone on that release. Separately,
 upstream **RFC 132 — prompted by a report we sent them, and landed within a day** — reclassifies both of RFC 014's refusal messages to `precondition not met:`; that is unreleased

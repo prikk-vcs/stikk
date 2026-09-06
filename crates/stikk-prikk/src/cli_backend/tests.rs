@@ -355,6 +355,30 @@ fn is_transient_exec_busy(err: &stikk_model::StikkError) -> bool {
         == Some(26) // ETXTBSY on Linux
 }
 
+/// The `prikk key` / `prikk setup` boundary (threat model C-I1e, RFC 017 §7): stikk never invokes
+/// `prikk key generate` or `prikk key public --seed-env`, and never wraps `prikk setup`. Every
+/// subcommand stikk actually runs is a literal argument array in this module (`run`/`run_capturing`
+/// call sites above) — scanned at the source level, the way `env.rs`'s TS-04 test scans for a
+/// materialized seed value, so a future call site cannot add either subcommand unnoticed.
+#[test]
+fn the_command_surface_never_names_key_or_setup() {
+    const SRC: &str = include_str!("../cli_backend.rs");
+    // Scan code only: this doc comment and others legitimately *name* the forbidden subcommands to
+    // explain the rule, so the invariant is enforced against non-comment source lines.
+    let code: String = SRC
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    for forbidden in ["\"key\"", "\"setup\""] {
+        assert!(
+            !code.contains(forbidden),
+            "cli_backend.rs must never invoke `prikk {forbidden}` — key management is prikk's job, \
+             not a history browser's (C-I1e)"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn run_capturing_keeps_stdout_on_a_nonzero_exit() {

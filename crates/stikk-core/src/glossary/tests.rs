@@ -76,3 +76,16 @@ fn the_bundle_decode_skew_code_resolves_and_links_from_a_real_refusal() {
     );
     assert_eq!(named, vec![BUNDLE_DECODE_SKEW_CODE]);
 }
+
+#[test]
+fn the_full_queue_code_resolves_and_links_from_a_real_refusal() {
+    // RFC 017 F4 — captured live against a real prikk 0.33.0 binary on the commit path.
+    let entry = lookup(FULL_QUEUE_CODE).expect("seeded code");
+    assert!(!entry.explanation.contains("another writer is active"));
+    assert!(entry.explanation.to_ascii_lowercase().contains("seal"));
+    let named = codes_in(
+        "lock conflict: active WAL has 1 queued patches, at or above the configured limit (1); run \
+         `prikk seal` before committing again",
+    );
+    assert_eq!(named, vec![FULL_QUEUE_CODE]);
+}

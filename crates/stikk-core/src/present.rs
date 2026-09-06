@@ -181,12 +181,23 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
             // (repository-level vs. bundle-decode) the moment one of the two glosses needs to diverge.
             let is_bundle_decode_skew = message.contains(glossary::BUNDLE_DECODE_SKEW_CODE);
             let is_upgrade_skew = is_schema_skew || is_bundle_decode_skew;
+            // The full-queue precondition (RFC 017 F4, the live defect this increment fixes): prikk
+            // words it as a lock conflict, but nothing is locked and no other writer is active. Before
+            // this class was narrowed (RFC 017 decision 4), this message classified as
+            // `StikkError::LockConflict` and rendered `FR-106`'s "another writer is active" gloss
+            // directly above prikk's own "run `prikk seal`" — a stikk-authored claim contradicting the
+            // evidence beside it. It now arrives here as a `Refusal` (narrowed classifier, `classify.rs`)
+            // and gets its own honest gloss instead, the same message-shape-recognition pattern as the
+            // schema-skew cases above, never a fabricated claim about a writer stikk never saw.
+            let is_full_queue = message.contains(glossary::FULL_QUEUE_CODE);
             Presentation::RefusalOverlay(RefusalCard {
                 verbatim: message.clone(),
                 gloss: if is_schema_skew {
                     Some(SCHEMA_SKEW_GLOSS.to_string())
                 } else if is_bundle_decode_skew {
                     Some(BUNDLE_DECODE_SKEW_GLOSS.to_string())
+                } else if is_full_queue {
+                    Some(FULL_QUEUE_GLOSS.to_string())
                 } else {
                     refusal_gloss(op)
                 },
@@ -194,6 +205,13 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
                     vec![NextStep {
                         label: "Upgrade prikk (resolve outside stikk)".to_string(),
                         target: NextTarget::DismissAndResolveExternally,
+                    }]
+                } else if is_full_queue {
+                    // No Seal ceremony exists yet to jump to (RFC 016) — a re-check is the one honest,
+                    // non-mutating action available today (NFR-S04).
+                    vec![NextStep {
+                        label: "Refresh".to_string(),
+                        target: NextTarget::Refresh,
                     }]
                 } else {
                     refusal_next_steps(op)
@@ -300,6 +318,12 @@ const BUNDLE_DECODE_SKEW_GLOSS: &str = "This bundle was written by a newer prikk
      currently running here. prikk's compatibility guarantee runs one way — a newer prikk can always \
      read what an older one wrote, not the reverse — so an older prikk cannot decode this bundle. stikk \
      cannot translate the schema; upgrading the prikk binary this session uses is the only fix.";
+
+/// The gloss for the full-queue precondition (RFC 017 F4). Deliberately does **not** name "another
+/// writer" — that claim is exactly what this gloss replaces, since nothing is locked and nobody else is
+/// active; prikk's own words beside this gloss already say what to do.
+const FULL_QUEUE_GLOSS: &str = "Nothing is locked and no other writer is involved: the active queue \
+     already holds as many patches as it is configured to allow. Seal the queue before trying again.";
 
 /// The plain-language gloss for a refusal, chosen by the surface it came from. Additive to prikk's
 /// message, never a replacement (ER-02). `None` where stikk has nothing honest to add (verbatim-only).

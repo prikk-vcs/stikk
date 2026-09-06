@@ -26,6 +26,6 @@ prikk seam, state layer), the interactive **TUI** (shell + Orientation, built on
 **worktree Changes** (RFC 008) are all implemented and tested; every seam read now runs off the UI
 thread (RFC 010), and config/state resolve per platform on Linux, macOS, and Windows (RFC 012).
 Piped/CI invocation keeps the one-shot orientation. stikk targets prikk **≥ 0.28**, validated through
-**0.31.0**. **Patch detail** is deferred behind `UD-09` — prikk exposes no per-patch content yet — and
+**0.33.0**. **Patch detail** is deferred behind `UD-09` — prikk exposes no per-patch content yet — and
 **Compare** is deferred behind the same ceiling, with a recorded future route (RFC 008); neither is
 "next", both are named gaps.

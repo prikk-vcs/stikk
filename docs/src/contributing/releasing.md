@@ -87,7 +87,7 @@ gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 
 v0.3.x is still a **read-only preview**: orientation, history, block detail, worktree changes, and the
 refusal/glossary surfaces. It performs **no repository mutations** yet. It drives the external `prikk`
-binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.31.0** — so the
+binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.33.0** — so the
 release notes must state which prikk version it was validated against and how to install it — a
 `cargo install stikk` with no `prikk` on `PATH` will open and then explain that prikk is missing, by
 design.

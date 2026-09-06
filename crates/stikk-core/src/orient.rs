@@ -33,7 +33,7 @@ pub struct OrientationView {
     /// runs; the UI states that its shapes have not been checked, rather than asserting a validation
     /// stikk has not done.
     pub prikk_validated: bool,
-    /// The validated ceiling as a display string (e.g. `"0.32"`), for the `!prikk_validated` UI copy
+    /// The validated ceiling as a display string (e.g. `"0.33"`), for the `!prikk_validated` UI copy
     /// (`NFR-R03`) — read from [`stikk_prikk::validated_ceiling_display`] rather than hardcoded, so a
     /// renderer can never carry a stale number the way `stikk-tui`'s Orientation view once did (RFC
     /// 015: still said "0.30" after RFC 012 F-e had already raised the ceiling to 31).

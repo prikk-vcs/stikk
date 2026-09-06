@@ -1,22 +1,22 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.32.0` (RFC 015, re-verified 2026-09-06 against a
-//! real, **released** prikk 0.32.0 binary — every fixture in `cli_backend/parse/tests.rs` was
-//! re-captured and diffed against the committed text; identical except `log`, which gained the
-//! `patch <id>: <message>` line RFC 015 F1 found and now parses). The range has two ends that behave
-//! differently: below the floor stikk degrades to read-only, because prikk's `worktree-status` is the
-//! UD-03 defect there and stikk already refuses to run it. **Above the validated ceiling stikk still
-//! runs** — refusing every prikk newer than the last stikk release would break users the day prikk ships
-//! a minor — but it says the range is unvalidated rather than silently asserting knowledge it does not
-//! have. An unbounded upper range is exactly how RFC 009's F1–F4 defects went unnoticed for three
-//! releases: three of stikk's own parsers accepted shapes prikk never emitted, and no version signal
-//! ever said "this has not actually been checked." RFC 012 F-e was the ceiling's first real test (prikk
-//! 0.31.0's forward-incompatible schema, unchanged CLI surface); RFC 015 is its second, raised only
-//! after the fixture re-capture came back clean (RFC 009's own rule) — prikk 0.32.0 is itself
-//! forward-incompatible again (schema 4) and also the release where `UD-01` retired: two upstream
-//! dependencies changed in one minor, found by re-validating rather than trusting either a changelog or
-//! an assumption that nothing had moved.
+//! stikk targets prikk `>= 0.28`, validated through `0.33.0` (RFC 017, re-verified 2026-09-06 against a
+//! real, **released** prikk 0.33.0 binary). Unlike RFC 009/012/015's re-baselines, 0.33 changed no
+//! output *shape* `cli_backend/parse/tests.rs` parses — its two message rewordings (`lock conflict:` →
+//! `precondition not met:` on both messages our own letter reported) were already absorbed by design,
+//! because the classifier matches the stable semantic clause, never the class prefix (RFC 017 F1). What
+//! 0.33 actually cost was the classifier's own provenance: reading prikk's complete error taxonomy for
+//! the first time (RFC 017 F0) found five matching arms keyed on text prikk has never emitted at any
+//! validated version, dead since 0.1.0, plus one arm firing on a real precondition today and rendering
+//! a gloss that contradicted prikk's own verbatim words beside it (F4, fixed in `stikk-core::present`).
+//! The range has two ends that behave differently: below the floor stikk degrades to read-only, because
+//! prikk's `worktree-status` is the UD-03 defect there and stikk already refuses to run it. **Above the
+//! validated ceiling stikk still runs** — refusing every prikk newer than the last stikk release would
+//! break users the day prikk ships a minor — but it says the range is unvalidated rather than silently
+//! asserting knowledge it does not have. An unbounded upper range is exactly how RFC 009's F1–F4 defects
+//! went unnoticed for three releases, and how RFC 017's five dead classifier arms went unnoticed for
+//! four years: no version signal ever said "this has not actually been checked."
 
 use stikk_model::{Result, StikkError};
 
@@ -25,12 +25,12 @@ use stikk_model::{Result, StikkError};
 /// surface stikk cannot serve (RFC 009 decision 6).
 const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
-/// The highest prikk minor version stikk has actually validated its output shapes against (RFC 009
-/// decision 7; raised to 31 by RFC 012 F-e, then to 32 by RFC 015 §2/§8 — both only after an empirical
-/// fixture re-capture, RFC 015's finding `log`'s new `patch <id>: <message>` line and nothing else
-/// shape-different). A prikk above this still runs; [`Version::is_validated`] tells the caller to say
-/// so.
-const VALIDATED_MAX_MINOR: u32 = 32;
+/// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
+/// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, then to 33 by RFC 017 §8 — each only after empirical
+/// re-verification against a real released binary, never a changelog). RFC 017's re-verification found
+/// no output-shape drift; it found the classifier's own provenance gap instead (`classify.rs`'s module
+/// doc). A prikk above this still runs; [`Version::is_validated`] tells the caller to say so.
+const VALIDATED_MAX_MINOR: u32 = 33;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -101,7 +101,7 @@ impl Version {
     }
 }
 
-/// The validated ceiling as a display string (`"0.32"`), for UI copy that says what range stikk has
+/// The validated ceiling as a display string (`"0.33"`), for UI copy that says what range stikk has
 /// actually checked its shapes against. **Nothing else may hardcode this number**: a renderer that
 /// copies it as a string literal instead of calling this drifts the moment the ceiling moves again —
 /// exactly what RFC 015 found in `stikk-tui`'s own Orientation view, still reading "0.30" after RFC 012

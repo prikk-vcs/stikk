@@ -267,6 +267,79 @@ fn a_bundle_decode_skew_refusal_is_distinct_from_the_repository_level_shape() {
 }
 
 #[test]
+fn the_full_queue_precondition_gets_an_honest_gloss_never_another_writer() {
+    // RFC 017 F4, the acceptance-critical fix: this message reaches `present()` as a `Refusal` (the
+    // classifier no longer routes it through `LockConflict`), and the gloss must not claim a writer
+    // stikk never saw — the exact contradiction that shipped on the commit path. Captured live (see
+    // `classify/tests.rs`).
+    let err = StikkError::Refusal {
+        message:
+            "lock conflict: active WAL has 1 queued patches, at or above the configured limit \
+                  (1); run `prikk seal` before committing again"
+                .to_string(),
+    };
+    let card = match present(&err, OperationContext::Commit) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    // The contradiction is gone: the gloss no longer *claims* a writer is active — it says the opposite
+    // (Nothing is locked and no other writer is involved), beside prikk's own words about the queue.
+    assert!(
+        !card
+            .gloss
+            .as_deref()
+            .unwrap_or_default()
+            .contains("another writer is active")
+    );
+    assert!(
+        card.gloss
+            .as_deref()
+            .is_some_and(|g| g.contains("Nothing is locked"))
+    );
+    assert!(card.verbatim.contains("run `prikk seal`"));
+    assert_eq!(card.next_steps.len(), 1);
+    assert_eq!(card.next_steps[0].target, NextTarget::Refresh);
+}
+
+#[test]
+fn the_active_rs_full_queue_wording_gets_the_same_gloss() {
+    let err = StikkError::Refusal {
+        message:
+            "lock conflict: active WAL has 64 queued patches, at or above the configured limit \
+                  (64); run doctor or seal before appending again"
+                .to_string(),
+    };
+    let card = match present(&err, OperationContext::Other) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    assert!(
+        !card
+            .gloss
+            .as_deref()
+            .unwrap_or_default()
+            .contains("another writer is active")
+    );
+    assert!(
+        card.gloss
+            .as_deref()
+            .is_some_and(|g| g.contains("Nothing is locked"))
+    );
+}
+
+#[test]
+fn a_genuine_lock_conflict_still_gets_fr_106s_ordinary_banner() {
+    // Unaffected by RFC 017: a real held lock still routes through `LockConflict`, never `Refusal`.
+    let err = StikkError::LockConflict {
+        message: "active lock already exists: /repo/.prikk/active/default/active.lock".to_string(),
+    };
+    match present(&err, OperationContext::Other) {
+        Presentation::Banner { message, .. } => assert!(message.contains("already exists")),
+        other => panic!("expected Banner, got {other:?}"),
+    }
+}
+
+#[test]
 fn a_wrapped_schema_skew_refusal_is_still_recognized() {
     // worktree-status wraps the same underlying message inside a "lifecycle replay: ... is malformed
     // (...)" context (captured live against a real prikk 0.30 reading a 0.31-written repository, RFC

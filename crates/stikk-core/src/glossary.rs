@@ -112,6 +112,15 @@ pub(crate) const SCHEMA_SKEW_CODE: &str = "does not accept envelope schema";
 /// — those change with the specific field added, and this string must not.
 pub(crate) const BUNDLE_DECODE_SKEW_CODE: &str = "canonical encoding error: unknown";
 
+/// The substring prikk's full-queue precondition always contains (RFC 017 F4) — captured live on the
+/// commit path (`node_authoring.rs`'s `"…queued patches, at or above the configured limit…"`) and, by
+/// source reading, shared by the rollback-append path's own wording (`active.rs`, "run doctor or seal"
+/// instead of "run `prikk seal`"). Both wordings carry prikk's `lock conflict:` class prefix — nothing
+/// is locked and no other writer is active, and this is the live defect this increment fixes: shipped
+/// stikk was showing `FR-106`'s "another writer is active" gloss directly above prikk's own words
+/// telling the user to seal. Deliberately not the queue count or the configured limit, which vary.
+pub(crate) const FULL_QUEUE_CODE: &str = "at or above the configured limit";
+
 /// Code entries (witness/finding). A representative sample now; the full sets land with FR-080/FR-100.
 static CODE_ENTRIES: &[GlossaryEntry] = &[
     GlossaryEntry {
@@ -153,6 +162,15 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
                       any repository is even opened (RFC 015 F5). stikk cannot translate the schema — \
                       upgrade the prikk binary this session uses to one that supports it, then retry.",
         see_also: &[SCHEMA_SKEW_CODE],
+    },
+    GlossaryEntry {
+        code: FULL_QUEUE_CODE,
+        title: "The active queue is full",
+        explanation: "Nothing is locked and no other writer is involved: the active WAL already holds \
+                      as many patches as it is configured to allow, and prikk refuses to add another \
+                      one until the queue is sealed (RFC 017 F4). Seal the queue — or, if you control \
+                      the threshold, raise `PRIKK_ACTIVE_PATCH_LIMIT` — then retry.",
+        see_also: &[],
     },
 ];
 

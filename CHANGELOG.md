@@ -2,6 +2,33 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## 0.4.1 — 2026-09-06
+
+### Fixed
+
+- **The Glossary told users stikk never writes their repository, four lines above the keybindings for
+  `commit` and `seal`.** 0.4.0 published this exact contradiction — one released version, hours — and
+  it was found the same day, before a user reported it. The line was anchored to a feature set (true
+  while stikk had no mutations, false the moment it gained one) rather than to anything that couldn't
+  change; it is now anchored to the architecture instead: every repository write happens inside prikk
+  itself, never as a direct write stikk performs, which was true before commit/seal existed and stays
+  true of whatever mutation lands next (RFC 018 F1).
+- **A signing-readiness refusal pointed at "Glossary → Trust & Keys" — a section that does not exist.**
+  The Glossary's only relevant section is titled `Keys`, and it is the keyboard-shortcut table; a user
+  following the old pointer landed on what `j` and `k` do. The pointer is removed rather than
+  redirected: there is nowhere real to send it until the Trust & Keys view (`FR-104`) exists (RFC 018
+  F2).
+- **The Glossary's Git→prikk terminology still said commit messages "are not yet persisted."** That
+  stopped being true at prikk 0.32 (RFC 015); the entry now states the version boundary and that author
+  name/email/date remain permanently absent by design, not "not yet" (found sweeping the same panel for
+  RFC 018 F1).
+- **`ROADMAP.md` held a validated-ceiling claim three releases stale** (`0.30.0`, current since RFC 015
+  raised it to 0.31 and RFC 017 to 0.33) **and two un-retired `UD-` rows** (`UD-01`'s messages, retired
+  at prikk 0.32; `UD-09`'s per-patch enumeration, narrowed at the same version) — outside every version
+  grep this project has run, because `ROADMAP.md` was outside every grep's scope (RFC 018 F3). The file
+  is now current with 0.4.0, and the grep scope is a standing exclusion-list rule rather than an
+  inclusion list widened again after the fact.
+
 ## 0.4.0 — 2026-09-06
 
 **stikk writes.** 0.1.0 through 0.3.0 were read-only by design; this release is where that changes.

@@ -92,8 +92,10 @@ static TERMS: &[TermMapping] = &[
     },
     TermMapping {
         git: "blame / log message",
-        prikk: "block lineage (no message/author/date yet)",
-        note: "prikk records lineage and key ids; commit messages, authors and dates are not yet persisted.",
+        prikk: "block lineage + message (prikk ≥ 0.32)",
+        note: "prikk records lineage and key ids; commit messages persist on prikk ≥ 0.32 (validated, \
+               then discarded, below it — `UD-01`). No author name/email or date, ever — a permanent, \
+               no-clock design, not a gap.",
     },
 ];
 

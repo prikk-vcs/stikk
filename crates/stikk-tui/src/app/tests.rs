@@ -686,10 +686,10 @@ fn open_changes_error_response_surfaces_as_a_banner_not_a_screen() {
 }
 
 #[test]
-fn a_signing_readiness_not_ready_still_points_at_trust_and_keys() {
-    // RFC 012 F-b's disambiguation is narrow: only the LoadChanges version-gate reroutes (proven above
-    // in `open_changes_error_response_surfaces_as_a_banner_not_a_screen`); an ordinary signing-readiness
-    // `NotReady` from any other context is unaffected.
+fn a_signing_readiness_not_ready_does_not_point_at_a_nonexistent_glossary_section() {
+    // RFC 018 F2: this used to append "— see Glossary → Trust & Keys", a section that does not exist
+    // (`Keys` is the keybinding table). Until `FR-104`'s Trust & Keys view exists to point at, the
+    // banner states `detail` plainly and directs nobody anywhere.
     let (mut app, _rx) = from_state(
         "/repo",
         loaded(orientation_view(0, None, None)),
@@ -701,7 +701,10 @@ fn a_signing_readiness_not_ready_still_points_at_trust_and_keys() {
         },
         OperationContext::Other,
     );
-    assert!(app.banner().unwrap().contains("Trust & Keys"));
+    let banner = app.banner().unwrap();
+    assert!(banner.contains("no signing key configured"));
+    assert!(!banner.contains("Trust & Keys"));
+    assert!(!banner.contains("Glossary"));
 }
 
 #[test]

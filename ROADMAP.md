@@ -153,8 +153,8 @@ survived a release *inside the feature built for version honesty*: both renderin
 the tests asserted the same stale number. Both now read one shared source, guarded by tests that assert
 against a sentinel rather than the answer.
 
-**Next — the seal ceremony** ([RFC 016](rfcs/proposed/016-the-seal-ceremony.md), `FR-052` as
-amended). Then 0.4.0 is content-complete.
+**Then the seal ceremony** ([RFC 016](rfcs/done/016-the-seal-ceremony.md), `FR-052` as amended) — ✅
+shipped to `main` 2026-09-06. **0.4.0 is content-complete on its landing.**
 
 > **Queue review (`FR-051`) is not a separate increment**, and checking rather than assuming is why.
 > Its core clause — *"list queued patches with full patch detail"* — is **not satisfiable**: prikk
@@ -179,18 +179,27 @@ because the classifier matches what the messages *mean* rather than what they *s
 results transport whatever notes prikk actually printed. The re-baseline validates 0.32, retires
 `UD-01`, and corrects the copy.
 
-**Then queue review (`FR-051`) and the seal ceremony (`FR-052`, as amended)** — the second and third
-mutations.
+`FR-051` (queue review) did **not** become a fourth mutation: its core clause was amended (above) to
+what prikk can actually report, and that knowable half is already delivered, distributed rather than in
+a dedicated view — a Queue view waits on upstream queued-patch enumeration.
 
-Also carried into this release, both small and both found during review rather than planned:
-**19 rustdoc warnings** — several are public docs linking to private items, which render as dead
-references in the published API docs — and a **rustdoc lint gate in CI**, which prikk's own CI has and
-stikk's does not, so the count can only grow without one.
+**The prikk 0.33 re-baseline & classifier provenance** ([RFC 017](rfcs/done/017-prikk-0-33-rebaseline-and-classifier-provenance.md))
+— ✅ shipped to `main` 2026-09-06. Re-grounds five classifier arms that matched text prikk had never
+actually emitted, at any version, on live-captured output instead; corrects the commit path's
+full-queue precondition, previously misclassified as a lock conflict when the queue was simply full;
+and raises the validated ceiling to **0.33.0**.
 
-Mutations, always preview-first with tiered confirmation (`FR-120/121`):
+Also carried into 0.4.0's release prep, both found during review rather than planned: **23 rustdoc
+warnings** — several were public docs linking to private items, which render as dead references in the
+published API docs, grown from 19 while nothing gated them — fixed, and a **rustdoc lint gate added to
+CI**, which prikk's own CI has and stikk's previously did not.
 
-- **Queue review → seal ceremony** (`FR-051/052`), including the informed-consent
-  no-audit step and the capability gate re-checked at the seam.
+**0.4.0 shipped.** What it does not have, named rather than left implicit: a Trust & Keys view, the
+AUTHOR/MAINTAINER key-id display module (deferred out of RFC 014 into RFC 016 and carried past it,
+unbuilt), a Queue view, Compare, Patch detail, and verify/branches/merge — see "Later".
+
+## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
+
 - **Verify report browser and doctor/recovery** (`FR-100/101/102`), with the three-valued
   author-signature outcome rendered precisely (Sound / Unverifiable / a blocking failure) and locks
   never auto-cleared.
@@ -198,18 +207,16 @@ Mutations, always preview-first with tiered confirmation (`FR-120/121`):
   planning and materialization (`FR-053/054`).
 - **Merge evidence → plan → execution** (`FR-080…082`) and the **rollback flow** (`FR-083`) — the
   merge refusal path is where the explanation surface earns its place.
-
-## Later — session, exchange, trust, and the GUI
-
 - **Session persistence and progressive disclosure** (`FR-122`, `TU-12`): resume the focused ref, view
-  and filters; default vs. advanced depth. Cheap once RFC 003's fingerprint exists — and the increment
-  that finally gives `C-E2` (the *primary* control against writing inside a repository) a production
-  caller, which it does not have today.
-
+  and filters; default vs. advanced depth. Cheap now that RFC 003's change token exists — and the
+  increment that finally gives `C-E2` (the *primary* control against writing inside a repository) a
+  production caller, which it does not have today.
 - **Exchange**: bundle export/verify/import and the **sync assistant** (`FR-090…094`), with the input
   ceilings surfaced before an operation runs.
-- **Trust & keys** (`FR-103/104`): adopted maintainer keys, TOFU-conflict-as-security-event, and
-  signing readiness — still presence-only, still no seed ever stored.
+- **Trust & keys** (`FR-103/104`): the Trust & Keys view; the AUTHOR/MAINTAINER key-id display module
+  (RFC 014's review named it as a follow-up landing with the seal ceremony; RFC 016 shipped without it
+  — still unbuilt); adopted maintainer keys; TOFU-conflict-as-security-event; and signing readiness —
+  still presence-only, still no seed ever stored.
 - **The GUI** (`GU-01…09`): the same operations rendered natively, reaching TUI parity through the
   shared operation layer, with drag-and-drop constrained to prikk-legal targets.
 - **Internationalization** (en / ja / nb) and accessibility hardening across both frontends
@@ -236,18 +243,18 @@ issues for the prikk project (requirement `UD-01…UD-05`):
 
 | Dependency | prikk gap | stikk behavior meanwhile |
 |---|---|---|
-| `UD-01` | patch messages are discarded; no author display name | commit collects a message and says core does not persist it; history shows ids/keys/paths |
+| `UD-01` | **retired at prikk 0.32** — messages are stored (schema 4, tag 6) and `log` enumerates a patch id and message for every patch that carries one; no author display name either way (permanent, no-clock design) | stikk supports prikk on both sides of the boundary: the commit-message prompt's copy is version-conditional, and Block detail shows the id/message list a messaged patch carries, beside the block's own patch count |
 | `UD-02` | machine-readable output only on `verify` | the seam parses confined, version-gated output and refuses rather than guesses; never screen-scrapes unpinned prose |
 | `UD-03` | **resolved at prikk 0.28** (was a 0.27.x defect) | Changes uses `worktree-status` directly, version-gated at ≥ 0.28; below it stikk explains rather than runs it |
 | `UD-04` | the CLI panics on EPIPE | the seam drains output fully (already implemented) |
 | `UD-08` | **retired at prikk 0.29** — `.prikkignore` excludes matching paths from `commit`'s walk and `worktree-status`'s untracked scan | prikk filters ignored paths before reporting them; stikk keeps its display-only untracked filter for what remains, and no longer claims files cannot be excluded |
 | `UD-05` | **revised at prikk 0.28**: `0`/`1`/`2` (2 = usage error); exit 1 still covers refusal, dirty worktree and integrity failure alike | the seam classifies exit 1 by message + context; exit 2 is a stikk argument bug, surfaced as `stikk-internal` (RFC 009) |
-| `UD-09` | no per-patch content, no patch-id enumeration, no `show`/`diff` — `log` is block-level only (RFC 006) | History shows block lineage + a block's state file list; Patch detail (3b) waits; the gap is named where a user would open a patch |
+| `UD-09` | **narrowed, not retired, at prikk 0.32** — a messaged patch's *id* is now enumerable via `log`'s `patch <id>: <message>` line; its operations, preimages, and any machine-readable export remain absent; still no `show`/`diff` on an individual patch | History shows block lineage + a block's state file list; Block detail lists a messaged patch's id/message; Patch detail as a rendered diff (3b) still waits; the gap is named where a user would open a patch |
 
 ## Releases and versioning
 
 stikk versions independently of prikk and declares, per release, the prikk range it was validated
-against — currently **`>= 0.28`, validated through `0.30.0`** (`NFR-R03`; 0.27.x dropped by owner
+against — currently **`>= 0.28`, validated through `0.33.0`** (`NFR-R03`; 0.27.x dropped by owner
 ruling 2026-09-04, RFC 009). A prikk newer than the validated ceiling still runs, and stikk says the
 range is unvalidated rather than pretending to know it. Before a 1.0, the repository format and command surface of
 prikk are still moving, so stikk stays pre-1.0 too and treats its own APIs as unstable. Changes are

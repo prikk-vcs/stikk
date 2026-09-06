@@ -33,7 +33,24 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
     assert!(text.contains("Git")); // the Git → prikk section
     assert!(text.contains("HEAD")); // a load-bearing redirect
     assert!(text.contains("rollback")); // revert → rollback
-    assert!(text.contains("never writes")); // read-only assurance
+}
+
+/// RFC 018 F1: the panel claimed stikk "never writes your repository" four lines above the `C`/`S`
+/// keybindings that commit and seal — the false claim and its own refutation, in one screen. This pins
+/// the *shape* of that defect rather than one string: if the key list ever again shows a mutating
+/// keybinding, the header must not carry an absolute never-writes claim beside it. A future line could
+/// say something else false; this cannot catch that. It can catch this exact defect recurring, and it
+/// is the closest thing to pinning a claim this project has (RFC 018's "nothing pins a claim").
+#[test]
+fn glossary_never_writes_claim_cannot_stand_beside_mutating_keys() {
+    let text = draw(&Overlay::Glossary);
+    let shows_mutating_keys =
+        text.contains("commit worktree changes") && text.contains("seal the active WAL");
+    assert!(
+        shows_mutating_keys,
+        "glossary should list C/S — if it doesn't, this test is vacuous"
+    );
+    assert!(!text.to_lowercase().contains("never writes"));
 }
 
 #[test]

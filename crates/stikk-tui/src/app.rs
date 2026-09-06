@@ -1167,17 +1167,21 @@ impl App {
             Presentation::Banner { message, .. }
             | Presentation::RoutedIntoView { message, .. }
             | Presentation::InConfirmation { message } => self.banner = Some(message),
-            Presentation::InlineGuidance { detail, toward } => {
-                // RFC 012 F-b: the pointer is target-dependent — Trust & Keys is genuinely the fix for
-                // absent signing readiness, but says nothing useful for a prikk-version gate, whose
-                // `detail` is already the complete, actionable message on its own. The trust-refusal
-                // shape no longer reaches this arm at all (review v2, C1): its explanation needs room
-                // to wrap, which this one-line banner cannot give it, so `present()` routes it through
-                // `RefusalOverlay` above instead.
-                self.banner = Some(match toward {
-                    Target::TrustKeys => format!("{detail} — see Glossary → Trust & Keys"),
-                    _ => detail,
-                });
+            Presentation::InlineGuidance { detail, toward: _ } => {
+                // RFC 018 F2: this arm used to send `Target::TrustKeys` toward "see Glossary → Trust &
+                // Keys" — there is no such section (`Keys` names the keybinding table; a user following
+                // the old pointer after a signing-readiness refusal landed on what `j`/`k` do). A
+                // pointer to a place that does not exist costs a navigation to discover that; no pointer
+                // is the honest answer until `FR-104`'s Trust & Keys view exists to point at. `detail`
+                // is already the complete, actionable message on its own for every `toward` value today.
+                // The trust-refusal shape no longer reaches this arm at all (review v2, C1): its
+                // explanation needs room to wrap, which this one-line banner cannot give it, so
+                // `present()` routes it through `RefusalOverlay` above instead.
+                //
+                // `toward` stays load-bearing even though nothing here reads it: `present()`'s own
+                // classification (RFC 012 F-b) still distinguishes `PrikkVersion` from `TrustKeys`, and
+                // a future Trust & Keys view (`FR-104`) has somewhere real to route it once it exists.
+                self.banner = Some(detail);
             }
             Presentation::PlainStatement { detail, original } => {
                 self.banner = Some(match original {

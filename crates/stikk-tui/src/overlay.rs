@@ -229,9 +229,16 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
 }
 
 fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
+    // RFC 018 F1: the line this replaced ("stikk reads prikk; it never writes your repository") was
+    // true when written and false the moment stikk gained a mutation — anchored to a feature set, not
+    // to anything that could not change. A user-facing claim may rest on an invariant this project
+    // enforces (CON-1, C-E2); it must never rest on the set of features that happen to exist today. The
+    // replacement rests on CON-1: every repository write happens inside prikk itself, through its
+    // public surface, never as a direct write stikk performs — true before commit/seal existed, true
+    // after, and true of whatever mutation lands next.
     let mut lines: Vec<Line> = vec![
         Line::from(Span::styled(
-            "  stikk reads prikk; it never writes your repository.",
+            "  stikk drives prikk; every repository write happens inside prikk itself.",
             Style::default().fg(palette.dim),
         )),
         Line::from(""),

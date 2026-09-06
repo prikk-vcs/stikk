@@ -1,6 +1,6 @@
 # Handoff — the prikk 0.32 re-baseline (v1)
 
-**Companion to:** [RFC 015](../../accepted/015-prikk-0-32-rebaseline.md) (Accepted 2026-09-06).
+**Companion to:** [RFC 015](../../done/015-prikk-0-32-rebaseline.md) (Accepted 2026-09-06).
 Inherits its state.
 **Realizes:** the 0.4.0 increment after [RFC 014](../../done/014-commit-the-first-mutation.md).
 **Design items:** `UD-01` (retires), `UD-09` (narrows), `FR-011` (per-patch display), `ASM-2`/`NFR-R03`

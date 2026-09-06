@@ -29,9 +29,8 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Decision | Handoff |
-|----|-------|----------|---------|
-| 015 | [prikk 0.32 re-baseline](./accepted/015-prikk-0-32-rebaseline.md) | `UD-01` **retires** — messages are stored and `log` now enumerates patch ids, which stikk silently discards; `UD-09` **narrows** (ids yes, content still no). 0.4.0, next (2026-09-06) | [Re-baseline](./handoffs/015-prikk-0-32-rebaseline/rebaseline-handoff-v1.md) |
+_None currently — 0.4.0's remaining increments are **queue review** (`FR-051`) and the **seal ceremony**
+(`FR-052`, as amended). No RFC yet._
 
 ## Done (implemented)
 
@@ -42,6 +41,7 @@ _Design settled; implementer may start; work has not yet shipped._
 | 006 | [History & inspection seam](./done/006-history-and-inspection-seam.md) | 0.1.0 | Patch detail (`FR-030`), patch-id enumeration, diff-aware search — all `UD-09` | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |
 | 007 | [Explanation & discovery surface](./done/007-explanation-and-discovery-surface.md) | 0.1.0 | `RoutedIntoView`/`InConfirmation` renderers; merge/checkout/seal/trust next-steps + witness glossary; refusal-history persistence + `LC-8` gate | [Explanation surface](./handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md) |
 | 008 | [Worktree changes & the Compare ceiling](./done/008-worktree-changes-and-the-compare-ceiling.md) | 0.1.0 | Compare (`FR-033`); per-file content diffs (`UD-09`); the `C` commit action; status-bar worktree marker. **Amended by RFC 009** | [Changes view](./handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md) |
+| 015 | [prikk 0.32 re-baseline](./done/015-prikk-0-32-rebaseline.md) | 0.4.0 candidate (on `main`) | `FR-012`'s message filter (now possible); RFC 006 3b Patch detail (still blocked — `UD-09`'s content half); a message summary in the History row | [Re-baseline](./handoffs/015-prikk-0-32-rebaseline/rebaseline-handoff-v1.md) |
 | 014 | [Commit: the first mutation](./done/014-commit-the-first-mutation.md) | 0.4.0 candidate (on `main`) | AUTHOR key id in the confirmation (own module, not by weakening `env.rs`'s guard); the pre-commit `UD-01` copy, now false for prikk ≥ 0.32; `Declined`'s inline path | [Commit](./handoffs/014-commit-the-first-mutation/commit-handoff-v1.md) |
 | 013 | [Preview & tiered-confirmation machinery](./done/013-preview-and-confirmation-machinery.md) | 0.4.0 candidate (on `main`) | the `capability_gate`/palette unification — **must land before the first mutating palette command**; the `OPL-03` ceremony machines; `OPL-04`'s seam-side check | [Preview & confirm](./handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md) |
 | 003 | [Repository change token](./done/003-repository-change-token.md) | 0.4.0 candidate (on `main`) | the repository **fingerprint** — prikk has no repository identity by design; `INV-5` carries the protection it was meant to add | [Change token](./handoffs/003-repository-change-token/change-token-handoff-v1.md) |

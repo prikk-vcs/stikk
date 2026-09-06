@@ -1,6 +1,6 @@
 # RFC 015 — The prikk 0.32 re-baseline: `UD-01` retires and `UD-09` narrows
 
-**Status.** Accepted (2026-09-06, by the owner) — handoff:
+**Status.** Implemented (0.4.0 candidate; on `main` 2026-09-06, reviewed and approved) — handoff:
 [`../handoffs/015-prikk-0-32-rebaseline/rebaseline-handoff-v1.md`](../handoffs/015-prikk-0-32-rebaseline/rebaseline-handoff-v1.md).
 Originally proposed 2026-09-06 — re-baseline on prikk **0.32**, retire **`UD-01`**, narrow
 **`UD-09`**, and stop dropping information prikk now gives us. Not a version bump: two upstream
@@ -8,6 +8,11 @@ dependencies this project has carried since 0.1.0 have changed, and one of them 
 RFC 006 deferred.
 **Tracks.** `ASM-2`/`NFR-R03` (version honesty), `UD-01` (messages), `UD-09` (patch enumeration),
 `FR-011`/`FR-012` (per-patch display and filtering), and the standing obligation to re-validate.
+**Deferred, carried forward (not built by this RFC):** **`FR-012`'s message filter** — now *possible*
+(messages exist and are parsed) but its own increment; **RFC 006 increment 3b**, Patch detail as a
+rendered diff — **still blocked** on `UD-09`'s content half, which this RFC narrows but does not
+retire; and a **message summary in the History row** (Q1), deferred until real multi-patch blocks
+exist to design a summarization rule against.
 **Touches.** `stikk-prikk` (the `log` parser and its fixtures, a new refusal shape, the version
 ceiling), `stikk-core` (the history view-model), `stikk-tui` (History rendering), and the design set
 (`UD-01`, `UD-09`, `FR-011`, and the commit copy).

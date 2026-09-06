@@ -235,6 +235,36 @@ fn stale_names_the_operation_and_never_claims_prikk_reported_it() {
     assert!(text.contains("Preview again"));
 }
 
+/// Review v3's "before you push" item: `render_stale` had the same pre-C2 sizing pattern as
+/// `render_refusal` (a single `Paragraph` sized by `lines.len() + 6`, a logical-line count, not a
+/// wrapped-row count) — it happened to survive at ordinary sizes only because this card's gloss is
+/// always a fixed, stikk-authored constant, never lengthened by anything prikk sends. Confirmed
+/// clipped at 80×12 before this fix (the review's own measurement); this is the regression test for it,
+/// using the same two-region layout and the same fixed-size-backend pattern
+/// `trust_refusal_gloss_is_reachable_at_80_columns` established.
+#[test]
+fn stale_next_step_is_reachable_at_80x12() {
+    let overlay = Overlay::Stale {
+        operation: "commit".into(),
+        gloss: "Another writer moved something in this repository between your preview and now."
+            .into(),
+        next_steps: vec![NextStep {
+            label: "Preview again".into(),
+            target: NextTarget::Refresh,
+        }],
+        cursor: 0,
+    };
+    let backend = TestBackend::new(80, 12);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| render(&overlay, &Palette::default(), f, f.area()))
+        .unwrap();
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(text.contains("stikk stopped"));
+    assert!(text.contains("What you can do"));
+    assert!(text.contains("Preview again"));
+}
+
 #[test]
 fn an_ordinary_refusal_still_says_prikk_reported() {
     // The other half of the C1 regression: splitting `Stale` out must not have broken the label an

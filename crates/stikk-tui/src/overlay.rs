@@ -393,55 +393,63 @@ fn render_stale(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut lines: Vec<Line> = Vec::new();
+    // Same two-region layout `render_refusal` now uses (review v3, "before you push"): prose absorbs
+    // any shortfall in the height estimate, the next-step list gets its own exact height and cannot be
+    // clipped by construction. Today this card's gloss is always a fixed, stikk-authored constant (RFC
+    // 013 §5), so the old single-`Paragraph` shape happened to survive at ordinary sizes — but this
+    // overlay follows a mutation stopped mid-flight, and a card that clips its one action under
+    // pressure is not a card to leave fragile just because nothing has lengthened it yet.
 
     // ① stikk's own explanation — attributed to stikk, never to prikk (C-T2b/design-review C1).
-    lines.push(Line::from(Span::styled(
-        "  stikk stopped —",
-        Style::default().fg(palette.dim),
-    )));
-    lines.push(Line::from(vec![
-        Span::styled("  │ ", Style::default().fg(palette.warn)),
-        Span::styled(
-            inert(operation),
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            ": the repository changed since this was last previewed.",
-            Style::default().fg(palette.fg),
-        ),
-    ]));
-    lines.push(Line::from(""));
+    let mut prose: Vec<Line> = vec![
+        Line::from(Span::styled(
+            "  stikk stopped —",
+            Style::default().fg(palette.dim),
+        )),
+        Line::from(vec![
+            Span::styled("  │ ", Style::default().fg(palette.warn)),
+            Span::styled(
+                inert(operation),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                ": the repository changed since this was last previewed.",
+                Style::default().fg(palette.fg),
+            ),
+        ]),
+        Line::from(""),
+    ];
 
     // ② the gloss, in stikk's own voice — never quoted as if it were prikk's.
-    lines.push(Line::from(Span::styled(
+    prose.push(Line::from(Span::styled(
         format!("  {gloss}"),
         Style::default().fg(palette.dim),
     )));
-    lines.push(Line::from(""));
 
     // ③ next-steps — stikk-authored, selectable (C-T2b); always exactly one this increment (`Refresh`).
-    lines.push(Line::from(Span::styled(
+    // Their own region, below.
+    let mut actions: Vec<Line> = vec![Line::from(Span::styled(
         "  What you can do:",
         Style::default().fg(palette.dim),
-    )));
+    ))];
     for (i, step) in next_steps.iter().enumerate() {
-        lines.push(selectable(palette, i == cursor, step.label.clone()));
+        actions.push(selectable(palette, i == cursor, step.label.clone()));
     }
+    let actions_height = actions.len() as u16;
 
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" stikk stopped ")
         .style(Style::default().fg(palette.warn));
-    let height = (lines.len() as u16 + 6).min(area.height.saturating_sub(2));
+    let height = (prose.len() as u16 + actions_height + 12).min(area.height.saturating_sub(2));
     let region = centered(72, height.max(10), area);
     frame.render_widget(Clear, region);
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false }),
-        region,
-    );
+    let inner = block.inner(region);
+    frame.render_widget(block, region);
+    let [prose_area, actions_area] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(actions_height)]).areas(inner);
+    frame.render_widget(Paragraph::new(prose).wrap(Wrap { trim: false }), prose_area);
+    frame.render_widget(Paragraph::new(actions), actions_area);
 }
 
 fn render_palette(

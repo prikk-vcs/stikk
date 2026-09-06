@@ -9,17 +9,9 @@ for the first time found five failure-classifier arms keyed on text prikk has ne
 0.1.0, and one arm firing on a real precondition today with a gloss that contradicted prikk's own
 verbatim words beside it.
 
-### Fixed
-
-- **stikk no longer claims another writer is active when the queue is simply full** (RFC 017 F4). The
-  commit path's full-queue precondition was classified as a lock conflict, rendering "another writer is
-  active" directly above prikk's own "run `prikk seal`"; it now reaches its own honest explanation
-  instead — nothing is locked, seal the queue.
-- Five classifier arms keyed on text prikk has never emitted at any supported version are removed
-  (`FR-003`'s invented retired-format string among them, replaced with one grounded on a live-captured
-  migration message); each degrades safely to a verbatim refusal, exactly as designed.
-- A foreign directory's `Environment` classification is now grounded on the arm that actually catches
-  it, not the differently-worded arm originally written for it.
+The seal ceremony (RFC 016) — the first irreversible action stikk offers, built on top of a correction:
+investigating what sealing actually requires found that stikk's MAINTAINER readiness badge had been
+claiming something it could not check since 0.1.0.
 
 ### Added
 
@@ -29,6 +21,36 @@ verbatim words beside it.
   never invokes either and never quotes `setup`'s policy line.
 - Validated through prikk **0.33.0** (was 0.32.0) — no output shape changed; the parser fixtures were
   re-run against the real binary and independently confirmed unchanged at the source level.
+- **Seal.** Freezes the active WAL's queued patches into new, MAINTAINER-signed history — behind a
+  preview that prevents an empty queue or a wrong-ref target client-side, a tier-3 confirmation stating
+  plainly that a trust refusal is possible and that success is never promised, and a separate, unchecked,
+  undefaultable no-audit acknowledgement. Two deliberate acts, never collapsed into one keypress: the
+  confirmation and the acknowledgement are distinct screens, and the second cannot be skipped by a
+  reflexive `Enter` carried over from the first (RFC 016).
+
+### Fixed
+
+- **stikk no longer claims another writer is active when the queue is simply full** (RFC 017 F4). The
+  commit path's full-queue precondition was classified as a lock conflict, rendering "another writer is
+  active" directly above prikk's own "run `prikk seal`"; it now reaches its own honest explanation
+  instead — nothing is locked, seal the queue. It now also offers to seal directly.
+- Five classifier arms keyed on text prikk has never emitted at any supported version are removed
+  (`FR-003`'s invented retired-format string among them, replaced with one grounded on a live-captured
+  migration message); each degrades safely to a verbatim refusal, exactly as designed.
+- A foreign directory's `Environment` classification is now grounded on the arm that actually catches
+  it, not the differently-worded arm originally written for it.
+- **The `[MNT]` badge has been claiming a readiness it could not verify since 0.1.0.** It showed
+  MAINTAINER as ready from signing-key presence alone, never checking whether the repository's trust
+  policy had actually adopted that key — a fact no currently supported prikk exposes a way to check
+  either. The badge is now three-valued: `✓` (adopted), `–` (no key material), `?` (key material
+  present, adoption unverifiable on any supported prikk). `?` never renders as a pass (RFC 016).
+- A trust refusal reaching the seal ceremony now names what adoption actually requires (`prikk trust
+  maintainer add`, done outside stikk) and admits stikk cannot verify it afterwards — rather than
+  degrading to a bare, unexplained refusal.
+- A refusal card's next-step (e.g. schema skew's "Upgrade prikk") could be silently clipped off screen
+  by a long gloss or verbatim message at ordinary terminal widths — shipping since 0.3.0, caught while
+  building the seal ceremony's own trust-refusal card. Every refusal card's next-step list now has its
+  own region, sized exactly and never squeezed out by wrapped prose.
 
 ## 0.3.0 — 2026-09-05
 

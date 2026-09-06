@@ -122,17 +122,17 @@ pub enum Presentation {
         /// Where to jump to act on it (renderer lands with the target's view).
         jump: Option<Target>,
     },
-    /// Inline guidance toward a surface (not-ready → Trust &amp; Keys).
+    /// Inline guidance toward a surface (not-ready → Trust &amp; Keys). A **one-line, non-wrapping**
+    /// presentation (`shell.rs::render_banner`) — reserved for guidance short enough to fit that shape.
+    /// The trust-refusal message shape does not fit it (RFC 016 §9, v2 correction) and routes through
+    /// [`Presentation::RefusalOverlay`] instead, below, even though its `StikkError` class stays
+    /// `NotReady` (RFC 017 decision 7): the presentation varies with what the content needs to say, the
+    /// class does not have to.
     InlineGuidance {
-        /// What is missing — prikk's verbatim words when it has any (a trust refusal), or stikk's own
-        /// short statement when it does not (absent key material; the version gate).
+        /// What is missing, in stikk's own short words.
         detail: String,
         /// The surface that resolves it.
         toward: Target,
-        /// stikk's own explanation, additive and separate from `detail` — never a rewrite (`ER-02`,
-        /// the same discipline [`RefusalCard::gloss`] follows). `None` where stikk has nothing honest
-        /// to add beyond `detail` itself (RR-5).
-        gloss: Option<String>,
     },
     /// Routed into a content view, never a popup (integrity-finding → Verify/Doctor).
     RoutedIntoView {
@@ -246,13 +246,47 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
             jump: None,
         },
         StikkError::NotReady { detail } => {
-            // The trust-refusal shape (RFC 017 F5/F6; RFC 016 §9) — matched on the same clauses
-            // `classify.rs`'s `is_trust_not_ready` uses, never a new class: this is a *gloss*, layered
-            // beside prikk's verbatim `detail` exactly like the schema-skew/full-queue shapes are
-            // layered onto `Refusal` above, not a next-step derived from the message (`C-T2b` is about
-            // actions, not explanatory prose keyed on a stable, captured shape).
-            let is_trust_refusal =
-                detail.contains("is not trusted by policy") || detail.contains("does not match trusted key");
+            // The trust-refusal shape (RFC 017 F5/F6; RFC 016 §9, corrected in review v2) — matched on
+            // the same clauses `classify.rs`'s `is_trust_not_ready` uses, never a new class. **Not**
+            // `InlineGuidance`: v1 appended a several-hundred-character gloss to it and
+            // `shell.rs::render_banner` is a one-row, non-wrapping banner — the sentence this exists to
+            // deliver was off-screen at every realistic terminal width, and the render test that would
+            // have caught it never existed (only `app.banner()`, the `String`, was asserted on). This
+            // reuses `RefusalOverlay`'s existing wrap-capable, attribution-preserving rendering
+            // instead — the same shape `Refusal` already gets, even though the class stays `NotReady`
+            // (RFC 017 decision 7): presentation varies with what the content needs to say wrap-wise,
+            // not with the class.
+            if detail.contains("is not trusted by policy") || detail.contains("does not match trusted key")
+            {
+                return Presentation::RefusalOverlay(RefusalCard {
+                    verbatim: detail.clone(),
+                    // Says what actually has to happen (adopt the key outside stikk) and admits what
+                    // stikk cannot do (verify adoption afterwards, on any supported prikk) — so a user
+                    // who adopts the key and comes back to an unchanged `Unknown` badge does not think
+                    // stikk is broken. The full explanation also lives in `TRUST_REFUSAL_CODE`'s
+                    // glossary entry (FR-111), linked below.
+                    gloss: Some(
+                        "The MAINTAINER key named above must be adopted in this repository's trust \
+                         policy — object trust, not ref authority — which is done outside stikk \
+                         (`prikk trust maintainer add`). stikk cannot verify adoption afterwards on \
+                         any supported prikk: the badge may still read \"adoption unknown\" once the \
+                         key genuinely is trusted."
+                            .to_string(),
+                    ),
+                    // No Trust & Keys view exists to jump to yet (`Target::TrustKeys`'s own doc: the
+                    // renderer lands with trust) — a re-check is the one honest, non-mutating action
+                    // available today, the same posture the full-queue refusal held before RFC 016
+                    // gave it somewhere real to go.
+                    next_steps: vec![NextStep {
+                        label: "Refresh".to_string(),
+                        target: NextTarget::Refresh,
+                    }],
+                    glossary_codes: glossary::codes_in(detail)
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect(),
+                });
+            }
             Presentation::InlineGuidance {
                 detail: detail.clone(),
                 // `NotReady` is overloaded for two unrelated conditions (RFC 012 F-b): absent signing
@@ -265,17 +299,6 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
                     OperationContext::LoadChanges => Target::PrikkVersion,
                     _ => Target::TrustKeys,
                 },
-                // RFC 016 §9: say what actually has to happen (adopt the key outside stikk), and admit
-                // what stikk cannot do (verify adoption afterwards, on any supported prikk) — so a user
-                // who adopts the key and comes back to an unchanged `Unknown` badge does not think
-                // stikk is broken. `None` for every other `NotReady` — RR-5, nothing invented.
-                gloss: is_trust_refusal.then(|| {
-                    "The MAINTAINER key named above must be adopted in this repository's trust policy \
-                     — object trust, not ref authority — which is done outside stikk (`prikk trust \
-                     maintainer add`). stikk cannot verify adoption afterwards on any supported prikk: \
-                     the badge may still read \"adoption unknown\" once the key genuinely is trusted."
-                        .to_string()
-                }),
             }
         }
         StikkError::IntegrityFinding { message } => Presentation::RoutedIntoView {

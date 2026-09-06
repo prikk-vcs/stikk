@@ -63,18 +63,21 @@ fn not_ready_is_inline_guidance_toward_trust() {
         detail: "MAINTAINER key not ready".into(),
     };
     match present(&err, OperationContext::Other) {
-        Presentation::InlineGuidance { toward, gloss, .. } => {
-            assert_eq!(toward, Target::TrustKeys);
-            // Not a trust refusal — RR-5, nothing invented.
-            assert!(gloss.is_none());
-        }
+        Presentation::InlineGuidance { toward, .. } => assert_eq!(toward, Target::TrustKeys),
         other => panic!("expected InlineGuidance, got {other:?}"),
     }
 }
 
+/// The acceptance-critical fix (review v2, C1): v1 appended the trust-refusal gloss to
+/// `InlineGuidance`'s `detail`, which `shell.rs::render_banner` shows in a single, non-wrapping row —
+/// off-screen at every realistic terminal width, unnoticed because the old test asserted on
+/// `app.banner()`'s `String`, never on what a `TestBackend` cell actually shows. This is now a
+/// `RefusalOverlay`, whose renderer already wraps and keeps `verbatim`/`gloss` visually distinct — see
+/// `crates/stikk-tui/src/overlay/tests.rs`'s `trust_refusal_gloss_is_reachable_at_80_columns` for the
+/// render-level proof this fix asked for.
 #[test]
-fn a_trust_refusal_gets_adoption_guidance_admitting_what_stikk_cannot_verify() {
-    // RFC 016 §9 / RFC 017 F5's other half: both captured wordings must get the same gloss.
+fn a_trust_refusal_gets_a_refusal_overlay_not_a_cramped_banner() {
+    // RFC 016 §9 / RFC 017 F5's other half: both captured wordings must get the same treatment.
     for message in [
         "invalid signature: maintainer signer key id different-maintainer is not trusted by policy",
         "invalid signature: maintainer signer public key does not match trusted key maintainer",
@@ -82,35 +85,37 @@ fn a_trust_refusal_gets_adoption_guidance_admitting_what_stikk_cannot_verify() {
         let err = StikkError::NotReady {
             detail: message.to_string(),
         };
-        match present(&err, OperationContext::Other) {
-            Presentation::InlineGuidance {
-                detail,
-                toward,
-                gloss,
-            } => {
-                assert_eq!(detail, message); // ER-02: prikk's verbatim words, untouched
-                assert_eq!(toward, Target::TrustKeys);
-                let gloss = gloss.expect("a trust refusal must get adoption guidance");
-                assert!(gloss.contains("adopted"));
-                assert!(gloss.contains("object trust"));
-                assert!(!gloss.to_ascii_lowercase().contains("may publish"));
-                assert!(gloss.contains("cannot verify"));
-            }
-            other => panic!("expected InlineGuidance, got {other:?}"),
-        }
+        let card = match present(&err, OperationContext::Other) {
+            Presentation::RefusalOverlay(card) => card,
+            other => panic!("expected RefusalOverlay, got {other:?}"),
+        };
+        assert_eq!(card.verbatim, message); // ER-02: prikk's verbatim words, untouched
+        let gloss = card
+            .gloss
+            .expect("a trust refusal must get adoption guidance");
+        assert!(gloss.contains("adopted"));
+        assert!(gloss.contains("object trust"));
+        assert!(!gloss.to_ascii_lowercase().contains("may publish"));
+        assert!(gloss.contains("cannot verify"));
+        assert!(
+            card.glossary_codes
+                .contains(&"maintainer signer".to_string())
+        );
+        assert_eq!(card.next_steps.len(), 1);
+        assert_eq!(card.next_steps[0].target, NextTarget::Refresh);
     }
 }
 
 #[test]
-fn an_absent_signing_key_gets_no_adoption_gloss() {
-    // The narrow-match discipline (C-T2b): only the two captured trust-refusal clauses get the gloss —
-    // a plain absent-key message must not accidentally match a substring and invent guidance for it.
+fn an_absent_signing_key_stays_inline_guidance_not_a_refusal_overlay() {
+    // The narrow-match discipline (C-T2b): only the two captured trust-refusal clauses get the
+    // overlay treatment — a plain absent-key message must still take the ordinary, short-banner path.
     let err = StikkError::NotReady {
         detail: "author signing is required: set PRIKK_AUTHOR_KEY_ID (no signing key configured)"
             .to_string(),
     };
     match present(&err, OperationContext::Other) {
-        Presentation::InlineGuidance { gloss, .. } => assert!(gloss.is_none()),
+        Presentation::InlineGuidance { toward, .. } => assert_eq!(toward, Target::TrustKeys),
         other => panic!("expected InlineGuidance, got {other:?}"),
     }
 }

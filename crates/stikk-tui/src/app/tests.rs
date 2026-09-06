@@ -1515,8 +1515,9 @@ fn a_successful_seal_shows_the_result_verbatim_and_refreshes_orientation() {
 
 #[test]
 fn a_trust_refusal_mid_ceremony_surfaces_with_adoption_guidance() {
-    // RFC 016 §9: the trust refusal must reach the ceremony as `NotReady` with adoption guidance, not
-    // a bare refusal.
+    // RFC 016 §9 (corrected in review v2, C1): the trust refusal must reach the ceremony as `NotReady`
+    // with adoption guidance in a `RefusalOverlay` it can actually be read in — not a `NotReady` bare
+    // detail, and not the cramped one-line banner v1 shipped, which cut the guidance off entirely.
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
@@ -1542,10 +1543,14 @@ fn a_trust_refusal_mid_ceremony_surfaces_with_adoption_guidance() {
                 .to_string(),
         })),
     });
-    assert!(
-        app.banner()
-            .is_some_and(|b| b.contains("is not trusted by policy") && b.contains("adopted"))
-    );
+    assert!(app.banner().is_none());
+    match app.top_overlay() {
+        Some(Overlay::Refusal { card, .. }) => {
+            assert!(card.verbatim.contains("is not trusted by policy"));
+            assert!(card.gloss.as_deref().is_some_and(|g| g.contains("adopted")));
+        }
+        other => panic!("expected a Refusal-shaped overlay for the trust refusal, got {other:?}"),
+    }
 }
 
 #[test]

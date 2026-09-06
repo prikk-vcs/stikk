@@ -121,6 +121,13 @@ pub(crate) const BUNDLE_DECODE_SKEW_CODE: &str = "canonical encoding error: unkn
 /// telling the user to seal. Deliberately not the queue count or the configured limit, which vary.
 pub(crate) const FULL_QUEUE_CODE: &str = "at or above the configured limit";
 
+/// The substring both of prikk's maintainer trust refusals share (RFC 016 §9/v2; RFC 017 F5), captured
+/// live at both 0.28.0 and 0.33.0: `"maintainer signer key id … is not trusted by policy"` and
+/// `"maintainer signer public key does not match trusted key …"`. Deliberately not either full clause —
+/// matching the shorter, shared fragment means one code covers both captured wordings rather than two,
+/// and neither wording's own key id is part of the match.
+pub(crate) const TRUST_REFUSAL_CODE: &str = "maintainer signer";
+
 /// Code entries (witness/finding). A representative sample now; the full sets land with FR-080/FR-100.
 static CODE_ENTRIES: &[GlossaryEntry] = &[
     GlossaryEntry {
@@ -170,6 +177,19 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
                       as many patches as it is configured to allow, and prikk refuses to add another \
                       one until the queue is sealed (RFC 017 F4). Seal the queue — or, if you control \
                       the threshold, raise `PRIKK_ACTIVE_PATCH_LIMIT` — then retry.",
+        see_also: &[],
+    },
+    GlossaryEntry {
+        code: TRUST_REFUSAL_CODE,
+        title: "The maintainer key is not adopted",
+        explanation: "This is object trust, not ref authority: prikk accepts an adopted key's \
+                      signatures on objects, but adopting a key never lets it move a ref (RFC 016 §3, \
+                      amended on prikk's reply). The key named above must be adopted in this \
+                      repository's trust policy, which is done outside stikk (`prikk trust maintainer \
+                      add`) — stikk never generates, reads, or adopts key material itself (`C-I1e`). \
+                      stikk cannot verify adoption afterwards on any supported prikk (RFC 016 F3): the \
+                      `[MNT]` badge may still read \"adoption unknown\" once the key genuinely is \
+                      trusted, and that is not stikk reporting a failure.",
         see_also: &[],
     },
 ];

@@ -6,9 +6,10 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 use stikk_core::{
-    ConfirmationSummary, NextStep, NextTarget, OperationContext, RefusalCard, RefusalRecord, Target,
+    ConfirmationSummary, NextStep, NextTarget, OperationContext, Presentation, RefusalCard,
+    RefusalRecord, Target, present,
 };
-use stikk_model::{Capability, Tier};
+use stikk_model::{Capability, StikkError, Tier};
 
 use super::*;
 use crate::test_util::buffer_text;
@@ -82,6 +83,52 @@ fn refusal_shows_verbatim_gloss_and_next_steps() {
     assert!(text.contains("What you can do"));
     assert!(text.contains("Choose another ref")); // a stikk-authored next-step
     assert!(text.contains("Refresh"));
+}
+
+/// The acceptance-critical render test review v2 (C1) asked for: v1's fix was correct in the data
+/// model — `present()` already produced prikk's verbatim `detail` and stikk's own separate `gloss` —
+/// but nothing checked what actually reached a cell, and `InlineGuidance`'s one-row, non-wrapping
+/// banner cut the gloss off entirely at every realistic terminal width. This drives the *real*
+/// `present()` (not a hand-built `RefusalCard`) at a plain **80-column** `TestBackend` — the width the
+/// review measured the failure at — and checks the gloss's key sentence in short fragments rather than
+/// as one long contiguous string, since the fix makes it wrap across several rows (and
+/// `buffer_text` joins rows with `\n`, so a long contiguous match would fail for the same
+/// reason `seal_consent_shows_the_copy_and_the_unacknowledged_mark` checks fragments, not the whole
+/// string).
+#[test]
+fn trust_refusal_gloss_is_reachable_at_80_columns() {
+    let err = StikkError::NotReady {
+        detail:
+            "invalid signature: maintainer signer key id different-maintainer is not trusted by \
+                 policy"
+                .to_string(),
+    };
+    let card = match present(&err, OperationContext::Other) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    let overlay = Overlay::Refusal { card, cursor: 0 };
+
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| render(&overlay, &Palette::default(), f, f.area()))
+        .unwrap();
+    let text = buffer_text(terminal.backend().buffer());
+
+    // prikk's own words, verbatim.
+    assert!(text.contains("maintainer signer key id"));
+    assert!(text.contains("is not trusted by policy"));
+    // The key sentence RFC 016 §9 exists to deliver — reachable, in fragments a wrap point cannot
+    // plausibly split (each is a single word or a short, tightly-bound phrase).
+    assert!(text.contains("adopted"));
+    assert!(text.contains("object trust"));
+    assert!(text.contains("cannot verify"));
+    assert!(text.contains("adoption"));
+    assert!(text.contains("unknown"));
+    // Attribution stays distinguishable: prikk's line is quoted, stikk's is separate prose below it —
+    // not flattened into one run the way the v1 banner joined them with em-dashes.
+    assert!(text.contains("prikk reported"));
 }
 
 #[test]

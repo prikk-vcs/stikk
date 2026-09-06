@@ -89,3 +89,23 @@ fn the_full_queue_code_resolves_and_links_from_a_real_refusal() {
     );
     assert_eq!(named, vec![FULL_QUEUE_CODE]);
 }
+
+#[test]
+fn the_trust_refusal_code_resolves_and_links_from_both_captured_wordings() {
+    // RFC 016 §9/v2 — captured live against real prikk 0.28.0 and 0.33.0 binaries on the seal path.
+    let entry = lookup(TRUST_REFUSAL_CODE).expect("seeded code");
+    assert!(entry.explanation.contains("object trust"));
+    assert!(
+        !entry
+            .explanation
+            .to_ascii_lowercase()
+            .contains("may publish")
+    );
+    assert!(entry.explanation.contains("cannot verify"));
+    for message in [
+        "invalid signature: maintainer signer key id different-maintainer is not trusted by policy",
+        "invalid signature: maintainer signer public key does not match trusted key maintainer",
+    ] {
+        assert_eq!(codes_in(message), vec![TRUST_REFUSAL_CODE]);
+    }
+}

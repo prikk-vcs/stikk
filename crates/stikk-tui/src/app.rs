@@ -1165,24 +1165,16 @@ impl App {
             Presentation::Banner { message, .. }
             | Presentation::RoutedIntoView { message, .. }
             | Presentation::InConfirmation { message } => self.banner = Some(message),
-            Presentation::InlineGuidance {
-                detail,
-                toward,
-                gloss,
-            } => {
+            Presentation::InlineGuidance { detail, toward } => {
                 // RFC 012 F-b: the pointer is target-dependent — Trust & Keys is genuinely the fix for
                 // absent signing readiness, but says nothing useful for a prikk-version gate, whose
-                // `detail` is already the complete, actionable message on its own. RFC 016 §9: `gloss`,
-                // when present (the trust-refusal shape), is stikk's own addition — appended after the
-                // pointer, never merged into `detail` itself (`ER-02`: `detail` is prikk's verbatim
-                // words where it has any).
-                let base = match toward {
+                // `detail` is already the complete, actionable message on its own. The trust-refusal
+                // shape no longer reaches this arm at all (review v2, C1): its explanation needs room
+                // to wrap, which this one-line banner cannot give it, so `present()` routes it through
+                // `RefusalOverlay` above instead.
+                self.banner = Some(match toward {
                     Target::TrustKeys => format!("{detail} — see Glossary → Trust & Keys"),
                     _ => detail,
-                };
-                self.banner = Some(match gloss {
-                    Some(gloss) => format!("{base} — {gloss}"),
-                    None => base,
                 });
             }
             Presentation::PlainStatement { detail, original } => {

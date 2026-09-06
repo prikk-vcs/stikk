@@ -1,6 +1,6 @@
 # RFC 019 — The real-binary integration suite, and what four releases were verified by
 
-**Status.** Proposed (2026-09-06). Opens 0.5.0. Deferred since **RFC 009** as *"acceptable"*; that
+**Status.** **Accepted by the project owner 2026-09-06.** Proposed the same day. Opens 0.5.0. Deferred since **RFC 009** as *"acceptable"*; that
 judgement was made about a read-only product and **0.4.0 mutates repositories that hold people's
 work.** The owner accepted shipping 0.4.0 without it on my recommendation, on the explicit
 understanding it becomes 0.5.0's first increment.
@@ -98,7 +98,29 @@ automatically widens what is tested.
 
 ## Open questions
 
-**Q1 — when does it run?** Nightly, on demand, or on every release-prep increment? Nightly finds
+### Both ruled by the architect, 2026-09-06
+
+**The owner accepted without answering these, and neither needed them.** Both are scheduling and cost
+decisions, which is the architect's remit under the owner's standing ruling (*"to make schedule and
+manage release cycles is your role"*). Ruled below; if the owner intended otherwise they can say so
+and these move.
+
+**Q1 RULED: on demand, and required in release prep. No nightly yet.** The release-prep requirement is
+the binding half — that is where the risk actually materializes, and it puts a human in front of the
+output, which §Decisions 4 depends on. **Nightly is deferred until someone owns its failures**, because
+a nightly that reddens for an upstream reason and gets muted is worse than no nightly: it creates
+assurance nobody is actually providing. Revisit when the suite has a maintainer, not on a schedule.
+
+**Q2 RULED: Linux for the routine run; the full `NFR-T01` matrix in release prep.** Every finding this
+project has made against a real binary has been platform-independent — but **RFC 012 F-c found that
+0.1.0 and 0.2.0 shipped binaries for macOS and Windows without ever resolving paths on them**, and that
+was caught by review, not by test. Platform-specific breaks here are real and have gone unnoticed
+before. Release prep is where the full matrix earns its cost, and it is cheap there because it runs
+once.
+
+---
+
+**Q1 (original) — when does it run?** Nightly, on demand, or on every release-prep increment? Nightly finds
 upstream drift without anyone asking, and prikk has shipped seven releases in this project's lifetime,
 so drift is the normal case rather than the exception. Against: a nightly that fails for an upstream
 reason and is muted becomes worse than nothing. **My lean: on demand + required in release prep, with

@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 019 | [The real-binary integration suite](./proposed/019-the-real-binary-integration-suite.md) | **Nothing in stikk's CI has ever run prikk.** Four releases — including the one that writes — were verified by hand, in review requests. Deferred since RFC 009 as acceptable for a read-only product. **Opens 0.5.0** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -32,6 +31,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
+| 019 | [The real-binary integration suite](./accepted/019-the-real-binary-integration-suite.md) | **Nothing in stikk's CI has ever run prikk.** Four releases — including the one that writes — verified by a manual ritual that left no artefact. **Accepted 2026-09-06, both open questions ruled; opens 0.5.0** | [Integration suite](./handoffs/019-the-real-binary-integration-suite/integration-suite-handoff-v1.md) |
 | 018 | [Post-0.4.0 correctness sweep](./accepted/018-post-0-4-0-correctness-sweep.md) | **0.4.0 shipped a Glossary saying stikk "never writes your repository" — four lines above the `C` and `S` keybindings for commit and seal.** Plus a "Trust & Keys" pointer that lands on the keyboard-shortcut table, and `ROADMAP.md` outside every version grep. **Accepted 2026-09-06 → 0.4.1** | [Correctness sweep](./handoffs/018-post-0-4-0-correctness-sweep/correctness-sweep-handoff-v1.md) |
 
 **RFC 016 has shipped — 0.4.0 is content-complete** — on its landing, 0.4.0 is content-complete. `FR-051` (queue

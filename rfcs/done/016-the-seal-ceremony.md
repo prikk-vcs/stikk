@@ -1,6 +1,6 @@
 # RFC 016 — The seal ceremony, and the readiness stikk has been over-claiming
 
-**Status.** **Accepted by the project owner 2026-09-06**, behind RFC 017 (now done). Originally proposed 2026-09-06 — the most consequential action stikk will ever offer: freezing
+**Status.** **Done** — shipped on `main` as a 0.4.0 candidate, 2026-09-06 (`b71c7c9` + `3b511aa` + `56fe249`), after three review rounds. Accepted by the project owner 2026-09-06 behind RFC 017; originally proposed 2026-09-06 — the most consequential action stikk will ever offer: freezing
 queued patches into immutable, MAINTAINER-signed history. Investigating it found that **stikk's
 MAINTAINER readiness badge claims something it cannot know**, which must be fixed before the ceremony
 can honestly gate on it.
@@ -255,3 +255,23 @@ no lock across think-time (`NFR-R02`, `CT-05`).
 - Three requirements now stand amended against prikk's real surface (`FR-051`, `FR-052`, `FR-103`),
   each with the upstream ask that would restore it recorded rather than the requirement quietly
   under-delivered.
+
+
+## Carried forward, recorded at completion 2026-09-06
+
+- **The other seven gated operations.** `MaintainerReadiness` is built for all eight; merge, both sync
+  paths, adopt-tag, tag create, branch create and branch close are unbuilt. Each lands with its own
+  increment and needs no change to the type.
+- **`MaintainerReadiness::Ready` is unconstructible** until prikk releases `trust maintainer check`
+  (their RFC 138 — accepted and ruled, unreleased). Q1's robustness claim is untested until then, and
+  `Unknown` stays reachable afterwards for every session below stikk's support floor.
+- **`Target::TrustKeys` has no renderer.** The trust-refusal card points toward Trust & Keys and offers
+  `Refresh` as its only action, because the view does not exist yet.
+- **🔎 Found during review: no `GlossaryEntry`'s `explanation` is rendered anywhere.** `render_glossary`
+  shows the key list and the Git→prikk terminology only; `glossary_codes` surfaces a code's *name* on a
+  refusal card, never its text. **Four codes now ship with explanations no user can read**
+  (`.prikkignore`, `SCHEMA_SKEW_CODE`, `FULL_QUEUE_CODE`, `TRUST_REFUSAL_CODE`), and this increment
+  added the fourth. That is `FR-111`'s unbuilt half, and it was found only because a review suggestion
+  assumed the surface existed. **It should be scheduled, not carried indefinitely** — the entries are
+  written, tested, and inert.
+- **`render_stale`'s sizing** — folded into this increment's push rather than deferred (review v3).

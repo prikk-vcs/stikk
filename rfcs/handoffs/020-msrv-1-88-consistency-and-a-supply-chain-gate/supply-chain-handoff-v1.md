@@ -94,6 +94,13 @@ Same discipline as `validated_ceiling_display()` for the prikk ceiling and RFC 0
 **If some workflow genuinely cannot do this**, say which and why rather than half-applying it — four
 derived and one hardcoded is worse than five hardcoded, because it looks solved.
 
+**One more copy, found reviewing `b0064b6`:** the root `Cargo.toml` now explains why MSRV is 1.88 in
+**two** places — the `rust-version` block at lines 8–11, and again in the ratatui comment that commit
+moved up from `stikk-tui`. Both are true; neither is load-bearing; they will drift the next time the
+number moves. **Have the ratatui comment point at the `rust-version` rationale rather than restate it.**
+Prose, not a functional copy — but it is this increment's own subject, in the file this increment is
+about.
+
 ## 5. The changelog
 
 `## Unreleased` currently has no entry for either of the two changes already on `main`. Both are

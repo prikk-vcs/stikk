@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 020 | [MSRV 1.88 consistency & a supply-chain gate](./proposed/020-msrv-1-88-consistency-and-a-supply-chain-gate.md) | The owner's security fix raised MSRV to 1.88; **two workflows still pin 1.85** — the real-binary suite is broken and **the next release would fail at tag time**. Plus: nothing in CI would have found the advisory |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

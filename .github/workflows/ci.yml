@@ -10,10 +10,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust (pinned MSRV)
+      - name: Read the MSRV from Cargo.toml, never restate it
+        # RFC 020 §4: the number appeared in five places at once and three of them went stale the day
+        # it moved. One source (`Cargo.toml`'s `rust-version`), read here — the same discipline
+        # `validated_ceiling_display()` holds for the prikk ceiling and RFC 019's `print_version_matrix`
+        # holds for the version matrix.
+        id: msrv
+        run: echo "v=$(grep '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Install Rust (derived MSRV)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.88"
+          toolchain: ${{ steps.msrv.outputs.v }}
           components: rustfmt, clippy
       - name: Format
         run: cargo fmt --all -- --check

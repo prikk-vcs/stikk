@@ -22,12 +22,19 @@ jobs:
     outputs:
       floor: ${{ steps.matrix.outputs.floor }}
       ceiling: ${{ steps.matrix.outputs.ceiling }}
+      msrv: ${{ steps.msrv.outputs.v }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust (pinned MSRV)
+      - name: Read the MSRV from Cargo.toml, never restate it
+        # RFC 020 §4: derived once here (this job always runs on ubuntu-latest, so a plain grep/cut
+        # works) and passed to the platform-matrix job below, rather than re-derived per OS — the
+        # `real-binary` job's matrix includes Windows, whose default shell is not bash.
+        id: msrv
+        run: echo "v=$(grep '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Install Rust (derived MSRV)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.88"
+          toolchain: ${{ steps.msrv.outputs.v }}
       - name: Read the range from stikk-prikk::version, never hardcode it here
         id: matrix
         # RFC 019 §6: derived from `supported_minor_range`, not written in this workflow — raising the
@@ -47,10 +54,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust (pinned MSRV)
+      - name: Install Rust (derived MSRV)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.88"
+          toolchain: ${{ needs.determine-matrix.outputs.msrv }}
       - name: Install prikk (floor — ${{ needs.determine-matrix.outputs.floor }})
         run: cargo install prikk --version ${{ needs.determine-matrix.outputs.floor }} --locked --root ${{ runner.temp }}/prikk-floor
       - name: Install prikk (ceiling — ${{ needs.determine-matrix.outputs.ceiling }})

@@ -1,0 +1,43 @@
+# The supply-chain gate (RFC 020 F4). One tool, one config, one report: advisories (the reason this
+# exists — RUSTSEC-2026-0009 was found by a person reading a report, not by anything in CI) and
+# licenses (stikk publishes six Apache-2.0 crates; a copyleft dependency arriving transitively is a
+# problem nobody here is currently positioned to notice) in the same run.
+#
+# Runs only in `.github/workflows/supply-chain.yml` (`workflow_dispatch`, never on push/PR — RFC 019's
+# own reasoning: a gate that fails for an upstream reason overnight must not redden an unrelated PR) and
+# is required, read by a human, in release prep (`.git-exclude/specs/02-implementer-handoff.md` §5c).
+#
+# Every `[advisories] ignore` entry below must carry a dated reason and what would let it be removed —
+# an ignore list without both becomes permanent by default, indistinguishable from an unnoticed advisory.
+
+[graph]
+all-features = false
+no-default-features = false
+
+[advisories]
+ignore = []
+
+[licenses]
+# The exact set of licenses actually in the tree today (`cargo deny list`), not a generic permissive
+# preset — an addition here should mean a new license genuinely arrived, not a guess at what might.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -2,6 +2,20 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position; these land in 0.5.0:
+
+- **The minimum supported Rust version is now 1.88** (was 1.85). Raised to clear
+  [`RUSTSEC-2026-0009`](https://rustsec.org/advisories/RUSTSEC-2026-0009.html), a parsing DoS in the
+  `time` crate that stikk carries transitively through ratatui's calendar widget (never rendered, but
+  not optional in the facade stikk depends on) — the fix needs `time >= 0.3.47`, which needs Rust 1.88.
+  A consumer on an older toolchain can see plainly what they're being asked to trade for.
+- **ratatui 0.29 → 0.30**, the dependency the MSRV raise rode in on. A rendering-layer major with no
+  stikk API changes from it — stated explicitly rather than left for a reader to infer.
+
 ## 0.4.1 — 2026-09-06
 
 ### Fixed

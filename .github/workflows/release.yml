@@ -58,10 +58,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust (pinned MSRV)
+      - name: Read the MSRV from Cargo.toml, never restate it
+        # RFC 020 §4/F1: this pin read 1.85 after the workspace MSRV moved to 1.88, which would have
+        # failed a release at tag time — after the tag was pushed, mid-publish, version already spent.
+        id: msrv
+        run: echo "v=$(grep '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Install Rust (derived MSRV)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.88"
+          toolchain: ${{ steps.msrv.outputs.v }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Format

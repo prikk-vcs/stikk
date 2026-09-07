@@ -1,0 +1,23 @@
+name: Supply chain
+
+# RFC 020 F4/decision 4, Q1 ruled by the owner: advisory-only, never blocking a PR, required to be read
+# by a human in release prep. RUSTSEC-2026-0009 was found by a person reading a report, not by anything
+# in CI -- this is what closes that gap, in the same shape RFC 019's real-binary suite already
+# established: workflow_dispatch only, never push/pull_request (a gate that fails for an upstream reason
+# overnight -- a newly published advisory, not anything in this diff -- must not redden an unrelated PR),
+# and a green run is a release-prep requirement, not a merge requirement.
+#
+# Deliberately no `schedule:` trigger. Whether this should also run on a cron is a separate, open
+# question for the owner (RFC 020 Q1's own note) -- adding one quietly here would pre-empt that.
+on:
+  workflow_dispatch:
+
+jobs:
+  cargo-deny:
+    name: cargo deny check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check

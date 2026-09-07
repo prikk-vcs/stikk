@@ -180,15 +180,15 @@ pub fn ensure_outside_repository(target: &Path, repo_root: Option<&Path>) -> Res
             ),
         });
     }
-    if let Some(root) = repo_root {
-        if target.starts_with(root) {
-            return Err(StikkError::Internal {
-                detail: format!(
-                    "refusing to write a stikk file inside the open repository worktree: {}",
-                    target.display()
-                ),
-            });
-        }
+    if let Some(root) = repo_root
+        && target.starts_with(root)
+    {
+        return Err(StikkError::Internal {
+            detail: format!(
+                "refusing to write a stikk file inside the open repository worktree: {}",
+                target.display()
+            ),
+        });
     }
     Ok(())
 }

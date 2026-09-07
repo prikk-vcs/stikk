@@ -109,14 +109,14 @@ fn compute(
     // stikk's own authoritative sources (the intent's `reff`, and `Orientation::queued_target`) —
     // never parsed from a prikk refusal (`C-T2b`).
     let orientation = prikk.orientation(repo)?;
-    if let Some(target) = orientation.queued_target.as_deref() {
-        if target != reff {
-            let reason = format!(
-                "the active queue belongs to {target}, but you are focused on {reff} — seal {target} \
-                 first, or choose {target} to continue its queue"
-            );
-            return Ok((CommitReadView::Blocked(reason), placeholder_summary()));
-        }
+    if let Some(target) = orientation.queued_target.as_deref()
+        && target != reff
+    {
+        let reason = format!(
+            "the active queue belongs to {target}, but you are focused on {reff} — seal {target} \
+             first, or choose {target} to continue its queue"
+        );
+        return Ok((CommitReadView::Blocked(reason), placeholder_summary()));
     }
 
     let status = prikk.worktree_status(repo, reff)?;

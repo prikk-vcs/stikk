@@ -2,7 +2,7 @@
 //! overlay layer above them. Pure layout — it draws whatever the app hands it and computes nothing.
 
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, HorizontalAlignment, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
@@ -162,7 +162,7 @@ fn centered_note(palette: &Palette, frame: &mut Frame, area: Rect, note: &str, w
     };
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(note.to_string(), style)))
-            .alignment(Alignment::Center),
+            .alignment(HorizontalAlignment::Center),
         area,
     );
 }
@@ -177,7 +177,7 @@ fn render_too_small(palette: &Palette, frame: &mut Frame, area: Rect) {
             msg,
             Style::default().fg(palette.warn),
         )))
-        .alignment(Alignment::Center)
+        .alignment(HorizontalAlignment::Center)
         .wrap(Wrap { trim: true }),
         area,
     );

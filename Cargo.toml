@@ -5,7 +5,10 @@ members  = ["crates/*"]
 [workspace.package]
 version         = "0.4.1"
 edition         = "2024"
-rust-version    = "1.85"
+# 1.88: ratatui 0.30's own MSRV is 1.86, but the 0.30 tree pulls `time` transitively (through
+# ratatui-widgets' non-optional calendar), and the fix for RUSTSEC-2026-0009 (time >=0.3.47) needs
+# 1.88. Raised from 1.85 with the 0.30 upgrade to keep the supply-chain gate clean.
+rust-version    = "1.88"
 license         = "Apache-2.0"
 authors         = ["nabbisen"]
 repository      = "https://github.com/prikk-vcs/stikk"

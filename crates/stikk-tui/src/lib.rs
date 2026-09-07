@@ -114,29 +114,29 @@ fn ui_loop(
         if event::poll(POLL).map_err(|e| StikkError::environment("input poll failed", e))? {
             let ev = event::read().map_err(|e| StikkError::environment("input read failed", e))?;
             // Only key *presses* — on Windows, crossterm also emits release events.
-            if let Event::Key(key) = ev {
-                if key.kind == KeyEventKind::Press {
-                    match keys::dispatch(key, app.wants_text_input()) {
-                        Action::Quit => app.quit(),
-                        Action::Back => app.back(),
-                        Action::Select => app.select(),
-                        Action::Up => app.nav_up(),
-                        Action::Down => app.nav_down(),
-                        Action::OpenRefPicker => app.open_ref_picker(),
-                        Action::OpenChanges => app.open_changes(),
-                        Action::ToggleUntracked => app.toggle_untracked(),
-                        Action::Commit => app.begin_commit(),
-                        Action::Seal => app.begin_seal(),
-                        Action::ToggleSealConsent => app.toggle_seal_consent(),
-                        Action::OpenGlossary => app.open_glossary(),
-                        Action::OpenPalette => app.open_palette(),
-                        Action::OpenRefusals => app.open_refusals(),
-                        Action::OpenOperations => app.open_operations(),
-                        Action::Refresh => app.reload(),
-                        Action::Input(c) => app.input_char(c),
-                        Action::Backspace => app.backspace(),
-                        Action::None => {}
-                    }
+            if let Event::Key(key) = ev
+                && key.kind == KeyEventKind::Press
+            {
+                match keys::dispatch(key, app.wants_text_input()) {
+                    Action::Quit => app.quit(),
+                    Action::Back => app.back(),
+                    Action::Select => app.select(),
+                    Action::Up => app.nav_up(),
+                    Action::Down => app.nav_down(),
+                    Action::OpenRefPicker => app.open_ref_picker(),
+                    Action::OpenChanges => app.open_changes(),
+                    Action::ToggleUntracked => app.toggle_untracked(),
+                    Action::Commit => app.begin_commit(),
+                    Action::Seal => app.begin_seal(),
+                    Action::ToggleSealConsent => app.toggle_seal_consent(),
+                    Action::OpenGlossary => app.open_glossary(),
+                    Action::OpenPalette => app.open_palette(),
+                    Action::OpenRefusals => app.open_refusals(),
+                    Action::OpenOperations => app.open_operations(),
+                    Action::Refresh => app.reload(),
+                    Action::Input(c) => app.input_char(c),
+                    Action::Backspace => app.backspace(),
+                    Action::None => {}
                 }
             }
         }

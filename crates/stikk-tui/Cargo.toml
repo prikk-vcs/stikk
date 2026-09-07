@@ -17,8 +17,12 @@ stikk-core  = { workspace = true }
 
 # RFC 001 (accepted 2026-09-01): the TUI is built on ratatui over the crossterm backend. crossterm is
 # used through ratatui's own re-export (`ratatui::crossterm`) so the two can never drift to
-# incompatible versions.
-ratatui = "0.29"
+# incompatible versions. 0.30 split ratatui into a workspace (core/widgets/backends); the `ratatui`
+# facade still re-exports the surface used here, and its default features keep the crossterm backend.
+# Note: 0.30 pulls `time` transitively via ratatui-widgets' calendar (not made optional by the facade,
+# so it can't be feature-dropped even though stikk never renders a calendar). The workspace MSRV is
+# 1.88 to allow the patched `time` (>=0.3.47) that clears RUSTSEC-2026-0009.
+ratatui = "0.30"
 
 [lints]
 workspace = true

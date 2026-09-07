@@ -112,14 +112,14 @@ fn compute(
     // Prevent a cross-ref seal the same way commit prevents its own (RFC 014 decision 1 / RFC 016
     // decision 4) — both ref names are stikk's own authoritative sources, never parsed from a prikk
     // refusal (`C-T2b`).
-    if let Some(target) = orientation.queued_target.as_deref() {
-        if target != reff {
-            let reason = format!(
-                "the active queue belongs to {target}, but you are focused on {reff} — choose {target} \
-                 to seal its queue"
-            );
-            return Ok((SealReadView::Blocked(reason), placeholder_summary()));
-        }
+    if let Some(target) = orientation.queued_target.as_deref()
+        && target != reff
+    {
+        let reason = format!(
+            "the active queue belongs to {target}, but you are focused on {reff} — choose {target} \
+             to seal its queue"
+        );
+        return Ok((SealReadView::Blocked(reason), placeholder_summary()));
     }
 
     // RFC 016 §7: the confirmation's trust-refusal warning is driven by `MaintainerReadiness`, not

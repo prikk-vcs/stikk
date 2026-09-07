@@ -21,6 +21,15 @@ stikk-state = { version = "0.4.1", path = "crates/stikk-state" }
 stikk-core  = { version = "0.4.1", path = "crates/stikk-core" }
 stikk-tui   = { version = "0.4.1", path = "crates/stikk-tui" }
 
+# RFC 001 (accepted 2026-09-01): the TUI is built on ratatui over the crossterm backend. crossterm is
+# used through ratatui's own re-export (`ratatui::crossterm`) so the two can never drift to
+# incompatible versions. 0.30 split ratatui into a workspace (core/widgets/backends); the `ratatui`
+# facade still re-exports the surface used here, and its default features keep the crossterm backend.
+# Note: 0.30 pulls `time` transitively via ratatui-widgets' calendar (not made optional by the facade,
+# so it can't be feature-dropped even though stikk never renders a calendar). The workspace MSRV is
+# 1.88 to allow the patched `time` (>=0.3.47) that clears RUSTSEC-2026-0009.
+ratatui = "0.30"
+
 # Lint discipline mirrors prikk's: unsafe is forbidden (no FFI in stikk yet; the TUI/GUI toolkit
 # decision is deferred to Program Design), public items must be documented, and the panic-prone
 # clippy lints warn so review holds the line — stikk owns no repository authority and must never

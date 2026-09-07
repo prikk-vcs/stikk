@@ -5,7 +5,7 @@ line — VCS verbs stay prikk's — it helps you *read and work with* prikk hist
 
 ## Build
 
-stikk builds with a standard Rust toolchain (2024 edition, MSRV 1.85):
+stikk builds with a standard Rust toolchain (2024 edition, MSRV 1.88):
 
 ```sh
 cargo build --release

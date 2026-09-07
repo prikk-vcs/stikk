@@ -21,7 +21,7 @@ RFCs are never deleted.
 
 ## Ground rules
 
-- **Language & edition.** Rust, 2024 edition, MSRV 1.85. English for all code and docs.
+- **Language & edition.** Rust, 2024 edition, MSRV 1.88. English for all code and docs.
 - **Module style.** 2018+ modules: a `foo.rs` and a `foo/` directory coexist; no `mod.rs`.
 - **Tests are siblings, never inline.** Put tests in `src/foo/tests.rs` with `#[cfg(test)] mod
   tests;` in `foo.rs` — not `#[test]` functions inside the implementation file. Split a large

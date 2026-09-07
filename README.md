@@ -32,7 +32,7 @@ and not a place your signing keys live.
 ## Quick start
 
 ```sh
-# Build (Rust 2024 edition, MSRV 1.85).
+# Build (Rust 2024 edition, MSRV 1.88).
 cargo build --release
 
 # Point at a prikk build if it is not on PATH.

@@ -3,7 +3,10 @@
 **Status.** Proposed (2026-09-08). Opened on reviewing the owner's own security commit `e9b8c70`
 (ratatui 0.29 → 0.30, MSRV 1.85 → 1.88, clearing RUSTSEC-2026-0009). **The upgrade itself is correct
 and I verified its central claim** (below). What it did not carry with it is the MSRV number, which
-still reads **1.85** in six places — two of them workflows that will now fail.
+still reads **1.85** in **ten places across eight files** — three of them workflow pins that will now
+fail. *(This RFC first said "six places", from a grep over the paths I happened to think of. Applying
+the fix found `docs/src/guide/getting-started.md` and `CONTRIBUTING.md` as well — **the finding had the
+same scope error as the thing it was reporting**, which is F3's own point landing on its author.)*
 **Tracks.** `NFR-R03` (version honesty), RFC 011 (breaking position), RFC 018 (the grep-scope rule).
 **Touches.** `.github/workflows/{release,real-binary}.yml`, `README.md`,
 `docs/src/contributing/development.md`, `.git-exclude/specs/`, and a new supply-chain workflow.
@@ -63,10 +66,11 @@ if let Some(target) = orientation.queued_target.as_deref()
 `cargo package` check to avoid — after the tag is pushed, mid-publish, with a version number already
 spent.
 
-### F2 — four documentation sites still say MSRV 1.85
+### F2 — six documentation sites still say MSRV 1.85
 
-`README.md`, `docs/src/contributing/development.md`, and **both spec files the dev team treats as their
-operating manual** (`.git-exclude/specs/00-project-overview.md`, `02-implementer-handoff.md` §3). An
+`README.md`, `CONTRIBUTING.md`, `docs/src/guide/getting-started.md`,
+`docs/src/contributing/development.md`, and **both spec files the dev team treats as their operating
+manual** (`.git-exclude/specs/00-project-overview.md`, `02-implementer-handoff.md` §3). An
 implementer following the spec would install a toolchain that cannot build the workspace.
 
 ### F3 — the grep scope RFC 018 wrote excludes `.github/`

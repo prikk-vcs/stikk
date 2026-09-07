@@ -27,7 +27,7 @@ jobs:
       - name: Install Rust (pinned MSRV)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.85"
+          toolchain: "1.88"
       - name: Read the range from stikk-prikk::version, never hardcode it here
         id: matrix
         # RFC 019 §6: derived from `supported_minor_range`, not written in this workflow — raising the
@@ -50,7 +50,7 @@ jobs:
       - name: Install Rust (pinned MSRV)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.85"
+          toolchain: "1.88"
       - name: Install prikk (floor — ${{ needs.determine-matrix.outputs.floor }})
         run: cargo install prikk --version ${{ needs.determine-matrix.outputs.floor }} --locked --root ${{ runner.temp }}/prikk-floor
       - name: Install prikk (ceiling — ${{ needs.determine-matrix.outputs.ceiling }})

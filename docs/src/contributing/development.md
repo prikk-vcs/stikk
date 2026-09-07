@@ -37,6 +37,6 @@ All three must pass.
 
 ## Rust conventions
 
-Rust 2024, MSRV 1.85. 2018+ module style (`foo.rs` + `foo/`, no `mod.rs`). Tests are **siblings**:
+Rust 2024, MSRV 1.88. 2018+ module style (`foo.rs` + `foo/`, no `mod.rs`). Tests are **siblings**:
 `src/foo/tests.rs` with `#[cfg(test)] mod tests;` in `foo.rs`, never `#[test]` inline in the
 implementation file. No `unsafe`. No panics on fallible input.

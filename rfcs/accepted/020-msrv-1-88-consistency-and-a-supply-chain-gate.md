@@ -1,6 +1,6 @@
 # RFC 020 — The MSRV raise's other six sites, and the gate that would have found the advisory
 
-**Status.** Proposed (2026-09-08). Opened on reviewing the owner's own security commit `e9b8c70`
+**Status.** **Accepted by the project owner 2026-09-08**, Q1 ruled with it. **F1 shipped** the same day (`b76ea38`). Proposed 2026-09-08. Opened on reviewing the owner's own security commit `e9b8c70`
 (ratatui 0.29 → 0.30, MSRV 1.85 → 1.88, clearing RUSTSEC-2026-0009). **The upgrade itself is correct
 and I verified its central claim** (below). What it did not carry with it is the MSRV number, which
 still reads **1.85** in **ten places across eight files** — three of them workflow pins that will now
@@ -105,7 +105,21 @@ That is the RFC 019 shape again — *nothing was checking* — one supply chain 
 5. **The MSRV raise and the ratatui major are `### Breaking` entries** for 0.5.0 (RFC 011: for 0.x the
    minor is the breaking position). Neither is currently recorded anywhere a user will read.
 
-## Open question
+## Q1 — RULED by the owner, 2026-09-08
+
+**Non-blocking. Required to be read in release prep. Every allowlist entry carries a dated reason.**
+
+The reasoning stands as written below: a gate that cannot be satisfied gets bypassed, and a bypassed
+gate is worse than none — RFC 019 Q1's own argument, one supply chain over. What makes this version
+honest rather than decorative is the *release-prep* half: the run is not advisory at the moment it
+matters, it is a thing a human has to look at before a tag exists.
+
+**Deliberately not ruled, and not to be added quietly:** whether it also runs on a schedule. An
+advisory published overnight affects users who already installed a binary, which is a stronger argument
+for a cron than RFC 019's suite had — and a muted cron is the same failure either way. **It is a
+separate decision with a separate owner question**, and this increment does not pre-empt it.
+
+### The original question, for the record
 
 **Q1 — does the supply-chain gate block a release, or inform it?** `cargo deny` fails on any advisory
 in the tree, including ones with no fix available and ones in a dev-dependency that never ships. A gate

@@ -143,7 +143,61 @@ asked us to say whether we need it.
 - **(b) Withdraw it**, and tell prikk we do not need what they declined.
 - **(c) Ask for arbitrary-point comparison anyway**, knowing they have called it materially expensive.
 
-**My lean: (a), and a letter saying so.** It keeps the half a user actually asks for — *what changed
+### Owner asked 2026-09-08 whether (a) is sufficient for production use. **Answer: no — in one case, and it is a common one.**
+
+**Where (a) is complete**, and it is most of the view: *what did this block change?* (`show`, verbatim);
+*which paths differ between A and B?* (folded from reported operations); *what did each block do to
+this path?* (each block's own spans, in order).
+
+**Where it breaks: a path changed more than once in the range.** The user gets N separate spans and has
+to compose them in their head. `a.txt` edited in block 1, reverted in 3, edited again in 7 has a net
+change of one line — and (a) shows three fragments and no answer. **In a range of any length, a file
+touched repeatedly is the normal shape of development, not an edge case.** For a view whose entire
+purpose is *what is different between these two points*, that is the central question, not a peripheral
+one.
+
+**stikk cannot close it itself, and should not try.** Reconstructing content by replaying spans means
+reimplementing prikk's replay engine — `CON-1` (repository semantics are prikk's) and `T-T4` (a
+one-byte disagreement would be a confidently wrong file). **prikk's own replay is incomplete today**:
+`checkout --patch-plan` prints *"renames, conflicts, and full patch algebra remain later increments."*
+Reimplementing an unfinished engine is worse than not having the view.
+
+### But the ask is not `prikk diff` — it is much smaller, and this is the part worth taking upstream
+
+**prikk already computes the answer and reports a byte count instead of the bytes.** Verified at 0.36.0:
+
+```
+$ prikk checkout --patch-plan --ref heads/main
+blocks replayed: 2 · patches replayed: 4 · operations applied: 5
+result files: 1 · result content bytes: 238
+```
+
+**The replay engine produces the state at a point. The CLI prints its size.** And `checkout` is the one
+read command with **no `--format json`** — `status`, `show`, `verify`, `trust maintainer list` and
+`check` all have one.
+
+**So the request is: expose, read-only and machine-readable, the replay result prikk already computes.**
+Content-at-a-point for a path. stikk would then diff **two contents prikk handed it** — that is
+rendering, not inventing; the `T-T4` line is about fabricating facts, not about running a diff over
+authoritative data.
+
+Three properties make it a far likelier ask than `diff`:
+
+1. **It exposes existing computation** rather than commissioning new computation — the objection prikk
+   actually raised.
+2. **It fits their own pattern**: a `--format json` read surface, on the one read command missing it.
+3. **It commits them to no comparison semantics.** prikk owns content; stikk owns the comparison.
+
+**Two things to say honestly if we ask:** their replay's own gaps (renames, conflicts, algebra) would
+be inherited and must be named rather than papered over; and `--patch-materialize` is no substitute —
+it *writes files*, which `C-E2` forbids stikk from using.
+
+**Revised lean: (a) as the amendment, plus a narrow upstream ask — not a withdrawal.** Ship the half
+that is buildable and honest now, and file content-at-a-point as a named dependency that would restore
+the rest, the way `UD-09` itself was carried. **Do not ask for `diff`**: they have costed and refused it
+with reasoning we would make ourselves.
+
+*(Original lean, before probing the binary:)* **(a), and a letter saying so.** It keeps the half a user actually asks for — *what changed
 between these two points* — and it is honest about the half that would require inventing a combined
 diff. **(c) would be asking a project that has shipped every one of our last four requests to build the
 one thing they have explicitly reasoned themselves out of**, on a requirement we wrote before their

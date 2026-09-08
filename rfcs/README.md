@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 021 | [The prikk 0.36 re-baseline: `UD-09` retires](./proposed/021-prikk-0-36-rebaseline.md) | Three prikk releases at once. **`prikk show` retires the content dependency stikk has carried since 0.1.0**, unblocking Patch detail and per-file diffs; `Ready` becomes constructible; the Queue view unblocks. **`FR-033` needs a ruling** — prikk refused arbitrary-point comparison as out of scope, not deferred |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

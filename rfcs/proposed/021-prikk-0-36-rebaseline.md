@@ -192,7 +192,45 @@ Three properties make it a far likelier ask than `diff`:
 be inherited and must be named rather than papered over; and `--patch-materialize` is no substitute —
 it *writes files*, which `C-E2` forbids stikk from using.
 
-**Revised lean: (a) as the amendment, plus a narrow upstream ask — not a withdrawal.** Ship the half
+### Amended 2026-09-09 — prikk 0.37.0 shipped it, and it reaches less far than the reply believes
+
+**`prikk checkout --patch-plan --format json --content-path <path> [--ref REF]` shipped**
+(`patch-plan-content-v1`), exactly the framing letter 005 asked for. Verified at 0.37.0: `coverage`
+carries `applied_operation_kinds` + `walk`, `not_found` is a list, absent paths degrade at exit `0`.
+
+**But `--ref` resolves a published *branch* only, and I could not reach an older block by any route:**
+
+| Attempt | Result |
+|---|---|
+| `--ref <block-id>` | `error: integrity error: ref <id> is not published` |
+| `--ref tags/<name>` (tag created at that block) | `error: object type mismatch: expected block, got tag` — **exit 1** |
+| `branch create --from <block-id>` | `error: --from ref <id> does not resolve to a published ref` |
+
+**So "content at a point" is content at a branch tip.** `FR-033` splits differently than the reply
+assumes:
+
+- **Two branch tips** (`heads/main` vs `heads/feature`) — **fully answerable now.** Request the path at
+  each, diff two authoritative contents.
+- **Two blocks on one ref** — the range case, and the one `FR-033` names first — **not answerable, and
+  there is no workaround.** Not even a mutating one: tagging the older block does not help, because
+  `checkout` refuses to dereference a tag.
+
+**The reply says the case we named "is now answerable: request that path at both points."** For the
+case letter 005 actually described — a path edited across blocks *within a range on one ref* — both
+"points" are blocks, not branch tips. **The claim does not hold there**, and we should not amend a
+**[M]** requirement on the strength of it.
+
+**Also found, and it is their own strongest kind of argument:** `tag create --target <ref|block>`
+publishes a tag *at a block*, and `checkout` then refuses to read at that tag. prikk lets a caller name
+a block and then declines to resolve the name it just created — an internal inconsistency, not a
+request from us.
+
+**Revised position: do not un-narrow yet.** Amend `FR-033` to *branch-tip comparison, fully; same-ref
+range comparison, state-level plus per-block spans*, and carry block-addressability as the named
+dependency. **Report the gap first** (letter 006) — the reply invited exactly this, and asked to know
+before we amended rather than after.
+
+*(Superseded lean, before 0.37.0 shipped:)* **(a) as the amendment, plus a narrow upstream ask — not a withdrawal.** Ship the half
 that is buildable and honest now, and file content-at-a-point as a named dependency that would restore
 the rest, the way `UD-09` itself was carried. **Do not ask for `diff`**: they have costed and refused it
 with reasoning we would make ourselves.

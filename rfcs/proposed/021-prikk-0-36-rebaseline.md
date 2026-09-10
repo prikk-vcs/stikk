@@ -1,7 +1,6 @@
-# RFC 021 — The prikk 0.36 re-baseline: `UD-09` retires
+# RFC 021 — The prikk 0.38 re-baseline: `UD-09` retires, and a fabricated worktree entry
 
-**Status.** Proposed (2026-09-08). Three prikk releases land at once — **0.34, 0.35, 0.36** — against a
-validated ceiling of 0.33. **The largest re-baseline in this project's history**, and the first one that
+**Status.** Proposed (2026-09-08). **Five** prikk releases land at once — **0.34 through 0.38** — against a validated ceiling of 0.33. **The largest re-baseline in this project's history**, and the first one that
 retires the dependency stikk has carried since 0.1.0.
 **Tracks.** `UD-09` (retires, in part), `FR-030`, `FR-033`, `FR-034`, `FR-051`, `FR-052`, `FR-103`,
 `ASM-2`/`NFR-R03`, `C-T2c′`, `T-T4`, `TS-03`, `TS-07`.
@@ -21,6 +20,41 @@ through ordinary use.
 | **0.34.0** | `trust maintainer list` / `check --key-id`, `--format json`, `check` exits `0` either way | `MaintainerReadiness::Ready`; `FR-103` |
 | **0.35.0** | `status --format json` (`status-report-v1`) with the queue enumerated; six preconditions reclassified | `FR-051`'s Queue view; `FR-052`'s consent naming *which* patches |
 | **0.36.0** | **`prikk show <block-id\|patch-id> [--format json]`** (`show-report-v1`) | **`UD-09`'s content half — `FR-030`, `FR-034`'s per-file diffs** |
+
+## F0 — 0.38 makes stikk fabricate a worktree entry *[live above the ceiling; verified end-to-end]*
+
+**prikk read our parser, told us where it would break, and they were right.** 0.38.0's
+`worktree-status` prints `live rename declarations: N` unconditionally, followed when `N > 0` by
+indented `  <old> -> <new>` lines. Our entry scan takes **every** indented line in the document and
+keeps it if its first whitespace-delimited token is one of `modified`/`missing`/`untracked`/
+`unsupported`.
+
+**A renamed path whose first token is one of those four therefore parses as a change entry.** Captured
+from a real 0.38.0 binary after `prikk mv "modified draft.txt" renamed.txt`, then run through our own
+`parse::worktree_status`:
+
+```
+prikk reported 2 changes; stikk reports 3 entries
+  kind="missing"   path="modified draft.txt"     ← real
+  kind="untracked" path="renamed.txt"            ← real
+  kind="modified"  path="draft.txt -> renamed.txt"  ← FABRICATED
+```
+
+**A file that does not exist, in a state prikk never reported.** `T-T4`, manufactured by stikk out of
+correct prikk output — the RFC 015 F4 shape again, and the third time this project has produced a wrong
+picture from a right answer.
+
+**It is reachable in shipped 0.4.1 today**, because stikk deliberately runs above its validated ceiling
+and says so rather than refusing. It needs prikk ≥ 0.38, a path whose first token is a kind word, and a
+`prikk mv` — narrow, but none of those is exotic.
+
+**The root cause is not the kind list; it is that the entry scan has no section.** It reads indented
+lines from the whole document rather than from the region that holds entries. Any future indented
+section breaks it the same way. **Fix by scoping the scan to the entries region, not by adding `->` to a
+reject list** — a heuristic against today's one collision would leave the next section to find.
+
+*`worktree-status --format json` exists at 0.38 and reports declarations as a field. It is the right
+long-term answer and it is **not** the fix here: our floor is 0.28, where it does not exist.*
 
 ## Findings
 
@@ -118,8 +152,10 @@ cost nothing to a change that would otherwise have broken the classifier.*
 
 ## Decisions
 
-1. **Ceiling 33 → 36.** `VALIDATED_MAX_MINOR = 36`, after RFC 019's suite runs green at both ends —
-   **ceiling first, then run**, as its version guard enforces.
+0. **Fix F0 before anything else, and separately.** It is the only finding that is wrong in a shipped
+   release rather than merely unvalidated.
+1. **Ceiling 33 → 38.** `VALIDATED_MAX_MINOR = 38`, after RFC 019's suite runs green at both ends —
+   **ceiling first, then run**, as its version guard enforces. The suite's matrix becomes 0.28 and 0.38.
 2. **`UD-09` retires its content half** and the entry records precisely what remains: no arbitrary-point
    comparison, and no `log --format json`.
 3. **Absence degrades; an error propagates.** Adopt prikk's rule verbatim as stikk's rendering rule for

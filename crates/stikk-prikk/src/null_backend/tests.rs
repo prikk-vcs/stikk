@@ -34,12 +34,16 @@ fn unsupported_version_is_reported() {
 
 #[test]
 fn with_version_recomputes_both_supported_and_validated() {
-    let below_floor = NullBackend::supported().with_version(0, 27, 1);
+    // Both boundaries are read from `supported_minor_range`, never written here: this test used to
+    // hardcode them and had to be hand-edited at every ceiling raise (RFC 012, 015, 017, 021), which
+    // makes it a restatement of the constant rather than a check on it.
+    let (floor, ceiling) = crate::version::supported_minor_range();
+
+    let below_floor = NullBackend::supported().with_version(0, floor - 1, 1);
     let hs = below_floor.handshake().unwrap();
     assert!(!hs.supported && !hs.validated);
 
-    // RFC 017 raised the validated ceiling to 0.33; the above-ceiling case moves with it.
-    let above_ceiling = NullBackend::supported().with_version(0, 34, 0);
+    let above_ceiling = NullBackend::supported().with_version(0, ceiling + 1, 0);
     let hs = above_ceiling.handshake().unwrap();
     assert!(hs.supported && !hs.validated);
 }

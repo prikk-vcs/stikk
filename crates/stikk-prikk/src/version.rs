@@ -1,11 +1,15 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.33.0` (RFC 017, re-verified 2026-09-06 against a
-//! real, **released** prikk 0.33.0 binary — every `cli_backend/parse/tests.rs` fixture shape re-run
-//! against the same probe repositories and confirmed byte-identical to 0.32.0, not merely assumed
-//! unchanged because RFC 017's stated scope did not name `parse.rs`; see that module's own doc for the
-//! fourth re-verification paragraph). Unlike RFC 009/012/015's re-baselines, 0.33 changed no output
+//! stikk targets prikk `>= 0.28`, validated through `0.38.0` (**RFC 021**, the 0.38 re-baseline —
+//! raised from 0.33 across five releases at once, 0.34 through 0.38, and verified by RFC 019's
+//! real-binary suite rather than by hand: see `cli_backend/parse/tests.rs`'s own fifth re-verification
+//! paragraph for what each version actually changed, and RFC 021 for what it unblocked).
+//!
+//! The previous ceiling, for the history the raises form: `0.33.0` (RFC 017, re-verified 2026-09-06
+//! against a real, **released** prikk 0.33.0 binary — every `cli_backend/parse/tests.rs` fixture shape
+//! re-run against the same probe repositories and confirmed byte-identical to 0.32.0, not merely assumed
+//! unchanged because RFC 017's stated scope did not name `parse.rs`). Unlike RFC 009/012/015's re-baselines, 0.33 changed no output
 //! *shape* `cli_backend/parse/tests.rs` parses — its two message rewordings (`lock conflict:` →
 //! `precondition not met:` on both messages our own letter reported) were already absorbed by design,
 //! because the classifier matches the stable semantic clause, never the class prefix (RFC 017 F1). What
@@ -29,11 +33,18 @@ use stikk_model::{Result, StikkError};
 const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
-/// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, then to 33 by RFC 017 §8 — each only after empirical
-/// re-verification against a real released binary, never a changelog). RFC 017's re-verification found
-/// no output-shape drift; it found the classifier's own provenance gap instead (`classify.rs`'s module
-/// doc). A prikk above this still runs; [`Version::is_validated`] tells the caller to say so.
-const VALIDATED_MAX_MINOR: u32 = 33;
+/// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, then to **38 by RFC 021** — each only
+/// after empirical re-verification against a real released binary, never a changelog). RFC 017's
+/// re-verification found no output-shape drift; it found the classifier's own provenance gap instead
+/// (`classify.rs`'s module doc). A prikk above this still runs; [`Version::is_validated`] tells the
+/// caller to say so.
+///
+/// **RFC 021's raise spans five releases — 0.34 through 0.38 — where each previous raise spanned one.**
+/// That is the widest jump this project has made, and it is why the raise comes *first* in that
+/// increment's order rather than last: the real-binary suite (RFC 019, `TS-07`) refuses to run against a
+/// binary this constant does not name, so raising it is what lets the suite report what the raise cost.
+/// Re-capturing fixtures first would leave the suite nothing to find.
+const VALIDATED_MAX_MINOR: u32 = 38;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -75,35 +75,44 @@ fn supported_range_starts_at_0_28() {
     );
 }
 
-/// RFC 009 decision 7 (ceiling raised to 0.31 by RFC 012 F-e, to 0.32 by RFC 015 §8, then to 0.33 by
-/// RFC 017 §8): a prikk above the validated ceiling still runs (`is_supported`), but `is_validated`
-/// says its output shapes have not actually been checked.
+/// RFC 009 decision 7 (ceiling raised to 0.31 by RFC 012 F-e, to 0.32 by RFC 015 §8, to 0.33 by
+/// RFC 017 §8, then to 0.38 by RFC 021): a prikk above the validated ceiling still runs
+/// (`is_supported`), but `is_validated` says its output shapes have not actually been checked.
+///
+/// **The boundaries are read from [`supported_minor_range`], not written here.** Both ends used to be
+/// literals, so every raise had to hand-edit this test to match the constant it was meant to be
+/// checking — a test that is re-pointed at whatever the answer became cannot catch the answer moving by
+/// accident. What it asserts now is the *relationship*: the floor and ceiling validate, one below the
+/// floor does not run, one above the ceiling runs but is not validated. That holds at every raise
+/// without anyone touching it (the RFC 015 sentinel lesson, applied to the constant's own test).
 #[test]
-fn validated_ceiling_is_0_33_but_newer_still_runs() {
+fn the_validated_range_ends_behave_differently_and_newer_still_runs() {
+    let (floor, ceiling) = supported_minor_range();
+
     let below_floor = Version {
         major: 0,
-        minor: 27,
+        minor: floor - 1,
         patch: 1,
     };
     assert!(!below_floor.is_supported() && !below_floor.is_validated());
 
     let at_floor = Version {
         major: 0,
-        minor: 28,
+        minor: floor,
         patch: 0,
     };
     assert!(at_floor.is_supported() && at_floor.is_validated());
 
     let at_ceiling = Version {
         major: 0,
-        minor: 33,
+        minor: ceiling,
         patch: 0,
     };
     assert!(at_ceiling.is_supported() && at_ceiling.is_validated());
 
     let above_ceiling = Version {
         major: 0,
-        minor: 34,
+        minor: ceiling + 1,
         patch: 0,
     };
     assert!(above_ceiling.is_supported() && !above_ceiling.is_validated());

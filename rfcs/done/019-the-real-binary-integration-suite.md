@@ -1,6 +1,7 @@
 # RFC 019 — The real-binary integration suite, and what four releases were verified by
 
-**Status.** **Accepted by the project owner 2026-09-06.** Proposed the same day. Opens 0.5.0. Deferred since **RFC 009** as *"acceptable"*; that
+**Status.** **Done** — shipped on `main` 2026-09-07 (`bdd6871` + `561c05a`), 0.5.0 candidate. Accepted 2026-09-06; proposed the same day.
+**Deferred, carried forward:** a `schedule:` trigger (owner's, deliberately open); the full `NFR-T01` platform matrix has never actually run (the Windows leg's `openssl` dependency is untested — flagged in the review request, not assumed fine). Opens 0.5.0. Deferred since **RFC 009** as *"acceptable"*; that
 judgement was made about a read-only product and **0.4.0 mutates repositories that hold people's
 work.** The owner accepted shipping 0.4.0 without it on my recommendation, on the explicit
 understanding it becomes 0.5.0's first increment.

@@ -1,6 +1,7 @@
 # RFC 020 — The MSRV raise's other six sites, and the gate that would have found the advisory
 
-**Status.** **Accepted by the project owner 2026-09-08**, Q1 ruled with it. **F1 shipped** the same day (`b76ea38`). Proposed 2026-09-08. Opened on reviewing the owner's own security commit `e9b8c70`
+**Status.** **Done** — F1/F2 shipped `b76ea38`, F3/F4 shipped `fcd9802`, both 2026-09-08, 0.5.0 candidate. Accepted 2026-09-08 with Q1 ruled; proposed the same day.
+**Deferred, carried forward:** a `schedule:` trigger for the supply-chain gate (owner's, deliberately open — an overnight advisory affects already-installed users, which is a stronger cron argument than RFC 019's suite had); `[graph] all-features = false` is inert until a workspace crate declares features. Opened on reviewing the owner's own security commit `e9b8c70`
 (ratatui 0.29 → 0.30, MSRV 1.85 → 1.88, clearing RUSTSEC-2026-0009). **The upgrade itself is correct
 and I verified its central claim** (below). What it did not carry with it is the MSRV number, which
 still reads **1.85** in **ten places across eight files** — three of them workflow pins that will now

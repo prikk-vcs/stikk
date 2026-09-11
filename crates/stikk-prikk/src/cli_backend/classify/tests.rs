@@ -1,11 +1,17 @@
 //! Golden-message tests for the failure classifier (design TS-03; RFC 007; RFC 017).
 //!
-//! Every message below is either **captured live** against a real prikk 0.33.0 binary (the provenance
-//! comment names the exact command) or **read from prikk's source** at the `0.33.0` tag with a
+//! Every message below is either **captured live** against a real prikk binary (the provenance comment
+//! names the exact command and version) or **read from prikk's source** at a named tag with a
 //! `file:line` citation, never composed from prikk's documentation or prose (RFC 017 F2's own defect:
 //! five arms matched strings nobody had ever captured, some of them never emitted at any version stikk
 //! has supported). Where a test is source-read rather than live-provoked, its comment says so — the
-//! review request for this increment reports which is which and why.
+//! review request for that increment reports which is which and why.
+//!
+//! Two tags are cited here. **0.33.0** is RFC 017's, when this file was written. **0.38.0** is
+//! RFC 021's re-baseline, which added the second class word for the six reclassified preconditions,
+//! the four-genuine-locks correspondence, and the symlink-authoring refusal — all re-read or
+//! re-captured at that tag, and each marked accordingly rather than the file's provenance being
+//! re-stamped wholesale.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -194,51 +200,59 @@ fn another_writer_and_ref_state_precondition_are_no_longer_matched() {
     }
 }
 
+// RFC 021 §3/§4 — **both class words are live inside the supported range.** prikk 0.35 reclassified
+// all six of the precondition sites RFC 017 F4 found from `PrikkError::LockConflict` to
+// `PrikkError::Precondition`, which renders `precondition not met:` instead of `lock conflict:`. The
+// message text is byte-identical on both sides; only the class word moved. stikk supports 0.28 through
+// 0.38, so a user on 0.34 sees the first wording and a user on 0.35+ sees the second — **the fixtures
+// below therefore carry both, rather than the older being replaced by the newer.** Replacing would
+// silently drop the half of the range that is still reachable.
+//
+// Which release: bisected live across real 0.33.0/0.34.0/0.35.0/0.36.0/0.37.0/0.38.0 binaries on
+// 2026-09-12 using the full-queue commit path (the one site with a stikk UI path) — `lock conflict:`
+// through 0.34.0, `precondition not met:` from 0.35.0 on. prikk's own
+// `tests/rfc132_part2_precondition_prefix.rs` at the 0.38.0 tag documents the change as RFC 132 part 2
+// and names all six sites.
+//
+// That this changes no stikk behaviour is the point RFC 017 F1/F4 built for: the classifier matches
+// each message's own semantic clause, never the class prefix. Each test below asserts *both* wordings
+// reach the same class, which is the claim that has to hold, not that either one parses.
+const FULL_QUEUE_LOCK_WORDING: &str = "error: lock conflict: active WAL has 1 queued patches, at or above the configured limit (1); \
+     run `prikk seal` before committing again";
+const FULL_QUEUE_PRECONDITION_WORDING: &str = "error: precondition not met: active WAL has 1 queued patches, at or above the configured limit \
+     (1); run `prikk seal` before committing again";
+
 #[test]
 fn the_full_queue_precondition_is_no_longer_a_lock_conflict_the_live_defect() {
-    // RFC 017 F4, the acceptance-critical fix. Captured live: `PRIKK_ACTIVE_PATCH_WARN=1
+    // RFC 017 F4, the acceptance-critical fix. Captured live twice: at prikk 0.33.0 (RFC 017) and
+    // again at prikk 0.38.0 (RFC 021), both with `PRIKK_ACTIVE_PATCH_WARN=1
     // PRIKK_ACTIVE_PATCH_LIMIT=1 prikk commit --from-worktree --ref heads/main -m x` on a repository
-    // already at the limit, prikk 0.33.0. This is the ordinary commit path, shipped in 0.4.0's
-    // candidate — nothing is locked and no other writer exists, and it must never render `FR-106`'s
-    // "another writer is active" gloss again.
-    let (out, err) = on_stderr(
-        "error: lock conflict: active WAL has 1 queued patches, at or above the configured limit (1); \
-         run `prikk seal` before committing again",
-    );
-    let e = classify(out, err, RequestCategory::QueueMutation);
-    assert_eq!(e.class(), "refusal");
+    // already at the limit. This is the ordinary commit path, shipped since 0.4.0 — nothing is locked
+    // and no other writer exists, and it must never render `FR-106`'s "another writer is active"
+    // gloss again, under either class word.
+    for msg in [FULL_QUEUE_LOCK_WORDING, FULL_QUEUE_PRECONDITION_WORDING] {
+        let (out, err) = on_stderr(msg);
+        let e = classify(out, err, RequestCategory::QueueMutation);
+        assert_eq!(
+            e.class(),
+            "refusal",
+            "expected {msg:?} to degrade, got {e:?}"
+        );
+    }
 }
 
 #[test]
 fn the_active_rs_full_queue_wording_also_falls_through() {
-    // `active.rs:87`'s own wording differs at the tail ("run doctor or seal" vs "run `prikk seal`") —
-    // source-read, not live-provoked (this path is reached by rollback-draft-append, not commit, which
-    // stikk does not build yet). Both wordings share "queued patches"/"configured limit", so neither
-    // matches the narrowed lock-conflict arm.
-    let (out, err) = on_stderr(
+    // `active.rs`'s own copy of the same check words its tail differently ("run doctor or seal" vs
+    // "run `prikk seal`") — source-read at both the 0.33.0 and 0.38.0 tags, never live-provoked, since
+    // it is reached by rollback-draft-append rather than commit and stikk builds neither. All four
+    // wordings share "queued patches"/"configured limit", so none matches the narrowed lock-conflict
+    // arm.
+    for msg in [
         "error: lock conflict: active WAL has 64 queued patches, at or above the configured limit \
          (64); run doctor or seal before appending again",
-    );
-    let e = classify(out, err, RequestCategory::QueueMutation);
-    assert_eq!(e.class(), "refusal");
-}
-
-#[test]
-fn the_other_five_captured_preconditions_are_refusals_not_lock_conflicts() {
-    // RFC 017 F4's remaining five sites: `refs.rs:133`, `rollback_verify.rs:178`,
-    // `seal_from_accepted.rs:189`, and `rollback_draft.rs:158` at the `0.33.0` tag — all source-read,
-    // none live-provoked (none has a UI path in stikk today: RFC 016 builds only the ordinary seal
-    // ceremony, not rollback-verify, sync's accepted-claim seal, or rollback-draft). All must fall
-    // through to a verbatim refusal, exactly like the full-queue case, since none is a lock and none
-    // has a view to route into yet (RFC 017 §3's rule, applied uniformly).
-    for msg in [
-        "error: lock conflict: repository mutation is blocked by incomplete ref publication; run \
-         verify/doctor and use signer-backed seal retry",
-        "error: lock conflict: rollback-draft-verify requires an active WAL containing only the \
-         rollback draft",
-        "error: lock conflict: sealing from an accepted claim requires an empty active WAL -- seal or \
-         discard local work first",
-        "error: lock conflict: rollback-draft requires an empty active WAL",
+        "error: precondition not met: active WAL has 64 queued patches, at or above the configured \
+         limit (64); run doctor or seal before appending again",
     ] {
         let (out, err) = on_stderr(msg);
         let e = classify(out, err, RequestCategory::QueueMutation);
@@ -246,6 +260,96 @@ fn the_other_five_captured_preconditions_are_refusals_not_lock_conflicts() {
             e.class(),
             "refusal",
             "expected {msg:?} to degrade, got {e:?}"
+        );
+    }
+}
+
+#[test]
+fn the_other_four_captured_preconditions_are_refusals_under_either_class_word() {
+    // RFC 017 F4's remaining four sites: `refs.rs`, `rollback_verify.rs`, `seal_from_accepted.rs`, and
+    // `rollback_draft.rs` — source-read at the 0.33.0 tag and re-read at 0.38.0, where all four now
+    // construct `PrikkError::Precondition`. **`rollback-draft`'s is additionally captured live at
+    // 0.38.0** (`prikk rollback-draft --append-inverse --ref heads/main -m undo` over a non-empty
+    // active WAL), which is the one of the four that has a CLI path at all; the other three have no
+    // stikk UI path either (RFC 016 builds only the ordinary seal ceremony, not rollback-verify or
+    // sync's accepted-claim seal). All must fall through to a verbatim refusal under both class
+    // words, since none is a lock and none has a view to route into yet (RFC 017 §3's rule, applied
+    // uniformly).
+    //
+    // *(This test was named "other five" and listed four sites — an off-by-one in RFC 017's own
+    // bookkeeping, corrected here while re-reading the same sites at 0.38. Two full-queue sites plus
+    // these four are the six prikk's RFC 132 part 2 reclassified.)*
+    for tail in [
+        "repository mutation is blocked by incomplete ref publication; run verify/doctor and use \
+         signer-backed seal retry",
+        "rollback-draft-verify requires an active WAL containing only the rollback draft",
+        "sealing from an accepted claim requires an empty active WAL -- seal or discard local work \
+         first",
+        "rollback-draft requires an empty active WAL",
+    ] {
+        for prefix in ["error: lock conflict: ", "error: precondition not met: "] {
+            let msg = format!("{prefix}{tail}");
+            let (out, err) = on_stderr(&msg);
+            let e = classify(out, err, RequestCategory::QueueMutation);
+            assert_eq!(
+                e.class(),
+                "refusal",
+                "expected {msg:?} to degrade, got {e:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_symlink_authoring_refusal_degrades_verbatim() {
+    // RFC 021 §6, carried against RFC 014 rather than acted on. Captured live at prikk 0.38.0:
+    // `ln -sf real.txt link.txt` in the worktree, then `prikk commit --from-worktree --ref
+    // heads/main -m x`. Two facts worth pinning together: `worktree-status` reports the symlink as an
+    // ordinary `untracked` path with `unsupported paths: 0` — it does **not** mark the path commit
+    // will then refuse over — and the commit refusal is an `integrity error:` by class word while
+    // being a precondition in substance.
+    //
+    // stikk must not read the `integrity error:` prefix as `IntegrityFinding`: RFC 017 §3 removed that
+    // arm precisely because it had no captured evidence and no view to route into, and routing this
+    // into a verify report would be a confident wrong picture. Degrading to prikk's own words is the
+    // honest answer, and this test is what keeps it that way.
+    let (out, err) = on_stderr(
+        "error: integrity error: worktree authoring: unsupported symlink authoring: link.txt: \
+         worktree symlink authoring is out of scope",
+    );
+    let e = classify(out, err, RequestCategory::QueueMutation);
+    assert_eq!(e.class(), "refusal");
+    assert!(
+        e.to_string()
+            .contains("worktree symlink authoring is out of scope")
+    );
+}
+
+#[test]
+fn the_four_genuine_locks_prikk_still_constructs_at_0_38_all_classify_lock_conflict() {
+    // RFC 021's convergence finding. RFC 017 F4 narrowed `is_lock_conflict` by hand, from 0.33's
+    // taxonomy, to the four clauses that name an actual lock — while prikk still carried ten
+    // `lock conflict:` sites. prikk 0.35 then reclassified the other six upstream, and at the 0.38.0
+    // tag `PrikkError::LockConflict` has **exactly four** construction sites left: `lock.rs` ×2
+    // (`{kind} lock already exists: {path}`, `active lock belongs to a different repository
+    // authority`), `refs.rs` (`ref CAS mismatch for …`), and `rollback_draft.rs` (`rollback-draft
+    // target ref changed during planning; retry rollback-draft`).
+    //
+    // **Those are the same four this arm matches** — stikk's hand-narrowing and prikk's own taxonomy
+    // arrived at the same set from opposite directions. This test pins that correspondence so a future
+    // reclassification shows up here rather than as a silently mis-glossed refusal.
+    for msg in [
+        "error: lock conflict: active lock already exists: /tmp/repo/.prikk/active/default/active.lock",
+        "error: lock conflict: active lock belongs to a different repository authority",
+        "error: lock conflict: ref CAS mismatch for heads/main: expected \"abc\", got \"def\"",
+        "error: lock conflict: rollback-draft target ref changed during planning; retry rollback-draft",
+    ] {
+        let (out, err) = on_stderr(msg);
+        let e = classify(out, err, RequestCategory::Publication);
+        assert_eq!(
+            e.class(),
+            "lock-conflict",
+            "expected {msg:?} to stay a lock conflict, got {e:?}"
         );
     }
 }

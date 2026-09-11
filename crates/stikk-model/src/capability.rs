@@ -19,28 +19,44 @@
 /// ref (`RefStore::publish` still requires this operator's own signature). Say so wherever this state
 /// is named; wording that lets a reader conclude "may publish here" is a defect (prikk RFC 138 §7.3).
 ///
-/// No supported prikk (0.28–0.33) exposes a way to check adoption ahead of attempting the gated
-/// operation itself (RFC 016 F3): `prikk trust maintainer` offers only `add`/`remove`, and `verify`'s
+/// Through prikk 0.33, nothing exposed a way to check adoption ahead of attempting the gated
+/// operation itself (RFC 016 F3): `prikk trust maintainer` offered only `add`/`remove`, and `verify`'s
 /// `sealed-block <id>: <key_id>` line is historical signer attribution — a since-revoked key still
 /// prints — not current policy, and does not exist before a repository's first seal, which is exactly
-/// when this question is asked. So today only two of the three states below are reachable; **no
-/// future increment may resolve `Unknown` from `verify` output** (RFC 016's own named trap).
+/// when this question is asked. **No increment may ever resolve `Unknown` from `verify` output**
+/// (RFC 016's own named trap); that remains true regardless of what follows.
+///
+/// **prikk 0.34 shipped the surface** (upstream RFC 138): `prikk trust maintainer list` and
+/// `check --key-id`, both with `--format json`, `check` exiting `0` whichever way the answer comes out.
+/// Two things follow, and they are easy to conflate:
+///
+/// - **`Ready` became *constructible* at ≥ 0.34 — it is not yet *constructed*.** stikk reads neither
+///   command: RFC 021 raised the validated ceiling to 0.38 and deliberately built no seam method for
+///   this (its Decision 5). So `stikk-prikk::env` still returns only `NotReady`/`Unknown`, and the
+///   `[MNT]` badge still reads `?` on every version. Anything claiming otherwise is describing prikk's
+///   capability, not stikk's behaviour.
+/// - **`Unknown` is permanent, not transitional.** stikk's floor is prikk 0.28 (`ASM-2`), so every
+///   session on 0.28–0.33 has no way to answer the question no matter what stikk builds. This type
+///   stays three-valued for good; the increment that reads 0.34's surface makes the answer
+///   *version-conditional*, never unconditional.
 ///
 /// This is the gate for all **eight** of prikk's `GatedOperation` variants — `Seal`, `Merge`,
 /// `SyncBuild`, `SyncSeal`, `SyncAdoptTag`, `TagCreate`, `BranchCreate`, `BranchClose` — not seal's
 /// alone; seal is only stikk's first consumer of it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaintainerReadiness {
-    /// Key material present **and** adopted in the repository's trust policy. **Unconstructible
-    /// today** — see this type's own doc — and that is correct, not a gap: no supported prikk can
-    /// answer the adoption question, so `stikk-prikk::env` never produces this variant. It exists
-    /// because it is the shape the answer arrives in once `prikk trust maintainer check` ships
-    /// (upstream RFC 138, accepted and ruled, unreleased), documented the way RFC 017 documented
-    /// `StikkError::IntegrityFinding`: unreachable now, present because it is the shape of the answer.
+    /// Key material present **and** adopted in the repository's trust policy. **Still unconstructed
+    /// today**, though no longer unconstructible in principle — see this type's own doc.
+    /// `prikk trust maintainer check` shipped in 0.34 (upstream RFC 138), so the answer now exists on
+    /// ≥ 0.34; stikk does not read it yet, so `stikk-prikk::env` continues to produce only
+    /// `NotReady`/`Unknown`. It remains documented the way RFC 017 documented
+    /// `StikkError::IntegrityFinding`: present because it is the shape of the answer, and now also
+    /// because the answer itself exists upstream and an increment will come to fetch it.
     Ready,
     /// Key material absent — no `PRIKK_MAINTAINER_KEY_ID`/`_SEED` pair in the environment.
     NotReady,
-    /// Key material present; adoption is **unverifiable** on any supported prikk (RFC 016 F3). This
+    /// Key material present; adoption is **unverifiable by stikk today**, and permanently
+    /// unverifiable on prikk 0.28–0.33 whatever stikk builds (RFC 016 F3; RFC 021 §5). This
     /// is what `stikk-prikk::env` returns whenever both variables are set — never a caveat layered on
     /// a boolean, because `Unknown` must never render as a pass (`C-T2c′`, the same rule this
     /// project's design already applies to `FR-035`'s three-valued author-signature outcome).

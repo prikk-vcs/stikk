@@ -16,6 +16,29 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
 - **ratatui 0.29 → 0.30**, the dependency the MSRV raise rode in on. A rendering-layer major with no
   stikk API changes from it — stated explicitly rather than left for a reader to infer.
 
+### Changed
+
+- **The validated prikk range is now `>= 0.28`, through `0.38.0`** (was `0.33.0`) — five prikk releases
+  at once, the widest re-baseline this project has done, and **the first one a machine ran rather than
+  a person** (RFC 021, using the real-binary suite RFC 019 built for exactly this). What the run found
+  across 0.34–0.38, each verified against a real binary rather than taken from a changelog:
+  - **Six error messages changed their class word at 0.35**, `lock conflict:` → `precondition not met:`,
+    with the message text itself byte-identical. stikk's classifier was unaffected — it has matched each
+    message's own semantic clause rather than its class prefix since RFC 017 — and both wordings are now
+    pinned, because both are still reachable: a user on prikk 0.34 sees the first, one on 0.35+ the
+    second, and stikk supports the whole range.
+  - **`worktree-status` gained an unconditional `live rename declarations: N` section at 0.38.** This is
+    the one that was already fixed, under Fixed below: stikk read those lines as worktree changes.
+  - **`prikk trust maintainer add` stopped printing `policy: required=1` and now reports `adopted
+    maintainer keys: N`** (0.34). stikk never invokes that command — it is outside the `C-I1e` boundary
+    — so nothing here depended on either wording.
+  - **Everything else stikk parses is unchanged**: `status`, `log`, `commit`, `seal`, `branch list`, `tag
+    list`, and `checkout --patch-plan` are byte-identical at 0.38 to their 0.30–0.32 captures. That was
+    claimed upstream and is now checked.
+  - prikk also answered three long-standing gaps in this window — queue enumeration (0.35), per-patch
+    content (0.36), and trust enumeration (0.34). **No view in stikk uses them yet**; the requirements
+    they unblock are amended to say so, and each names the release that changed the answer.
+
 ### Fixed
 
 - **On prikk ≥ 0.38, a renamed path whose name began with a change-kind word appeared in Changes as a

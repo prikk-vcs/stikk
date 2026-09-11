@@ -8,12 +8,15 @@
 //! **To run the rest:** install a floor and a ceiling `prikk` binary —
 //!
 //! ```sh
-//! cargo install prikk --version 0.28.0 --locked --root /tmp/prikk-floor
-//! cargo install prikk --version 0.33.0 --locked --root /tmp/prikk-ceiling
+//! read -r FLOOR CEILING < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
+//! cargo install prikk --version "0.${FLOOR}.0"   --locked --root /tmp/prikk-floor
+//! cargo install prikk --version "0.${CEILING}.0" --locked --root /tmp/prikk-ceiling
 //! ```
 //!
-//! (or read the two numbers from `cargo run -p stikk-prikk --example print_version_matrix` rather than
-//! trusting the ones just written above — they drift the moment RFC 019 §6 does its job) — then:
+//! (**derived, not written** — the same form `.github/workflows/real-binary.yml` uses, and for the
+//! reason the previous version of this comment proved: it hardcoded `0.28.0`/`0.33.0`, warned in the
+//! next line that those "drift the moment RFC 019 §6 does its job", and then drifted at the very next
+//! ceiling raise. RFC 021's sweep caught it. Today the numbers are 28 and 38) — then:
 //!
 //! ```sh
 //! STIKK_TEST_PRIKK_FLOOR_BIN=/tmp/prikk-floor/bin/prikk \

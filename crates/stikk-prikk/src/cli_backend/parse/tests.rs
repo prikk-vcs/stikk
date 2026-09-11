@@ -33,6 +33,29 @@
 //! below remain pinned to their original capture (0.30.0/0.31.0/0.32.0, per fixture) rather than
 //! re-stamped to 0.33.0 — re-verified unchanged is a different, and weaker, claim than re-captured, and
 //! this paragraph is where that distinction is recorded.
+//!
+//! **Re-verified a fifth time against a real released prikk 0.38.0 binary on 2026-09-12** (RFC 021, the
+//! 0.38 re-baseline — the widest jump this project has made: five prikk releases, 0.34 through 0.38,
+//! against a ceiling of 0.33). Every surface below was re-captured from an equivalent probe repository
+//! built with `prikk setup`, then `commit`/`seal`/`tag create tags/v2`/`branch create`+`close`:
+//!
+//! - **Unchanged, byte-for-byte:** `status` (all three shapes — empty, queued, clean-published), `log`
+//!   (including the `patch <id>: <message>` line), `commit` (one `note:` line, matching the ≥ 0.32
+//!   fixture — the message's-fate note stays gone), `seal`, `branch list --all` (open, closed), `tag
+//!   list` (empty and populated), and `checkout --patch-plan`. Letter 005's reply claimed no shape
+//!   change 0.33 → 0.38 for these; that claim is now **verified rather than taken**, and these fixtures
+//!   keep their original provenance rather than being re-stamped to 0.38.0 — the same distinction the
+//!   paragraph above draws.
+//! - **Changed:** `worktree-status` alone. 0.38 prints `live rename declarations: N` **unconditionally**
+//!   — on a clean worktree too, where it reads `0`. Both new shapes are captured below as their own
+//!   fixtures rather than folded into the existing ones, which remain the pre-0.38 regression suite.
+//!   The dirty-with-a-rename shape is what made stikk fabricate an entry (RFC 021 F0, fixed in
+//!   `parse::worktree_status` before this re-baseline began).
+//!
+//! Separately re-read at the 0.38.0 tag, and recorded in `classify/tests.rs` rather than here: prikk
+//! 0.35 reclassified six `lock conflict:` sites to `precondition not met:` (its own RFC 132 part 2),
+//! leaving exactly the four genuine locks stikk's classifier had already narrowed itself to by hand in
+//! RFC 017 F4.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
@@ -788,9 +811,11 @@ fn worktree_status_refuses_on_a_missing_count() {
 //   prikk mv "modified draft.txt" renamed.txt
 //   prikk worktree-status --ref heads/main
 //
-// **0.38.0 is above stikk's validated ceiling (0.33).** A parser fixture is a pure-function input and
-// may be captured from any real binary; this one must not be read as validation of 0.38 — that is
-// RFC 021's Handoff B, and the real-binary suite's version guard still names 0.33 until it moves.
+// **Captured while 0.38.0 was still above the validated ceiling (then 0.33)**, deliberately: a parser
+// fixture is a pure-function input and may be captured from any real binary, and F0 was fixed before
+// the ceiling moved because it was wrong in a shipped release. RFC 021's Handoff B has since raised the
+// ceiling to 0.38 and run the suite there, so this fixture is now *within* the validated range — but it
+// was not validation of 0.38 when it was taken, and the distinction is why it was written down.
 //
 // The last two lines are why F0 exists: `live rename declarations:` is flush-left, and the indented
 // line under it begins with `modified`, a change-kind word.
@@ -931,6 +956,101 @@ note: use `prikk commit -m <message>` to author node-addressed worktree changes
     );
     assert_eq!(s.entries[0].path, "readme.txt");
     assert!(s.entries[0].note.contains("bytes differ"));
+}
+
+// Captured verbatim (stdout) from a real prikk **0.38.0** binary on 2026-09-12, RFC 021 §4:
+// `prikk setup .`, write `a.txt`, `prikk commit --from-worktree --ref heads/main -m "first patch"`,
+// `prikk seal --allow-no-audit --ref heads/main`, then `prikk worktree-status --ref heads/main` on the
+// now-clean worktree.
+//
+// **This is the one surface that changed between 0.33 and 0.38.** 0.38 prints `live rename
+// declarations: N` unconditionally — here `0`, on a worktree with nothing renamed and nothing dirty.
+// The pre-0.38 clean fixture above has no such line and stays as the regression case for 0.28–0.37;
+// this one is the same situation at the new ceiling. Both must parse to zero entries.
+const WORKTREE_CLEAN_0_38_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 1
+unchanged files: 1
+missing files: 0
+modified files: 0
+untracked files: 0
+unsupported paths: 0
+worktree: clean against baseline
+live rename declarations: 0
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+#[test]
+fn a_clean_0_38_worktree_reports_no_entries_despite_the_rename_section() {
+    // The `live rename declarations: 0` line is flush-left, so it closes an already-empty region
+    // rather than opening one — and the count fields are read by label, not by position, so the line
+    // between them and the note changes nothing about them either.
+    let s = worktree_status(WORKTREE_CLEAN_0_38_FIXTURE).expect("parses");
+    assert!(s.clean);
+    assert!(
+        s.entries.is_empty(),
+        "a clean 0.38 worktree has no entries; got {:?}",
+        s.entries
+    );
+    assert_eq!(s.tracked, 1);
+    assert_eq!(s.unchanged, 1);
+    assert_eq!(s.queued_elsewhere, None);
+}
+
+// Captured verbatim from a real prikk **0.38.0** binary on 2026-09-12 (RFC 021 §4, the capture made
+// deliberately for the Queue view's own increment to inherit). Sequence, after `prikk setup .`:
+// write `doc.txt`, commit, seal; then edit `doc.txt` and commit; then delete `doc.txt` and commit —
+// leaving **two unsealed patches** where the first edits a node the second removes.
+//
+// `status --format json` is a 0.35+ surface and **stikk parses nothing here yet** — no seam method is
+// added by RFC 021 (Decision 5: the Queue view is its own increment). This fixture exists so that
+// increment starts from a real capture of the awkward case rather than re-deriving the sequence: the
+// edit patch's operation carries **`unresolved_node_id` in place of a `path`**, because the node it
+// edited no longer resolves to one by the time the queue is read (RFC 021 F6). The delete patch, in
+// the same queue, carries an ordinary `path`. A Queue view that assumes every operation has a path
+// renders nothing for the first patch, or worse invents one.
+const STATUS_JSON_UNRESOLVED_NODE_0_38_FIXTURE: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 2,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "1a09674ea634b776342f0d6cf92c9f14e1ae74a72f2354921b188fd50f86512c",
+  "queue": {
+    "count": 2,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "409ad8fca2d4696324ac292ee0ca7a3fcedaa6ff725d957ead07b5530b903829", "operations": [
+        {"kind": "edit-text", "paths": [{"unresolved_node_id": "ae6e2234248156cb5eb4a3c1b4d0559222ae793c11fbcad28276a6f4dfb90e9a"}]}
+      ]},
+      {"patch_id": "6b200644b2444cea25975f1df322c562f7644d966f1f9c307877fb74d95e224d", "operations": [
+        {"kind": "delete-node", "paths": [{"path": "doc.txt"}]}
+      ]}
+    ]
+  }
+}
+"#;
+
+#[test]
+fn the_queued_unresolved_node_id_shape_is_pinned_for_the_queue_views_increment() {
+    // No parser to exercise — this pins the captured *shape* so that if it drifts before the Queue
+    // view is built, it drifts here rather than inside that increment's first hour. Asserted as facts
+    // about the text, which is all stikk can honestly claim about a surface it does not yet read.
+    let f = STATUS_JSON_UNRESOLVED_NODE_0_38_FIXTURE;
+    assert!(f.contains(r#""schema_version": "status-report-v1""#));
+    // The queue is enumerated (FR-051's unblocking at 0.35) and carries its own thresholds as data,
+    // rather than stikk re-deriving them from environment variables.
+    assert!(f.contains(r#""threshold_status": "none""#));
+    assert!(f.contains(r#""warn_threshold": 800"#));
+    assert!(f.contains(r#""hard_limit": 1000"#));
+    // The awkward case itself: one operation identified by node id because no path resolves, beside
+    // one identified by path, in the same queue.
+    assert!(f.contains(r#""unresolved_node_id""#));
+    assert!(f.contains(r#""path": "doc.txt""#));
 }
 
 #[test]

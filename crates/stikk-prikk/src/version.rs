@@ -115,11 +115,16 @@ impl Version {
     }
 }
 
-/// The validated ceiling as a display string (`"0.33"`), for UI copy that says what range stikk has
-/// actually checked its shapes against. **Nothing else may hardcode this number**: a renderer that
-/// copies it as a string literal instead of calling this drifts the moment the ceiling moves again —
-/// exactly what RFC 015 found in `stikk-tui`'s own Orientation view, still reading "0.30" after RFC 012
-/// F-e had already raised the ceiling to 31 and no one had touched the copy.
+/// The validated ceiling as a display string (`"0.38"` at the time of writing), for UI copy that says
+/// what range stikk has actually checked its shapes against. **Nothing else may hardcode this number**:
+/// a renderer that copies it as a string literal instead of calling this drifts the moment the ceiling
+/// moves again — exactly what RFC 015 found in `stikk-tui`'s own Orientation view, still reading "0.30"
+/// after RFC 012 F-e had already raised the ceiling to 31 and no one had touched the copy.
+///
+/// *(This doc comment's own example said `"0.33"` until RFC 021's sweep caught it — the function whose
+/// whole purpose is to stop the number being copied had a stale copy of it in its own documentation.
+/// Illustrative text drifts the same way renderer text does; it is just harder to notice, because
+/// nothing renders it.)*
 #[must_use]
 pub fn validated_ceiling_display() -> String {
     format!("{SUPPORTED_MAJOR}.{VALIDATED_MAX_MINOR}")

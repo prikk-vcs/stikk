@@ -154,36 +154,16 @@ impl Fixture {
         }
     }
 
-    /// ≥ 0.33: `prikk key generate --out <path>` writes a seed file (mode `0600`) **and** prints that
-    /// seed's own derived public key on its own stdout in the same call — no separate `prikk key public
-    /// --seed-env` round trip needed. Used for both keys; only the maintainer's public key is used
-    /// (`trust maintainer add`), since AUTHOR needs no registration at all.
+    /// ≥ 0.33: `prikk key generate` derives a keypair and prints the public key, in the same call that
+    /// produces the seed. Only the maintainer's public key is used (`trust maintainer add`); AUTHOR
+    /// needs no registration at all.
+    ///
+    /// **Two forms, because `--out` is refused on Windows by design** (found by the first full-matrix
+    /// run, 2026-09-12 — see [`Self::generate_key`]). Both yield the same pair; they differ only in
+    /// where the seed travels.
     fn setup_via_prikk_key(bin: &PrikkBin, repo: &Path, keys_dir: &Path) -> (String, String) {
-        let author_der = keys_dir.join("author.der");
-        let maintainer_der = keys_dir.join("maintainer.der");
-
-        let author_out = Command::new(&bin.path)
-            .args(["key", "generate", "--out"])
-            .arg(&author_der)
-            .output()
-            .expect("spawn prikk key generate (author)");
-        assert!(
-            author_out.status.success(),
-            "prikk key generate (author) failed at 0.{}",
-            bin.minor
-        );
-
-        let maintainer_out = Command::new(&bin.path)
-            .args(["key", "generate", "--out"])
-            .arg(&maintainer_der)
-            .output()
-            .expect("spawn prikk key generate (maintainer)");
-        assert!(
-            maintainer_out.status.success(),
-            "prikk key generate (maintainer) failed at 0.{}",
-            bin.minor
-        );
-        let maintainer_pubkey = Self::extract_public_key_line(&maintainer_out.stdout);
+        let (author_seed, _) = Self::generate_key(bin, keys_dir, "author");
+        let (maintainer_seed, maintainer_pubkey) = Self::generate_key(bin, keys_dir, "maintainer");
 
         let status = Command::new(&bin.path)
             .args([
@@ -204,16 +184,71 @@ impl Fixture {
             bin.minor
         );
 
-        (
-            fs::read_to_string(&author_der)
-                .expect("read author seed")
+        (author_seed, maintainer_seed)
+    }
+
+    /// One `prikk key generate`, returning `(seed_hex, public_key_hex)`.
+    ///
+    /// **Unix takes `--out`**, which writes the seed to a `0600` file prikk creates itself — prikk's
+    /// own preferred handling, and the one this harness used everywhere until the first full-matrix
+    /// run. **Windows cannot**: `prikk key generate --out` refuses there *by design*, not by accident —
+    /// prikk declines to write a secret at inherited permissions because Unix mode bits have no
+    /// portable equivalent, and its own error names the alternative ("run `prikk key generate` without
+    /// `--out`, then save the printed seed yourself"). So Windows takes the no-`--out` form and reads
+    /// the seed from captured stdout.
+    ///
+    /// **The seed never reaches a log on either path.** This uses [`Command::output`], which captures
+    /// the child's stdout rather than inheriting it, so prikk's own "this seed is now in your terminal
+    /// scrollback" warning does not apply: nothing prints it, and the workflow's `--nocapture` cannot
+    /// surface what the parent never wrote. The returned `seed_hex` is handled exactly like the
+    /// file-read one — into a `Fixture` field, out only through `set_*_env`.
+    ///
+    /// *(Considered and not taken: using the no-`--out` form on all three platforms, for a single path
+    /// exercised everywhere rather than a branch only one platform runs — an unexercised branch is
+    /// precisely how this failure survived until the matrix first ran. Kept the split because prikk's
+    /// `0600` file is the more careful handling where it is available, and because the full matrix now
+    /// exercises both branches every release. Worth a ruling if you disagree.)*
+    fn generate_key(bin: &PrikkBin, keys_dir: &Path, label: &str) -> (String, String) {
+        let mut command = Command::new(&bin.path);
+        command.args(["key", "generate"]);
+        let out_path = keys_dir.join(format!("{label}.seed"));
+        if cfg!(unix) {
+            command.arg("--out").arg(&out_path);
+        }
+        let out = command
+            .output()
+            .unwrap_or_else(|e| panic!("spawn prikk key generate ({label}): {e}"));
+        assert!(
+            out.status.success(),
+            "prikk key generate ({label}) failed at 0.{}: {}",
+            bin.minor,
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+
+        let public_key = Self::extract_public_key_line(&out.stdout);
+        let seed = if cfg!(unix) {
+            fs::read_to_string(&out_path)
+                .unwrap_or_else(|e| panic!("read {label} seed: {e}"))
                 .trim()
-                .to_string(),
-            fs::read_to_string(&maintainer_der)
-                .expect("read maintainer seed")
-                .trim()
-                .to_string(),
-        )
+                .to_string()
+        } else {
+            Self::extract_seed_line(&out.stdout, label)
+        };
+        (seed, public_key)
+    }
+
+    /// Pull the seed out of `prikk key generate`'s no-`--out` stdout (`seed: <hex>`), for the platforms
+    /// where `--out` is refused. **Never logged, never returned in a panic message** — a parse failure
+    /// reports only that the line was absent, deliberately without the text it searched.
+    fn extract_seed_line(stdout: &[u8], label: &str) -> String {
+        let text = String::from_utf8_lossy(stdout);
+        text.lines()
+            .find_map(|line| line.strip_prefix("seed: "))
+            .unwrap_or_else(|| {
+                panic!("no `seed: <hex>` line in `prikk key generate` output for {label}")
+            })
+            .trim()
+            .to_string()
     }
 
     /// Pull the hex key out of `prikk key generate`'s own `public key: <hex>` line. `stdout` is this

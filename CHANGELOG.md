@@ -2,7 +2,18 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.5.0 — 2026-09-12
+
+**stikk is checked.** 0.4.0 was the release where stikk writes; this is the one where what it writes is
+verified against a real prikk rather than against captured strings and a person's memory. Four
+increments: a **real-binary integration suite** drives commit and seal against actual prikk binaries at
+both ends of the supported range, asserting what the repository *became* rather than what stikk parsed
+(RFC 019); a **supply-chain gate** runs advisories and licences over the dependency tree, because the
+advisory that forced this release's MSRV raise was found by a person reading a report and nothing in CI
+would have caught it (RFC 020); the **validated prikk range moves 0.33 → 0.38**, five releases at once
+and the first re-baseline a machine performed (RFC 021); and a **fabricated worktree entry** — stikk
+showing a file that does not exist — is fixed (RFC 021 F0). The security-relevant half of that list is
+under `### Security`, including what the suite does *not* cover.
 
 ### Breaking
 
@@ -13,8 +24,15 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
   `time` crate that stikk carries transitively through ratatui's calendar widget (never rendered, but
   not optional in the facade stikk depends on) — the fix needs `time >= 0.3.47`, which needs Rust 1.88.
   A consumer on an older toolchain can see plainly what they're being asked to trade for.
-- **ratatui 0.29 → 0.30**, the dependency the MSRV raise rode in on. A rendering-layer major with no
-  stikk API changes from it — stated explicitly rather than left for a reader to infer.
+- **ratatui 0.29 → 0.30**, the dependency the MSRV raise rode in on. **stikk declares no API change of
+  its own from it** — no struct gained or lost a field, no signature changed shape — **but ratatui is a
+  *public* dependency of `stikk-tui`, so the major propagates**: `Palette`'s five colour fields are
+  `ratatui::style::Color`, and `stikk_tui::shell::render` takes a `&mut ratatui::Frame`. A consumer of
+  `stikk-tui` must therefore move to ratatui 0.30 as well — recompiling against 0.29 will not work, and
+  that is the concrete reason this row forces the minor rather than merely accompanying it. (Internally
+  the migration was `Alignment` → `HorizontalAlignment` and nothing else.) Consumers of the other five
+  crates — `stikk-model`, `stikk-prikk`, `stikk-state`, `stikk-core` — are unaffected: none depends on
+  ratatui at all.
 
 ### Changed
 
@@ -56,6 +74,45 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
   **prikk's maintainers found this by reading stikk's parser and predicted the exact line before we
   reproduced it** — the second time an upstream reading of this project's code has been exactly right,
   and worth recording where a user can see it.
+
+### Security
+
+- **stikk's mutations are now exercised against a real prikk binary, not only against captured
+  strings.** Until this release, every one of stikk's tests ran against a scripted backend or a
+  recorded fixture: four releases shipped — including the one that writes to repositories — verified
+  by a person running commands by hand and pasting the output into a review. The **real-binary
+  integration suite** (RFC 019) makes that repeatable. It drives the same `CliBackend` the product
+  uses against real prikk **0.28.0 and 0.38.0** — both ends of the supported range — through a
+  throwaway repository, and asserts **what the repository became**, re-read afterwards, rather than
+  what stikk parsed out of prikk's reply: after a commit the patch is actually queued; after a seal
+  the queue is empty and the new block exists; the repository still verifies clean. It also confirms
+  that the two refusals stikk *prevents* client-side — committing against the wrong ref, sealing an
+  empty queue — are refusals a real prikk genuinely gives, which until now was an inference from
+  reading prikk's source in two separate increments.
+
+  **What it does not cover, stated because a Security entry is read to decide what to trust:** the
+  suite exercises **four** of the nine surfaces stikk parses — `commit`, `seal`, `orientation` and
+  `history`. It does not touch `worktree-status`, `refs`, `tags`, `block_state` or `change_token`, and
+  it does not reach the failure-classifier fixtures at all; those remain covered by captured strings
+  and by reading, as before. Widening it is the next infrastructure increment. A green run here means
+  four surfaces at two prikk versions on three platforms — a real result, and not the whole product.
+
+- **A supply-chain gate now runs over the dependency tree** (RFC 020): `cargo-deny` across both
+  advisories and licences, in one report. It exists because
+  [`RUSTSEC-2026-0009`](https://rustsec.org/advisories/RUSTSEC-2026-0009.html) — the `time` parsing DoS
+  that forced this release's MSRV raise — **was found by a person reading an advisory feed, and
+  nothing in CI would have caught it.** The licence half is there because stikk publishes six
+  Apache-2.0 crates and a copyleft dependency arriving transitively is a thing nobody here was
+  positioned to notice. By the owner's ruling it is **non-blocking on a pull request** — an advisory
+  published overnight must not redden unrelated work — and **required, and read by a human, before a
+  release**. Every ignore entry must carry a dated reason and a removal condition; the list is
+  currently empty.
+
+- **The minimum supported Rust version now has one source.** It was stated in five places, three of
+  which went stale the day it moved — including the workflow that cuts releases, which would have
+  failed *after* a tag was pushed, mid-publish, with the version number already spent. Every workflow
+  now derives it from `Cargo.toml`, and the rule for finding such copies is a command over every
+  tracked file rather than a list of directories to remember (RFC 020 F1/F3).
 
 ## 0.4.1 — 2026-09-06
 

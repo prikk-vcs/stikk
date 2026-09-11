@@ -776,6 +776,181 @@ fn worktree_status_refuses_on_a_missing_count() {
     assert_eq!(worktree_status(text).unwrap_err().class(), "environment");
 }
 
+// Captured verbatim (stdout; the dirty-exit `error: worktree has changes against the baseline` line is
+// on stderr and is not part of the report) from a real prikk **0.38.0** binary on 2026-09-12, RFC 021
+// F0. Commands, in order, in a fresh temp directory:
+//
+//   cargo install prikk --version 0.38.0 --locked --root <dir>
+//   prikk setup . --author-seed-out … --maintainer-seed-out …
+//   printf 'draft body\n' > "modified draft.txt"
+//   prikk commit --from-worktree --ref heads/main -m "add draft"
+//   prikk seal --allow-no-audit --ref heads/main
+//   prikk mv "modified draft.txt" renamed.txt
+//   prikk worktree-status --ref heads/main
+//
+// **0.38.0 is above stikk's validated ceiling (0.33).** A parser fixture is a pure-function input and
+// may be captured from any real binary; this one must not be read as validation of 0.38 — that is
+// RFC 021's Handoff B, and the real-binary suite's version guard still names 0.33 until it moves.
+//
+// The last two lines are why F0 exists: `live rename declarations:` is flush-left, and the indented
+// line under it begins with `modified`, a change-kind word.
+const WORKTREE_RENAME_0_38_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 1
+modified files: 0
+untracked files: 1
+unsupported paths: 0
+worktree: changed against baseline
+  missing modified draft.txt — tracked file is absent from the worktree
+  untracked renamed.txt — worktree file is not in the baseline
+live rename declarations: 1
+  modified draft.txt -> renamed.txt
+note: each declaration above is authored into the next `prikk commit` as a RenamePath -- run `prikk mv` again to change it, or move the destination back to the source to clear it
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+// Captured verbatim from the same real prikk 0.38.0 binary, same day and command sequence, with the
+// file named **exactly** `modified` and renamed to `untracked` (`prikk mv modified untracked`). The
+// narrowest form of the collision prikk's letter predicted: the declaration line is `  modified ->
+// untracked`, whose first token is a kind word and whose "path" would be `-> untracked`.
+const WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 1
+modified files: 0
+untracked files: 1
+unsupported paths: 0
+worktree: changed against baseline
+  missing modified — tracked file is absent from the worktree
+  untracked untracked — worktree file is not in the baseline
+live rename declarations: 1
+  modified -> untracked
+note: each declaration above is authored into the next `prikk commit` as a RenamePath -- run `prikk mv` again to change it, or move the destination back to the source to clear it
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+#[test]
+fn a_0_38_rename_declaration_is_not_a_worktree_entry() {
+    // RFC 021 F0. prikk reported two changes; stikk reported three, the third a file that does not
+    // exist in a state prikk never named (`T-T4` manufactured out of correct prikk output).
+    let s = worktree_status(WORKTREE_RENAME_0_38_FIXTURE).expect("parses");
+    assert_eq!(
+        s.entries.len(),
+        2,
+        "prikk reported 2 changes; entries were {:?}",
+        s.entries
+            .iter()
+            .map(|e| (&e.kind, &e.path))
+            .collect::<Vec<_>>()
+    );
+    // The count alone would pass a parser that kept the declaration and dropped a real entry.
+    assert!(
+        !s.entries.iter().any(|e| e.path.contains("->")),
+        "a rename declaration was parsed as a change entry: {:?}",
+        s.entries
+    );
+    assert!(
+        s.entries
+            .iter()
+            .any(|e| e.kind == "missing" && e.path == "modified draft.txt")
+    );
+    assert!(
+        s.entries
+            .iter()
+            .any(|e| e.kind == "untracked" && e.path == "renamed.txt")
+    );
+    // The counts prikk itself reported are untouched by the scoping.
+    assert_eq!(s.missing, 1);
+    assert_eq!(s.untracked, 1);
+    assert_eq!(s.modified, 0);
+}
+
+#[test]
+fn a_file_named_exactly_modified_does_not_fabricate_an_entry_when_renamed() {
+    // The narrowest form of prikk's prediction: the declaration is `  modified -> untracked`. A `->`
+    // reject heuristic would also catch this one — which is why the synthetic-section test below
+    // exists, to tell the boundary fix apart from the heuristic.
+    let s = worktree_status(WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE).expect("parses");
+    assert_eq!(
+        s.entries.len(),
+        2,
+        "entries were {:?}",
+        s.entries
+            .iter()
+            .map(|e| (&e.kind, &e.path))
+            .collect::<Vec<_>>()
+    );
+    assert!(!s.entries.iter().any(|e| e.path.contains("->")));
+    assert!(
+        s.entries
+            .iter()
+            .any(|e| e.kind == "missing" && e.path == "modified")
+    );
+    assert!(
+        s.entries
+            .iter()
+            .any(|e| e.kind == "untracked" && e.path == "untracked")
+    );
+}
+
+#[test]
+fn an_indented_section_prikk_does_not_emit_today_is_still_not_entries() {
+    // **The test that proves the fix is the section boundary and not the rename.** A `->` reject list
+    // passes the two tests above and fails this one: the fabricated line here contains no `->` at all,
+    // and its first token is a change kind. Synthetic on purpose — it is a section prikk does not emit,
+    // standing in for whatever it adds next.
+    let text = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 0
+modified files: 1
+untracked files: 0
+unsupported paths: 0
+worktree: changed against baseline
+  modified readme.txt — tracked file bytes differ from the baseline
+pending attestation requests: 1
+  modified readme.txt requested by someone
+note: use `prikk commit -m <message>` to author node-addressed worktree changes
+";
+    let s = worktree_status(text).expect("parses");
+    assert_eq!(
+        s.entries.len(),
+        1,
+        "only the line inside the worktree: region is an entry; got {:?}",
+        s.entries
+            .iter()
+            .map(|e| (&e.kind, &e.path))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(s.entries[0].path, "readme.txt");
+    assert!(s.entries[0].note.contains("bytes differ"));
+}
+
+#[test]
+fn a_clean_headline_with_an_empty_region_at_end_of_input_parses() {
+    // The region may be empty, and may run to end of input with no flush-left line closing it.
+    let text = "\
+ref: heads/main
+tracked files: 2
+unchanged files: 2
+missing files: 0
+modified files: 0
+untracked files: 0
+unsupported paths: 0
+worktree: clean against baseline
+";
+    let s = worktree_status(text).expect("parses");
+    assert!(s.clean);
+    assert!(s.entries.is_empty());
+}
+
 // Captured verbatim against a real prikk 0.31.1 binary on 2026-09-06 (RFC 014 §2/§9):
 // `prikk commit --from-worktree --ref heads/main -m "first patch"` on a freshly-`init`ed repository
 // with one new file. Carries **both** `note:` lines a validated-range prikk prints — the perpetual

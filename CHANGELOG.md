@@ -16,6 +16,24 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
 - **ratatui 0.29 → 0.30**, the dependency the MSRV raise rode in on. A rendering-layer major with no
   stikk API changes from it — stated explicitly rather than left for a reader to infer.
 
+### Fixed
+
+- **On prikk ≥ 0.38, a renamed path whose name began with a change-kind word appeared in Changes as a
+  modified file that does not exist.** prikk 0.38 prints a `live rename declarations:` section, and
+  stikk's worktree-status parser scanned *every* indented line in the report rather than only the ones
+  under the `worktree:` headline — so after `prikk mv "modified draft.txt" renamed.txt`, the
+  declaration line `modified draft.txt -> renamed.txt` was read as a fourth kind of change entry.
+  stikk showed three changes where prikk reported two, the third a file in a state prikk never named.
+  The entry scan is now bounded by its section — the headline and the next flush-left line — rather
+  than by indentation alone, so the next section prikk adds cannot do this again. Reachable in 0.4.1
+  on prikk ≥ 0.38, which stikk runs against deliberately (saying the range is unvalidated rather than
+  refusing) — it needed that version, a `prikk mv`, and a path whose first word was a change kind
+  (RFC 021 F0).
+
+  **prikk's maintainers found this by reading stikk's parser and predicted the exact line before we
+  reproduced it** — the second time an upstream reading of this project's code has been exactly right,
+  and worth recording where a user can see it.
+
 ## 0.4.1 — 2026-09-06
 
 ### Fixed

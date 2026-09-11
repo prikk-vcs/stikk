@@ -371,17 +371,54 @@ const QUEUED_ELSEWHERE_PREFIX: &str = "note: the active WAL has queued";
 /// hint — passes through unread rather than causing a refusal. Refusing on an unrecognized `note:`
 /// would make every future prikk note a user-visible outage; only a malformed *count* or a missing
 /// *headline* refuses.
+///
+/// **The entry scan is bounded by a section, not by indentation alone** (RFC 021 F0): entries are the
+/// indented lines between the `worktree:` headline and the **next flush-left line**, whatever that
+/// line is. Scanning every indented line in the document is what made stikk fabricate an entry on
+/// prikk 0.38, which prints a flush-left `live rename declarations: N` followed by indented
+/// `  <old> -> <new>` lines — and `prikk mv "modified draft.txt" renamed.txt` yields a declaration
+/// whose first token is `modified`, a change kind. stikk then reported three changes where prikk
+/// reported two, the third a file that does not exist in a state prikk never named (`T-T4`). The fix
+/// is the section boundary and deliberately **not** a reject list for `->`: a heuristic against that
+/// one collision would leave whatever indented section prikk adds next to fabricate the same way.
+///
+/// Two things the boundary has to survive, both covered by fixtures in `parse/tests.rs`:
+///
+/// - **Pre-0.38 output has no rename section at all.** The region simply runs from the headline to the
+///   first `note:` line, or to end of input. 0.28–0.32 captures parse to exactly the entries they did
+///   before this became section-aware; those fixtures are that regression suite.
+/// - **The headline may say `clean`**, with no entries under it. An empty region is normal, not a
+///   malformed report.
+///
+/// A blank line inside the region is skipped rather than treated as its boundary: every section prikk
+/// introduces is introduced by a flush-left *label*, so a label is what ends the region. Ending it on a
+/// blank line instead would risk dropping a real entry — the same wrong-picture failure in the other
+/// direction.
 pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
-    let headline = field(text, "worktree:").ok_or_else(|| {
-        StikkError::environment_msg(
-            "prikk worktree-status output is missing the worktree: headline",
-        )
-    })?;
+    // One lookup for the headline: its value decides `clean`, and its position opens the entries
+    // region below. Locating it twice — once by value, once by position — is how those two could
+    // disagree about which line they mean.
+    let (headline_line, headline) = text
+        .lines()
+        .enumerate()
+        .find_map(|(index, line)| {
+            line.trim()
+                .strip_prefix("worktree:")
+                .map(|value| (index, value.trim()))
+        })
+        .ok_or_else(|| {
+            StikkError::environment_msg(
+                "prikk worktree-status output is missing the worktree: headline",
+            )
+        })?;
     let clean = headline.starts_with("clean");
     let reff = required_ref_field(text, "ref:")?;
     let entries = text
         .lines()
-        .filter(|line| line.starts_with(' ') || line.starts_with('\t'))
+        .skip(headline_line + 1)
+        .take_while(|line| {
+            line.trim().is_empty() || line.starts_with(' ') || line.starts_with('\t')
+        })
         .filter_map(parse_worktree_entry)
         .collect();
     let queued_elsewhere = text

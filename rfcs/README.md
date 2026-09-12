@@ -31,7 +31,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 023 | [Three things stikk has and does not show](./accepted/023-what-stikk-has-and-does-not-show.md) | The prikk 0.28 Windows refusal stikk can explain and doesn't; four glossary explanations written, tested and unreachable; the AUTHOR key id open since RFC 014. **And `C-S2` — a control the coverage table lists as existing — has no implementation.** Q1 resolved by derivation, not transcription | [A: display gaps](./handoffs/023-what-stikk-has-and-does-not-show/a-display-gaps-handoff-v1.md) · B: pending |
+| 023 | [Three things stikk has and does not show](./accepted/023-what-stikk-has-and-does-not-show.md) | The prikk 0.28 Windows refusal stikk can explain and doesn't; four glossary explanations written, tested and unreachable; the AUTHOR key id open since RFC 014. **And `C-S2` — a control the coverage table lists as existing — has no implementation.** Q1 resolved by derivation, not transcription | [A: display gaps](./handoffs/023-what-stikk-has-and-does-not-show/a-display-gaps-handoff-v1.md) · [B: key-id module](./handoffs/023-what-stikk-has-and-does-not-show/b-key-id-module-handoff-v1.md) |
 
 ## Done (implemented)
 

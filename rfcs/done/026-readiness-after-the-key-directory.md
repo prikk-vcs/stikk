@@ -1,11 +1,48 @@
 # RFC 026 — Readiness after the key directory: the 0.41 re-baseline, and a model that is wrong today
 
-**Status.** **Accepted by the project owner 2026-09-12**, Q1 ruled (b) by the architect the same day. Proposed 2026-09-12. **Delivered in three handoffs**: A the re-baseline (**landed 2026-09-13**, with an addendum), B the readiness rebuild, C F7's two render leftovers. **Split from two to three by the architect 2026-09-13**: F7's items hang off nothing in B and sharing a diff with the readiness model would make one review carry two arguments — F7 allows them their own increment and this is it. **Supersedes [RFC 025](../archive/025-trust-adoption-and-the-fourth-state.md)**,
+**Status.** **Done 2026-09-13** — A, B and C all reviewed and landed on `main`; ships in **0.6.0**. Accepted by the project owner 2026-09-12, Q1 ruled (b) by the architect the same day. Proposed 2026-09-12. **Delivered in three handoffs**: A the re-baseline (**landed 2026-09-13**, with an addendum), B the readiness rebuild, C F7's two render leftovers. **Split from two to three by the architect 2026-09-13**: F7's items hang off nothing in B and sharing a diff with the readiness model would make one review carry two arguments — F7 allows them their own increment and this is it. **Supersedes [RFC 025](../archive/025-trust-adoption-and-the-fourth-state.md)**,
 withdrawn the same day. Three prikk releases — 0.39, 0.40, 0.41 — against a validated ceiling of 0.38.
 **Tracks.** `FR-104`, `FR-103`, `C-I1a–e`, `C-S2`, `C-T2c′`, `C-T4d`, `AC-01…04`, `UD-02`, `ASM-2`,
 and RFC 023's two carried render items.
 **Touches.** `stikk-prikk` (`env.rs`'s replacement, `key_id.rs`, three JSON parsers), `stikk-model`
 (`MaintainerReadiness` and its author counterpart), `stikk-core`, `stikk-tui`, the threat model.
+
+## Delivered
+
+**A — the 0.41 re-baseline** (`b1cf793`…`6dd8683`, plus `5035ada`). Harness rebuilt to configure prikk by
+era before anything could be measured; ceiling 0.38 → 0.41; `log`/`branch`/`tag` read as JSON at ≥ 0.39
+with the prose readers kept for the 0.28 floor. Landed **red on purpose** — the twelve suite failures
+were F1, reproduced end to end for the first time. Review found the JSON readers had dropped
+`INV-9`/`UD-02`, which the prose readers enforce; the addendum restored it.
+
+**B — the readiness rebuild** (`be9d87a`, `29bbf6c`, `c0730d1`, `9d01866`). Readiness moved to an
+eleventh seam method reading `prikk key status`, banded ≤ 0.39 / 0.40 / ≥ 0.41; the type mirrors prikk's
+`binding` for both roles; the key-id display gates on it; `C-S2` implemented and the threat model's three
+`NOT IMPLEMENTED` markers removed together. **The twelve went green — fourteen of fourteen on three
+platforms**, which is this RFC's argument in one diff.
+
+**C — the two render leftovers** (`59bc4f4`). The quote bar carries down every wrapped row; the backslash
+gloss narrowed by platform and version, keeping both halves only where both remain possible.
+
+### What the increment found that this RFC did not predict
+
+1. **prikk's key id always has a value** — unset means the role's own name. stikk's confirmation had been
+   showing *nothing* on the default setup while prikk would sign as `author`. F4 widened.
+2. **`key-status-v1` carries no `legacy_variable_set`**, and `source` has two values, not three. Both were
+   written here from prikk's letter rather than from prikk; F2 carries the correction and the rule it
+   produced on both sides — *a letter describes the binary, re-read against it before it goes*.
+3. **The gate set's toolchain was never stated.** CI runs the MSRV; both projects' roles had been reporting
+   "eight of eight" from stable, and one clippy lint differed. Recorded in both specs, with `cargo package`'s
+   own stale-state and toolchain hazards.
+
+### Carried forward
+
+- **`refused paths:`** — prikk 0.41 now marks the paths `commit` would refuse, answering a question
+  carried since 0.4.1 (F5, letter 006 §4). The count is unparsed and the reason reaches the Changes view
+  only as trailing text. **Its own increment, with `FR-050`'s prevention question decided alongside it.**
+- **`C-S2`'s residual drift**: stikk flags the documentation examples, which are enumerable; prikk's own
+  rule also names its tests and issue comments, which no list can close over. Stated in the threat model
+  rather than implied away.
 
 ## Summary
 

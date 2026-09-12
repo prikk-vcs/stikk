@@ -1,7 +1,7 @@
 # RFC 027 — What commit would refuse: prikk's verdict, and the unsupported paths stikk never listed
 
-**Status.** **Proposed 2026-09-13** by the architect, the first increment of 0.7.0. One open question
-(Q1). Every finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from
+**Status.** **Accepted by the project owner 2026-09-13**, **Q1 ruled (b)**. Proposed the same day by the
+architect, the first increment of 0.7.0. **Delivered in two handoffs**: A — F0; B — decisions 2–7. Every finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from
 their tags the same day, not read from prikk's changelog or letters.
 **Tracks.** `FR-034`, `FR-050`, `UD-06`, `UD-02`, `C-T4d`, `C-T2b`, `C-T2c′`, `ER-02`, `ASM-2`, and
 RFC 014 decisions 1 and 5b.
@@ -191,6 +191,13 @@ the one exception the case prikk has just marked the other way. The cost is real
 unrepresentable name is offered a commit that fails — but after F0 the reason is on screen above the
 action, and the refusal comes back in prikk's words. That is honest; (a) would be confident. **It is
 yours because it trades a failure the user can see for a claim stikk cannot source.**
+
+### RULED by the project owner, 2026-09-13: (b)
+
+**Prevention rests on prikk's verdict alone.** `unsupported-path` entries are listed — F0 makes them
+visible for the first time — with prikk's own detail; commit is offered, and prikk's refusal comes back
+verbatim. Letter 010 asks prikk whether those entries should carry `authoring: "refused"`. If prikk
+agrees, decision 5 covers them with no change here.
 
 ## Delivery
 

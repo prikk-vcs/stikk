@@ -25,12 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 027 | [What commit would refuse](./proposed/027-what-commit-would-refuse.md) | `FR-050`'s carried question, decided on prikk 0.39's per-entry authoring verdict; and the unsupported paths stikk has never listed, in any release since 0.1.0 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None currently._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 027 | [What commit would refuse](./accepted/027-what-commit-would-refuse.md) | `FR-050` decided on prikk 0.39's per-entry authoring verdict — commit unavailable-with-a-reason when prikk refuses an entry; and the unsupported paths stikk has never listed, in any release since 0.1.0. **Accepted 2026-09-13, Q1 ruled (b)** | [A: unsupported-path entries](./handoffs/027-what-commit-would-refuse/a-unsupported-path-entries-handoff-v1.md) · B: pending |
 
 ## Done (implemented)
 

@@ -1,6 +1,6 @@
 # RFC 022 — Widening the real-binary suite: the five surfaces, and the arms nothing can reach
 
-**Status.** **Done** — shipped on `main` 2026-09-12 (`8221c15`, `3938d02`, `4613cd2`), 0.6.0 candidate. The suite now drives **ten of ten** seam methods at both ends on three platforms, and its first widened run found a real prikk 0.28 Windows defect. Accepted by the project owner 2026-09-12, Q1 left unruled and **ruled by the architect the same day on evidence** (below). Opens 0.6.0. Scheduled at RFC 021 Handoff B's review, where the
+**Status.** **Done** — shipped on `main` 2026-09-12 (`8221c15`, `3938d02`, `4613cd2`), **shipped in 0.6.0**. The suite now drives **ten of ten** seam methods at both ends on three platforms, and its first widened run found a real prikk 0.28 Windows defect. Accepted by the project owner 2026-09-12, Q1 left unruled and **ruled by the architect the same day on evidence** (below). Opens 0.6.0. Scheduled at RFC 021 Handoff B's review, where the
 suite's first real job found nothing **in what it checks** — and the six stale classifier fixtures that
 re-baseline did move were found by hand, which is the cost RFC 019 exists to remove.
 **Tracks.** `TS-07`, `TS-03`, `UD-02`, `UD-05`, `NFR-T01`, `T-T4`, `FR-106`.

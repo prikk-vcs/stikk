@@ -230,6 +230,9 @@ a fabricated worktree entry was fixed.
 3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
 4. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
+5. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
+   and a source-level test holds that only in the two modules that name those variables. A guard
+   over every shipped crate would let the sentence say *enforced by test* without a qualifier.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

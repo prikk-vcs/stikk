@@ -95,7 +95,10 @@
 - **T-I3 (Info-disclosure) — leaking sensitive *content* through diagnostics/exports/logs.** prikk states a redaction rule for its own diagnostics (`trust-threat-model.md:210-211`): avoid "raw text spans, replacement text, blob bytes, absolute host paths, `.prikk` private paths, signer secrets, key material, and arbitrary object debug dumps." A front-end that logs or exports freely could re-leak exactly this.
   - **C-I3** stikk inherits the redaction rule (NFR-S03 extended): its own logs and stikk-authored exports (`stikk-export-v1`) never contain blob bytes, raw span/replacement text beyond what the user is actively viewing, absolute host paths, or `.prikk` private paths; where such content is shown in a view it is inert (C-T2a) and is not copied into a durable log. prikk's `verify --format json` passthrough is the operator's explicit act to a chosen path (CT-02), not a background log.
 - **T-S2 (Spoofing) — inducing use of an unsafe key.** Rendering the public example/tutorial seeds as if they were real signing keys would invite users to "sign" with a publicly-known key.
-  - **C-S2** stikk recognizes the documented example public inputs and **flags them as unsafe** persistently (FR-104), by pattern of the public value — never by storing the secret.
+  - **C-S2 — NOT IMPLEMENTED.** *(RFC 023 F4, Decision 5; recorded 2026-09-12.)* **This control does not exist in stikk today.** As designed it would have stikk recognize the documented example public inputs and **flag them as unsafe** persistently (FR-104), by pattern of the public value — never by storing the secret. There is no implementation of it anywhere in the workspace, and there never was; it was listed in §6's coverage table beside `C-I1a–d` and `SEAM-06` as though all three were in force, and **two are**. Correcting that entry is the point of this note: the document most responsible for telling a reader what protects them is the worst possible place for a claim it cannot support (`T-T4`, turned on ourselves).
+    - **What it was waiting on**, and why this is not neglect: stikk must see a public value, must know which values are compromised, and must get that list from somewhere defensible. The first arrived only at **prikk ≥ 0.34**, whose `trust maintainer list --format json` reports adopted `public_key`s. The third was the blocker — prikk's list of published example values lives in its **prose** (`security-setup.md`), and transcribing values from upstream documentation is exactly what RFC 017 F2 condemned: five classifier arms written from prikk's prose rather than captured from its output, dead from the day they shipped. A hardcoded list of example keys would have been the same defect wearing a security hat.
+    - **How it is now unblocked** (RFC 023 Q1, resolved by derivation): prikk's own `key public --seed-env` **derives** the public keys from the published example seeds, so the values stikk compares against are **captured from prikk's output and re-verified every suite run**, not transcribed. stikk stores public keys only, which satisfies this control's own *"never by storing the secret"* literally rather than by argument. Drift remains the weak point — a new example seed published upstream goes unnoticed — so an upstream letter is drafted as a non-blocking follow-up.
+    - **Which increment ships it:** together with `FR-103`'s three-valued `Ready`, because both read the same `trust maintainer list` surface and neither is worth turning on alone. **Not** RFC 023 Handoff A or B. Until that lands, this bullet and §6 both say so.
 
 ### 3.3 Untrusted content rendered as UI (TB-5, A-UND) — the front-end's own surface
 
@@ -137,7 +140,7 @@
 
 | Asset ↓ / STRIDE → | S | T | R | I | D | E |
 |---|---|---|---|---|---|---|
-| A-KEY | T-S2 / C-S2 | — (stikk can't tamper keys) | — | **T-I1 / C-I1a–d** | — | — |
+| A-KEY | T-S2 / C-S2 **(not implemented — §3.2)** | — (stikk can't tamper keys) | — | **T-I1 / C-I1a–d** | — | — |
 | A-HIST | C-E1 (no bypass) | prikk-owned; C-E1/C-T4 | T-R1 / C-R1 | — | — | T-E1 / C-E1 |
 | A-TRUST | T-T2c (adoption clarity) | C-T2c | — | — | — | C-E1 (no auto-adopt) |
 | A-UND | T-T4a | **T-T2 / C-T2**, **T-T4 / C-T4** | T-R1 / C-R1 | — | T-D2 / C-D2 | — |
@@ -193,7 +196,7 @@ prominently, not by leaving it in the residual-risk register once it no longer i
 
 | Control theme | Controls | Backing |
 |---|---|---|
-| No key material in stikk | C-I1a–d, C-S2, SEAM-06 | NFR-S03, LC-13, DM-N1, TS-04 |
+| No key material in stikk | C-I1a–d, SEAM-06 · **C-S2 not implemented** (see §3.2) | NFR-S03, LC-13, DM-N1, TS-04 |
 | Diagnostic/export redaction | C-I3 | NFR-S03, `trust-threat-model.md:210-211` |
 | No repository authority in stikk | C-T3a, C-E2, INV-1/2/5 | CON-1, CON-4, NFR-S02 |
 | No bypass of prikk safety | C-E1, C-T4a–e | NFR-S04, FR-120/121, OPL-01/02/05 |

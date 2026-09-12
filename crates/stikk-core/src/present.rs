@@ -200,6 +200,14 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
             // and gets its own honest gloss instead, the same message-shape-recognition pattern as the
             // schema-skew cases above, never a fabricated claim about a writer stikk never saw.
             let is_full_queue = message.contains(glossary::FULL_QUEUE_CODE);
+            // A repository path prikk refuses for containing a backslash (RFC 023 F1), captured from
+            // the Windows leg of RFC 022's first widened matrix run. The fourth instance of this
+            // pattern, and the first whose gloss depends on where stikk is running: the same prikk
+            // message has two causes that need opposite responses, and the platform is what separates
+            // them (see the two gloss constants). Recognition itself is platform-independent — only the
+            // sentence stikk adds differs — and prikk's words are verbatim beside it either way
+            // (`ER-02`).
+            let is_backslash_path = message.contains(glossary::BACKSLASH_PATH_CODE);
             Presentation::RefusalOverlay(RefusalCard {
                 verbatim: message.clone(),
                 gloss: if is_schema_skew {
@@ -208,6 +216,8 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
                     Some(BUNDLE_DECODE_SKEW_GLOSS.to_string())
                 } else if is_full_queue {
                     Some(FULL_QUEUE_GLOSS.to_string())
+                } else if is_backslash_path {
+                    Some(backslash_path_advice(cfg!(windows)).gloss.to_string())
                 } else {
                     refusal_gloss(op)
                 },
@@ -231,6 +241,14 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
                             target: NextTarget::Refresh,
                         },
                     ]
+                } else if is_backslash_path {
+                    // Guidance, not an action, and the same target on both platforms: upgrading prikk
+                    // and renaming a file are equally the user's to do outside stikk (`CON-1`). The
+                    // label differs because the thing to do differs.
+                    vec![NextStep {
+                        label: backslash_path_advice(cfg!(windows)).next_step.to_string(),
+                        target: NextTarget::DismissAndResolveExternally,
+                    }]
                 } else {
                     refusal_next_steps(op)
                 },
@@ -386,6 +404,75 @@ const BUNDLE_DECODE_SKEW_GLOSS: &str = "This bundle was written by a newer prikk
 /// active; prikk's own words beside this gloss already say what to do.
 const FULL_QUEUE_GLOSS: &str = "Nothing is locked and no other writer is involved: the active queue \
      already holds as many patches as it is configured to allow. Seal the queue before trying again.";
+
+/// The gloss for prikk's backslash-path refusal **on Windows** (RFC 023 F1).
+///
+/// The whole reason this gloss exists is that prikk's message is true and reads like an accusation: a
+/// Windows user on prikk 0.28 — a **supported** configuration — commits an ordinary project with a
+/// subdirectory in it and is told about a backslash they never typed. prikk built that path itself.
+///
+/// **It does not claim the commit is impossible**, because it is not: only paths inside a subdirectory
+/// are affected, and a top-level file commits normally at 0.28 on Windows. RFC 022's suite skips
+/// exactly that half of one test for the same reason, and a gloss that overstated the limitation would
+/// be the same wrong-picture failure pointing the other way.
+///
+/// It names **0.28** and **0.29** rather than saying "an old prikk", so a reader on 0.29 or newer can
+/// see immediately that this sentence is not about them — which matters, because on that prikk the
+/// message can only mean the other thing.
+const BACKSLASH_PATH_WINDOWS_GLOSS: &str = "If this repository is on prikk 0.28, you typed no \
+     backslash and nothing is wrong with your file names: prikk 0.28 builds repository paths with \
+     Windows' own separator during a commit and then refuses its own output. prikk fixed this in \
+     0.29.0 — upgrading the prikk binary this session uses is the fix. Only files inside a \
+     subdirectory are affected; a file at the top level of the worktree commits normally. On prikk \
+     0.29 or newer this message means the other thing: a file in the worktree really does have a \
+     backslash in its name.";
+
+/// The gloss for prikk's backslash-path refusal **anywhere but Windows** (RFC 023 F1).
+///
+/// prikk 0.28's defect is Windows-only — it is the platform path separator leaking into a repository
+/// path — so off Windows this message has exactly one cause: a file whose *name* contains a backslash,
+/// which is legal on Unix filesystems and not legal as a prikk repository path. Telling that user to
+/// upgrade prikk would be a stikk-authored claim contradicting the evidence beside it, which is the
+/// failure RFC 017 F4 fixed; this gloss says the true thing for where it is running instead.
+const BACKSLASH_PATH_UNIX_GLOSS: &str = "A file in the worktree has a backslash in its name. prikk \
+     stores repository paths with forward slashes on every platform and refuses any path containing a \
+     backslash, so this file cannot be committed under that name. Rename it outside stikk — stikk \
+     never edits a repository file (`CON-1`) — then retry.";
+
+/// What stikk adds to prikk's backslash refusal: the gloss, and the one next-step's label.
+pub(crate) struct BackslashAdvice {
+    pub(crate) gloss: &'static str,
+    pub(crate) next_step: &'static str,
+}
+
+/// Which of the two backslash glosses applies — **taking the platform as an argument rather than
+/// reading `cfg!` here**, so both branches are reachable from a test on any platform.
+///
+/// That is not a stylistic choice. `ci.yml` runs `cargo test --workspace` on **ubuntu only**; the
+/// real-binary suite is the one thing that touches Windows, and it does not render. A `cfg!(windows)`
+/// branch written directly into `present()` would therefore be a branch that **executes nowhere in this
+/// project's CI** — an inert path guarding the one platform it exists for, which is the failure mode
+/// RFC 019's review named and RFC 022 spent its time proving absent. The caller passes `cfg!(windows)`;
+/// the tests pass both.
+///
+/// **Compile-time is the right question for the caller**, though: prikk walks the worktree on the same
+/// machine stikk runs on, so the separator that can leak into a repository path is this build's
+/// separator. `present()` is given no prikk *version* and is not plumbed one for this — the version is
+/// what the Windows gloss names in its own text, which keeps the discrimination stikk can actually make
+/// (platform) apart from the one it cannot (version).
+pub(crate) fn backslash_path_advice(windows: bool) -> BackslashAdvice {
+    if windows {
+        BackslashAdvice {
+            gloss: BACKSLASH_PATH_WINDOWS_GLOSS,
+            next_step: "Upgrade prikk to 0.29 or newer (resolve outside stikk)",
+        }
+    } else {
+        BackslashAdvice {
+            gloss: BACKSLASH_PATH_UNIX_GLOSS,
+            next_step: "Rename the offending path (resolve outside stikk)",
+        }
+    }
+}
 
 /// The plain-language gloss for a refusal, chosen by the surface it came from. Additive to prikk's
 /// message, never a replacement (ER-02). `None` where stikk has nothing honest to add (verbatim-only).

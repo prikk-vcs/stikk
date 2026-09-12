@@ -240,3 +240,44 @@ fn block_detail_screen_shows_tip_state_and_the_ud09_note() {
     assert!(text.contains("src/main.rs"));
     assert!(text.contains("UD-09")); // honest ceiling note
 }
+
+/// RFC 023 F1 at **80×24** — the gloss and prikk's verbatim words are both on screen at the smallest
+/// terminal stikk supports.
+///
+/// **This is the RFC 016 C1 lesson applied before it can bite again**: a card with prose on it is not
+/// delivered by constructing the prose. C1 was a gloss that existed and did not fit; asserting only
+/// that `present()` returned it would have passed then too. So this asserts pixels, at 80×24, for both
+/// halves — stikk's sentence *and* prikk's, which `ER-02` requires to survive beside it.
+#[test]
+fn the_backslash_refusal_shows_gloss_and_prikks_words_at_80x24() {
+    let backend = NullBackend::supported();
+    let (mut app, rx) = open("/repo", &Config::default());
+    drain(&mut app, &rx, &backend);
+    // Surfaced through the **commit** path, which is the only path that produces this message: prikk
+    // refuses it while authoring worktree nodes. (An orientation-time refusal takes the "Cannot open
+    // repository" screen instead, which is a different presentation entirely and never reaches a card.)
+    let err = stikk_model::StikkError::Refusal {
+        message: "error: invalid name: backslashes are not allowed in repository paths".into(),
+    };
+    app.surface_error(&err, stikk_core::OperationContext::Commit);
+    let text = draw(&app, 80, 24);
+
+    // prikk's own words, verbatim (`ER-02`) — the clause, not a paraphrase of it.
+    assert!(
+        text.contains("backslashes are not allowed in repository paths"),
+        "prikk's verbatim message must be on screen at 80x24:\n{text}"
+    );
+    // And stikk's sentence beside it. The two platforms say different true things; each is checked
+    // against what it actually claims rather than a substring both happen to share.
+    if cfg!(windows) {
+        assert!(
+            text.contains("typed no backslash"),
+            "the gloss's point must be on screen, not merely constructed:\n{text}"
+        );
+    } else {
+        assert!(
+            text.contains("backslash in its name"),
+            "the gloss's point must be on screen, not merely constructed:\n{text}"
+        );
+    }
+}

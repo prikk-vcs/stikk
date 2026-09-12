@@ -26,14 +26,27 @@ use stikk_core::{ConfirmationSummary, NextStep, RefusalCard, RefusalRecord, glos
 use stikk_model::{Capability, Tier};
 
 use crate::app::{Operation, OperationStatus};
-use crate::text::inert;
+use std::cell::Cell;
+
+use crate::text::{inert, wrap_indented};
 use crate::theme::Palette;
 
 /// One overlay. Data-carrying variants own their state; `Glossary` reads the static asset.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Overlay {
     /// The glossary / help browser (terminology mapping, key reference, code index).
-    Glossary,
+    ///
+    /// **The offset is a `Cell` on purpose** (RFC 023 F2). Only the renderer knows the viewport height
+    /// and the wrapped content height, so only the renderer can say what "the end" is; it clamps the
+    /// offset it was handed and **writes the clamped value back**, which is what makes ↓ held past the
+    /// bottom self-correct instead of banking invisible presses that ↑ then has to undo one at a time.
+    /// The alternative — teaching `App` the terminal geometry, or making `shell::render` take `&mut App`
+    /// — changes a public signature for a scrollbar. Nothing outside the render path writes through
+    /// this; `nav_up`/`nav_down` own it through `&mut self` like every other overlay's cursor.
+    Glossary {
+        /// First content line drawn, counting from zero after wrapping.
+        offset: std::cell::Cell<u16>,
+    },
     /// An overlay-bound request asked for but not yet arrived (RFC 010 §5) — currently only the ref
     /// picker's read. Replaced or removed by `App::apply`; popped directly by `back()`.
     Loading {
@@ -158,7 +171,7 @@ impl Overlay {
     #[must_use]
     pub fn title(&self) -> &'static str {
         match self {
-            Self::Glossary => " Glossary & Help ",
+            Self::Glossary { .. } => " Glossary & Help ",
             Self::Loading { .. } => " Loading ",
             Self::Operations { .. } => " Background operations ",
             Self::RefPicker { .. } => " Choose ref ",
@@ -178,7 +191,7 @@ impl Overlay {
 /// Render the top overlay centred over `area`, clearing the region beneath it first (TU-02).
 pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rect) {
     match overlay {
-        Overlay::Glossary => render_glossary(palette, frame, area),
+        Overlay::Glossary { offset } => render_glossary(offset, palette, frame, area),
         Overlay::Loading { what, .. } => render_loading(what, palette, frame, area),
         Overlay::Operations { operations } => render_operations(operations, palette, frame, area),
         Overlay::RefPicker { refs, cursor } => {
@@ -228,7 +241,66 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
     }
 }
 
-fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
+/// The Glossary & Help overlay: key reference, Git → prikk terminology, and — since RFC 023 F2 — the
+/// **code explanations**, which shipped authored, reviewed, tested and rendered nowhere.
+///
+/// **Wrap, scroll and the explanations are one change, not three.** RFC 018 shipped wrapping alone and
+/// reverted it: without somewhere to scroll to, wrapping turns *truncated-but-present* into *absent*,
+/// and at 80×24 left exactly one of eleven terms reachable. That revert is why the explanations waited
+/// too — `code_entries()` roughly doubles this panel's height, so adding them to an unscrollable pane
+/// would have made the terminology worse to reach in order to make the codes reachable at all.
+///
+/// The wrap is stikk's own ([`crate::text::wrap_indented`]) rather than `Paragraph::wrap`, so the line
+/// count is exact and the scroll clamp cannot overshoot; see that function for why that matters.
+fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .style(Style::default().fg(palette.fg));
+    let region = centered(74, area.height.saturating_sub(2), area);
+    // Inside the border. `MIN_WIDTH` is 80 and this overlay is 74 wide, so `text_width` is 72 in every
+    // terminal stikk renders in at all — but it is derived rather than written, because a width that is
+    // "always N" until someone changes a constant is exactly the shape this project keeps correcting.
+    // `- 2` for the border columns, `- 1` for a right gutter: wrapping to the full inner width puts
+    // prose flush against the box edge, which reads as if it were cut off.
+    let text_width = usize::from(region.width.saturating_sub(3));
+    let viewport = region.height.saturating_sub(2);
+
+    let lines = glossary_lines(palette, text_width);
+
+    // The clamp, and the write-back that makes it stick (see `Overlay::Glossary`). `saturating_sub`
+    // gives 0 when everything fits, so a tall terminal simply cannot scroll.
+    let max_offset = u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_sub(viewport);
+    let scroll = offset.get().min(max_offset);
+    offset.set(scroll);
+
+    // `NFR-A03`: whatever scrolls this panel is discoverable *from* this panel — the Keys section below
+    // names the keys, and the title says where you are, so "there is more" is never something a user has
+    // to guess. Only shown when there is somewhere to go.
+    let title = if max_offset == 0 {
+        " Glossary & Help ".to_string()
+    } else {
+        let first = usize::from(scroll) + 1;
+        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
+        format!(
+            " Glossary & Help — ↑/↓ to scroll · lines {first}–{last} of {} ",
+            lines.len()
+        )
+    };
+
+    frame.render_widget(Clear, region);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block.title(title))
+            .scroll((scroll, 0)),
+        region,
+    );
+}
+
+/// Every line of the Glossary panel, already wrapped to `text_width`, so the caller's scroll clamp is
+/// exact. Split out from the renderer so a test can count and inspect the lines without a terminal.
+fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
     // RFC 018 F1: the line this replaced ("stikk reads prikk; it never writes your repository") was
     // true when written and false the moment stikk gained a mutation — anchored to a feature set, not
     // to anything that could not change. A user-facing claim may rest on an invariant this project
@@ -243,8 +315,8 @@ fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
         )),
         Line::from(""),
         section(palette, "Keys"),
+        key_line(palette, "↑/↓ or j/k", "scroll this panel"),
         key_line(palette, "Enter", "open / drill in / activate"),
-        key_line(palette, "↑/↓ or j/k", "move selection"),
         key_line(palette, "b", "choose which ref to view"),
         key_line(palette, "w", "changes — worktree vs baseline"),
         key_line(palette, "u", "toggle untracked (in Changes)"),
@@ -277,29 +349,49 @@ fn render_glossary(palette: &Palette, frame: &mut Frame, area: Rect) {
             ),
             Span::styled(term.prikk, Style::default().fg(palette.fg)),
         ]));
-        lines.push(Line::from(Span::styled(
-            format!("    {}", term.note),
-            Style::default().fg(palette.dim),
-        )));
+        // Wrapped, not truncated — the RFC 018 fix, now that there is somewhere for the overflow to go.
+        for line in wrap_indented(term.note, text_width, "    ") {
+            lines.push(Line::from(Span::styled(
+                line,
+                Style::default().fg(palette.dim),
+            )));
+        }
     }
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Glossary & Help ")
-        .style(Style::default().fg(palette.fg));
-    // Tall content, and no scroll interaction exists for this overlay today (a named gap, filed for
-    // 0.5.0 alongside a real wrap fix — review v2 C2): a fixed height cap silently hid content below it,
-    // with nothing to reveal the rest. Sized to the actual terminal instead, which costs nothing and
-    // helps any terminal tall enough to benefit.
-    let region = centered(74, area.height.saturating_sub(2), area);
-    frame.render_widget(Clear, region);
-    // Review v2 C2: `.wrap(Wrap { trim: false })` was tried here and reverted. Wrapping a truncated note
-    // is correct on its own, but without scroll to reach what wrapping pushes down, it turns
-    // *truncated-but-present* into *absent* for any term far enough down the list — at 80×24 it left
-    // exactly one term (`HEAD`) reachable at all. A correctness fix that reduces reachable content is
-    // not a correctness fix. The notes stay truncated, a known and now-recorded gap, until 0.5.0 builds
-    // wrap and scroll together.
-    frame.render_widget(Paragraph::new(lines).block(block).scroll((0, 0)), region);
+    // RFC 023 F2: `code_entries()` had **zero call sites** outside `glossary.rs`. A refusal card's
+    // `glossary: <code>` line named a code with nowhere to read it; this is the somewhere.
+    lines.push(Line::from(""));
+    lines.push(section(palette, "Codes you may see on a refusal"));
+    for entry in glossary::code_entries() {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", entry.code),
+            Style::default().fg(palette.accent),
+        )));
+        lines.push(Line::from(Span::styled(
+            format!("    {}", entry.title),
+            Style::default().fg(palette.fg),
+        )));
+        for line in wrap_indented(entry.explanation, text_width, "    ") {
+            lines.push(Line::from(Span::styled(
+                line,
+                Style::default().fg(palette.dim),
+            )));
+        }
+        if !entry.see_also.is_empty() {
+            for line in wrap_indented(
+                &format!("see also: {}", entry.see_also.join(" · ")),
+                text_width,
+                "    ",
+            ) {
+                lines.push(Line::from(Span::styled(
+                    line,
+                    Style::default().fg(palette.dim),
+                )));
+            }
+        }
+        lines.push(Line::from(""));
+    }
+    lines
 }
 
 fn render_ref_picker(

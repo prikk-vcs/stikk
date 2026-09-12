@@ -237,7 +237,12 @@ fn glossary_overlay_toggles() {
     let (mut app, _rx) = from_state("/repo", OrientationState::Loading, Palette::default());
     assert!(!app.has_overlay());
     app.open_glossary();
-    assert_eq!(app.top_overlay(), Some(&Overlay::Glossary));
+    assert_eq!(
+        app.top_overlay(),
+        Some(&Overlay::Glossary {
+            offset: std::cell::Cell::new(0)
+        })
+    );
     app.open_glossary();
     assert!(!app.has_overlay());
 }

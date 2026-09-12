@@ -567,9 +567,13 @@ impl App {
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
             // A commit/seal result is dismissed like any other content overlay — no drill-in.
+            // Deliberately unclamped here: only the renderer knows the viewport and the wrapped
+            // content height, so it clamps and writes the clamped value back through the `Cell`
+            // (see `Overlay::Glossary`). Holding ↓ past the bottom therefore parks at the bottom
+            // instead of banking presses that ↑ has to spend one at a time undoing.
+            Some(Overlay::Glossary { offset }) => offset.set(offset.get().saturating_add(1)),
             Some(
-                Overlay::Glossary
-                | Overlay::Operations { .. }
+                Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::CommitResult { .. }
                 | Overlay::SealResult { .. },
@@ -615,10 +619,12 @@ impl App {
 
     /// Open the glossary / help browser (the `?` key).
     pub fn open_glossary(&mut self) {
-        if matches!(self.overlays.last(), Some(Overlay::Glossary)) {
+        if matches!(self.overlays.last(), Some(Overlay::Glossary { .. })) {
             self.overlays.pop();
         } else {
-            self.overlays.push(Overlay::Glossary);
+            self.overlays.push(Overlay::Glossary {
+                offset: std::cell::Cell::new(0),
+            });
         }
     }
 
@@ -711,10 +717,13 @@ impl App {
             | Some(Overlay::Stale { cursor, .. })
             | Some(Overlay::Palette { cursor, .. })
             | Some(Overlay::Refusals { cursor, .. }) => *cursor = cursor.saturating_sub(1),
+            // The Glossary has no selection — it scrolls (RFC 023 F2). Same keys as every other
+            // overlay's cursor rather than a second scrolling idiom, which is why the Keys section of
+            // this very panel can describe them in one line (`NFR-A03`).
+            Some(Overlay::Glossary { offset }) => offset.set(offset.get().saturating_sub(1)),
             // A single prompt or content pane, not a list — no cursor to move (RFC 013 §6/RFC 014 §3).
             Some(
-                Overlay::Glossary
-                | Overlay::Operations { .. }
+                Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::Confirmation { .. }
                 | Overlay::CommitMessage { .. }
@@ -750,7 +759,7 @@ impl App {
                 *cursor = next_index(*cursor, count);
             }
             Some(
-                Overlay::Glossary
+                Overlay::Glossary { .. }
                 | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::Confirmation { .. }
@@ -1214,7 +1223,9 @@ impl App {
             Target::History => self.open_history(),
             Target::RefPicker => self.open_ref_picker(),
             Target::Changes => self.open_changes(),
-            Target::Glossary => self.overlays.push(Overlay::Glossary),
+            Target::Glossary => self.overlays.push(Overlay::Glossary {
+                offset: std::cell::Cell::new(0),
+            }),
             // RFC 016: the full-queue refusal's own next-step lands here — the same entry point the
             // palette's `op.seal` command uses (`Self::begin_seal`'s own capability pre-check applies
             // either way, so a session that cannot seal sees why, not a silently-armed ceremony).

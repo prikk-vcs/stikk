@@ -544,3 +544,127 @@ fn declined_routes_to_in_confirmation_not_a_separate_popup() {
         other => panic!("expected InConfirmation, got {other:?}"),
     }
 }
+
+/// RFC 023 F1 — the captured Windows-floor refusal reaches a gloss, and prikk's words survive beside it.
+///
+/// **The message is captured, not composed here**: it is exactly what the Windows leg of RFC 022's
+/// first widened matrix run (`34675099061`) produced from a real prikk 0.28, where `block_state`'s
+/// subdirectory commit was refused by prikk's own path validator on a path prikk itself had built.
+const CAPTURED_BACKSLASH_REFUSAL_0_28_WINDOWS: &str =
+    "error: invalid name: backslashes are not allowed in repository paths";
+
+#[test]
+fn the_captured_backslash_refusal_gets_a_gloss_and_keeps_prikks_words() {
+    let err = StikkError::Refusal {
+        message: CAPTURED_BACKSLASH_REFUSAL_0_28_WINDOWS.to_string(),
+    };
+    let card = match present(&err, OperationContext::Commit) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    let gloss = card
+        .gloss
+        .as_deref()
+        .expect("the captured message must reach a gloss");
+    // `ER-02`: the gloss is additive. prikk's sentence is still there, unedited, whatever stikk adds.
+    assert_eq!(card.verbatim, CAPTURED_BACKSLASH_REFUSAL_0_28_WINDOWS);
+    // The refusal card's `glossary:` line names the code, so the Glossary overlay (F2) can explain it.
+    assert!(
+        card.glossary_codes
+            .iter()
+            .any(|c| c == "backslashes are not allowed in repository paths"),
+        "the code must be linked from the card: {:?}",
+        card.glossary_codes
+    );
+    // Exactly one next-step, and it is guidance the user resolves outside stikk (`CON-1`) — never a
+    // retry of the refusal itself.
+    assert_eq!(card.next_steps.len(), 1);
+    assert_eq!(
+        card.next_steps[0].target,
+        NextTarget::DismissAndResolveExternally
+    );
+
+    // Whichever platform this build is, the card carries that platform's advice.
+    let expected = backslash_path_advice(cfg!(windows));
+    assert_eq!(gloss, expected.gloss);
+    assert_eq!(card.next_steps[0].label, expected.next_step);
+}
+
+/// **Both** backslash glosses, asserted on every platform.
+///
+/// `ci.yml` runs `cargo test --workspace` on ubuntu only, so a `cfg!(windows)` assertion is an
+/// assertion that never runs — and the Windows branch is the entire point of RFC 023 F1. Taking the
+/// platform as an argument is what makes this testable at all; see `backslash_path_advice`.
+#[test]
+fn both_backslash_glosses_say_the_true_thing_for_their_platform() {
+    let windows = backslash_path_advice(true);
+    // The point of the gloss: the user typed no backslash, and the fix is a prikk version.
+    assert!(
+        windows.gloss.contains("you typed no backslash"),
+        "{}",
+        windows.gloss
+    );
+    assert!(windows.gloss.contains("0.29.0"), "{}", windows.gloss);
+    // It must NOT overstate the limitation — RFC 023 §2's explicit warning. A top-level file commits
+    // fine at 0.28 on Windows; RFC 022's suite skips only the subdirectory half of one test for exactly
+    // that reason, and a gloss claiming commits are impossible would be the same wrong-picture failure
+    // pointing the other way.
+    assert!(
+        windows
+            .gloss
+            .contains("top level of the worktree commits normally"),
+        "{}",
+        windows.gloss
+    );
+    assert!(
+        !windows.gloss.contains("cannot commit"),
+        "the gloss must not claim commits are impossible: {}",
+        windows.gloss
+    );
+    assert!(windows.next_step.contains("Upgrade prikk"));
+
+    // Off Windows the same prikk message has the other cause entirely, and telling that user to upgrade
+    // prikk would be a stikk-authored claim contradicting the evidence beside it — the failure RFC 017
+    // F4 fixed. prikk 0.28's defect is the platform separator leaking into a repository path; it cannot
+    // happen where the separator is already `/`.
+    let unix = backslash_path_advice(false);
+    assert!(
+        unix.gloss.contains("has a backslash in its name"),
+        "{}",
+        unix.gloss
+    );
+    assert!(
+        !unix.gloss.contains("0.29"),
+        "off Windows this is not a prikk version problem: {}",
+        unix.gloss
+    );
+    assert!(unix.next_step.contains("Rename"));
+
+    // And they are actually different — a refactor that collapsed them would otherwise pass everything
+    // above on one platform.
+    assert_ne!(windows.gloss, unix.gloss);
+    assert_ne!(windows.next_step, unix.next_step);
+}
+
+#[test]
+fn an_ordinary_invalid_name_refusal_is_untouched_by_the_backslash_gloss() {
+    // The code is the backslash clause, never prikk's shared `invalid name:` prefix — which every other
+    // name refusal carries too. Matching the prefix would put a Windows-and-0.28 story over refusals
+    // that have nothing to do with either.
+    let err = StikkError::Refusal {
+        message: "error: invalid name: ref names may not end with .lock".to_string(),
+    };
+    let card = match present(&err, OperationContext::Commit) {
+        Presentation::RefusalOverlay(card) => card,
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    };
+    assert!(
+        !card
+            .gloss
+            .as_deref()
+            .unwrap_or_default()
+            .contains("backslash"),
+        "an unrelated invalid-name refusal must not get the backslash gloss: {card:?}"
+    );
+    assert!(card.glossary_codes.is_empty());
+}

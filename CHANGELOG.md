@@ -4,6 +4,27 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Added
+
+- **The glossary's code explanations are reachable.** stikk has shipped **six** authored, reviewed,
+  test-covered `GlossaryEntry` explanations whose text was rendered **nowhere** (a seventh arrives with
+  the Windows gloss below): a refusal card's
+  `glossary: <code>` line named a code with no way to read it. The Glossary & Help overlay now lists
+  them — code, title, explanation, see-also — and **scrolls**, and **wraps**. Those three are one change
+  on purpose: 0.4.1 shipped wrapping on its own and had to revert it, because without somewhere to
+  scroll to, wrapping turned *truncated-but-present* into *absent* and left one of eleven terminology
+  entries readable at 80×24. The scroll keys are `↑/↓` (or `j`/`k`), and the panel's own Keys section
+  lists them.
+
+- **A gloss for prikk 0.28's Windows path refusal.** `invalid name: backslashes are not allowed in
+  repository paths` is verbatim, honest, and baffling to the user who typed no backslash — prikk 0.28
+  built that path itself while committing a subdirectory on Windows (found by the widened suite; fixed
+  upstream in prikk 0.29.0). stikk now says so beside prikk's own words, naming the version and the fix,
+  and **without overstating it**: a top-level file commits normally at 0.28 on Windows. Off Windows the
+  same message has the other cause entirely — a file whose name really does contain a backslash — and
+  gets that gloss instead, because telling that user to upgrade prikk would be a stikk-authored claim
+  contradicting the evidence beside it.
+
 ### Changed
 
 - **The real-binary suite now covers ten of the ten `Prikk` seam methods** (RFC 022), up from five. The
@@ -38,6 +59,16 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   supported range and only on Windows — but it is a supported configuration, so it is now stated in
   Getting Started rather than left for a user to hit. The suite skips that one combination with an
   announced message and still asserts the rest.
+
+### Security
+
+- **`C-S2` is now marked *not implemented* in the threat model.** The control — recognizing prikk's
+  published example keys and flagging them as unsafe — **has no implementation in stikk and never had
+  one**, but §6's coverage table listed it beside `C-I1a–d` and `SEAM-06` as though all three were in
+  force. Two are. The bullet, the coverage table and the attack-surface map all say so now, along with
+  what it was waiting on and which increment ships it. **Nothing about stikk's behaviour changed**; what
+  changed is that the document most responsible for telling a reader what protects them no longer makes
+  a claim it cannot support.
 
 ### Fixed
 

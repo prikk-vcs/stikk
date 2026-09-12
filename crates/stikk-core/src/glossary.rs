@@ -130,6 +130,15 @@ pub(crate) const FULL_QUEUE_CODE: &str = "at or above the configured limit";
 /// and neither wording's own key id is part of the match.
 pub(crate) const TRUST_REFUSAL_CODE: &str = "maintainer signer";
 
+/// The substring prikk's repository-path validator always uses when a path contains a backslash
+/// (`prikk-object/src/path.rs`, byte-identical at 0.28.0 and 0.38.0 — checked against both tags).
+/// **Captured, not transcribed**: it came off the Windows leg of the real-binary suite's first widened
+/// matrix run (RFC 022, run `34675099061`), where prikk 0.28 refused a path it had built itself —
+/// `error: invalid name: backslashes are not allowed in repository paths`. Deliberately not the
+/// `invalid name:` class prefix, which prikk shares with every other name refusal, and deliberately not
+/// the offending path, which varies.
+pub(crate) const BACKSLASH_PATH_CODE: &str = "backslashes are not allowed in repository paths";
+
 /// Code entries (witness/finding). A representative sample now; the full sets land with FR-080/FR-100.
 static CODE_ENTRIES: &[GlossaryEntry] = &[
     GlossaryEntry {
@@ -179,6 +188,22 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
                       as many patches as it is configured to allow, and prikk refuses to add another \
                       one until the queue is sealed (RFC 017 F4). Seal the queue — or, if you control \
                       the threshold, raise `PRIKK_ACTIVE_PATCH_LIMIT` — then retry.",
+        see_also: &[],
+    },
+    GlossaryEntry {
+        code: BACKSLASH_PATH_CODE,
+        title: "A repository path with a backslash",
+        explanation: "prikk stores repository paths with forward slashes on every platform and \
+                      refuses any path containing a backslash. There are two ways to see this, and \
+                      they need opposite responses. On Windows with prikk 0.28, it is prikk's own \
+                      defect and you typed no backslash: its commit-side worktree scan built the path \
+                      with the platform separator (`src\\main.rs`) and its own validator then refused \
+                      it. prikk fixed that in 0.29.0 — upgrade the prikk binary; nothing about your \
+                      repository or your file names is wrong. Only files inside a subdirectory are \
+                      affected: a file at the top level of the worktree commits normally. \
+                      Anywhere else, a file in the worktree really does have a backslash in its \
+                      name; rename it outside stikk (`CON-1`: stikk never edits a repository file), \
+                      then retry.",
         see_also: &[],
     },
     GlossaryEntry {

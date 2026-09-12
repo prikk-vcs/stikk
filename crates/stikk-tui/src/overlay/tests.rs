@@ -15,11 +15,18 @@ use super::*;
 use crate::test_util::buffer_text;
 
 fn draw(overlay: &Overlay) -> String {
-    // 45 rows: the glossary's key list grew by two lines (RFC 016's `C`/`S` additions) and needs the
-    // room to keep every terminology entry visible in this fixed-size render rather than cut off by the
-    // box's own height cap (review v2 C2 removed that cap; content here is still one row per line, no
-    // wrap — see `render_glossary`'s own comment for why wrap was tried and reverted).
-    let backend = TestBackend::new(90, 45);
+    draw_at(overlay, 90, 45)
+}
+
+/// Render one overlay at an explicit terminal size.
+///
+/// The default 90×45 is roomy on purpose — most of these tests are about *content*, and a size that
+/// happens to fit everything keeps them from failing for a reason they are not testing. **The Glossary's
+/// own reachability tests deliberately use 80×24 instead** (`MIN_WIDTH`×`MIN_HEIGHT`): that is the size
+/// at which RFC 018's wrap-without-scroll left one term of eleven readable, so it is the size the fix
+/// has to be proven at.
+fn draw_at(overlay: &Overlay, w: u16, h: u16) -> String {
+    let backend = TestBackend::new(w, h);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| render(overlay, &Palette::default(), f, f.area()))
@@ -27,9 +34,87 @@ fn draw(overlay: &Overlay) -> String {
     buffer_text(terminal.backend().buffer())
 }
 
+/// Scroll a fresh Glossary down `presses` times the way the key handler does, rendering after each so
+/// the renderer's clamp applies exactly as it would in a real session, and return the final screen.
+///
+/// Rendering *between* presses is the point: the clamp lives in the renderer and writes back through
+/// the `Cell`, so a test that set the offset directly and drew once would be testing a state a user
+/// cannot actually get into.
+fn glossary_scrolled(presses: usize, w: u16, h: u16) -> (Overlay, String) {
+    let overlay = Overlay::Glossary {
+        offset: std::cell::Cell::new(0),
+    };
+    let mut text = draw_at(&overlay, w, h);
+    for _ in 0..presses {
+        press_down(&overlay);
+        text = draw_at(&overlay, w, h);
+    }
+    (overlay, text)
+}
+
+/// One ↓, exactly as `App::nav_down` does it — unclamped, because the renderer owns the clamp.
+fn press_down(overlay: &Overlay) {
+    if let Overlay::Glossary { offset } = overlay {
+        offset.set(offset.get().saturating_add(1));
+    }
+}
+
+/// Scroll one Glossary from top to bottom, one press at a time, and return the first screen matching
+/// `found` — or `None`, with the final screen, if it never appears.
+///
+/// **Linear, deliberately.** Re-scrolling from the top for each candidate offset is the obvious way to
+/// write this and it is quadratic: the earlier draft took over a minute on the failing path, which is
+/// long enough that someone would eventually delete the test rather than wait for it. One overlay,
+/// stepped down once per render, is the same coverage in one pass. It stops at the clamp — when the
+/// offset stops moving, the panel is at its end and there is nothing further to see.
+fn scan_glossary_down(w: u16, h: u16, found: impl Fn(&str) -> bool) -> (Option<String>, String) {
+    let overlay = Overlay::Glossary {
+        offset: std::cell::Cell::new(0),
+    };
+    let mut last = draw_at(&overlay, w, h);
+    loop {
+        if found(&last) {
+            return (Some(last.clone()), last);
+        }
+        let before = match &overlay {
+            Overlay::Glossary { offset } => offset.get(),
+            _ => unreachable!(),
+        };
+        press_down(&overlay);
+        last = draw_at(&overlay, w, h);
+        let after = match &overlay {
+            Overlay::Glossary { offset } => offset.get(),
+            _ => unreachable!(),
+        };
+        if after == before {
+            // The clamp pinned it: this is the bottom.
+            return (found(&last).then(|| last.clone()), last);
+        }
+    }
+}
+
+/// A screen with its **box border dropped** and its runs of whitespace collapsed, so a phrase that
+/// wrapped across a line break still matches.
+///
+/// Both halves are needed and the border is the one that is easy to miss: collapsing whitespace alone
+/// turns two stacked rows into `... reporting a │ │ failure.`, and the assertion fails on content that
+/// is plainly on screen. Wrapping is the feature under test; neither it nor the frame around it should
+/// be what defeats the check.
+fn flattened(screen: &str) -> String {
+    screen
+        .chars()
+        .filter(|c| !matches!(c, '│' | '┌' | '┐' | '└' | '┘' | '─'))
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[test]
 fn glossary_shows_keys_and_the_terminology_mapping() {
-    let text = draw(&Overlay::Glossary);
+    let text = draw(&Overlay::Glossary {
+        offset: std::cell::Cell::new(0),
+    });
     assert!(text.contains("Glossary"));
     assert!(text.contains("Git")); // the Git → prikk section
     assert!(text.contains("HEAD")); // a load-bearing redirect
@@ -49,7 +134,9 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
 /// assert around is now a known, recorded gap (filed for 0.5.0 with scroll), not a property to pin.
 #[test]
 fn glossary_pads_the_longest_term_without_colliding_into_its_prikk_column() {
-    let text = draw(&Overlay::Glossary);
+    let text = draw(&Overlay::Glossary {
+        offset: std::cell::Cell::new(0),
+    });
     assert!(text.contains("checkout / switch branch"));
     assert!(!text.contains("branchfocused"));
 }
@@ -62,7 +149,9 @@ fn glossary_pads_the_longest_term_without_colliding_into_its_prikk_column() {
 /// is the closest thing to pinning a claim this project has (RFC 018's "nothing pins a claim").
 #[test]
 fn glossary_never_writes_claim_cannot_stand_beside_mutating_keys() {
-    let text = draw(&Overlay::Glossary);
+    let text = draw(&Overlay::Glossary {
+        offset: std::cell::Cell::new(0),
+    });
     let shows_mutating_keys =
         text.contains("commit worktree changes") && text.contains("seal the active WAL");
     assert!(
@@ -657,4 +746,196 @@ fn seal_result_hostile_block_id_and_ref_render_inert() {
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
     assert!(text.contains('\u{FFFD}'));
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 023 F2 — wrap, scroll and the code explanations, proven **reachable** at 80×24.
+//
+// `MIN_WIDTH`×`MIN_HEIGHT` is not an arbitrary small size here. RFC 018 shipped wrapping without
+// scroll and reverted it because at exactly this size it left **one of eleven** terminology entries
+// readable. Every assertion below is at 80×24 for that reason: the fix has to hold where the
+// regression happened, not where there is room to spare.
+//
+// **Acceptance is reachability, not existence.** Asserting that a wrapped explanation's *opening*
+// words appear passes on truncated content — that is how RFC 016's C2 survived its own first fix — so
+// these assert **closing** words, and the **last** entry rather than a middle one.
+// ---------------------------------------------------------------------------------------------
+
+/// The whole panel does not fit at 80×24 — which is the premise of everything below it. If this ever
+/// fails because the content shrank, the scroll tests are passing for the wrong reason.
+#[test]
+fn the_glossary_does_not_fit_at_80x24_which_is_why_it_scrolls() {
+    let (overlay, text) = glossary_scrolled(0, 80, 24);
+    assert!(
+        text.contains("↑/↓ to scroll"),
+        "the title must say scrolling is possible when it is (NFR-A03):\n{text}"
+    );
+    // Unscrolled, the top is showing and the end is not.
+    assert!(text.contains("Keys"), "{text}");
+    let Overlay::Glossary { offset } = &overlay else {
+        panic!("wrong overlay")
+    };
+    assert_eq!(offset.get(), 0);
+}
+
+/// `NFR-A03`: the key that scrolls this panel is discoverable **from this panel**, which is where a
+/// user looks. The Keys section lists itself.
+#[test]
+fn the_glossary_lists_its_own_scroll_key() {
+    let (_, text) = glossary_scrolled(0, 80, 24);
+    assert!(text.contains("scroll this panel"), "{text}");
+    assert!(text.contains("↑/↓ or j/k"), "{text}");
+}
+
+/// **The last terminology entry is reachable by scrolling** — the exact thing RFC 018's revert says
+/// was lost, asserted at the exact size it was lost at.
+#[test]
+fn the_last_terminology_entry_is_reachable_by_scrolling_at_80x24() {
+    let last = stikk_core::glossary::terminology()
+        .last()
+        .expect("terminology is not empty");
+    let (hit, bottom) = scan_glossary_down(80, 24, |screen| flattened(screen).contains(last.git));
+    assert!(
+        hit.is_some(),
+        "the last terminology entry ({:?}) must be reachable at 80x24; RFC 018's revert exists \
+         because it was not. Bottom of the panel:\n{bottom}",
+        last.git
+    );
+}
+
+/// **An explanation's closing words appear on screen** — not its opening, which a truncated render
+/// would also show.
+#[test]
+fn a_code_explanations_closing_words_are_reachable_at_80x24() {
+    let entry = stikk_core::glossary::code_entries()
+        .last()
+        .expect("code entries are not empty");
+    // The last handful of words of the last entry: the furthest text in the panel.
+    let closing: Vec<&str> = entry.explanation.split_whitespace().rev().take(4).collect();
+    let closing: String = closing.into_iter().rev().collect::<Vec<_>>().join(" ");
+
+    // The text is wrapped, so the closing words may straddle a line break.
+    let (hit, bottom) = scan_glossary_down(80, 24, |screen| flattened(screen).contains(&closing));
+    assert!(
+        hit.is_some(),
+        "the closing words of the last code explanation ({closing:?}) must be reachable at 80x24 — \
+         these entries shipped authored, tested and rendered nowhere until RFC 023 F2. \
+         Bottom of the panel:\n{bottom}"
+    );
+}
+
+/// The clamp holds: scrolling past the end parks at the end and stays there, and ↑ moves immediately
+/// rather than spending presses undoing invisible ones.
+#[test]
+fn scrolling_past_the_end_parks_rather_than_banking_presses() {
+    let (overlay, at_bottom) = glossary_scrolled(400, 80, 24);
+    let Overlay::Glossary { offset } = &overlay else {
+        panic!("wrong overlay")
+    };
+    let parked = offset.get();
+    assert!(parked > 0, "the panel must have scrolled at all");
+
+    // One more press, then a render: the clamp puts it straight back.
+    offset.set(offset.get().saturating_add(1));
+    let again = draw_at(&overlay, 80, 24);
+    assert_eq!(
+        offset.get(),
+        parked,
+        "the clamp must write the parked value back"
+    );
+    assert_eq!(again, at_bottom, "and the screen must not have moved");
+
+    // So a single ↑ visibly moves, instead of being swallowed.
+    offset.set(offset.get().saturating_sub(1));
+    let up_one = draw_at(&overlay, 80, 24);
+    assert_ne!(up_one, at_bottom, "one press up must move the screen");
+}
+
+/// A terminal tall enough for everything cannot scroll at all, and says so by not offering to.
+#[test]
+fn a_tall_terminal_does_not_scroll_and_does_not_advertise_scrolling() {
+    let overlay = Overlay::Glossary {
+        offset: std::cell::Cell::new(0),
+    };
+    let text = draw_at(&overlay, 90, 200);
+    assert!(!text.contains("to scroll"), "nothing to scroll to:\n{text}");
+    if let Overlay::Glossary { offset } = &overlay {
+        offset.set(5);
+    }
+    let after = draw_at(&overlay, 90, 200);
+    if let Overlay::Glossary { offset } = &overlay {
+        assert_eq!(
+            offset.get(),
+            0,
+            "the clamp must pin a fitting panel at the top"
+        );
+    }
+    assert_eq!(text, after);
+}
+
+/// **Every** code entry is reachable, not just the last one.
+///
+/// The point of F2 is that `code_entries()` had zero call sites and nobody noticed for two releases.
+/// Asserting one entry would restore exactly that exposure for the next entry added — so this walks the
+/// whole panel once and requires every shipped entry's code, title and explanation-ending to appear
+/// somewhere in it.
+#[test]
+fn every_code_entry_is_reachable_at_80x24() {
+    // One pass down the panel, keeping every screen.
+    let overlay = Overlay::Glossary {
+        offset: std::cell::Cell::new(0),
+    };
+    let mut seen = flattened(&draw_at(&overlay, 80, 24));
+    loop {
+        let before = match &overlay {
+            Overlay::Glossary { offset } => offset.get(),
+            _ => unreachable!(),
+        };
+        press_down(&overlay);
+        let screen = draw_at(&overlay, 80, 24);
+        let after = match &overlay {
+            Overlay::Glossary { offset } => offset.get(),
+            _ => unreachable!(),
+        };
+        seen.push(' ');
+        seen.push_str(&flattened(&screen));
+        if after == before {
+            break;
+        }
+    }
+
+    let entries = stikk_core::glossary::code_entries();
+    assert!(
+        entries.len() >= 6,
+        "sanity: {} entries found",
+        entries.len()
+    );
+    for entry in entries {
+        assert!(
+            seen.contains(entry.code),
+            "code not reachable: {:?}",
+            entry.code
+        );
+        assert!(
+            seen.contains(entry.title),
+            "title not reachable: {:?}",
+            entry.title
+        );
+        // The tail of the explanation, so a truncated render cannot pass.
+        let closing: String = entry
+            .explanation
+            .split_whitespace()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            seen.contains(&closing),
+            "the end of {:?}'s explanation is not reachable: {closing:?}",
+            entry.code
+        );
+    }
 }

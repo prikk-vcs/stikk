@@ -1000,6 +1000,17 @@ fn commits_confirmation_names_the_author_key_id_at_80x24() {
     assert!(text.contains("Consumes: AUTHOR"), "{text}");
 }
 
+/// **`Tier::Three`, because that is seal's tier.**
+///
+/// v1 of this test built `Tier::ThreeTyped` and passed — the id row renders identically at both, so the
+/// assertion was true about a screen the product never shows. Seal's `Intent` carries
+/// `RequestCategory::Publication`, and `RequestCategory::tier` maps `Publication | Exchange` to
+/// `Tier::Three`; `ThreeTyped` is `Trust | Recovery`, neither of which any built operation constructs.
+/// RFC 016 decision 3 ruled seal untyped in as many words — *"two deliberate acts, not three"* — so a
+/// typed seal confirmation is precisely the thing that decision forbade.
+///
+/// A render fixture that is plausible, asserts truly, and depicts something the product does not do is
+/// RFC 017 F2's defect wearing a test's clothes. Named for seal, so it renders seal's.
 #[test]
 fn seals_confirmation_names_the_maintainer_key_id_at_80x24() {
     let text = confirmation_at_80x24(
@@ -1008,11 +1019,29 @@ fn seals_confirmation_names_the_maintainer_key_id_at_80x24() {
             Capability::Maintainer,
             Some("release-key"),
         ),
-        Tier::ThreeTyped,
+        Tier::Three,
     );
     assert!(text.contains("Signing key id"), "{text}");
     assert!(text.contains("release-key"), "{text}");
     assert!(text.contains("Consumes: MAINTAINER"), "{text}");
+    // Seal takes an explicit yes, never a typed name. If this ever renders a type-back prompt, either
+    // the tier moved or this test drifted back to depicting a ceremony RFC 016 decision 3 removed.
+    assert!(text.contains("Enter to confirm"), "{text}");
+    assert!(
+        !text.contains("to confirm:"),
+        "seal is untyped (RFC 016 decision 3):\n{text}"
+    );
+}
+
+/// The tier this file renders for seal is the tier seal actually runs at — asserted against the
+/// mapping rather than restated, so the render test above cannot drift from the product again.
+#[test]
+fn seal_runs_at_tier_three_not_tier_three_typed() {
+    assert_eq!(
+        stikk_model::RequestCategory::Publication.tier(),
+        Tier::Three,
+        "seal's category is Publication; if its tier moved, the seal render test must move with it"
+    );
 }
 
 /// **Absence renders as nothing** — no placeholder, not even a labelled empty line.

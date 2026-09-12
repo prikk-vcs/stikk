@@ -1,10 +1,14 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.38.0` (**RFC 021**, the 0.38 re-baseline —
-//! raised from 0.33 across five releases at once, 0.34 through 0.38, and verified by RFC 019's
-//! real-binary suite rather than by hand: see `cli_backend/parse/tests.rs`'s own fifth re-verification
-//! paragraph for what each version actually changed, and RFC 021 for what it unblocked).
+//! stikk targets prikk `>= 0.28`, validated through `0.41.0` (**RFC 026**, the 0.41 re-baseline —
+//! raised from 0.38 across three releases, 0.39 through 0.41, one of which changed how prikk is
+//! configured at all: 0.40 moved signing seeds out of the environment and into a key directory, which
+//! the real-binary suite's own fixture builder had to be rebuilt around before it could measure
+//! anything. See `cli_backend/parse/tests.rs` for what each version changed).
+//!
+//! The previous ceiling was `0.38.0` (**RFC 021**, raised from 0.33 across five releases at once and
+//! verified by RFC 019's real-binary suite rather than by hand).
 //!
 //! The previous ceiling, for the history the raises form: `0.33.0` (RFC 017, re-verified 2026-09-06
 //! against a real, **released** prikk 0.33.0 binary — every `cli_backend/parse/tests.rs` fixture shape
@@ -33,18 +37,20 @@ use stikk_model::{Result, StikkError};
 const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
-/// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, then to **38 by RFC 021** — each only
+/// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, to 38 by RFC 021, then to **41 by
+/// RFC 026** — each only
 /// after empirical re-verification against a real released binary, never a changelog). RFC 017's
 /// re-verification found no output-shape drift; it found the classifier's own provenance gap instead
 /// (`classify.rs`'s module doc). A prikk above this still runs; [`Version::is_validated`] tells the
 /// caller to say so.
 ///
-/// **RFC 021's raise spans five releases — 0.34 through 0.38 — where each previous raise spanned one.**
-/// That is the widest jump this project has made, and it is why the raise comes *first* in that
-/// increment's order rather than last: the real-binary suite (RFC 019, `TS-07`) refuses to run against a
-/// binary this constant does not name, so raising it is what lets the suite report what the raise cost.
-/// Re-capturing fixtures first would leave the suite nothing to find.
-const VALIDATED_MAX_MINOR: u32 = 38;
+/// **The raise comes early in a re-baseline, not last.** The real-binary suite (RFC 019, `TS-07`)
+/// refuses to run against a binary this constant does not name, so raising it is what lets the suite
+/// report what the raise cost; re-capturing fixtures first would leave it nothing to find. RFC 021
+/// established that order across five releases at once; **RFC 026 had to put one step before it** —
+/// the suite's fixture builder configures prikk through the environment, and prikk 0.40 stopped
+/// reading it, so the harness had to work before the raise could be measured at all.
+const VALIDATED_MAX_MINOR: u32 = 41;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -115,7 +121,7 @@ impl Version {
     }
 }
 
-/// The validated ceiling as a display string (`"0.38"` at the time of writing), for UI copy that says
+/// The validated ceiling as a display string (`"0.41"` at the time of writing), for UI copy that says
 /// what range stikk has actually checked its shapes against. **Nothing else may hardcode this number**:
 /// a renderer that copies it as a string literal instead of calling this drifts the moment the ceiling
 /// moves again — exactly what RFC 015 found in `stikk-tui`'s own Orientation view, still reading "0.30"

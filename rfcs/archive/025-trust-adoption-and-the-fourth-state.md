@@ -1,6 +1,26 @@
 # RFC 025 — Trust adoption: constructing `Ready`, implementing `C-S2`, and a state the type does not have
 
-**Status.** Proposed (2026-09-12). The next 0.6.0 increment, and the first since 0.4.0 that changes what
+**Status.** **WITHDRAWN 2026-09-12, superseded by RFC 026** — never accepted, never built. Proposed the
+same morning; obsoleted the same afternoon by prikk's reply to letter 007.
+
+**Why it is withdrawn rather than amended.** Its mechanism was `trust maintainer check --key-id`, chosen
+because it answered adoption in one call. prikk 0.41 ships **`prikk key status`**, which answers adoption
+*and* seed source *and* usability *and* the id in effect *and* binding — **from the same computation
+`commit` and `seal` use**, so `usable: true` is a prediction of the signing path rather than a second
+opinion. Building on `trust maintainer check` would now be choosing the weaker of two available answers.
+
+**What survives, and is carried into RFC 026 rather than lost:**
+
+- **F2's fourth state was right, and prikk named it independently.** I found that `trusted: false` is
+  neither `NotReady` nor `Unknown`; `key-status-v1`'s `binding` field has `not-adopted` as a distinct
+  value beside `matches` and `mismatch`. Two passes over the same problem from opposite sides, the same
+  answer — as with RFC 021's lock-conflict convergence.
+- **And it was not enough.** `binding` also has **`mismatch`** — the id is adopted, to a *different*
+  public key. Neither RFC 025 nor RFC 016 had that state. Three-versus-four was the wrong question.
+- **F3's correction to RFC 016 Q1 stands** and is restated in RFC 026.
+- **F5 and F6**, the two RFC 023 render leftovers, move to RFC 026 unchanged.
+
+*(Original status: Proposed 2026-09-12.)* The next 0.6.0 increment, and the first since 0.4.0 that changes what
 stikk can tell a user rather than correcting what it told them.
 **Tracks.** `FR-103`, `FR-104`, `C-S2`, `C-T2c′`, `C-T4d`, `AC-01…04`, `NFR-P05`, and RFC 023's two
 carried render items.

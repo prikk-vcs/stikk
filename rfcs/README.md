@@ -22,7 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 025 | [Trust adoption and the fourth state](./proposed/025-trust-adoption-and-the-fourth-state.md) | `Ready` has been unconstructible since RFC 016; prikk 0.34's `trust maintainer check` and RFC 023 B's key-id module compose into one call that answers it. **And `trusted: false` is a state the type does not have** — present, checked, definitively not adopted. Carries RFC 023's two render leftovers |
+| 026 | [Readiness after the key directory](./proposed/026-readiness-after-the-key-directory.md) | **stikk's signing-readiness model is wrong at prikk 0.40, published today** — the correct setup reads as not-ready and hides commit; a stale export reads as ready and is refused. prikk 0.41 ships `key status`, answering from the same computation `commit` and `seal` use. Supersedes RFC 025 |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -62,4 +62,6 @@ _Design settled; implementer may start; work has not yet shipped._
 
 ## Archive (withdrawn or superseded)
 
-_None yet._
+| ID | Title | Why |
+|----|-------|-----|
+| 025 | [Trust adoption and the fourth state](./archive/025-trust-adoption-and-the-fourth-state.md) | Proposed and withdrawn the same day, never accepted, never built. Its mechanism was `trust maintainer check`; prikk 0.41's `key status` answers more, from the computation the signing path itself uses. Its finding that `trusted: false` is a state the type lacks **was right** — prikk named it `not-adopted` independently — and carries into RFC 026 |

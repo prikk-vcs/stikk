@@ -1,6 +1,7 @@
 # RFC 021 — The prikk 0.38 re-baseline: `UD-09` retires, and a fabricated worktree entry
 
-**Status.** **Accepted by the project owner 2026-09-12.** Proposed 2026-09-08 against 0.36; retargeted to 0.38 on 2026-09-10 when F0 was found. **Delivered in two handoffs, per Decision 0:** F0 first and alone, then the re-baseline. **Five** prikk releases land at once — **0.34 through 0.38** — against a validated ceiling of 0.33. **The largest re-baseline in this project's history**, and the first one that
+**Status.** **Done** — shipped in **0.5.0**, 2026-09-12: A (`510ce69`) and B (`b7e502d` + `65ea4aa`). Accepted by the project owner 2026-09-12.
+**Deferred, carried forward:** every view the re-baseline unblocked, each its own RFC — Patch detail (`FR-030`, spans not lines), the Queue view (`FR-051`), three-valued `Ready` constructed (`FR-103`), Compare (`FR-033`, branch-tip in full; range on `UD-10`); the symlink-as-untracked report (letter 006 §4, against RFC 014's follow-up); widening the suite past four surfaces (0.6.0's first increment). Proposed 2026-09-08 against 0.36; retargeted to 0.38 on 2026-09-10 when F0 was found. **Delivered in two handoffs, per Decision 0:** F0 first and alone, then the re-baseline. **Five** prikk releases land at once — **0.34 through 0.38** — against a validated ceiling of 0.33. **The largest re-baseline in this project's history**, and the first one that
 retires the dependency stikk has carried since 0.1.0.
 **Tracks.** `UD-09` (retires, in part), `FR-030`, `FR-033`, `FR-034`, `FR-051`, `FR-052`, `FR-103`,
 `ASM-2`/`NFR-R03`, `C-T2c′`, `T-T4`, `TS-03`, `TS-07`.

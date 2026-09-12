@@ -39,6 +39,7 @@ fn summary(target_name: Option<&str>) -> ConfirmationSummary {
         capability: Capability::Viewer,
         consequence: "Nothing real happens — this is the scripted test vehicle".to_string(),
         target_name: target_name.map(str::to_string),
+        signing_key_id: None,
     }
 }
 

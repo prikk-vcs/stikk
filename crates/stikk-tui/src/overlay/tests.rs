@@ -498,6 +498,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         capability: Capability::Author,
         consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
         target_name: target_name.map(str::to_string),
+        signing_key_id: None,
     }
 }
 
@@ -938,4 +939,138 @@ fn every_code_entry_is_reachable_at_80x24() {
             entry.code
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 023 Handoff B (F3) — the signing key id on a confirmation.
+//
+// `FL-05` step 5 has required this since before 0.4.0: the confirmation shows `Consumes: AUTHOR`, a
+// **capability**, where the requirement asks for the **key id** that will sign. `FL-06` asks the same
+// of seal, as amended by this handoff.
+//
+// Everything below is at **80×24** and asserts the id's **actual text** — not that some field is
+// non-empty, which passes on a rendering that puts the id nowhere a user can see.
+// ---------------------------------------------------------------------------------------------
+
+/// A summary with a signing id, for the role named.
+fn summary_with_key_id(
+    operation: &str,
+    capability: Capability,
+    key_id: Option<&str>,
+) -> ConfirmationSummary {
+    ConfirmationSummary {
+        operation: operation.to_string(),
+        target_ids: vec!["heads/main".to_string()],
+        counts: vec![("patches", 3)],
+        capability,
+        consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
+        target_name: None,
+        signing_key_id: key_id.map(str::to_string),
+    }
+}
+
+fn confirmation_at_80x24(summary: ConfirmationSummary, tier: Tier) -> String {
+    draw_at(
+        &Overlay::Confirmation {
+            summary,
+            tier,
+            typed: String::new(),
+            error: None,
+        },
+        80,
+        24,
+    )
+}
+
+#[test]
+fn commits_confirmation_names_the_author_key_id_at_80x24() {
+    let text = confirmation_at_80x24(
+        summary_with_key_id(
+            "Commit worktree changes",
+            Capability::Author,
+            Some("alice-2026"),
+        ),
+        Tier::Two,
+    );
+    assert!(text.contains("Signing key id"), "{text}");
+    // The id's own text, on screen, at the smallest terminal stikk supports.
+    assert!(text.contains("alice-2026"), "{text}");
+    // The capability line stays: which role is consumed and which key signs are different facts, and
+    // `FL-05` step 5 asks for the second **in addition to** the first.
+    assert!(text.contains("Consumes: AUTHOR"), "{text}");
+}
+
+#[test]
+fn seals_confirmation_names_the_maintainer_key_id_at_80x24() {
+    let text = confirmation_at_80x24(
+        summary_with_key_id(
+            "Seal the active WAL",
+            Capability::Maintainer,
+            Some("release-key"),
+        ),
+        Tier::ThreeTyped,
+    );
+    assert!(text.contains("Signing key id"), "{text}");
+    assert!(text.contains("release-key"), "{text}");
+    assert!(text.contains("Consumes: MAINTAINER"), "{text}");
+}
+
+/// **Absence renders as nothing** — no placeholder, not even a labelled empty line.
+///
+/// A confirmation cannot be reached without the readiness this id accompanies (`capability_gate`
+/// refuses on `NotReady` first), so a `"(unknown)"` here could only be stikk claiming to know
+/// something it does not. The handoff names this explicitly and it is cheap to get wrong.
+#[test]
+fn an_absent_key_id_renders_no_line_at_all() {
+    let text = confirmation_at_80x24(
+        summary_with_key_id("Commit worktree changes", Capability::Author, None),
+        Tier::Two,
+    );
+    assert!(!text.contains("Signing key id"), "{text}");
+    for placeholder in ["(unknown)", "(none)", "unknown key", "n/a"] {
+        assert!(
+            !text.contains(placeholder),
+            "placeholder {placeholder:?} in:\n{text}"
+        );
+    }
+    // The rest of the confirmation is unaffected.
+    assert!(text.contains("Consumes: AUTHOR"), "{text}");
+}
+
+/// `C-T2a`: a key id is text stikk did not author. A hostile one forges no chrome.
+#[test]
+fn a_hostile_key_id_renders_inert_and_forges_no_chrome() {
+    let hostile = "safe\u{1b}[31m\u{7f}\r\nConsumes: MAINTAINER";
+    let text = confirmation_at_80x24(
+        summary_with_key_id("Commit worktree changes", Capability::Author, Some(hostile)),
+        Tier::Two,
+    );
+    // No escape or control byte reaches a cell.
+    assert!(
+        !text.contains('\u{1b}') && !text.contains('\u{7f}'),
+        "control characters reached the buffer:\n{text:?}"
+    );
+    // And it forged no row. The `\r\n` in the id is neutralized to replacement characters, so the
+    // injected `Consumes: MAINTAINER` stays inside the id's own labelled row instead of starting a
+    // second capability row — which is the thing that would actually mislead. The string still occurs
+    // in the buffer, plainly tagged as part of the id; counting occurrences would assert the wrong
+    // property, so this asserts the shape: exactly one row *begins* a capability claim, and it is the
+    // true one.
+    assert!(text.contains("Consumes: AUTHOR"), "{text}");
+    let capability_rows: Vec<&str> = text
+        .lines()
+        .filter(|row| row.trim_start_matches(['│', ' ']).starts_with("Consumes:"))
+        .collect();
+    assert_eq!(
+        capability_rows.len(),
+        1,
+        "a key id must not be able to forge a capability row:\n{text}"
+    );
+    assert!(capability_rows[0].contains("AUTHOR"), "{text}");
+    // The forged text that is present is on the id's row, under stikk's own label.
+    let id_row = text
+        .lines()
+        .find(|row| row.contains("Signing key id:"))
+        .expect("the id row is on screen");
+    assert!(id_row.contains("Consumes: MAINTAINER"), "{id_row:?}");
 }

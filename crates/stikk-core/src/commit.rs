@@ -143,6 +143,7 @@ fn compute(
         capability: Capability::Author,
         consequence: consequence(orientation.active_patch_warning.as_deref()),
         target_name: None,
+        signing_key_id: stikk_prikk::key_id::author_key_id(),
     };
     let preview = CommitPreview {
         changes: view,
@@ -163,6 +164,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         capability: Capability::Author,
         consequence: String::new(),
         target_name: None,
+        signing_key_id: None,
     }
 }
 

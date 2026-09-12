@@ -909,6 +909,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         capability: Capability::Author,
         consequence: "Nothing real happens".to_string(),
         target_name: target_name.map(str::to_string),
+        signing_key_id: None,
     }
 }
 

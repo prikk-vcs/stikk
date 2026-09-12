@@ -58,6 +58,23 @@ pub struct ConfirmationSummary {
     /// The exact name the user must type back for a tier-3-typed confirmation (`FR-102`/`FR-103`).
     /// `None` for every other tier.
     pub target_name: Option<String>,
+    /// The key id that will sign this operation, if one is configured (`FL-05` step 5; `FL-06` as
+    /// amended by RFC 023 Handoff B) — read from the environment by
+    /// [`stikk_prikk::key_id`], which is a separate module from the presence-only
+    /// [`stikk_prikk::env`] for a reason worth reading there.
+    ///
+    /// **One field, not two.** Whichever role the operation consumes is the one whose id belongs here;
+    /// `capability` already says which role that is, so a pair of fields would let them disagree.
+    ///
+    /// **`None` is an absence and must render as nothing** — never `"(unknown)"` or any other
+    /// placeholder. An operation reaching a confirmation without the id it needs is already impossible
+    /// (`capability_gate` refuses on `NotReady` first), so a placeholder here could only ever be stikk
+    /// claiming to know something it does not.
+    ///
+    /// A key id is a **label**, not key material: prikk prints it itself, and `C-I1b` already has the
+    /// UI showing key ids and nothing else. It is still repository-adjacent text and renders through
+    /// `inert` (`C-T2a`) like every other string here.
+    pub signing_key_id: Option<String>,
 }
 
 /// What the user supplied to satisfy a tier's confirmation requirement (design `TU-09`; RFC 013 §4).

@@ -798,6 +798,22 @@ fn render_confirmation(
         format!("  Consumes: {}", capability_label(summary.capability)),
         Style::default().fg(palette.dim),
     )));
+    // `FL-05` step 5, unmet since before 0.4.0: the confirmation must name **which key** will sign,
+    // not only which capability is consumed. `FL-06` asks the same of seal, as amended by RFC 023
+    // Handoff B — RFC 016 decision 3 removed a typed key-id *act*, not the information.
+    //
+    // Absent renders as nothing at all. There is no placeholder line, because an operation cannot
+    // reach a confirmation without the readiness this id accompanies (`capability_gate` refuses on
+    // `NotReady` first), so any text here would be stikk inventing a fact.
+    if let Some(id) = &summary.signing_key_id {
+        lines.push(Line::from(vec![
+            Span::styled("  Signing key id: ", Style::default().fg(palette.dim)),
+            // Inert like every other string that did not originate in stikk (`C-T2a`): an id is a
+            // label a user or a repository's conventions chose, and it reaches a cell the same way a
+            // ref name does.
+            Span::styled(inert(id), Style::default().fg(palette.accent)),
+        ]));
+    }
     lines.push(Line::from(""));
 
     // The consequence — stikk's own words. The operation's own plan/content (prikk's verbatim text,

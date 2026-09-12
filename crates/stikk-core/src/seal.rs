@@ -133,6 +133,7 @@ fn compute(
         capability: Capability::Maintainer,
         consequence: consequence(readiness.maintainer_readiness),
         target_name: None,
+        signing_key_id: stikk_prikk::key_id::maintainer_key_id(),
     };
     Ok((SealReadView::Ready, summary))
 }
@@ -148,6 +149,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         capability: Capability::Maintainer,
         consequence: String::new(),
         target_name: None,
+        signing_key_id: None,
     }
 }
 

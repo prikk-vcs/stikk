@@ -29,7 +29,7 @@
 //! once already (three, while there were five):
 //!
 //! ```sh
-//! grep -rn 'allow(unsafe_code)' crates/stikk-real-binary
+//! grep -rnE '^\s*#\[allow\(unsafe_code\)\]' crates/stikk-real-binary
 //! ```
 //!
 //! This

@@ -861,6 +861,8 @@ fn the_full_queue_precondition_classifies_refusal_at_both_ends() {
             std::env::set_var("PRIKK_ACTIVE_PATCH_LIMIT", "1");
         }
         let result = backend.commit(fixture.repo(), "heads/main", "over the limit");
+        // SAFETY: still under `ENV_LOCK` — this removes the two variables set above before the lock is
+        // released.
         #[allow(unsafe_code)]
         unsafe {
             std::env::remove_var("PRIKK_ACTIVE_PATCH_WARN");

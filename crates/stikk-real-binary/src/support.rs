@@ -535,7 +535,7 @@ impl Fixture {
     /// Set this process's environment to MAINTAINER signing readiness. See [`Fixture::set_author_env`]
     /// for the two eras and the safety discipline this holds to.
     pub fn set_maintainer_env(&self) {
-        // SAFETY: see `set_author_env`.
+        // SAFETY: the caller holds `ENV_LOCK`, the same discipline as `set_author_env`.
         #[allow(unsafe_code)]
         unsafe {
             env::set_var("PRIKK_MAINTAINER_KEY_ID", &self.maintainer_key_id);
@@ -556,7 +556,7 @@ impl Fixture {
     /// is deterministic even when the previous holder of the guard panicked before reaching its own exit
     /// call (review C1).
     pub fn clear_env() {
-        // SAFETY: see `set_author_env`.
+        // SAFETY: the caller holds `ENV_LOCK`, the same discipline as `set_author_env`.
         #[allow(unsafe_code)]
         unsafe {
             env::remove_var("PRIKK_AUTHOR_KEY_ID");

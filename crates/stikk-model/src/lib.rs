@@ -27,7 +27,7 @@ pub mod error;
 pub mod example_keys;
 pub mod id;
 
-pub use capability::{Binding, Capability, MaintainerReadiness, Readiness, RoleReadiness};
+pub use capability::{Binding, Capability, Readiness, RoleReadiness};
 pub use category::{RequestCategory, Tier};
 pub use change_token::ChangeToken;
 pub use error::{Result, StikkError};

@@ -13,9 +13,9 @@
 /// what the repository already knows (prikk ≥ 0.41's `key-status-v1` `binding` field).
 ///
 /// **stikk mirrors prikk's vocabulary rather than inventing one** (RFC 026 Decision 3). A collapsed
-/// vocabulary plus a paragraph explaining the collapse is how stikk ended up with a `MaintainerReadiness`
-/// that could not express `not-adopted` — the state RFC 025 wanted a fourth variant for, which prikk
-/// had a name for all along.
+/// vocabulary plus a paragraph explaining the collapse is how stikk ended up, until 0.6.0 removed it,
+/// with a `MaintainerReadiness` type that could not express `not-adopted` — the state RFC 025 wanted a
+/// fourth variant for, which prikk had a name for all along.
 ///
 /// Measured against a real prikk 0.41.0, one repository per state (RFC 026 Handoff B).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,71 +76,11 @@ impl RoleReadiness {
     }
 }
 
-/// Whether prikk's repository-side trust policy has adopted a MAINTAINER key (design `FR-104`; RFC
-/// 016 F2/F3).
-///
-/// Presence of `PRIKK_MAINTAINER_KEY_ID`/`_SEED` in the environment is necessary but not sufficient:
-/// prikk's `verify_signer_trusted` also requires the key to be **adopted** in the repository's trust
-/// policy before a MAINTAINER-gated operation succeeds. **Adoption is object trust, not ref
-/// authority** — prikk accepts that key's signatures on objects; adopting a key never lets it move a
-/// ref (`RefStore::publish` still requires this operator's own signature). Say so wherever this state
-/// is named; wording that lets a reader conclude "may publish here" is a defect (prikk RFC 138 §7.3).
-///
-/// Through prikk 0.33, nothing exposed a way to check adoption ahead of attempting the gated
-/// operation itself (RFC 016 F3): `prikk trust maintainer` offered only `add`/`remove`, and `verify`'s
-/// `sealed-block <id>: <key_id>` line is historical signer attribution — a since-revoked key still
-/// prints — not current policy, and does not exist before a repository's first seal, which is exactly
-/// when this question is asked. **No increment may ever resolve `Unknown` from `verify` output**
-/// (RFC 016's own named trap); that remains true regardless of what follows.
-///
-/// **prikk 0.34 shipped the surface** (upstream RFC 138): `prikk trust maintainer list` and
-/// `check --key-id`, both with `--format json`, `check` exiting `0` whichever way the answer comes out.
-/// Two things follow, and they are easy to conflate:
-///
-/// **Superseded for new code by [`RoleReadiness`]** (RFC 026): both roles now use one vocabulary, and
-/// `binding` answers the adoption question directly on prikk ≥ 0.41. This type is retained because its
-/// reasoning below is the record of why the question was unanswerable for so long, and because
-/// `Unknown`'s rule — grant the action, render the caveat, never render it as a pass — carried over
-/// unchanged. Nothing constructs it any more.
-///
-/// - **`Ready` became *constructible* at ≥ 0.34 — it is not yet *constructed*.** stikk reads neither
-///   command: RFC 021 raised the validated ceiling to 0.38 and deliberately built no seam method for
-///   this (its Decision 5). So `stikk-prikk::env` still returns only `NotReady`/`Unknown`, and the
-///   `[MNT]` badge still reads `?` on every version. Anything claiming otherwise is describing prikk's
-///   capability, not stikk's behaviour.
-/// - **`Unknown` is permanent, not transitional.** stikk's floor is prikk 0.28 (`ASM-2`), so every
-///   session on 0.28–0.33 has no way to answer the question no matter what stikk builds. This type
-///   stays three-valued for good; the increment that reads 0.34's surface makes the answer
-///   *version-conditional*, never unconditional.
-///
-/// This is the gate for all **eight** of prikk's `GatedOperation` variants — `Seal`, `Merge`,
-/// `SyncBuild`, `SyncSeal`, `SyncAdoptTag`, `TagCreate`, `BranchCreate`, `BranchClose` — not seal's
-/// alone; seal is only stikk's first consumer of it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MaintainerReadiness {
-    /// Key material present **and** adopted in the repository's trust policy. **Still unconstructed
-    /// today**, though no longer unconstructible in principle — see this type's own doc.
-    /// `prikk trust maintainer check` shipped in 0.34 (upstream RFC 138), so the answer now exists on
-    /// ≥ 0.34; stikk does not read it yet, so `stikk-prikk::env` continues to produce only
-    /// `NotReady`/`Unknown`. It remains documented the way RFC 017 documented
-    /// `StikkError::IntegrityFinding`: present because it is the shape of the answer, and now also
-    /// because the answer itself exists upstream and an increment will come to fetch it.
-    Ready,
-    /// Key material absent — no `PRIKK_MAINTAINER_KEY_ID`/`_SEED` pair in the environment.
-    NotReady,
-    /// Key material present; adoption is **unverifiable by stikk today**, and permanently
-    /// unverifiable on prikk 0.28–0.33 whatever stikk builds (RFC 016 F3; RFC 021 §5). This
-    /// is what `stikk-prikk::env` returns whenever both variables are set — never a caveat layered on
-    /// a boolean, because `Unknown` must never render as a pass (`C-T2c′`, the same rule this
-    /// project's design already applies to `FR-035`'s three-valued author-signature outcome).
-    Unknown,
-}
-
 /// Whether each signing role's key material is available to the current session, plus whether the
 /// session is in read-only mode.
 ///
 /// This carries no key material — only presence flags (and, for MAINTAINER, the further-unverifiable
-/// adoption question — see [`MaintainerReadiness`]). It is the input to [`Capability::derive`].
+/// adoption question — see [`RoleReadiness`]). It is the input to [`Capability::derive`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Readiness {
     /// Whether the AUTHOR role can sign, as far as this session can tell.

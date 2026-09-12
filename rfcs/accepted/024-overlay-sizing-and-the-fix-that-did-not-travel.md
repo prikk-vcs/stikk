@@ -99,6 +99,12 @@ last-entry-on-screen = false        first-entry-on-screen = true
 ↓ past the fold watches nothing move while the selection travels somewhere invisible — and the ref
 picker has shipped since 0.1.0.
 
+**Widened at implementation, 2026-09-12:** `render_palette` and `render_refusals` had the identical
+defect — **three of the four lists, not one.** **`Recent refusals` was a second live instance**: its ring
+holds fifty records and about twenty fit at 80×24, so its cursor could sit invisibly exactly as the ref
+picker's did. The palette ships ten commands and fit by luck rather than by design. F5 is the sizing
+story told again about windowing.
+
 **This is what made Q1 answerable.** I had been trying to state *"the last row is visible, or the overlay
 says it scrolls"*, which is fuzzy because a list legitimately continues past the fold. The ref picker
 shows the real property has two halves, and both are sharp.

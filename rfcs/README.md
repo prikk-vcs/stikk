@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 022 | [Widening the real-binary suite](./proposed/022-widening-the-real-binary-suite.md) | The suite covers **five of ten** seam methods, not four of nine — `handshake` was covered and uncounted, so 0.5.0's changelog understates it. **Three of the four clauses behind "another writer is active" have never been seen from a real binary**, and prikk documents one as dormant. **Opens 0.6.0** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

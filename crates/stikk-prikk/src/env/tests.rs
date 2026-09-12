@@ -7,6 +7,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::collections::BTreeSet;
+use stikk_model::RoleReadiness;
 
 use super::*;
 
@@ -47,22 +48,22 @@ fn present(names: &[&'static str]) -> impl Fn(&str) -> bool {
 #[test]
 fn no_variables_means_no_readiness() {
     let r = read_readiness_with(present(&[]), false);
-    assert!(!r.author_ready);
-    assert_eq!(r.maintainer_readiness, MaintainerReadiness::NotReady);
+    assert_eq!(r.author, RoleReadiness::NotReady);
+    assert_eq!(r.maintainer, RoleReadiness::NotReady);
 }
 
 #[test]
 fn author_ready_needs_both_key_id_and_seed() {
     // Only the key id: not ready.
     let r = read_readiness_with(present(&["PRIKK_AUTHOR_KEY_ID"]), false);
-    assert!(!r.author_ready);
+    assert_eq!(r.author, RoleReadiness::NotReady);
     // Both present: ready — and the seed's bytes are never inspected, only its presence.
     let r = read_readiness_with(
         present(&["PRIKK_AUTHOR_KEY_ID", "PRIKK_AUTHOR_SEED"]),
         false,
     );
-    assert!(r.author_ready);
-    assert_eq!(r.maintainer_readiness, MaintainerReadiness::NotReady);
+    assert_eq!(r.author, RoleReadiness::Unknown);
+    assert_eq!(r.maintainer, RoleReadiness::NotReady);
 }
 
 #[test]
@@ -73,14 +74,14 @@ fn maintainer_presence_is_independent_of_author_but_never_reaches_ready() {
         present(&["PRIKK_MAINTAINER_KEY_ID", "PRIKK_MAINTAINER_SEED"]),
         false,
     );
-    assert_eq!(r.maintainer_readiness, MaintainerReadiness::Unknown);
-    assert!(!r.author_ready);
+    assert_eq!(r.maintainer, RoleReadiness::Unknown);
+    assert_eq!(r.author, RoleReadiness::NotReady);
 }
 
 #[test]
 fn maintainer_needs_both_key_id_and_seed_too() {
     let r = read_readiness_with(present(&["PRIKK_MAINTAINER_KEY_ID"]), false);
-    assert_eq!(r.maintainer_readiness, MaintainerReadiness::NotReady);
+    assert_eq!(r.maintainer, RoleReadiness::NotReady);
 }
 
 #[test]

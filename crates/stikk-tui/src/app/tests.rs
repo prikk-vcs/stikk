@@ -14,7 +14,7 @@ use stikk_core::{
     ConfirmationSummary, HistoryView, OperationContext, Outcome, SealPreviewOutcome,
     commit_preview, seal_preview,
 };
-use stikk_model::{Capability, MaintainerReadiness, Readiness, StikkError, Tier};
+use stikk_model::{Capability, Readiness, RoleReadiness, StikkError, Tier};
 use stikk_prikk::{
     BlockRow, CommitResult, NullBackend, Orientation, SealResult, StateFiles, WorktreeStatus,
 };
@@ -62,6 +62,7 @@ fn orientation_view(
         main_ref_state: main_ref_state.map(str::to_string),
         capability: Capability::derive(readiness),
         readiness,
+        stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
     }
 }
 
@@ -73,8 +74,8 @@ fn loaded(view: stikk_core::OrientationView) -> OrientationState {
 /// default `orientation_view` is a Viewer, since most of this file's tests are read-only).
 fn author_orientation_view() -> stikk_core::OrientationView {
     let readiness = Readiness {
-        author_ready: true,
-        maintainer_readiness: MaintainerReadiness::NotReady,
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::NotReady,
         read_only: false,
     };
     stikk_core::OrientationView {
@@ -89,6 +90,7 @@ fn author_orientation_view() -> stikk_core::OrientationView {
         main_ref_state: None,
         capability: Capability::derive(readiness),
         readiness,
+        stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
     }
 }
 
@@ -100,8 +102,8 @@ fn maintainer_orientation_view(
     queued_target: Option<&str>,
 ) -> stikk_core::OrientationView {
     let readiness = Readiness {
-        author_ready: true,
-        maintainer_readiness: MaintainerReadiness::Unknown,
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::Unknown,
         read_only: false,
     };
     stikk_core::OrientationView {
@@ -116,6 +118,7 @@ fn maintainer_orientation_view(
         main_ref_state: Some("237d0681".repeat(8)),
         capability: Capability::derive(readiness),
         readiness,
+        stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
     }
 }
 
@@ -910,6 +913,8 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         consequence: "Nothing real happens".to_string(),
         target_name: target_name.map(str::to_string),
         signing_key_id: None,
+        signing_key_claim: stikk_core::KeyClaim::None,
+        signing_key_is_published_example: false,
     }
 }
 

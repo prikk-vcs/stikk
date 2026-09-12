@@ -10,7 +10,7 @@
 use std::path::Path;
 
 use stikk_model::{Capability, Readiness, Result};
-use stikk_prikk::{Prikk, env};
+use stikk_prikk::Prikk;
 
 /// The lowest prikk version where a commit message actually persists (schema 4, upstream RFC 123;
 /// RFC 015 F2) rather than being validated and discarded (`UD-01`, retired at this version). Named
@@ -56,12 +56,22 @@ pub struct OrientationView {
     pub capability: Capability,
     /// The readiness the capability was derived from, for the signing-readiness badges (FR-104).
     pub readiness: Readiness,
+    /// Which `PRIKK_*_SEED` variables are set on a prikk that no longer reads them (RFC 026 §4).
+    ///
+    /// **Only this, not the seam's whole `RoleDetail`.** The Orientation view renders one sentence
+    /// about stale variables and nothing else from that struct; the key id and prikk's `reason` are
+    /// read where they are used — on the confirmation cards, straight from
+    /// [`stikk_prikk::Prikk::readiness`]. Carrying the rest here would be a view holding data it does
+    /// not render, and it pushed `OrientationState` past the size at which its variants diverge.
+    pub stale_seed_variables: stikk_prikk::env::StaleSeedVariables,
 }
 
 /// Produce the orientation view for the repository rooted at `repo`, driving `prikk` through the seam.
 ///
-/// Signing readiness is read from the environment as **presence only** (never seed values) via the
-/// seam's [`mod@stikk_prikk::env`] module (threat model C-I1); the read-only override is folded in.
+/// Signing readiness comes from the seam's own [`stikk_prikk::Prikk::readiness`] method (RFC 026),
+/// which picks its band by prikk version: environment presence at ≤ 0.39, unverifiable at 0.40, and
+/// prikk's `key status` at ≥ 0.41. **No seed value is read on any band** (threat model C-I1); the
+/// read-only override is folded in by the seam.
 ///
 /// # Errors
 /// Propagates any [`stikk_model::StikkError`] the seam raises (an environment fault reaching prikk,
@@ -69,7 +79,8 @@ pub struct OrientationView {
 pub fn orient(prikk: &impl Prikk, repo: &Path) -> Result<OrientationView> {
     let handshake = prikk.handshake()?;
     let orientation = prikk.orientation(repo)?;
-    let readiness = env::read_readiness(env::read_only_override());
+    let report = prikk.readiness(repo)?;
+    let readiness = report.readiness;
     let capability = Capability::derive(readiness);
     let version = handshake.version;
     let prikk_persists_messages =
@@ -86,6 +97,10 @@ pub fn orient(prikk: &impl Prikk, repo: &Path) -> Result<OrientationView> {
         main_ref_state: orientation.main_ref_state,
         capability,
         readiness,
+        stale_seed_variables: stikk_prikk::env::StaleSeedVariables {
+            author: report.author.stale_seed_variable,
+            maintainer: report.maintainer.stale_seed_variable,
+        },
     })
 }
 

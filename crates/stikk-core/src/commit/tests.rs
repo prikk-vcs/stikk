@@ -6,6 +6,7 @@ use stikk_model::ChangeToken;
 use stikk_prikk::{CommitResult, NullBackend, Orientation, WorktreeStatus};
 
 use super::*;
+use stikk_model::RoleReadiness;
 
 fn dirty_worktree() -> WorktreeStatus {
     WorktreeStatus {
@@ -34,8 +35,8 @@ fn orientation(queued_patches: u64, queued_target: Option<&str>) -> Orientation 
 
 fn author_readiness() -> stikk_model::Readiness {
     stikk_model::Readiness {
-        author_ready: true,
-        maintainer_readiness: stikk_model::MaintainerReadiness::NotReady,
+        author: RoleReadiness::Unknown,
+        maintainer: stikk_model::RoleReadiness::NotReady,
         read_only: false,
     }
 }
@@ -217,8 +218,8 @@ fn read_only_refuses_even_with_author_keys_present() {
         panic!("expected Ready");
     };
     let read_only = stikk_model::Readiness {
-        author_ready: true,
-        maintainer_readiness: stikk_model::MaintainerReadiness::NotReady,
+        author: RoleReadiness::Unknown,
+        maintainer: stikk_model::RoleReadiness::NotReady,
         read_only: true,
     };
     let err = commit_confirm_and_execute(

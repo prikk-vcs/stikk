@@ -32,8 +32,8 @@ pub use commit::{
     commit_preview,
 };
 pub use confirm::{
-    ConfirmationSummary, ConfirmedToken, Evidence, Intent, Outcome, PreviewToken, capability_gate,
-    confirm, execute, preview,
+    ConfirmationSummary, ConfirmedToken, Evidence, Intent, KeyClaim, Outcome, PreviewToken,
+    capability_gate, confirm, execute, preview, signing_key_claim,
 };
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{BlockDetailView, HistoryView, block_detail, history_view, list_refs};

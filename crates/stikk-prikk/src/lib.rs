@@ -226,6 +226,43 @@ pub struct CommitChange {
     pub path: String,
 }
 
+/// What one signing role's `key status` row says, beyond the part that decides capability.
+///
+/// The capability-deciding half lives on [`stikk_model::Readiness`], which stays `Copy` and threads
+/// through every gate; this carries the display half. **The split is RFC 023 Handoff B's precedent**,
+/// applied again: a `String` field on `Readiness` would remove `Copy` from a type with fifty-odd call
+/// sites, for values most of them do not want.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RoleDetail {
+    /// prikk's own `reason` when the key is unusable — `missing`, `override-missing`,
+    /// `readable-by-others (mode 0644)`, `undecodable`, or whatever it adds next. **Verbatim**
+    /// (`ER-02`): four reasons do not become one "not ready".
+    pub reason: Option<String>,
+    /// The key id that would sign. **prikk always has one** — it defaults to the role's own name when
+    /// `PRIKK_<ROLE>_KEY_ID` is unset — which is why reading this from `key status` rather than from
+    /// the environment is what stops the confirmation card showing nothing on a default setup
+    /// (RFC 026 Handoff B §0).
+    pub key_id: Option<String>,
+    /// `environment` when the operator chose the id, `default` when prikk did.
+    pub key_id_source: Option<String>,
+    /// The public key that would sign. Public, never secret — this is the value `C-S2` compares.
+    pub public_key: Option<String>,
+    /// `PRIKK_<ROLE>_SEED` is set on a prikk that no longer reads it (RFC 026 §4). Not from prikk:
+    /// `key-status-v1` has no such field, and `stikk_prikk::env` establishes it by presence.
+    pub stale_seed_variable: bool,
+}
+
+/// Signing readiness for both roles: the capability fold, plus what to say about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadinessReport {
+    /// The `Copy` fold every capability gate reads.
+    pub readiness: stikk_model::Readiness,
+    /// AUTHOR's display detail.
+    pub author: RoleDetail,
+    /// MAINTAINER's display detail.
+    pub maintainer: RoleDetail,
+}
+
 /// The result of `prikk commit --from-worktree` (design `FR-050`; RFC 014). Every field is prikk's own
 /// fact, transported rather than summarised (`C-T4a`/`C-T4c`) — including `notes`, which carries **every**
 /// `note:` line prikk printed, verbatim and in order, rather than two hardcoded slots. RFC 014 F4 found
@@ -295,6 +332,19 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError::Environment`] when `prikk` cannot be launched or its version line
     /// cannot be parsed.
     fn handshake(&self) -> Result<Handshake>;
+
+    /// Read this session's signing readiness for both roles, against the repository at `repo`.
+    ///
+    /// **Takes a repository because `binding` needs one**: prikk computes it only when asked about a
+    /// repository, and `binding` is the whole point (RFC 026 §2).
+    ///
+    /// Version-banded behind this one method, so nothing above the seam learns that readiness has
+    /// versions: environment presence at ≤ 0.39, `Unverifiable` at 0.40 exactly, and
+    /// `key status --format json` at ≥ 0.41.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as any other seam read.
+    fn readiness(&self, repo: &Path) -> Result<ReadinessReport>;
 
     /// Read a minimal read-only orientation of the repository rooted at `repo`.
     ///

@@ -4,7 +4,7 @@
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use stikk_model::{Capability, MaintainerReadiness, Readiness};
+use stikk_model::{Capability, Readiness, RoleReadiness};
 
 use super::*;
 use crate::test_util::buffer_text;
@@ -22,6 +22,7 @@ fn view(readiness: Readiness, supported: bool, queued: u64, partial: u64) -> Ori
         main_ref_state: Some("237d0681".to_string()),
         capability: Capability::derive(readiness),
         readiness,
+        stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
     }
 }
 
@@ -37,15 +38,17 @@ fn render_to_text(v: &OrientationView) -> String {
 #[test]
 fn shows_version_capability_and_readiness() {
     let r = Readiness {
-        author_ready: true,
-        maintainer_readiness: MaintainerReadiness::Unknown,
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::Unknown,
         read_only: false,
     };
     let text = render_to_text(&view(r, true, 0, 0));
     assert!(text.contains("prikk 0.27.1"));
     assert!(text.contains("supported"));
     assert!(text.contains("maintainer"));
-    assert!(text.contains("author ready"));
+    // RFC 026: on this band the author key is present and unverified, and says so — the
+    // vocabulary is now the same shape for both roles.
+    assert!(text.contains("author present, unverified"));
     assert!(text.contains("Orientation"));
 }
 
@@ -54,8 +57,8 @@ fn maintainer_unknown_is_spelled_out_never_collapsed_to_ready() {
     // RFC 016 §3/`C-T2c′`: the signing-readiness line must say "unknown", never bare "ready" — the
     // same prohibition the status-bar badge test enforces, applied to Orientation's own text line.
     let r = Readiness {
-        author_ready: false,
-        maintainer_readiness: MaintainerReadiness::Unknown,
+        author: RoleReadiness::NotReady,
+        maintainer: RoleReadiness::Unknown,
         read_only: false,
     };
     let text = render_to_text(&view(r, true, 0, 0));

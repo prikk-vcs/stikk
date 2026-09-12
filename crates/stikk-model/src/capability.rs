@@ -9,6 +9,73 @@
 //! Critically, [`Readiness`] records only **whether** a role's key material is present, never the
 //! material itself (threat model C-I1, data model LC-13). This type cannot hold a secret.
 
+/// How prikk's own key-status report describes the relationship between the key that would sign and
+/// what the repository already knows (prikk ≥ 0.41's `key-status-v1` `binding` field).
+///
+/// **stikk mirrors prikk's vocabulary rather than inventing one** (RFC 026 Decision 3). A collapsed
+/// vocabulary plus a paragraph explaining the collapse is how stikk ended up with a `MaintainerReadiness`
+/// that could not express `not-adopted` — the state RFC 025 wanted a fourth variant for, which prikk
+/// had a name for all along.
+///
+/// Measured against a real prikk 0.41.0, one repository per state (RFC 026 Handoff B).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Binding {
+    /// The key that would sign is the key this repository already records for that id. The only state
+    /// that earns a plain statement on a confirmation card.
+    Matches,
+    /// No signature by this id exists yet, so nothing is recorded to disagree with. **Arms**: prikk
+    /// accepts a first signature and binds the id then. This is the default state of every freshly
+    /// created repository, so it is the first commit a new user makes.
+    Unrecorded,
+    /// MAINTAINER only: the key is usable but the repository's trust policy has not adopted it, and
+    /// prikk will refuse the seal. **Withholds.**
+    NotAdopted,
+    /// The key that would sign is *not* the key recorded for this id. prikk refuses at signing time,
+    /// so offering the action would be offering a failure. **Withholds**, and the card says which two
+    /// things disagree.
+    Mismatch,
+    /// prikk reported `null`: there was no usable seed to bind, or no repository to ask. A real state,
+    /// not a parse failure.
+    Absent,
+}
+
+/// Whether one signing role can sign, as far as this session can tell.
+///
+/// **Two unknowns live here and they must never share a variant** (RFC 026 §3). [`Self::Unknown`]
+/// grants the capability with a caveat rendered; [`Self::Unverifiable`] withholds it and says so. A
+/// single variant that sometimes did each is the shape `C-T2c′` exists to forbid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoleReadiness {
+    /// No key material this session can use. At ≤ 0.39 the variables are absent; at ≥ 0.41 prikk said
+    /// `usable: false`, and its own `reason` travels separately for display (`ER-02`).
+    NotReady,
+    /// Key material is present, and whether it binds is **unanswerable on this prikk** — the ≤ 0.39
+    /// band, where `binding` does not exist. **Grants**, with the caveat rendered: RFC 016's rule is
+    /// to offer the action and let prikk refuse, never to render the caveat as a pass.
+    Unknown,
+    /// **prikk 0.40 exactly**: stikk cannot see whether there is key material at all. 0.40 moved seeds
+    /// to a key directory and shipped no way to ask about them, so presence-in-the-environment stopped
+    /// being an answer and nothing replaced it until 0.41. **Withholds**, and the UI says *unknown*
+    /// rather than *not ready* — Q1(b), ruled: honest and actionable beats confident and wrong.
+    Unverifiable,
+    /// prikk answered (≥ 0.41).
+    Known(Binding),
+}
+
+impl RoleReadiness {
+    /// Whether this state arms the role's operations.
+    ///
+    /// The one place the grant/withhold split is decided, so a caller cannot re-derive it differently.
+    #[must_use]
+    pub const fn arms(self) -> bool {
+        match self {
+            Self::NotReady | Self::Unverifiable => false,
+            Self::Unknown => true,
+            Self::Known(binding) => matches!(binding, Binding::Matches | Binding::Unrecorded),
+        }
+    }
+}
+
 /// Whether prikk's repository-side trust policy has adopted a MAINTAINER key (design `FR-104`; RFC
 /// 016 F2/F3).
 ///
@@ -29,6 +96,12 @@
 /// **prikk 0.34 shipped the surface** (upstream RFC 138): `prikk trust maintainer list` and
 /// `check --key-id`, both with `--format json`, `check` exiting `0` whichever way the answer comes out.
 /// Two things follow, and they are easy to conflate:
+///
+/// **Superseded for new code by [`RoleReadiness`]** (RFC 026): both roles now use one vocabulary, and
+/// `binding` answers the adoption question directly on prikk ≥ 0.41. This type is retained because its
+/// reasoning below is the record of why the question was unanswerable for so long, and because
+/// `Unknown`'s rule — grant the action, render the caveat, never render it as a pass — carried over
+/// unchanged. Nothing constructs it any more.
 ///
 /// - **`Ready` became *constructible* at ≥ 0.34 — it is not yet *constructed*.** stikk reads neither
 ///   command: RFC 021 raised the validated ceiling to 0.38 and deliberately built no seam method for
@@ -70,12 +143,14 @@ pub enum MaintainerReadiness {
 /// adoption question — see [`MaintainerReadiness`]). It is the input to [`Capability::derive`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Readiness {
-    /// True when an AUTHOR key id and seed are both present in the environment (presence only — the
-    /// seed value is never read; see `stikk-prikk::env`).
-    pub author_ready: bool,
-    /// Whether a MAINTAINER key is ready to sign — see [`MaintainerReadiness`] for why this is
-    /// three-valued rather than a presence-only bool the way `author_ready` is.
-    pub maintainer_readiness: MaintainerReadiness,
+    /// Whether the AUTHOR role can sign, as far as this session can tell.
+    ///
+    /// **Was `author_ready: bool`** until RFC 026. That asymmetry with MAINTAINER was right when AUTHOR
+    /// had nothing to be unsure about; prikk ≥ 0.41 answers `binding` for **both** roles, and
+    /// `mismatch` applies to both, so both get the same vocabulary.
+    pub author: RoleReadiness,
+    /// Whether the MAINTAINER role can sign, as far as this session can tell.
+    pub maintainer: RoleReadiness,
     /// True when the session is in read-only mode (a global override, or the default when no signing
     /// readiness is present). When set, no capability above [`Capability::Viewer`] is granted.
     pub read_only: bool,
@@ -86,8 +161,8 @@ impl Readiness {
     #[must_use]
     pub const fn none() -> Self {
         Self {
-            author_ready: false,
-            maintainer_readiness: MaintainerReadiness::NotReady,
+            author: RoleReadiness::NotReady,
+            maintainer: RoleReadiness::NotReady,
             read_only: false,
         }
     }
@@ -132,25 +207,25 @@ impl Capability {
     /// Derive the mutating-axis capability from readiness. Read-only mode collapses everything to
     /// [`Capability::Viewer`] regardless of key presence (design NFR-S01).
     ///
-    /// Grants `Maintainer` on [`MaintainerReadiness::Ready`] **or** [`MaintainerReadiness::Unknown`]
-    /// (RFC 016 Q1): the affordance is still offered, since hiding seal from someone whose key *is*
-    /// adopted would be its own confident-but-wrong picture (`C-T4d`). What `Unknown` changes is what
-    /// stikk *claims* about the outcome, not what it *offers* — the badge and the ceremony's own copy
-    /// carry that distinction; this method does not.
+    /// **The one fold, and the only place the grant/withhold decision is made** — through
+    /// [`RoleReadiness::arms`], so no gate can grow its own rule (RFC 026 §3).
+    ///
+    /// `Unknown` grants (RFC 016 Q1): the affordance is still offered, since hiding seal from someone
+    /// whose key *is* adopted would be its own confident-but-wrong picture (`C-T4d`). What `Unknown`
+    /// changes is what stikk *claims* about the outcome, not what it *offers*. `Unverifiable`,
+    /// `Mismatch` and `NotAdopted` withhold, for the opposite reason: prikk will refuse, so offering
+    /// the action would be offering a failure.
     #[must_use]
     pub const fn derive(readiness: Readiness) -> Self {
         if readiness.read_only {
             return Self::Viewer;
         }
-        match readiness.maintainer_readiness {
-            MaintainerReadiness::Ready | MaintainerReadiness::Unknown => Self::Maintainer,
-            MaintainerReadiness::NotReady => {
-                if readiness.author_ready {
-                    Self::Author
-                } else {
-                    Self::Viewer
-                }
-            }
+        if readiness.maintainer.arms() {
+            Self::Maintainer
+        } else if readiness.author.arms() {
+            Self::Author
+        } else {
+            Self::Viewer
         }
     }
 

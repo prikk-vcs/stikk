@@ -192,6 +192,96 @@ impl CliBackend {
 }
 
 impl Prikk for CliBackend {
+    fn readiness(&self, repo: &Path) -> Result<crate::ReadinessReport> {
+        // The three bands (RFC 026 §4), chosen from the cached handshake. **One number, one place** —
+        // the `0.30`-in-two-places lesson (RFC 015) is why this is not repeated at any call site.
+        const KEY_STATUS_FROM: u32 = 41;
+        const KEY_DIRECTORY_FROM: u32 = 40;
+
+        let minor = Prikk::handshake(self)?.version.minor;
+        let read_only = env::read_only_override();
+        // Established by presence, on every band — it is the answer at ≤ 0.39 and the stale-variable
+        // warning above it (`key-status-v1` has no `legacy_variable_set`; measured, not read).
+        let stale = env::stale_seed_variables();
+
+        if minor < KEY_DIRECTORY_FROM {
+            let readiness = env::read_readiness(read_only);
+            return Ok(crate::ReadinessReport {
+                readiness,
+                // On this band the seed variables are the mechanism, so being set is not stale.
+                author: crate::RoleDetail::default(),
+                maintainer: crate::RoleDetail::default(),
+            });
+        }
+
+        if minor < KEY_STATUS_FROM {
+            // **0.40 exactly** (Q1, ruled (b)): seeds moved to a key directory and nothing shipped to
+            // ask about them until 0.41. stikk reports unknown, names the cause and names the fix,
+            // rather than probing — the probe would need its own parse and its own fixtures, re-verified
+            // at every re-baseline from now on, to serve one version that was current for a day.
+            return Ok(crate::ReadinessReport {
+                readiness: stikk_model::Readiness {
+                    author: stikk_model::RoleReadiness::Unverifiable,
+                    maintainer: stikk_model::RoleReadiness::Unverifiable,
+                    read_only,
+                },
+                author: crate::RoleDetail {
+                    stale_seed_variable: stale.author,
+                    ..crate::RoleDetail::default()
+                },
+                maintainer: crate::RoleDetail {
+                    stale_seed_variable: stale.maintainer,
+                    ..crate::RoleDetail::default()
+                },
+            });
+        }
+
+        // ≥ 0.41: prikk answers. One spawn covers both roles — `key status` without `--role` reports
+        // every role in one `roles` array, measured on a real 0.41.0.
+        let out = self.run(
+            Some(repo),
+            RequestCategory::ReadState,
+            ["key", "status", "--format", "json"],
+        )?;
+        let rows = parse_json::key_status(&out)?;
+        let role = |want: &str| rows.iter().find(|(name, _, _)| name == want);
+        let build = |want: &str, stale_set: bool| {
+            role(want).map_or_else(
+                || {
+                    // A role prikk did not report is absent, never assumed ready.
+                    (
+                        stikk_model::RoleReadiness::NotReady,
+                        crate::RoleDetail {
+                            stale_seed_variable: stale_set,
+                            ..crate::RoleDetail::default()
+                        },
+                    )
+                },
+                |(_, detail, facts)| {
+                    let state = if facts.usable {
+                        stikk_model::RoleReadiness::Known(facts.binding)
+                    } else {
+                        stikk_model::RoleReadiness::NotReady
+                    };
+                    let mut detail = detail.clone();
+                    detail.stale_seed_variable = stale_set;
+                    (state, detail)
+                },
+            )
+        };
+        let (author_state, author_detail) = build("author", stale.author);
+        let (maintainer_state, maintainer_detail) = build("maintainer", stale.maintainer);
+        Ok(crate::ReadinessReport {
+            readiness: stikk_model::Readiness {
+                author: author_state,
+                maintainer: maintainer_state,
+                read_only,
+            },
+            author: author_detail,
+            maintainer: maintainer_detail,
+        })
+    }
+
     fn handshake(&self) -> Result<Handshake> {
         if let Some(cached) = self.handshake_cache.get() {
             return Ok(cached.clone());
@@ -301,14 +391,16 @@ impl Prikk for CliBackend {
     }
 
     fn commit(&self, repo: &Path, reff: &str, message: &str) -> Result<CommitResult> {
-        // OPL-04's seam-side half (handoff §7), built honestly: for AUTHOR readiness this re-check is
-        // constant within a process — `PRIKK_AUTHOR_SEED` presence cannot change underneath a running
-        // session — so it cannot catch a *lapse* today. It exists because a future readiness source
-        // (a trust-policy read for MAINTAINER, `FR-104`) genuinely can change, and because the seam is
-        // the right place for that check regardless of what triggers it. `Capability::derive` (not a
-        // bare `author_ready` read) so a `STIKK_READ_ONLY=1` override is honoured here too, the same
-        // fold `confirm::capability_gate` already applies.
-        let readiness = env::read_readiness(env::read_only_override());
+        // OPL-04's seam-side half (handoff §7). **It now catches what it was written for.** Until
+        // RFC 026 this re-check read environment presence, which cannot change underneath a running
+        // process — the comment here said so and apologised for it. Against `key status` the answer is
+        // genuinely live: a key rebound, revoked, or a seed file removed between the preview and this
+        // call changes it, and prikk is the one computing it. One spawn on a human-confirmed action is
+        // the price of the check meaning something.
+        //
+        // `Capability::derive` rather than a bare readiness read, so `STIKK_READ_ONLY=1` is honoured
+        // here too — the same fold `confirm::capability_gate` applies.
+        let readiness = Prikk::readiness(self, repo)?.readiness;
         if !Capability::derive(readiness).may_author() {
             return Err(StikkError::NotReady {
                 detail: "commit needs AUTHOR signing readiness".to_string(),
@@ -353,11 +445,12 @@ impl Prikk for CliBackend {
     }
 
     fn seal(&self, repo: &Path, reff: &str) -> Result<SealResult> {
-        // OPL-04's seam-side half, the same fold `commit` applies (RFC 014 handoff §7): `MaintainerReadiness`
-        // can genuinely change out from under a running session once prikk ships adoption-checking
-        // (RFC 016 F3), so the seam is the right place for this re-check regardless of what triggers it.
-        // `Capability::derive` (not a bare readiness read) so `STIKK_READ_ONLY=1` is honoured here too.
-        let readiness = env::read_readiness(env::read_only_override());
+        // OPL-04's seam-side half, the same fold `commit` applies (RFC 014 handoff §7) — and, since
+        // RFC 026, against prikk's own `key status` rather than environment presence. Adoption is
+        // exactly the thing that can change out from under a running session: a maintainer key adopted
+        // or revoked between orientation and this call now changes the answer, which is what this
+        // re-check was written for and could not do until prikk shipped the surface (RFC 016 F3).
+        let readiness = Prikk::readiness(self, repo)?.readiness;
         if !Capability::derive(readiness).may_publish() {
             return Err(StikkError::NotReady {
                 detail: "seal needs MAINTAINER signing readiness".to_string(),

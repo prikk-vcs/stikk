@@ -191,8 +191,8 @@ fn print_orientation(root: &Path, view: &orient::OrientationView) {
     println!("  capability:  {}", view.capability.name());
     println!(
         "  signing:     author {} · maintainer {}{}",
-        ready(view.readiness.author_ready),
-        maintainer_readiness_word(view.readiness.maintainer_readiness),
+        role_readiness_word(view.readiness.author),
+        role_readiness_word(view.readiness.maintainer),
         if view.readiness.read_only {
             " · read-only"
         } else {
@@ -252,17 +252,25 @@ fn support_line(supported: bool, validated: bool, validated_through: &str) -> St
     }
 }
 
-fn ready(flag: bool) -> &'static str {
-    if flag { "ready" } else { "not ready" }
-}
-
-/// MAINTAINER's three-valued word (RFC 016 §3), matching the TUI Orientation view's own wording —
-/// `Unknown` must never say bare "ready" (`C-T2c′`).
-fn maintainer_readiness_word(readiness: stikk_model::MaintainerReadiness) -> &'static str {
+/// One role's word, matching the TUI Orientation view's wording exactly (RFC 026 §3).
+///
+/// **The two unknowns say different things**, here as there: `Unknown` is "stikk cannot check this",
+/// `Unverifiable` is "stikk cannot see whether there is anything to check". Neither says bare "ready"
+/// — `C-T2c′`. Kept in step with `view::orientation::role_words` by hand; they are two renderers of
+/// one vocabulary, and a divergence would be the kind this project keeps finding.
+fn role_readiness_word(readiness: stikk_model::RoleReadiness) -> &'static str {
+    use stikk_model::{Binding, RoleReadiness};
     match readiness {
-        stikk_model::MaintainerReadiness::Ready => "ready",
-        stikk_model::MaintainerReadiness::NotReady => "not ready",
-        stikk_model::MaintainerReadiness::Unknown => "present, adoption unknown",
+        RoleReadiness::NotReady | RoleReadiness::Known(Binding::Absent) => "not ready",
+        // Matches `view::orientation::role_words`; the author/maintainer split is there too.
+        RoleReadiness::Unknown => "present, unverified or adoption unknown",
+        RoleReadiness::Unverifiable => "unknown",
+        RoleReadiness::Known(Binding::Matches) => "ready",
+        RoleReadiness::Known(Binding::Unrecorded) => "ready, not yet bound",
+        RoleReadiness::Known(Binding::NotAdopted) => "present, not adopted by this repository",
+        RoleReadiness::Known(Binding::Mismatch) => {
+            "present, does not match this repository's record"
+        }
     }
 }
 

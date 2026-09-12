@@ -22,7 +22,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use stikk_core::{ConfirmationSummary, NextStep, RefusalCard, RefusalRecord, glossary, palette};
+use stikk_core::{
+    ConfirmationSummary, KeyClaim, NextStep, RefusalCard, RefusalRecord, glossary, palette,
+};
 use stikk_model::{Capability, Tier};
 
 use crate::app::{Operation, OperationStatus};
@@ -856,6 +858,28 @@ fn render_confirmation(
             // ref name does.
             Span::styled(inert(id), Style::default().fg(palette.accent)),
         ]));
+        // **The id alone is not a statement** (RFC 026 §5). Naming it plainly claims a binding, and on
+        // a fresh repository there is none yet — which is the first commit every new user makes.
+        for row in claim_rows(summary.signing_key_claim, palette) {
+            lines.push(row);
+        }
+        // `C-S2`. **Above the consequence and in warn**, because it is not a note about the key — it
+        // is a statement that this signature would be worthless, and it must not read as one more
+        // detail in a list the user is scanning past.
+        if summary.signing_key_is_published_example {
+            for row in wrap_indented(
+                "This key is published in prikk's own documentation as an example. It is public, so \
+                 anyone can forge this signature — generate your own key before signing anything you \
+                 intend to be trusted.",
+                PANEL_TEXT_WIDTH,
+                "    ",
+            ) {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.warn),
+                )));
+            }
+        }
     }
     lines.push(Line::from(""));
 
@@ -864,7 +888,7 @@ fn render_confirmation(
     // (RFC 013 Q1: the confirmation restates the fixed summary, not the preview).
     //
     // **Wrapped here, in stikk** (RFC 024 §2). This is the line that made seal's confirmation ship for
-    // three releases without its confirm affordance: seal's `MaintainerReadiness::Unknown` consequence
+    // three releases without its confirm affordance: seal's `Unknown` maintainer consequence
     // is one *logical* line that draws as four rows, the old `lines.len() + 4` headroom was spent on
     // it, and the footer fell outside the box at every terminal height. Wrapping it makes the count a
     // fact — and the footer is in `actions` below, so even a future mis-measurement costs prose.
@@ -1242,6 +1266,28 @@ const REFUSAL_TEXT_WIDTH: usize = REFUSAL_WIDTH as usize - 2;
 /// plus 64 hex is exactly the inner width of a 78-wide card, and a gutter would fold it onto a second
 /// row for one column. Fitting prikk's identifiers on one row wins.
 const PANEL_TEXT_WIDTH: usize = CONFIRM_WIDTH as usize - 2;
+
+/// What to say under a signing key id, given how firmly it may be claimed (RFC 026 §5).
+///
+/// `Bound` says nothing extra: prikk confirmed the key binds, and a plain id is the honest rendering.
+/// The other two each add one sentence, wrapped, because the sentence is the point — a user meeting
+/// `Unbound` is looking at the first commit in a new repository and should be told, in the affirmative,
+/// what is about to happen rather than warned about a hedge.
+fn claim_rows<'a>(claim: KeyClaim, palette: &Palette) -> Vec<Line<'a>> {
+    let text = match claim {
+        KeyClaim::Bound | KeyClaim::None => return Vec::new(),
+        KeyClaim::Unbound => {
+            "Nothing has signed under this id in this repository yet — this signature binds it."
+        }
+        KeyClaim::Unchecked => {
+            "This prikk cannot report which key will sign, so stikk is naming the id it will pass,              not one prikk has confirmed."
+        }
+    };
+    wrap_indented(text, PANEL_TEXT_WIDTH, "    ")
+        .into_iter()
+        .map(|row| Line::from(Span::styled(row, Style::default().fg(palette.dim))))
+        .collect()
+}
 
 /// The shared prose-plus-actions panel every overlay of that shape renders through (RFC 024 §2).
 ///

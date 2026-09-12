@@ -17,9 +17,7 @@
 
 use std::path::Path;
 
-use stikk_model::{
-    Capability, ChangeToken, MaintainerReadiness, Readiness, RequestCategory, StikkError,
-};
+use stikk_model::{Capability, ChangeToken, Readiness, RequestCategory, RoleReadiness, StikkError};
 use stikk_prikk::NullBackend;
 
 use super::*;
@@ -40,6 +38,8 @@ fn summary(target_name: Option<&str>) -> ConfirmationSummary {
         consequence: "Nothing real happens — this is the scripted test vehicle".to_string(),
         target_name: target_name.map(str::to_string),
         signing_key_id: None,
+        signing_key_claim: KeyClaim::None,
+        signing_key_is_published_example: false,
     }
 }
 
@@ -66,11 +66,15 @@ fn backend_with_token(seed: &str) -> NullBackend {
 
 fn ready(author: bool, maintainer: bool, read_only: bool) -> Readiness {
     Readiness {
-        author_ready: author,
-        maintainer_readiness: if maintainer {
-            MaintainerReadiness::Unknown
+        author: if author {
+            RoleReadiness::Unknown
         } else {
-            MaintainerReadiness::NotReady
+            RoleReadiness::NotReady
+        },
+        maintainer: if maintainer {
+            RoleReadiness::Unknown
+        } else {
+            RoleReadiness::NotReady
         },
         read_only,
     }

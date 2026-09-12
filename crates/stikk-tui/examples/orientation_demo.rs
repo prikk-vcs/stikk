@@ -37,6 +37,10 @@ use stikk_state::Config;
 struct SlowOrientation(NullBackend);
 
 impl Prikk for SlowOrientation {
+    fn readiness(&self, repo: &Path) -> Result<stikk_prikk::ReadinessReport> {
+        self.0.readiness(repo)
+    }
+
     fn handshake(&self) -> Result<Handshake> {
         self.0.handshake()
     }

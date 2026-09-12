@@ -2,7 +2,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use stikk_model::{ChangeToken, MaintainerReadiness, Readiness, Tier};
+use stikk_model::Binding;
+use stikk_model::{ChangeToken, Readiness, RoleReadiness, Tier};
 use stikk_prikk::{NullBackend, Orientation, SealResult};
 
 use super::*;
@@ -17,10 +18,10 @@ fn orientation(queued_patches: u64, queued_target: Option<&str>) -> Orientation 
     }
 }
 
-fn maintainer_readiness(maintainer_readiness: MaintainerReadiness) -> Readiness {
+fn maintainer_readiness(maintainer: RoleReadiness) -> Readiness {
     Readiness {
-        author_ready: true,
-        maintainer_readiness,
+        author: RoleReadiness::Unknown,
+        maintainer,
         read_only: false,
     }
 }
@@ -76,21 +77,21 @@ fn a_ready_preview_carries_the_patch_count_and_tier_three() {
 
 #[test]
 fn the_trust_refusal_warning_appears_only_when_adoption_is_unknown() {
-    // RFC 016 §7: "driven by the MaintainerReadiness state, not shown unconditionally." `env.rs` can
+    // RFC 016 §7: "driven by the RoleReadiness state, not shown unconditionally." `env.rs` can
     // only ever produce `Unknown` for present key material (RFC 016 F3), but this test still proves
     // the *rule* — that the warning is conditional, not baked into the base consequence text.
-    assert!(!consequence(MaintainerReadiness::NotReady).contains("trust refusal"));
-    assert!(consequence(MaintainerReadiness::Unknown).contains("trust refusal"));
-    assert!(!consequence(MaintainerReadiness::Ready).contains("trust refusal"));
+    assert!(!consequence(RoleReadiness::NotReady).contains("trust refusal"));
+    assert!(consequence(RoleReadiness::Unknown).contains("trust refusal"));
+    assert!(!consequence(RoleReadiness::Known(Binding::Matches)).contains("trust refusal"));
 }
 
 #[test]
 fn the_consequence_never_promises_success() {
     // RFC 016 decision 2, in every readiness state.
     for state in [
-        MaintainerReadiness::Ready,
-        MaintainerReadiness::NotReady,
-        MaintainerReadiness::Unknown,
+        RoleReadiness::Known(Binding::Matches),
+        RoleReadiness::NotReady,
+        RoleReadiness::Unknown,
     ] {
         assert!(consequence(state).contains("does not promise success"));
     }
@@ -135,7 +136,7 @@ fn confirm_and_execute_carries_the_seal_result_through() {
         &backend,
         repo,
         *token,
-        maintainer_readiness(MaintainerReadiness::Unknown),
+        maintainer_readiness(RoleReadiness::Unknown),
         crate::confirm::Evidence::ExplicitYes,
         "heads/main",
     )
@@ -162,7 +163,7 @@ fn execute_refuses_when_the_change_token_moved_between_preview_and_confirm() {
         &moved,
         repo,
         *token,
-        maintainer_readiness(MaintainerReadiness::Unknown),
+        maintainer_readiness(RoleReadiness::Unknown),
         crate::confirm::Evidence::ExplicitYes,
         "heads/main",
     )
@@ -185,7 +186,7 @@ fn a_cross_ref_race_reaching_the_seam_propagates_as_cross_ref_not_lock_conflict(
         &backend,
         repo,
         *token,
-        maintainer_readiness(MaintainerReadiness::Unknown),
+        maintainer_readiness(RoleReadiness::Unknown),
         crate::confirm::Evidence::ExplicitYes,
         "heads/main",
     )
@@ -210,7 +211,7 @@ fn a_trust_refusal_reaching_the_seam_propagates_as_not_ready() {
         &backend,
         repo,
         *token,
-        maintainer_readiness(MaintainerReadiness::Unknown),
+        maintainer_readiness(RoleReadiness::Unknown),
         crate::confirm::Evidence::ExplicitYes,
         "heads/main",
     )
@@ -228,8 +229,8 @@ fn read_only_refuses_even_with_maintainer_keys_present() {
         panic!("expected Ready");
     };
     let read_only = Readiness {
-        author_ready: true,
-        maintainer_readiness: MaintainerReadiness::Unknown,
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::Unknown,
         read_only: true,
     };
     let err = seal_confirm_and_execute(
@@ -255,8 +256,8 @@ fn author_only_capability_refuses() {
         panic!("expected Ready");
     };
     let author_only = Readiness {
-        author_ready: true,
-        maintainer_readiness: MaintainerReadiness::NotReady,
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::NotReady,
         read_only: false,
     };
     let err = seal_confirm_and_execute(
@@ -286,7 +287,7 @@ fn declined_evidence_refuses_without_touching_the_seam() {
         &backend,
         repo,
         *token,
-        maintainer_readiness(MaintainerReadiness::Unknown),
+        maintainer_readiness(RoleReadiness::Unknown),
         crate::confirm::Evidence::TypedName("heads/main".to_string()),
         "heads/main",
     )

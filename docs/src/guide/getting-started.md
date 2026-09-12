@@ -64,12 +64,25 @@ upcoming work.
 What you can do is *derived* from which signing keys are ready in your environment, not from any
 account stikk keeps:
 
+**Where stikk gets the answer depends on your prikk**, because prikk changed how signing keys are
+configured at 0.40:
+
+| your prikk | stikk asks |
+|---|---|
+| **≥ 0.41** | prikk itself, with `prikk key status` — including whether the key matches what this repository already records |
+| **0.40 exactly** | nothing it can trust. 0.40 moved keys to a key directory and shipped no way to ask about them, so stikk reports signing readiness as **unknown**, says why, and points at 0.41 |
+| **≤ 0.39** | the environment, as presence only: `PRIKK_<ROLE>_KEY_ID` **and** `PRIKK_<ROLE>_SEED` both set |
+
+What that readiness grants is the same on every version:
+
 - No keys → **Viewer** (every read surface).
-- `PRIKK_AUTHOR_KEY_ID` + `PRIKK_AUTHOR_SEED` present → **Author** (can queue commits and rollback
-  drafts).
-- `PRIKK_MAINTAINER_KEY_ID` + `PRIKK_MAINTAINER_SEED` present → **Maintainer** (can seal, merge,
-  publish refs and tags).
+- AUTHOR ready → **Author** (can queue commits and rollback drafts).
+- MAINTAINER ready → **Maintainer** (can seal, merge, publish refs and tags).
 - `STIKK_READ_ONLY=1` forces Viewer regardless of keys.
+
+**On prikk ≥ 0.40, a `PRIKK_*_SEED` you exported previously is no longer what signs** — 0.40 refuses
+it and 0.41 ignores it in favour of the key directory. stikk says so when it sees one still set,
+because it is easy to believe otherwise.
 
 stikk reads only the **presence** of these variables. It never reads a seed's value — prikk reads
 seeds itself when it signs. Your keys never enter stikk.

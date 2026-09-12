@@ -131,6 +131,13 @@ fn compute(
     }
 
     let view = changes::from_status(status);
+    // RFC 026 §5: the id and how firmly it may be claimed, decided in one place for both ceremonies.
+    let report = prikk.readiness(repo)?;
+    let (signing_key_id, claim) = crate::confirm::signing_key_claim(
+        report.readiness.author,
+        &report.author,
+        stikk_prikk::key_id::author_key_id(),
+    );
     let summary = ConfirmationSummary {
         operation: "Commit worktree changes".to_string(),
         target_ids: vec![reff.to_string()],
@@ -143,7 +150,15 @@ fn compute(
         capability: Capability::Author,
         consequence: consequence(orientation.active_patch_warning.as_deref()),
         target_name: None,
-        signing_key_id: stikk_prikk::key_id::author_key_id(),
+        signing_key_id: signing_key_id.clone(),
+        signing_key_claim: claim,
+        // `C-S2`: computed from the key actually in effect, every time a confirmation is built.
+        signing_key_is_published_example: report
+            .author
+            .public_key
+            .as_deref()
+            .and_then(stikk_model::published_example)
+            .is_some(),
     };
     let preview = CommitPreview {
         changes: view,
@@ -165,6 +180,8 @@ fn placeholder_summary() -> ConfirmationSummary {
         consequence: String::new(),
         target_name: None,
         signing_key_id: None,
+        signing_key_claim: crate::confirm::KeyClaim::None,
+        signing_key_is_published_example: false,
     }
 }
 

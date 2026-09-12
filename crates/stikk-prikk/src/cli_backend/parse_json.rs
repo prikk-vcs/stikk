@@ -222,3 +222,57 @@ pub(super) fn tags(text: &str) -> Result<Vec<RefEntry>> {
 
 #[cfg(test)]
 mod tests;
+
+/// The `key-status-v1` schema name (prikk ≥ 0.41).
+const KEY_STATUS_SCHEMA: &str = "key-status-v1";
+
+/// `prikk key status --format json` (`key-status-v1`), prikk ≥ 0.41.
+///
+/// Returns the two roles' rows, keyed by prikk's own `role` value. A role prikk does not report is
+/// **absent, not assumed ready** — the caller decides what that means, and today it means the same as
+/// unusable.
+///
+/// **Every state below was measured against a real prikk 0.41.0**, one repository per state
+/// (RFC 026 Handoff B): `usable: false` with each of the four reasons, and `binding` at `unrecorded`,
+/// `matches`, `not-adopted`, `mismatch` and `null`. `public_key` and `binding` are both `null`
+/// whenever the seed is unusable, so neither may be required.
+///
+/// # Errors
+/// As [`history`]. `public_key` is validated as an object id when present — it is a 64-hex value and
+/// the same boundary applies (`INV-9`'s sibling, RFC 009 F2).
+pub(super) fn key_status(text: &str) -> Result<Vec<(String, crate::RoleDetail, RoleFacts)>> {
+    let value = report(text, KEY_STATUS_SCHEMA)?;
+    let mut out = Vec::new();
+    for role in value.array_field("roles")? {
+        let name = role.str_field("role")?.to_string();
+        let usable = role.bool_field("usable")?;
+        let binding = match role.opt_str_field("binding")? {
+            None => stikk_model::Binding::Absent,
+            Some("matches") => stikk_model::Binding::Matches,
+            Some("unrecorded") => stikk_model::Binding::Unrecorded,
+            Some("not-adopted") => stikk_model::Binding::NotAdopted,
+            Some("mismatch") => stikk_model::Binding::Mismatch,
+            // **An unknown binding is not a parse failure and not a pass.** prikk may add a state;
+            // stikk treating it as `Absent` withholds nothing it should grant and claims nothing it
+            // cannot support, which is the safe direction. The re-baseline that adds the variant will
+            // find it here.
+            Some(_) => stikk_model::Binding::Absent,
+        };
+        let detail = crate::RoleDetail {
+            reason: role.opt_str_field("reason")?.map(str::to_string),
+            key_id: role.opt_str_field("key_id")?.map(str::to_string),
+            key_id_source: role.opt_str_field("key_id_source")?.map(str::to_string),
+            public_key: opt_object_id_field(role, "public_key")?.map(str::to_string),
+            stale_seed_variable: false,
+        };
+        out.push((name, detail, RoleFacts { usable, binding }));
+    }
+    Ok(out)
+}
+
+/// The two facts from a `key status` row that decide capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RoleFacts {
+    pub(super) usable: bool,
+    pub(super) binding: stikk_model::Binding,
+}

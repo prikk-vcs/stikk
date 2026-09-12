@@ -114,7 +114,7 @@ View-models exist only while a view is open; none are persisted (except as the i
 
 ### 4.5 Secret-material lifecycle (the critical one)
 
-- **LC-13 — Key material never enters stikk's lifecycle.** stikk observes `PRIKK_*_SEED` **presence** to compute readiness and then forgets it; it never copies, derives from, persists, logs, or displays seed bytes (DM-N1, NFR-S03). When a mutation needs signing, prikk reads the environment itself — stikk hands prikk no key material because it holds none. Recognized example/tutorial seeds are flagged unsafe by *pattern of the public inputs*, never by storing the seed (FR-104). This is a threat-model anchor (see `stikk-03`, asset A-KEY).
+- **LC-13 — Key material never enters stikk's lifecycle.** stikk observes `PRIKK_*_SEED` **presence** — which answers readiness on prikk ≤ 0.39 and, above it, only flags a stale variable (RFC 026) — and then forgets it; it never copies, derives from, persists, logs, or displays seed bytes (DM-N1, NFR-S03). When a mutation needs signing, prikk reads the environment itself — stikk hands prikk no key material because it holds none. Recognized example/tutorial seeds are flagged unsafe by *pattern of the public inputs*, never by storing the seed (FR-104). This is a threat-model anchor (see `stikk-03`, asset A-KEY).
 
 ---
 

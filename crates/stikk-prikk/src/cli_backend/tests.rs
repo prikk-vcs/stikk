@@ -404,11 +404,28 @@ fn the_command_surface_never_names_key_or_setup() {
             .filter(|line| !line.trim_start().starts_with("//"))
             .collect::<Vec<_>>()
             .join("\n");
-        for forbidden in ["\"key\"", "\"setup\""] {
+        for forbidden in ["\"setup\"", "\"generate\"", "\"public\""] {
             assert!(
                 !code.contains(forbidden),
-                "{path:?} must never invoke `prikk {forbidden}` — key management is prikk's job, not \
-                 a history browser's (C-I1e)"
+                "{path:?} must never invoke `prikk key {forbidden}` or `prikk setup` — creating key \
+                 material and deriving from a seed are prikk's job, not a history browser's (C-I1e)"
+            );
+        }
+        // **`prikk key` is not forbidden wholesale any more — `key status` is allowed, and only it**
+        // (RFC 026 §2). The rule's reason was never the word `key`: `C-I1e` forbids *creating* key
+        // material and *reading a seed*, and `key status` does neither — prikk's own `--help` calls it
+        // "reads only, signs nothing", and prikk built it for this consumer.
+        //
+        // So the guard narrows rather than lifts: the only `"key"` this module may name is the one
+        // immediately followed by `"status"`. A future `["key", "generate"]` fails on the literals
+        // above; a future `["key", "rotate"]` fails here.
+        for (index, _) in code.match_indices("\"key\"") {
+            let tail = &code[index..];
+            assert!(
+                tail.starts_with("\"key\", \"status\"") || tail.starts_with("\"key\",\n"),
+                "{path:?} names `prikk key` other than as `key status`, the one subcommand C-I1e \
+                 permits (it creates nothing and reads no seed). Context: {:?}",
+                &tail[..tail.len().min(60)]
             );
         }
     }

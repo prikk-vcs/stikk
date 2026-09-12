@@ -7,7 +7,8 @@ use std::sync::mpsc;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use stikk_core::OrientationView;
-use stikk_model::{Capability, MaintainerReadiness, Readiness};
+use stikk_model::Binding;
+use stikk_model::{Capability, Readiness, RoleReadiness};
 use stikk_state::Config;
 
 use super::*;
@@ -40,8 +41,8 @@ fn shows_repo_focused_ref_and_hint() {
 #[test]
 fn shows_queue_and_maintainer_badge() {
     let r = Readiness {
-        author_ready: true,
-        maintainer_readiness: MaintainerReadiness::Unknown,
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::Unknown,
         read_only: false,
     };
     let view = OrientationView {
@@ -56,6 +57,7 @@ fn shows_queue_and_maintainer_badge() {
         main_ref_state: None,
         capability: Capability::derive(r),
         readiness: r,
+        stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
     };
     let app = from_state(
         "/x/repo",
@@ -76,8 +78,8 @@ fn shows_queue_and_maintainer_badge() {
 fn maintainer_unknown_never_renders_as_a_pass() {
     let view_with = |maintainer_readiness| {
         let r = Readiness {
-            author_ready: false,
-            maintainer_readiness,
+            author: RoleReadiness::NotReady,
+            maintainer: maintainer_readiness,
             read_only: false,
         };
         OrientationView {
@@ -92,24 +94,25 @@ fn maintainer_unknown_never_renders_as_a_pass() {
             main_ref_state: None,
             capability: Capability::derive(r),
             readiness: r,
+            stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
         }
     };
 
     let unknown_text = render_app(&from_state(
         "/x/repo",
-        OrientationState::Loaded(view_with(MaintainerReadiness::Unknown)),
+        OrientationState::Loaded(view_with(RoleReadiness::Unknown)),
         Palette::default(),
     ));
     let not_ready_text = render_app(&from_state(
         "/x/repo",
-        OrientationState::Loaded(view_with(MaintainerReadiness::NotReady)),
+        OrientationState::Loaded(view_with(RoleReadiness::NotReady)),
         Palette::default(),
     ));
     // `Ready` cannot be produced by `stikk-prikk::env` today (RFC 016 F3), but the render path must
     // still be exercised for it now, so the day it becomes reachable this test already covers it.
     let ready_text = render_app(&from_state(
         "/x/repo",
-        OrientationState::Loaded(view_with(MaintainerReadiness::Ready)),
+        OrientationState::Loaded(view_with(RoleReadiness::Known(Binding::Matches))),
         Palette::default(),
     ));
 
@@ -129,8 +132,8 @@ fn maintainer_unknown_never_renders_as_a_pass() {
 #[test]
 fn read_only_badge_appears_and_no_queue_when_zero() {
     let r = Readiness {
-        author_ready: false,
-        maintainer_readiness: MaintainerReadiness::Unknown,
+        author: RoleReadiness::NotReady,
+        maintainer: RoleReadiness::Unknown,
         read_only: true,
     };
     let view = OrientationView {
@@ -145,6 +148,7 @@ fn read_only_badge_appears_and_no_queue_when_zero() {
         main_ref_state: None,
         capability: Capability::derive(r),
         readiness: r,
+        stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
     };
     let app = from_state(
         "/x/repo",
@@ -159,8 +163,8 @@ fn read_only_badge_appears_and_no_queue_when_zero() {
 #[test]
 fn the_in_flight_indicator_appears_while_a_request_is_pending_and_clears_once_answered() {
     let r = Readiness {
-        author_ready: true,
-        maintainer_readiness: MaintainerReadiness::Unknown,
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::Unknown,
         read_only: false,
     };
     let view = OrientationView {
@@ -175,6 +179,7 @@ fn the_in_flight_indicator_appears_while_a_request_is_pending_and_clears_once_an
         main_ref_state: None,
         capability: Capability::derive(r),
         readiness: r,
+        stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
     };
     let mut app = from_state(
         "/x/repo",

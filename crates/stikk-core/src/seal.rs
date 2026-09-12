@@ -18,8 +18,8 @@
 
 use std::path::Path;
 
-use stikk_model::{Capability, MaintainerReadiness, RequestCategory, Result};
-use stikk_prikk::{Prikk, SealResult, env};
+use stikk_model::{Capability, RequestCategory, Result};
+use stikk_prikk::{Prikk, SealResult};
 
 use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
 
@@ -122,18 +122,33 @@ fn compute(
         return Ok((SealReadView::Blocked(reason), placeholder_summary()));
     }
 
-    // RFC 016 §7: the confirmation's trust-refusal warning is driven by `MaintainerReadiness`, not
+    // RFC 016 §7: the confirmation's trust-refusal warning is driven by `RoleReadiness`, not
     // shown unconditionally — this is the one place in the seal flow that needs it, the same way
     // `orient()` reads it for the badge (RFC 016 §3).
-    let readiness = env::read_readiness(env::read_only_override());
+    let report = prikk.readiness(repo)?;
+    let (signing_key_id, claim) = crate::confirm::signing_key_claim(
+        report.readiness.maintainer,
+        &report.maintainer,
+        stikk_prikk::key_id::maintainer_key_id(),
+    );
     let summary = ConfirmationSummary {
         operation: "Seal the active WAL".to_string(),
         target_ids: vec![reff.to_string()],
         counts: vec![("patches", orientation.queued_patches)],
         capability: Capability::Maintainer,
-        consequence: consequence(readiness.maintainer_readiness),
+        consequence: consequence(report.readiness.maintainer),
         target_name: None,
-        signing_key_id: stikk_prikk::key_id::maintainer_key_id(),
+        // RFC 026 §5: the id comes from prikk where prikk has it. `key_id.rs` still answers on the
+        // bands below 0.41, where `key status` does not exist.
+        signing_key_id: signing_key_id.clone(),
+        signing_key_claim: claim,
+        // `C-S2`: computed from the key actually in effect, every time a confirmation is built.
+        signing_key_is_published_example: report
+            .maintainer
+            .public_key
+            .as_deref()
+            .and_then(stikk_model::published_example)
+            .is_some(),
     };
     Ok((SealReadView::Ready, summary))
 }
@@ -150,24 +165,34 @@ fn placeholder_summary() -> ConfirmationSummary {
         consequence: String::new(),
         target_name: None,
         signing_key_id: None,
+        signing_key_claim: crate::confirm::KeyClaim::None,
+        signing_key_is_published_example: false,
     }
 }
 
 /// What becomes permanent, in stikk's own words (`TU-09`) — including RFC 016 decision 2's "never
-/// promises success," and, only when adoption is genuinely unverifiable, that a trust refusal is
-/// possible and would be prikk's own decision (RFC 016 §7/§9) — never shown when `MaintainerReadiness`
-/// is `NotReady` (unreachable here; `capability_gate` already refused) or the currently-unconstructible
-/// `Ready` (RFC 017's `IntegrityFinding` precedent: name the state, do not render a warning that does
-/// not apply to it).
-fn consequence(maintainer_readiness: MaintainerReadiness) -> String {
+/// promises success," and, **only when adoption is genuinely unverifiable**, that a trust refusal is
+/// possible and would be prikk's own decision (RFC 016 §7/§9).
+///
+/// **RFC 026 narrowed when that caveat is honest.** It belongs to `Unknown` — the ≤ 0.39 band, where
+/// no supported prikk could answer. At ≥ 0.41 prikk *has* answered: `Matches` and `Unrecorded` are the
+/// only states that reach this card at all (the others withhold the capability), and on those stikk
+/// knows adoption is in place. Printing "a trust refusal is possible — stikk cannot verify" over an
+/// answer stikk just received would be the confident-but-wrong picture pointing the other way.
+fn consequence(maintainer: stikk_model::RoleReadiness) -> String {
     const BASE: &str = "Freezes the active WAL's queued patches into a new, MAINTAINER-signed block. \
          This does not promise success.";
-    match maintainer_readiness {
-        MaintainerReadiness::Unknown => format!(
-            "{BASE} A trust refusal is possible here — stikk cannot verify key adoption on any \
-             supported prikk, before or after this attempt."
+    match maintainer {
+        stikk_model::RoleReadiness::Unknown => format!(
+            "{BASE} A trust refusal is possible here — stikk cannot verify key adoption on this \
+             prikk, before or after this attempt."
         ),
-        MaintainerReadiness::Ready | MaintainerReadiness::NotReady => BASE.to_string(),
+        // Unreachable in practice — `capability_gate` refuses before a preview is built — but named
+        // rather than caught by a wildcard, so a new state cannot acquire a silent default here.
+        stikk_model::RoleReadiness::NotReady | stikk_model::RoleReadiness::Unverifiable => {
+            BASE.to_string()
+        }
+        stikk_model::RoleReadiness::Known(_) => BASE.to_string(),
     }
 }
 

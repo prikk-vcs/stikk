@@ -43,6 +43,9 @@ enum ScriptedSeal {
 #[derive(Debug, Clone)]
 pub struct NullBackend {
     handshake: Handshake,
+    /// Scripted signing readiness (RFC 026). Defaults to the Viewer state, so an existing test that
+    /// never mentions readiness keeps the answer it always had.
+    readiness: Scripted<crate::ReadinessReport>,
     orientation: Scripted<Orientation>,
     history: Scripted<History>,
     state: Scripted<StateFiles>,
@@ -72,6 +75,11 @@ impl NullBackend {
                 supported: true,
                 validated: true,
             },
+            readiness: Ok(crate::ReadinessReport {
+                readiness: stikk_model::Readiness::none(),
+                author: crate::RoleDetail::default(),
+                maintainer: crate::RoleDetail::default(),
+            }),
             orientation: Ok(Orientation {
                 queued_patches: 0,
                 queued_target: None,
@@ -172,6 +180,13 @@ impl NullBackend {
     #[must_use]
     pub fn with_worktree_status_refusal(mut self, message: impl Into<String>) -> Self {
         self.worktree = Err(message.into());
+        self
+    }
+
+    /// Script this session's signing readiness (RFC 026).
+    #[must_use]
+    pub fn with_readiness(mut self, readiness: crate::ReadinessReport) -> Self {
+        self.readiness = Ok(readiness);
         self
     }
 
@@ -321,6 +336,10 @@ fn deliver<T: Clone>(scripted: &Scripted<T>) -> Result<T> {
 impl Prikk for NullBackend {
     fn handshake(&self) -> Result<Handshake> {
         Ok(self.handshake.clone())
+    }
+
+    fn readiness(&self, _repo: &Path) -> Result<crate::ReadinessReport> {
+        deliver(&self.readiness)
     }
 
     fn orientation(&self, _repo: &Path) -> Result<Orientation> {

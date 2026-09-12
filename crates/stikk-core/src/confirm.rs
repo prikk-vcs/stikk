@@ -19,6 +19,7 @@
 //! commit does.
 
 use std::path::Path;
+use stikk_model::{Binding, RoleReadiness};
 
 use stikk_model::{Capability, ChangeToken, Readiness, RequestCategory, Result, StikkError, Tier};
 use stikk_prikk::Prikk;
@@ -75,6 +76,73 @@ pub struct ConfirmationSummary {
     /// UI showing key ids and nothing else. It is still repository-adjacent text and renders through
     /// `inert` (`C-T2a`) like every other string here.
     pub signing_key_id: Option<String>,
+    /// What the card may honestly claim about [`Self::signing_key_id`] (RFC 026 §5, following prikk's
+    /// own guidance in letter 007 §2).
+    ///
+    /// **The id alone is not a statement.** On a repository where nothing has signed under this id
+    /// yet, naming it plainly claims a binding that does not exist — and that is the *default* state
+    /// of every freshly created repository, so it is the first commit a new user makes.
+    pub signing_key_claim: KeyClaim,
+    /// Set when the key that would sign is one prikk **publishes as an example** (`C-S2`).
+    ///
+    /// **Persistent, not a one-time notice.** It is recomputed for every confirmation from the key
+    /// actually in effect, so a user who dismissed it once and kept working meets it again at the next
+    /// one — which is what `FR-104`'s "persistently" asks for, and what makes it a control rather than
+    /// a toast.
+    pub signing_key_is_published_example: bool,
+}
+
+/// How firmly a confirmation may state the signing key id (RFC 026 §5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum KeyClaim {
+    /// No id claim at all — there is nothing prikk could tell stikk, or no id to name.
+    #[default]
+    None,
+    /// prikk reports the key binds to what this repository already records. **The only state that
+    /// earns a plain statement.**
+    Bound,
+    /// prikk reports no signature under this id yet: it will bind on this first signature. Stated as
+    /// such — an honest confirmation, not a hedge.
+    Unbound,
+    /// stikk could not ask (prikk ≤ 0.40). The id is the one stikk would pass, and stikk does not know
+    /// whether prikk will use it — which is exactly what RFC 026 F4 found stikk claiming without
+    /// warrant, so it is said rather than implied.
+    Unchecked,
+}
+
+/// The id to show and how firmly to claim it, for one role (RFC 026 §5).
+///
+/// **One function, both ceremonies**, so commit's card and seal's card cannot drift into two answers
+/// to one question — which is the drift RFC 015 found between `stikk-tui`'s copy and the ceiling it
+/// was describing.
+///
+/// The id comes from prikk where prikk has it (≥ 0.41, via `key status`), and from the environment
+/// below that. **That is what fixes the silent case**: `PRIKK_<ROLE>_KEY_ID` unset is not "no id" —
+/// prikk defaults to the role's own name and signs as it — so reading only the variable rendered
+/// nothing on the default setup while prikk had an answer all along (RFC 026 Handoff B §0).
+#[must_use]
+pub fn signing_key_claim(
+    role: RoleReadiness,
+    detail: &stikk_prikk::RoleDetail,
+    env_fallback: Option<String>,
+) -> (Option<String>, KeyClaim) {
+    let id = detail.key_id.clone().or(env_fallback);
+    let Some(id) = id else {
+        return (None, KeyClaim::None);
+    };
+    match role {
+        // prikk answered.
+        RoleReadiness::Known(Binding::Matches) => (Some(id), KeyClaim::Bound),
+        RoleReadiness::Known(Binding::Unrecorded) => (Some(id), KeyClaim::Unbound),
+        // These withhold the capability (`Capability::derive`), so a confirmation is unreachable —
+        // named rather than defaulted so a future state cannot acquire a silent claim here.
+        RoleReadiness::Known(Binding::NotAdopted | Binding::Mismatch) => (Some(id), KeyClaim::None),
+        RoleReadiness::Known(Binding::Absent) => (None, KeyClaim::None),
+        // stikk could not ask. The id is real — it is what stikk would pass — but the binding is not
+        // a claim stikk has warrant for.
+        RoleReadiness::Unknown | RoleReadiness::Unverifiable => (Some(id), KeyClaim::Unchecked),
+        RoleReadiness::NotReady => (None, KeyClaim::None),
+    }
 }
 
 /// What the user supplied to satisfy a tier's confirmation requirement (design `TU-09`; RFC 013 §4).

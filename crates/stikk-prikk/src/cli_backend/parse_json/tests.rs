@@ -340,3 +340,120 @@ fn a_wrong_typed_patch_messages_field_errors_where_an_absent_one_does_not() {
         "an object where an array belongs is a schema change"
     );
 }
+
+// --- RFC 026: `key-status-v1` -----------------------------------------------------------------
+//
+// Every constant below is captured from a real prikk 0.41.0, one repository per state, 2026-09-13.
+// The states are not hypothetical: each was produced by putting a repository into it and asking.
+
+/// Fresh repository, seed-file override, nothing signed yet — **the default state of every new
+/// repository**, and so the first commit every new user makes.
+const KS_UNRECORDED: &str = r#"{"schema_version":"key-status-v1","roles":[{"role":"author",
+  "source":"seed-file-override","path":"/tmp/ks/a.seed","usable":true,"reason":null,
+  "key_id":"author","key_id_source":"default",
+  "public_key":"61535ba01d029f09e898dd245b4b96ab68e86c4e1b5c12709f801b124b5aaed2",
+  "binding":"unrecorded"}]}"#;
+
+/// After signing: the key binds to what the repository records.
+const KS_MATCHES: &str = r#"{"schema_version":"key-status-v1","roles":[{"role":"author",
+  "source":"seed-file-override","path":"/tmp/ks/a.seed","usable":true,"reason":null,
+  "key_id":"author","key_id_source":"environment",
+  "public_key":"946f3fe3409b6881b9cdcc0302417a87dae832bfdc3a2c9ba49e28d8d9c19e66",
+  "binding":"matches"}]}"#;
+
+/// A different seed under the same key id — prikk will refuse at signing time.
+const KS_MISMATCH: &str = r#"{"schema_version":"key-status-v1","roles":[{"role":"author",
+  "source":"seed-file-override","path":"/tmp/ks/other.seed","usable":true,"reason":null,
+  "key_id":"author","key_id_source":"environment",
+  "public_key":"23f674f45c1619f060344469423d791c3383fb21785cf227ed7811e04d281c55",
+  "binding":"mismatch"}]}"#;
+
+/// MAINTAINER whose key the repository's trust policy has not adopted.
+const KS_NOT_ADOPTED: &str = r#"{"schema_version":"key-status-v1","roles":[{"role":"maintainer",
+  "source":"seed-file-override","path":"/tmp/ks/m.seed","usable":true,"reason":null,
+  "key_id":"maintainer","key_id_source":"default",
+  "public_key":"3734a7a32300be15304c43d3536bb81a001252803debd81d5b6c3c9aef99e286",
+  "binding":"not-adopted"}]}"#;
+
+/// The four unusable shapes prikk produced, one per `reason`. **`public_key` and `binding` are both
+/// `null` in every one**, which is why neither may be a required field.
+const KS_UNUSABLE: [(&str, &str); 4] = [
+    (
+        "missing",
+        r#"{"schema_version":"key-status-v1","roles":[{"role":"author","source":"key-directory","path":"/tmp/cfg/prikk/author.seed","usable":false,"reason":"missing","key_id":"author","key_id_source":"default","public_key":null,"binding":null}]}"#,
+    ),
+    (
+        "override-missing",
+        r#"{"schema_version":"key-status-v1","roles":[{"role":"author","source":"seed-file-override","path":"/tmp/ks/nope.seed","usable":false,"reason":"override-missing","key_id":"author","key_id_source":"default","public_key":null,"binding":null}]}"#,
+    ),
+    (
+        "readable-by-others (mode 0644)",
+        r#"{"schema_version":"key-status-v1","roles":[{"role":"author","source":"seed-file-override","path":"/tmp/ks/loose.seed","usable":false,"reason":"readable-by-others (mode 0644)","key_id":"author","key_id_source":"default","public_key":null,"binding":null}]}"#,
+    ),
+    (
+        "undecodable",
+        r#"{"schema_version":"key-status-v1","roles":[{"role":"author","source":"seed-file-override","path":"/tmp/ks/bad.seed","usable":false,"reason":"undecodable","key_id":"author","key_id_source":"default","public_key":null,"binding":null}]}"#,
+    ),
+];
+
+#[test]
+fn every_binding_prikk_emits_parses_to_its_own_state() {
+    for (text, want) in [
+        (KS_UNRECORDED, stikk_model::Binding::Unrecorded),
+        (KS_MATCHES, stikk_model::Binding::Matches),
+        (KS_MISMATCH, stikk_model::Binding::Mismatch),
+        (KS_NOT_ADOPTED, stikk_model::Binding::NotAdopted),
+    ] {
+        let rows = key_status(text).expect("captured 0.41 key status");
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].2.usable);
+        assert_eq!(rows[0].2.binding, want, "for {text}");
+    }
+}
+
+/// **prikk's `reason` travels verbatim** (`ER-02`). Four reasons do not become one "not ready".
+#[test]
+fn each_unusable_reason_is_carried_word_for_word() {
+    for (reason, text) in KS_UNUSABLE {
+        let rows = key_status(text).expect("captured 0.41 key status");
+        assert!(!rows[0].2.usable, "{reason}");
+        assert_eq!(rows[0].1.reason.as_deref(), Some(reason));
+        // Both are null whenever the seed is unusable — measured on all four.
+        assert_eq!(rows[0].1.public_key, None, "{reason}");
+        assert_eq!(rows[0].2.binding, stikk_model::Binding::Absent, "{reason}");
+    }
+}
+
+/// **prikk always has a key id**, defaulting to the role's own name, and says which.
+///
+/// This is the half of RFC 026 F4 that made the confirmation card render *nothing*: stikk read the id
+/// from `PRIKK_<ROLE>_KEY_ID` and got `None` on the default setup, while prikk would have signed as
+/// `author` all along.
+#[test]
+fn the_key_id_is_always_present_and_says_where_it_came_from() {
+    let rows = key_status(KS_UNRECORDED).expect("captured");
+    assert_eq!(rows[0].1.key_id.as_deref(), Some("author"));
+    assert_eq!(rows[0].1.key_id_source.as_deref(), Some("default"));
+    let rows = key_status(KS_MATCHES).expect("captured");
+    assert_eq!(rows[0].1.key_id_source.as_deref(), Some("environment"));
+}
+
+/// A `binding` prikk has not shipped yet reads as `Absent` — **withholding nothing it should grant,
+/// claiming nothing it cannot support**, which is the safe direction for an unknown state.
+#[test]
+fn an_unrecognized_binding_is_absent_rather_than_a_pass_or_a_parse_error() {
+    let text = KS_MATCHES.replace("\"matches\"", "\"rebound-by-policy\"");
+    let rows = key_status(&text).expect("an unknown binding is not a parse failure");
+    assert_eq!(rows[0].2.binding, stikk_model::Binding::Absent);
+}
+
+/// `public_key` is a 64-hex value and crosses the same boundary every other id does (RFC 026 §2).
+#[test]
+fn a_malformed_public_key_is_refused_at_the_boundary() {
+    let text = KS_MATCHES.replace(
+        "946f3fe3409b6881b9cdcc0302417a87dae832bfdc3a2c9ba49e28d8d9c19e66",
+        "a",
+    );
+    let err = key_status(&text).expect_err("a one-character public key is not a shape prikk emits");
+    assert!(err.to_string().contains("public_key"), "{err}");
+}

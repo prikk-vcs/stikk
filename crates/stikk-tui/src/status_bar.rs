@@ -12,7 +12,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use stikk_model::{MaintainerReadiness, Readiness};
+use stikk_model::{Binding, Readiness, RoleReadiness};
 
 use crate::app::{App, OrientationState};
 use crate::text::inert;
@@ -98,33 +98,47 @@ fn badges(palette: &Palette, readiness: Readiness) -> Vec<Span<'static>> {
                 .add_modifier(Modifier::BOLD),
         ));
     }
-    out.push(badge(palette, "AUT", readiness.author_ready));
+    out.push(role_badge(palette, "AUT", readiness.author));
     out.push(Span::raw(" "));
-    out.push(maintainer_badge(palette, readiness.maintainer_readiness));
+    out.push(role_badge(palette, "MNT", readiness.maintainer));
     out
 }
 
-fn badge(palette: &Palette, label: &str, ready: bool) -> Span<'static> {
-    let (mark, style) = if ready {
-        ("✓", Style::default().fg(palette.ok))
-    } else {
-        ("–", Style::default().fg(palette.dim))
+/// One role's badge (RFC 016 §4, extended to both roles by RFC 026 §3): every state rendered
+/// distinctly, never collapsed to two.
+///
+/// **`?` and `✓` must never be shared** — `C-T2c′`: a claim stikk cannot verify must not render as a
+/// pass. Three glyphs carry four ideas:
+///
+/// | state | glyph | why |
+/// |---|---|---|
+/// | `Known(Matches)` | `✓` | prikk answered and the key binds |
+/// | `Known(Unrecorded)` | `✓` | prikk answered and will bind on first signature — it *can* sign |
+/// | `Unknown` | `?` | key material present, binding unanswerable on this prikk |
+/// | `Unverifiable` | `?` | stikk cannot see whether there is key material at all (prikk 0.40) |
+/// | `Known(NotAdopted \| Mismatch)` | `✗` | prikk answered, and the answer is that it will refuse |
+/// | `NotReady` | `–` | nothing to sign with |
+///
+/// `?` covers both unknowns deliberately at *this* size — a one-cell badge cannot carry the
+/// distinction, and both mean "stikk is not claiming". The distinction that matters is in what the
+/// session can *do*, which `Capability::derive` already separates, and in the Orientation view's
+/// full-sentence rendering, which has room to say which unknown it is.
+fn role_badge(palette: &Palette, label: &str, readiness: RoleReadiness) -> Span<'static> {
+    let (mark, style) = match readiness {
+        RoleReadiness::Known(Binding::Matches | Binding::Unrecorded) => {
+            ("✓", Style::default().fg(palette.ok))
+        }
+        RoleReadiness::Known(Binding::NotAdopted | Binding::Mismatch) => {
+            ("✗", Style::default().fg(palette.warn))
+        }
+        RoleReadiness::Known(Binding::Absent) | RoleReadiness::NotReady => {
+            ("–", Style::default().fg(palette.dim))
+        }
+        RoleReadiness::Unknown | RoleReadiness::Unverifiable => {
+            ("?", Style::default().fg(palette.warn))
+        }
     };
     Span::styled(format!("[{label} {mark}]"), style)
-}
-
-/// The MAINTAINER badge (RFC 016 §4): three states rendered distinctly, never two. `Unknown` gets its
-/// own glyph (`?`) and its own colour (`palette.warn`, shared with other "needs attention, not
-/// necessarily wrong" states like an unvalidated prikk ceiling) — it must never share `Ready`'s `✓` or
-/// `palette.ok`, which is exactly what `C-T2c′` forbids: a claim stikk cannot verify must never render
-/// as a pass.
-fn maintainer_badge(palette: &Palette, readiness: MaintainerReadiness) -> Span<'static> {
-    let (mark, style) = match readiness {
-        MaintainerReadiness::Ready => ("✓", Style::default().fg(palette.ok)),
-        MaintainerReadiness::NotReady => ("–", Style::default().fg(palette.dim)),
-        MaintainerReadiness::Unknown => ("?", Style::default().fg(palette.warn)),
-    };
-    Span::styled(format!("[MNT {mark}]"), style)
 }
 
 #[cfg(test)]

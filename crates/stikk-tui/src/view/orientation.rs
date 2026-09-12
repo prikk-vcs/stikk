@@ -12,7 +12,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use stikk_core::OrientationView;
-use stikk_model::MaintainerReadiness;
+use stikk_model::{Binding, RoleReadiness};
 
 use crate::text::inert;
 use crate::theme::Palette;
@@ -134,24 +134,71 @@ fn field<'a>(palette: &Palette, label: &'a str, mut value: Vec<Span<'a>>) -> Lin
     Line::from(spans)
 }
 
-/// The signing-readiness summary (never key material — presence only, design C-I1). MAINTAINER's
-/// three-valued state (RFC 016 §3) is spelled out in full, never collapsed toward "ready" — `Unknown`
-/// must never render as a pass (`C-T2c′`).
+/// The signing-readiness summary (never key material — presence only, design C-I1).
+///
+/// **This is where the two unknowns are told apart.** The status bar's one-cell badge cannot carry the
+/// distinction and renders both as `?`; here there is room for a sentence, and the sentence is the
+/// difference between *"stikk cannot check this"* and *"stikk cannot see whether there is anything to
+/// check"*. Neither renders as a pass (`C-T2c′`), and the second names its fix, because a user on
+/// prikk 0.40 has one (RFC 026 Q1(b)).
 fn signing_line(view: &OrientationView) -> String {
-    let ready = |flag: bool| if flag { "ready" } else { "not ready" };
-    let maintainer = match view.readiness.maintainer_readiness {
-        MaintainerReadiness::Ready => "ready",
-        MaintainerReadiness::NotReady => "not ready",
-        MaintainerReadiness::Unknown => "present, adoption unknown",
-    };
     let mut s = format!(
-        "author {} · maintainer {maintainer}",
-        ready(view.readiness.author_ready),
+        "author {} · maintainer {}",
+        role_words(view.readiness.author, Role::Author),
+        role_words(view.readiness.maintainer, Role::Maintainer),
     );
     if view.readiness.read_only {
         s.push_str(" · read-only");
     }
+    if view.readiness.author == RoleReadiness::Unverifiable
+        || view.readiness.maintainer == RoleReadiness::Unverifiable
+    {
+        // Named cause, named fix. The band is one prikk version wide and has a remedy, so saying only
+        // "unknown" would be honest and useless.
+        s.push_str(
+            " — prikk 0.40 moved signing keys to a key directory and does not report them; \
+             prikk 0.41 answers this directly",
+        );
+    }
+    if view.stale_seed_variables.any() {
+        // RFC 026 §4: the variable is set, this prikk ignores it, and it is not what will sign. A user
+        // who exported it has every reason to believe otherwise.
+        s.push_str(" — a PRIKK_*_SEED variable is set; this prikk ignores it");
+    }
     s
+}
+
+/// Which role a word is being written for — the two differ in exactly one state.
+#[derive(Clone, Copy)]
+enum Role {
+    Author,
+    Maintainer,
+}
+
+/// One role's state, in words.
+///
+/// **`Unknown` says different things for the two roles**, because the unanswerable question differs:
+/// for MAINTAINER it is trust-policy *adoption* (RFC 016 F3's wording, kept), and for AUTHOR there is
+/// no adoption to speak of — what is unknown is whether the key binds. Saying "adoption unknown" of an
+/// author key would name a mechanism that does not apply to it.
+fn role_words(readiness: RoleReadiness, role: Role) -> &'static str {
+    match readiness {
+        RoleReadiness::NotReady => "not ready",
+        RoleReadiness::Unknown => match role {
+            Role::Author => "present, unverified",
+            Role::Maintainer => "present, adoption unknown",
+        },
+        RoleReadiness::Unverifiable => "unknown",
+        RoleReadiness::Known(Binding::Matches) => "ready",
+        // Can sign, and the card that matters says what will happen (RFC 026 §5). "ready" alone would
+        // overstate a key that is about to be bound for the first time.
+        RoleReadiness::Known(Binding::Unrecorded) => "ready, not yet bound",
+        RoleReadiness::Known(Binding::NotAdopted) => "present, not adopted by this repository",
+        RoleReadiness::Known(Binding::Mismatch) => {
+            "present, does not match this repository's record"
+        }
+        RoleReadiness::Known(Binding::Absent) => "not ready",
+    }
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use stikk_core::{
     ConfirmationSummary, NextStep, NextTarget, OperationContext, Presentation, RefusalCard,
     RefusalRecord, Target, present,
 };
-use stikk_model::{Capability, StikkError, Tier};
+use stikk_model::{Capability, RoleReadiness, StikkError, Tier};
 
 use super::*;
 use crate::test_util::buffer_text;
@@ -408,8 +408,8 @@ fn an_ordinary_refusal_still_says_prikk_reported() {
 
 fn viewer_readiness() -> stikk_model::Readiness {
     stikk_model::Readiness {
-        author_ready: false,
-        maintainer_readiness: stikk_model::MaintainerReadiness::NotReady,
+        author: RoleReadiness::NotReady,
+        maintainer: stikk_model::RoleReadiness::NotReady,
         read_only: false,
     }
 }
@@ -457,8 +457,8 @@ fn palette_disables_commit_under_read_only_even_with_author_keys_present() {
         filter: "commit".into(),
         cursor: 0,
         readiness: stikk_model::Readiness {
-            author_ready: true,
-            maintainer_readiness: stikk_model::MaintainerReadiness::NotReady,
+            author: RoleReadiness::Unknown,
+            maintainer: stikk_model::RoleReadiness::NotReady,
             read_only: true,
         },
     };
@@ -503,6 +503,8 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
         target_name: target_name.map(str::to_string),
         signing_key_id: None,
+        signing_key_claim: stikk_core::KeyClaim::None,
+        signing_key_is_published_example: false,
     }
 }
 
@@ -970,6 +972,8 @@ fn summary_with_key_id(
         consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
         target_name: None,
         signing_key_id: key_id.map(str::to_string),
+        signing_key_claim: stikk_core::KeyClaim::None,
+        signing_key_is_published_example: false,
     }
 }
 
@@ -1192,7 +1196,7 @@ fn long_refs(n: usize) -> Vec<String> {
     (0..n).map(|i| format!("heads/branch-{i:03}")).collect()
 }
 
-/// The real seal consequence — `MaintainerReadiness::Unknown`, the only value any supported prikk can
+/// The real seal consequence — `RoleReadiness::Unknown`, the only value any supported prikk can
 /// produce (RFC 016 F3), and therefore the text every user actually sees. This is the string that made
 /// RFC 024 F1 a shipped defect.
 const SEAL_CONSEQUENCE: &str = "Freezes the active WAL's queued patches into a new, MAINTAINER-signed \
@@ -1208,6 +1212,8 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         consequence: consequence.to_string(),
         target_name: None,
         signing_key_id: Some("dev-maintainer".to_string()),
+        signing_key_claim: stikk_core::KeyClaim::None,
+        signing_key_is_published_example: false,
     }
 }
 
@@ -1301,8 +1307,8 @@ fn cases() -> Vec<Case> {
                 filter: String::new(),
                 cursor,
                 readiness: stikk_model::Readiness {
-                    author_ready: true,
-                    maintainer_readiness: stikk_model::MaintainerReadiness::Unknown,
+                    author: RoleReadiness::Unknown,
+                    maintainer: stikk_model::RoleReadiness::Unknown,
                     read_only: false,
                 },
             }),
@@ -1543,7 +1549,7 @@ fn the_gate_covers_every_overlay_variant() {
 /// measured it absent at.
 ///
 /// It shipped missing in 0.4.0, 0.4.1 and 0.5.0 on the path *every* user takes:
-/// `MaintainerReadiness::Unknown` is the only value any supported prikk can produce (RFC 016 F3), and
+/// `RoleReadiness::Unknown` is the only value any supported prikk can produce (RFC 016 F3), and
 /// its consequence is one logical line that draws as four rows. `80×40` is here because the terminal's
 /// size was never the constraint — the estimate was.
 #[test]
@@ -1616,4 +1622,118 @@ fn f5_ref_picker_shows_the_last_of_forty_refs_when_selected() {
     );
     // And the panel says where in the list it is, rather than looking like the whole of it.
     assert!(advertises_more(&text), "{text}");
+}
+
+// --- RFC 026 §5: what the card may claim about the key id ------------------------------------
+//
+// Naming an id is a claim. On a fresh repository nothing has signed under it yet, so a plain
+// statement claims a binding that does not exist — and that is the state of every new repository,
+// which makes it the **first commit every new user makes**.
+
+fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> ConfirmationSummary {
+    ConfirmationSummary {
+        operation: "Commit worktree changes".to_string(),
+        target_ids: vec!["heads/main".to_string()],
+        counts: vec![("modified", 1)],
+        capability: Capability::Author,
+        consequence: "Queues this worktree capture as a new patch in the active WAL; nothing is \
+                      sealed until you run Seal."
+            .to_string(),
+        target_name: None,
+        signing_key_id: id.map(str::to_string),
+        signing_key_claim: claim,
+        signing_key_is_published_example: false,
+    }
+}
+
+/// **The first-commit card.** `binding: unrecorded`, at 80 columns.
+#[test]
+fn the_first_commit_card_says_the_id_is_about_to_be_bound() {
+    let text = confirmation_at_80x24(
+        summary_with_claim(stikk_core::KeyClaim::Unbound, Some("author")),
+        Tier::Two,
+    );
+    assert!(text.contains("Signing key id"), "{text}");
+    assert!(text.contains("author"), "{text}");
+    let flat = flattened(&text);
+    assert!(
+        flat.contains("Nothing has signed under this id in this repository yet"),
+        "{text}"
+    );
+    // Affirmative, not a warning: this is the ordinary first commit, and it succeeds.
+    assert!(flat.contains("this signature binds it"), "{text}");
+    assert!(
+        !flat.contains("cannot") && !flat.contains("may not"),
+        "the first thing a new user reads must not be a hedge:\n{text}"
+    );
+    // And the affordance is still there — `Panel` anchors it (RFC 024).
+    assert!(text.contains("Enter to confirm"), "{text}");
+}
+
+/// `matches`: prikk confirmed it. **A plain id, and nothing added** — the only state that earns one.
+#[test]
+fn a_bound_key_is_stated_plainly_with_no_extra_sentence() {
+    let text = confirmation_at_80x24(
+        summary_with_claim(stikk_core::KeyClaim::Bound, Some("alice-2026")),
+        Tier::Two,
+    );
+    assert!(text.contains("Signing key id: alice-2026"), "{text}");
+    let flat = flattened(&text);
+    assert!(!flat.contains("Nothing has signed"), "{text}");
+    assert!(!flat.contains("cannot report"), "{text}");
+}
+
+/// Below 0.41 stikk cannot ask. It names the id it will pass and **says that is what it is doing** —
+/// the claim RFC 026 F4 found stikk making without warrant.
+#[test]
+fn an_unchecked_key_says_stikk_is_naming_not_confirming() {
+    let text = confirmation_at_80x24(
+        summary_with_claim(stikk_core::KeyClaim::Unchecked, Some("author")),
+        Tier::Two,
+    );
+    let flat = flattened(&text);
+    assert!(flat.contains("cannot report which key will sign"), "{text}");
+    assert!(flat.contains("not one prikk has confirmed"), "{text}");
+}
+
+/// Absent stays absent — no id, no sentence, no placeholder (RFC 023 Handoff B's rule, unchanged).
+#[test]
+fn no_id_means_no_row_and_no_claim() {
+    let text = confirmation_at_80x24(
+        summary_with_claim(stikk_core::KeyClaim::None, None),
+        Tier::Two,
+    );
+    assert!(!text.contains("Signing key id"), "{text}");
+    assert!(!flattened(&text).contains("Nothing has signed"), "{text}");
+}
+
+/// **`C-S2`, on screen.** A signature made with a published example key is worthless, and the card
+/// says so where the user is deciding — not in a log, and not once.
+#[test]
+fn a_published_example_key_is_flagged_on_the_confirmation() {
+    let mut summary = summary_with_claim(stikk_core::KeyClaim::Bound, Some("maintainer"));
+    summary.signing_key_is_published_example = true;
+    let text = confirmation_at_80x24(summary, Tier::Two);
+    let flat = flattened(&text);
+    assert!(
+        flat.contains("published in prikk's own documentation as an example"),
+        "{text}"
+    );
+    assert!(flat.contains("anyone can forge this signature"), "{text}");
+    // The affordance survives it (RFC 024's anchor), so the warning cannot push the card's own
+    // action off screen.
+    assert!(text.contains("Enter to confirm"), "{text}");
+}
+
+/// And an ordinary key gets none of it — a control that fires on everything is not a control.
+#[test]
+fn an_ordinary_key_carries_no_example_key_warning() {
+    let text = confirmation_at_80x24(
+        summary_with_claim(stikk_core::KeyClaim::Bound, Some("alice-2026")),
+        Tier::Two,
+    );
+    assert!(
+        !flattened(&text).contains("published in prikk's own documentation"),
+        "{text}"
+    );
 }

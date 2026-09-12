@@ -433,6 +433,23 @@ impl Fixture {
         &self.repo
     }
 
+    /// The AUTHOR key id this fixture configures — so a test can assert that
+    /// [`stikk_prikk::key_id`] reports **this** value rather than a string the test also wrote.
+    ///
+    /// The id is not a secret and never was: `C-I1` is presence-only for **seeds**, and prikk prints
+    /// ids itself. There is deliberately no accessor of this shape for either seed, and there must
+    /// never be one.
+    #[must_use]
+    pub fn author_key_id(&self) -> &str {
+        &self.author_key_id
+    }
+
+    /// The MAINTAINER key id this fixture configures. See [`Fixture::author_key_id`].
+    #[must_use]
+    pub fn maintainer_key_id(&self) -> &str {
+        &self.maintainer_key_id
+    }
+
     /// Set this process's environment to AUTHOR signing readiness (design `env.rs`: presence of both
     /// `PRIKK_AUTHOR_KEY_ID` and `PRIKK_AUTHOR_SEED`). One of the three call sites `unsafe_code = "deny"`
     /// (this crate's `Cargo.toml`, review C2) allows explicitly — see `lib.rs`'s module doc — and callers

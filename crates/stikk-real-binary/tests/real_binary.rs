@@ -938,3 +938,72 @@ fn a_genuinely_held_lock_classifies_lock_conflict_at_both_ends() {
         );
     }
 }
+
+/// RFC 023 Handoff B — [`stikk_prikk::key_id`] against a **real** process environment.
+///
+/// **The handoff expected the suite to cover this already, and it did not.** The suite drives
+/// `CliBackend`'s seam methods; it never builds a `ConfirmationSummary`, so nothing in it reached the
+/// key-id module. What is true is the useful half: `Fixture` sets `PRIKK_*_KEY_ID` **for real** in this
+/// process, so the module's real-lookup entry points can be exercised here and nowhere else.
+///
+/// That gap matters. `key_id.rs`'s unit tests drive `key_id_with`, the injected form — hermetic, and
+/// deliberately so. The public `author_key_id()` / `maintainer_key_id()` wrappers, the two functions
+/// that actually touch `std::env::var_os`, had **no test at all**, exactly as `env.rs`'s own tests
+/// acknowledge for `read_readiness`. This closes that for the id half.
+///
+/// It needs no prikk binary of its own, but it runs at both ends anyway: `Fixture::build` is what sets
+/// the environment, and building one is version-dependent (`prikk key generate` at ≥ 0.33, the manual
+/// path below it), so "the ids a real fixture configures" is a per-version fact, not a constant.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn the_key_id_module_reads_the_ids_a_real_fixture_configured() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+
+        // Nothing set: an absence, not a placeholder and not a stale value from another test.
+        assert_eq!(
+            stikk_prikk::key_id::author_key_id(),
+            None,
+            "0.{}: an unset AUTHOR id must read as absent",
+            bin.minor
+        );
+        assert_eq!(stikk_prikk::key_id::maintainer_key_id(), None);
+
+        fixture.set_author_env();
+        assert_eq!(
+            stikk_prikk::key_id::author_key_id().as_deref(),
+            Some(fixture.author_key_id()),
+            "0.{}: the module must report the id the fixture actually configured",
+            bin.minor
+        );
+        // And it does not confuse the roles against a real environment, where both variables exist in
+        // the same process and differ only by name.
+        assert_eq!(
+            stikk_prikk::key_id::maintainer_key_id(),
+            None,
+            "0.{}: AUTHOR readiness must not make a MAINTAINER id appear",
+            bin.minor
+        );
+
+        fixture.set_maintainer_env();
+        assert_eq!(
+            stikk_prikk::key_id::maintainer_key_id().as_deref(),
+            Some(fixture.maintainer_key_id()),
+            "0.{}: the MAINTAINER id must read back as configured",
+            bin.minor
+        );
+
+        Fixture::clear_env();
+        assert_eq!(
+            stikk_prikk::key_id::author_key_id(),
+            None,
+            "0.{}: clearing the environment must return both ids to absent",
+            bin.minor
+        );
+        assert_eq!(stikk_prikk::key_id::maintainer_key_id(), None);
+    }
+}

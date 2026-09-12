@@ -1,6 +1,6 @@
 # RFC 026 — Readiness after the key directory: the 0.41 re-baseline, and a model that is wrong today
 
-**Status.** **Accepted by the project owner 2026-09-12**, Q1 ruled (b) by the architect the same day. Proposed 2026-09-12. **Delivered in two handoffs**: A the re-baseline, B the readiness rebuild. **Supersedes [RFC 025](../archive/025-trust-adoption-and-the-fourth-state.md)**,
+**Status.** **Accepted by the project owner 2026-09-12**, Q1 ruled (b) by the architect the same day. Proposed 2026-09-12. **Delivered in three handoffs**: A the re-baseline (**landed 2026-09-13**, with an addendum), B the readiness rebuild, C F7's two render leftovers. **Split from two to three by the architect 2026-09-13**: F7's items hang off nothing in B and sharing a diff with the readiness model would make one review carry two arguments — F7 allows them their own increment and this is it. **Supersedes [RFC 025](../archive/025-trust-adoption-and-the-fourth-state.md)**,
 withdrawn the same day. Three prikk releases — 0.39, 0.40, 0.41 — against a validated ceiling of 0.38.
 **Tracks.** `FR-104`, `FR-103`, `C-I1a–e`, `C-S2`, `C-T2c′`, `C-T4d`, `AC-01…04`, `UD-02`, `ASM-2`,
 and RFC 023's two carried render items.
@@ -37,10 +37,25 @@ today.
 
 ### F2 — `key status` is a better answer than the one RFC 025 was going to build
 
-Per role: `source` (`seed-file-override` / `key-directory` / `absent`), the `path`, `usable` with a
-`reason` (`missing`, `readable-by-others (mode 0644)`, `override-missing`, `undecodable`), the `key_id`
-and whether it came from the environment or the default, the `public_key`, `legacy_variable_set`, and —
-given a repository path — `binding`.
+Per role: `source`, the `path`, `usable` with a `reason` (`missing`, `readable-by-others (mode 0644)`,
+`override-missing`, `undecodable`), the `key_id` and whether it came from the environment or the
+default, the `public_key`, and — given a repository path — `binding`.
+
+**Corrected 2026-09-13, measured against a real 0.41.0 binary and its emitter, not against the letter
+this finding was written from.** Three things above were wrong when written, and each would have been
+built against:
+
+| As written from letter 007 | The 0.41.0 binary |
+|---|---|
+| `source` is `seed-file-override` / `key-directory` / **`absent`** | **two values only** — an unusable key is `usable: false` with a `reason`, not an `absent` source |
+| the report carries **`legacy_variable_set`** | **no such field.** `key-status-v1` has nine: `role`, `source`, `path`, `usable`, `reason`, `key_id`, `key_id_source`, `public_key`, `binding` |
+| — | **`public_key` and `binding` are both `null`** when the seed is not usable; `binding` is also `null` with no repository to ask |
+
+**`legacy_variable_set`'s absence is not a gap to wait on.** stikk can establish the same fact itself:
+`PRIKK_<ROLE>_SEED` **set** on a prikk that has stopped reading it is a presence question, which is
+exactly what `env.rs` already answers without materializing a value. Handoff B §4 rules it that way, and
+it keeps `env.rs` alive with its guard intact rather than retiring the module. **It is still worth
+telling prikk**, since the letter promised the field.
 
 **Every not-ready state exits `0`.** prikk's reasoning is ours: *"a non-zero exit would make it
 indistinguishable from a repository that cannot be read."*
@@ -89,6 +104,13 @@ case where our confirmation is least entitled to name a key plainly. Their guida
 
 This is the `C-T2c′` shape a third time: **an answer that is true, an answer that is unknown, and a UI
 that renders them identically.**
+
+**Widened 2026-09-13, measured.** prikk's key id **always** has a value: with `PRIKK_<ROLE>_KEY_ID`
+unset it defaults to the role's own name, and `key_id_source` says which. stikk's `key_id.rs` returns
+`None` there — so on the default setup, the one `prikk setup` produces, **stikk's confirmation shows no
+signing key id at all while prikk would sign as `author`.** F4 above is a card naming a key that may not
+sign; this is the same card naming nothing where prikk has an answer. One defect, one fix: read the id
+from `key status` rather than from the environment.
 
 ### F5 — 0.39 retires the last three prose parsers
 

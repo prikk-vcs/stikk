@@ -1,6 +1,7 @@
 # RFC 018 — Post-0.4.0 correctness sweep: the files nobody greps
 
-**Status.** **Accepted by the project owner 2026-09-06.** Proposed the same day, **hours after 0.4.0 published.** Opened on a finding made while
+**Status.** **Done** — shipped in **0.4.1**, 2026-09-06 (`e6f0388`, `8e0847a`, `5d25f89`, `11ce355`), after three review rounds. Accepted by the project owner 2026-09-06.
+**Deferred, carried forward:** the Glossary's **wrap + scroll**, as one increment — wrapping alone was tried and reverted, because without a way to scroll past what wrapping pushes down it turned truncated-but-present into absent (as few as one of eleven terms reachable at 80×24). Proposed the same day, **hours after 0.4.0 published.** Opened on a finding made while
 sequencing 0.5.0: **stikk's Glossary tells users it never writes their repository, four lines above
 the keybindings for commit and seal.** Two further stale claims found by the sweep that followed.
 **Proposes 0.4.1** — non-breaking, string-and-docs only.

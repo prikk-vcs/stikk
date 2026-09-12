@@ -115,6 +115,27 @@ say whether they needed it too.
   `## Unreleased`, name that 0.5.0's entry understated it, and state the new number this increment
   reaches. **Do not edit 0.5.0's released section.**
 
+## 7b. The index drifted from the folders for two releases — gate it
+
+**Found while issuing this handoff.** `rfcs/README.md` says *"The folder is the source of truth for an
+RFC's state, and the `Status` field inside each file mirrors it"* — and the index had **four shipped RFCs
+(018, 019, 020, 021) still listed under Accepted**, RFC 018 still in `accepted/` a release after it
+shipped as 0.4.1, RFC 022 in no table at all, and a link to a path that had moved. I repaired it by hand
+(`rfcs/` is the architect's, so the repair is already committed); **what belongs to you is stopping it
+recurring.**
+
+**Add a test that asserts the index against the folders**, in whichever crate can see the repo root the
+way the `C-I1e` boundary test does:
+
+- every `rfcs/{proposed,accepted,done,archive}/NNN-*.md` appears in exactly one table, **the one matching
+  its folder**;
+- every `./<folder>/NNN-*.md` link in the index **resolves to a file that exists**;
+- each file's `Status` line names the state its folder implies.
+
+**This is the same defect class as every sweep finding this project has made** — a claim that was true
+when written, in a file nothing reads mechanically. The difference is that this one is cheap to gate,
+because both sides are on disk.
+
 ## 8. Gates
 
 ```sh
@@ -146,7 +167,9 @@ The `prep/*`-branch dispatch pattern is sanctioned (spec §6) if you need a runn
 7. Per-test isolation kept, with the measurement in the comment.
 8. All eight gates green; suite green on the **full platform matrix**, run ID named.
 9. No product behaviour changed beyond §7's doc fix.
-10. Nothing tagged or published.
+10. A test asserts the RFC index against the folders (§7b): one table per file, matching its folder;
+    every link resolves; `Status` mirrors state.
+11. Nothing tagged or published.
 
 ## 10. Submit
 

@@ -1,6 +1,6 @@
 # RFC 024 — Overlay sizing: the confirm affordance seal has never shown, and a fix that did not travel
 
-**Status.** Proposed (2026-09-12). The next 0.6.0 increment. Opened on a defect found while re-scoping
+**Status.** **Accepted by the project owner 2026-09-12**, Q1 left unruled and **ruled by the architect the same day** — the property is statable, and finding out took one more measurement (F5). Proposed 2026-09-12. The next 0.6.0 increment. Opened on a defect found while re-scoping
 RFC 023's follow-up, which turned out to be larger than the follow-up.
 **Tracks.** `T-T4`, `OP-03`, `FR-120`/`FR-121` (a confirmation the user can act on), `NFR-A03`,
 `TS-01`.
@@ -87,7 +87,47 @@ the exactness stops being load-bearing. RFC 016 C2 had to choose; this increment
 RFC 023 B. That is framing rather than sizing, and bundling it would blur what this increment proves.
 It stays next in line.
 
-## Open question
+### F5 — the ref picker clips its own cursor *[found while trying to state Q1's property]*
+
+Forty refs, cursor on the last:
+
+```
+last-entry-on-screen = false        first-entry-on-screen = true
+```
+
+**`render_ref_picker` does not window to the cursor. It renders from the top and clips.** A user holding
+↓ past the fold watches nothing move while the selection travels somewhere invisible — and the ref
+picker has shipped since 0.1.0.
+
+**This is what made Q1 answerable.** I had been trying to state *"the last row is visible, or the overlay
+says it scrolls"*, which is fuzzy because a list legitimately continues past the fold. The ref picker
+shows the real property has two halves, and both are sharp.
+
+## Q1 — RULED by the architect, 2026-09-12: **(c)**, with the property stated as two assertions
+
+**The owner accepted without answering, and the question needed a measurement rather than a decision.**
+I said I could not state the property crisply and that a fuzzy gate is worse than none. F5 supplied the
+missing half.
+
+**The property is not "nothing is clipped." It is: *nothing is clipped silently, and the cursor is never
+the thing clipped.*** Two assertions, each sharp:
+
+1. **No silent clipping.** For every overlay: either its last content row is on screen, **or** the render
+   carries a viewport indicator saying there is more. The Glossary already does the second —
+   `lines 108–127 of 128` in its title (RFC 023 F2). An overlay that clips and says so is honest; one
+   that clips in silence is the defect.
+2. **A cursor is always visible.** Where an overlay has a selection, the selected row is on screen at
+   every cursor position. This is the half F5 violates, and it needs no "or" clause.
+
+**Both are assertable over an exhaustive match on `Overlay`'s thirteen variants** — the enum is not
+`#[non_exhaustive]`, so a fourteenth fails to compile until covered. That is RFC 022 §7b's shape, the
+only mechanism here that has caught the architect as readily as the implementer.
+
+**And (c)'s helper is still worth building**, because a gate tells you the twelfth renderer is wrong
+without making the right thing easy. But **the gate is the half that matters**: RFC 016 C2 built the
+right mechanism and eleven siblings kept the old one, which is precisely what a gate would have stopped.
+
+### The original question, for the record
 
 **Q1 — a helper, or a gate, or both?**
 

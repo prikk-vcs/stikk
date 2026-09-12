@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 024 | [Overlay sizing: the fix that did not travel](./proposed/024-overlay-sizing-and-the-fix-that-did-not-travel.md) | **Seal's confirmation has never shown `Enter to confirm` on the path every user takes** — at any terminal height, shipped since 0.4.0. RFC 016 C2 found this exact defect in `render_refusal` and fixed it; **three of fourteen renderers use the fix, eleven still guess** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

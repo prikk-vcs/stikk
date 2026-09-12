@@ -1,6 +1,6 @@
 # RFC 024 — Overlay sizing: the confirm affordance seal has never shown, and a fix that did not travel
 
-**Status.** **Accepted by the project owner 2026-09-12**, Q1 left unruled and **ruled by the architect the same day** — the property is statable, and finding out took one more measurement (F5). Proposed 2026-09-12. The next 0.6.0 increment. Opened on a defect found while re-scoping
+**Status.** **Done** — shipped on `main` 2026-09-12 (`d77f2cc`, `a41d0a5`), 0.6.0 candidate. Accepted by the project owner 2026-09-12, Q1 left unruled and **ruled by the architect the same day** — the property is statable, and finding out took one more measurement (F5). Proposed 2026-09-12. The next 0.6.0 increment. Opened on a defect found while re-scoping
 RFC 023's follow-up, which turned out to be larger than the follow-up.
 **Tracks.** `T-T4`, `OP-03`, `FR-120`/`FR-121` (a confirmation the user can act on), `NFR-A03`,
 `TS-01`.
@@ -160,3 +160,8 @@ fold — that is what scrolling is for. So the gate's assertion may need to be *
 visible or the overlay advertises that it scrolls"*, which is a more interesting property and a harder
 one to state. **If it cannot be stated crisply, (b) is worse than useless** — a gate that asserts a
 fuzzy property gets relaxed the first time it is inconvenient.
+
+
+## Carried forward, recorded at completion 2026-09-12
+
+- **`render_refusal`'s lost `│ ` on wrapped verbatim lines** — deliberately not folded in, because fixing framing as a side effect of a sizing change was the bundling this RFC ruled out. The conversion left it **a one-argument change**. Carried to RFC 026 B.

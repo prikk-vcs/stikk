@@ -1,6 +1,6 @@
 # RFC 026 — Readiness after the key directory: the 0.41 re-baseline, and a model that is wrong today
 
-**Status.** Proposed (2026-09-12). **Supersedes [RFC 025](../archive/025-trust-adoption-and-the-fourth-state.md)**,
+**Status.** **Accepted by the project owner 2026-09-12**, Q1 ruled (b) by the architect the same day. Proposed 2026-09-12. **Delivered in two handoffs**: A the re-baseline, B the readiness rebuild. **Supersedes [RFC 025](../archive/025-trust-adoption-and-the-fourth-state.md)**,
 withdrawn the same day. Three prikk releases — 0.39, 0.40, 0.41 — against a validated ceiling of 0.38.
 **Tracks.** `FR-104`, `FR-103`, `C-I1a–e`, `C-S2`, `C-T2c′`, `C-T4d`, `AC-01…04`, `UD-02`, `ASM-2`,
 and RFC 023's two carried render items.

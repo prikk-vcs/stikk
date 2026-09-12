@@ -543,7 +543,9 @@ impl App {
                     let err = stikk_model::StikkError::Refusal {
                         message: record.verbatim.clone(),
                     };
-                    if let Presentation::RefusalOverlay(card) = present(&err, record.operation) {
+                    if let Presentation::RefusalOverlay(card) =
+                        present(&err, record.operation, self.prikk_minor())
+                    {
                         self.overlays.push(Overlay::Refusal { card, cursor: 0 });
                     }
                 }
@@ -1152,9 +1154,20 @@ impl App {
         );
     }
 
+    /// prikk's minor version, when orientation has loaded.
+    ///
+    /// `None` before the first load, and on a load failure — which `present` reads as "cannot exclude
+    /// prikk 0.28", the direction that keeps an explanation rather than hiding it (RFC 026 C §2).
+    fn prikk_minor(&self) -> Option<u32> {
+        match &self.state {
+            OrientationState::Loaded(view) => Some(view.prikk_minor),
+            OrientationState::Loading | OrientationState::Failed(_) => None,
+        }
+    }
+
     /// Route a seam error through the one presentation mapping (ER-03) and surface it accordingly.
     fn surface(&mut self, error: &stikk_model::StikkError, op: OperationContext) {
-        match present(error, op) {
+        match present(error, op, self.prikk_minor()) {
             Presentation::RefusalOverlay(card) => {
                 self.refusals.record(card.verbatim.clone(), "refusal", op);
                 self.overlays.push(Overlay::Refusal { card, cursor: 0 });

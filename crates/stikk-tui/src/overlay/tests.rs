@@ -243,7 +243,7 @@ fn trust_refusal_gloss_is_reachable_at_80_columns() {
                  policy"
                 .to_string(),
     };
-    let card = match present(&err, OperationContext::Other) {
+    let card = match present(&err, OperationContext::Other, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -280,7 +280,7 @@ fn schema_skew_next_step_is_reachable_at_80_columns() {
             "integrity error: format-2 patch does not accept envelope schema 3 (accepted: [1, 2])"
                 .to_string(),
     };
-    let card = match present(&err, OperationContext::Orient) {
+    let card = match present(&err, OperationContext::Orient, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -302,7 +302,7 @@ fn full_queue_next_steps_are_reachable_at_80_columns() {
                   (1); run `prikk seal` before committing again"
                 .to_string(),
     };
-    let card = match present(&err, OperationContext::Commit) {
+    let card = match present(&err, OperationContext::Commit, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -1735,5 +1735,125 @@ fn an_ordinary_key_carries_no_example_key_warning() {
     assert!(
         !flattened(&text).contains("published in prikk's own documentation"),
         "{text}"
+    );
+}
+
+// --- RFC 026 Handoff C §1: the quote bar on every wrapped row --------------------------------
+
+/// A verbatim message long enough to wrap to **three** rows: two would only prove the second, and the
+/// defect was about every row after the first.
+fn three_row_refusal() -> RefusalCard {
+    RefusalCard {
+        verbatim:
+            "error: precondition not met: the active WAL already holds as many patches as it \
+                   is configured to allow, and this repository's threshold has been reached, so \
+                   nothing further can be queued until the queue is sealed"
+                .to_string(),
+        gloss: None,
+        next_steps: vec![NextStep {
+            label: "Seal the active WAL".to_string(),
+            target: NextTarget::Refresh,
+        }],
+        glossary_codes: Vec::new(),
+    }
+}
+
+#[test]
+fn every_wrapped_row_of_a_verbatim_message_carries_the_quote_bar() {
+    let text = draw_at(
+        &Overlay::Refusal {
+            card: three_row_refusal(),
+            cursor: 0,
+        },
+        80,
+        24,
+    );
+    let quoted: Vec<&str> = text.lines().filter(|row| row.contains('│')).collect();
+    assert!(
+        quoted.len() >= 3,
+        "the fixture must wrap to at least three rows; got {}:\n{text}",
+        quoted.len()
+    );
+    // Contiguous: the bar does not stop partway down and resume.
+    let first = text
+        .lines()
+        .position(|row| row.contains('│'))
+        .expect("a quoted row");
+    for (offset, row) in text.lines().skip(first).take(quoted.len()).enumerate() {
+        assert!(
+            row.contains('│'),
+            "row {} of the quote lost its bar — that is the defect:\n{text}",
+            first + offset
+        );
+    }
+}
+
+/// **The bar must not reflow the text.** A bar that moves the wrap points is a different change from
+/// a bar that colours them, and the handoff asked for this asserted rather than assumed.
+#[test]
+fn the_quote_bar_does_not_reflow_the_text() {
+    let card = three_row_refusal();
+    let inert_text = crate::text::inert(&card.verbatim);
+    // The same call the renderer makes, against the placeholder indent…
+    let with_indent = crate::text::wrap_indented(&inert_text, REFUSAL_TEXT_WIDTH, QUOTE_INDENT);
+    // …and against the bar itself, which is the same display width.
+    let with_bar = crate::text::wrap_indented(&inert_text, REFUSAL_TEXT_WIDTH, QUOTE_BAR);
+    assert_eq!(
+        QUOTE_BAR.chars().count(),
+        QUOTE_INDENT.chars().count(),
+        "the substitution is only safe while these are the same width"
+    );
+    assert_eq!(
+        with_indent.len(),
+        with_bar.len(),
+        "the same text must occupy the same number of rows either way"
+    );
+    for (a, b) in with_indent.iter().zip(&with_bar) {
+        assert_eq!(
+            a.get(QUOTE_INDENT.len()..),
+            b.get(QUOTE_BAR.len()..),
+            "each row must break at the same word"
+        );
+    }
+}
+
+/// prikk's words stay prikk's: the bar is `warn`, the text is `fg`, on every row including the last.
+#[test]
+fn continuation_rows_are_styled_like_the_first() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let overlay = Overlay::Refusal {
+        card: three_row_refusal(),
+        cursor: 0,
+    };
+    let palette = Palette::default();
+    terminal
+        .draw(|f| render(&overlay, &palette, f, f.area()))
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    let mut checked = 0;
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width.saturating_sub(1) {
+            let cell = &buffer[(x, y)];
+            if cell.symbol() == "│" && x > 2 {
+                // The bar itself.
+                assert_eq!(cell.fg, palette.warn, "the bar at ({x},{y}) is not warn");
+                // And the character two columns right — the quoted text — is `fg`.
+                let text_cell = &buffer[(x + 2, y)];
+                if text_cell.symbol() != " " {
+                    assert_eq!(
+                        text_cell.fg,
+                        palette.fg,
+                        "quoted text at ({}, {y}) is not fg",
+                        x + 2
+                    );
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert!(
+        checked >= 3,
+        "expected at least three quoted rows, saw {checked}"
     );
 }

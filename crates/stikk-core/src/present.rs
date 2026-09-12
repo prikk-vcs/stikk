@@ -175,7 +175,7 @@ pub enum Presentation {
 
 /// Map an error to its presentation, given the operation that produced it (design ER-03/OP-03).
 #[must_use]
-pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
+pub fn present(error: &StikkError, op: OperationContext, prikk_minor: Option<u32>) -> Presentation {
     match error {
         StikkError::Refusal { message } => {
             // Envelope-schema skew (RFC 012 F-e) can occur from *any* read — Orient, LoadHistory,
@@ -217,7 +217,7 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
                 } else if is_full_queue {
                     Some(FULL_QUEUE_GLOSS.to_string())
                 } else if is_backslash_path {
-                    Some(backslash_path_advice(cfg!(windows)).gloss.to_string())
+                    Some(backslash_path_advice(cfg!(windows), prikk_minor).gloss.to_string())
                 } else {
                     refusal_gloss(op)
                 },
@@ -246,7 +246,9 @@ pub fn present(error: &StikkError, op: OperationContext) -> Presentation {
                     // and renaming a file are equally the user's to do outside stikk (`CON-1`). The
                     // label differs because the thing to do differs.
                     vec![NextStep {
-                        label: backslash_path_advice(cfg!(windows)).next_step.to_string(),
+                        label: backslash_path_advice(cfg!(windows), prikk_minor)
+                            .next_step
+                            .to_string(),
                         target: NextTarget::DismissAndResolveExternally,
                     }]
                 } else {
@@ -419,13 +421,23 @@ const FULL_QUEUE_GLOSS: &str = "Nothing is locked and no other writer is involve
 /// It names **0.28** and **0.29** rather than saying "an old prikk", so a reader on 0.29 or newer can
 /// see immediately that this sentence is not about them — which matters, because on that prikk the
 /// message can only mean the other thing.
-const BACKSLASH_PATH_WINDOWS_GLOSS: &str = "If this repository is on prikk 0.28, you typed no \
-     backslash and nothing is wrong with your file names: prikk 0.28 builds repository paths with \
-     Windows' own separator during a commit and then refuses its own output. prikk fixed this in \
-     0.29.0 — upgrading the prikk binary this session uses is the fix. Only files inside a \
-     subdirectory are affected; a file at the top level of the worktree commits normally. On prikk \
-     0.29 or newer this message means the other thing: a file in the worktree really does have a \
-     backslash in its name.";
+const BACKSLASH_PATH_WINDOWS_GLOSS: &str = "This prikk builds repository paths with Windows' own \
+     separator during a commit and then refuses its own output, so you may have typed no backslash \
+     at all and nothing be wrong with your file names. prikk fixed that in 0.29.0 — upgrading the \
+     prikk binary this session uses is the fix. Only files inside a subdirectory are affected; a \
+     file at the top level of the worktree commits normally. The other possibility is that a file \
+     in the worktree really does have a backslash in its name, which no prikk accepts.";
+
+/// The same, for Windows on a prikk whose version stikk could not read.
+///
+/// **The only difference is the hedge**, and it is present here for the one reason F7 accepts: stikk
+/// genuinely does not know. Where it does know (the constant above, shown only below 0.29) it asserts,
+/// because hedging about a fact stikk holds is the defect this increment closes.
+const BACKSLASH_PATH_WINDOWS_UNKNOWN_VERSION_GLOSS: &str = "If this repository is on prikk 0.28, you \
+     may have typed no backslash at all: that version builds repository paths with Windows' own \
+     separator during a commit and then refuses its own output, and prikk fixed it in 0.29.0. Only \
+     files inside a subdirectory are affected. Otherwise a file in the worktree really does have a \
+     backslash in its name, which no prikk accepts.";
 
 /// The gloss for prikk's backslash-path refusal **anywhere but Windows** (RFC 023 F1).
 ///
@@ -445,28 +457,61 @@ pub(crate) struct BackslashAdvice {
     pub(crate) next_step: &'static str,
 }
 
-/// Which of the two backslash glosses applies — **taking the platform as an argument rather than
-/// reading `cfg!` here**, so both branches are reachable from a test on any platform.
+/// Which backslash gloss applies, given where stikk is running **and which prikk it is talking to**.
 ///
-/// That is not a stylistic choice. `ci.yml` runs `cargo test --workspace` on **ubuntu only**; the
-/// real-binary suite is the one thing that touches Windows, and it does not render. A `cfg!(windows)`
-/// branch written directly into `present()` would therefore be a branch that **executes nowhere in this
-/// project's CI** — an inert path guarding the one platform it exists for, which is the failure mode
-/// RFC 019's review named and RFC 022 spent its time proving absent. The caller passes `cfg!(windows)`;
-/// the tests pass both.
+/// # The narrowing, and its limit
 ///
-/// **Compile-time is the right question for the caller**, though: prikk walks the worktree on the same
-/// machine stikk runs on, so the separator that can leak into a repository path is this build's
-/// separator. `present()` is given no prikk *version* and is not plumbed one for this — the version is
-/// what the Windows gloss names in its own text, which keeps the discrimination stikk can actually make
-/// (platform) apart from the one it cannot (version).
-pub(crate) fn backslash_path_advice(windows: bool) -> BackslashAdvice {
-    if windows {
-        BackslashAdvice {
-            gloss: BACKSLASH_PATH_WINDOWS_GLOSS,
-            next_step: "Upgrade prikk to 0.29 or newer (resolve outside stikk)",
+/// prikk's `backslashes are not allowed in repository paths` is its **generic** path validator,
+/// byte-identical from 0.28 through 0.41 (RFC 023 F1, re-verified at three tags). Two different
+/// situations reach it:
+///
+/// 1. **prikk 0.28 on Windows** built the path itself, with the platform separator, and then refused
+///    its own output. The user typed no backslash; the fix is a prikk upgrade.
+/// 2. **Anywhere else**, a worktree file really does have a backslash in its name; the fix is to
+///    rename it.
+///
+/// The gloss used to explain **both** to every reader and let them work out which was theirs — using
+/// facts stikk holds. It holds the platform at compile time and the prikk version from the handshake,
+/// so:
+///
+/// | platform | prikk | shown |
+/// |---|---|---|
+/// | not Windows | any | (2) only — (1) is a separator defect and cannot happen where the separator is `/` |
+/// | Windows | ≥ 0.29 | (2) only — prikk fixed (1) in 0.29.0 |
+/// | Windows | 0.28, or unknown | **both**, in that order |
+///
+/// **`None` shows both**, deliberately: an unknown version cannot exclude 0.28, and a reader who is
+/// on 0.29 can see the first half names a version that is not theirs. Guessing the other way would
+/// hide the explanation from exactly the user it was written for.
+///
+/// **It is not narrowed to a single verdict**, and that is the point RFC 023 F1 paid for: a lone
+/// *"prikk 0.28 built this path, upgrade"* would contradict the evidence in front of a Linux user
+/// whose file genuinely is named `foo\bar`.
+pub(crate) fn backslash_path_advice(windows: bool, prikk_minor: Option<u32>) -> BackslashAdvice {
+    /// The first prikk that builds repository paths with a separator-safe converter on every
+    /// platform (prikk's own RFC 124 follow-up).
+    const SEPARATOR_FIXED_IN: u32 = 29;
+
+    match prikk_minor {
+        // Known, and below the fix: assert it. stikk holds the version, so "if this repository is on
+        // prikk 0.28" in front of a user who *is* on 0.28 is the hedge F7 names.
+        Some(minor) if windows && minor < SEPARATOR_FIXED_IN => {
+            return BackslashAdvice {
+                gloss: BACKSLASH_PATH_WINDOWS_GLOSS,
+                next_step: "Upgrade prikk to 0.29 or newer (resolve outside stikk)",
+            };
         }
-    } else {
+        // Unknown, on Windows: 0.28 cannot be excluded, so both stay — hedged, because here the
+        // hedge is true.
+        None if windows => {
+            return BackslashAdvice {
+                gloss: BACKSLASH_PATH_WINDOWS_UNKNOWN_VERSION_GLOSS,
+                next_step: "Upgrade prikk to 0.29 or newer (resolve outside stikk)",
+            };
+        }
+        _ => {}
+    }
+    {
         BackslashAdvice {
             gloss: BACKSLASH_PATH_UNIX_GLOSS,
             next_step: "Rename the offending path (resolve outside stikk)",

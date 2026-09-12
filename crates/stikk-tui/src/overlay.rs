@@ -458,34 +458,35 @@ fn render_refusal(
     // **Wrapped in stikk** (RFC 024 §2) rather than by `Paragraph::wrap`, so the prose height is a fact
     // and the panel can say when it is showing only part of it.
     //
-    // The continuation indent is four spaces, **not** `"  │ "` — deliberately, and it is the one place
-    // in this increment where a known defect is preserved on purpose. A wrapped verbatim line loses its
-    // quote bar today (carried from RFC 023 B, scheduled as its own increment), and passing the bar as
-    // the indent here would fix it as a side effect of a sizing change. That is the bundling RFC 024 §1
-    // rules out: framing is not sizing, and the fix deserves its own review rather than arriving
-    // unannounced inside one. **It is now a one-argument change** — this string — which is the useful
-    // thing this conversion leaves behind for it.
+    // **Every row of a wrapped verbatim line carries the quote bar** (RFC 026 Handoff C §1). It used
+    // to stop at the first row, so a refusal long enough to wrap lost the bar exactly where the reader
+    // most needs to know they are still inside prikk's words and not stikk's. RFC 024 left it
+    // deliberately — fixing framing inside a sizing change was the bundling that increment ruled out —
+    // and left it as a one-argument change.
+    //
+    // **The wrap call is unchanged, on purpose.** `QUOTE_BAR` is four display columns and so was the
+    // four-space indent it replaces, so the wrap points cannot move; keeping the same
+    // `wrap_indented(.., "    ")` call and re-labelling each row afterwards makes that true by
+    // construction rather than by arithmetic, and `the_quote_bar_does_not_reflow_the_text` asserts it.
     let mut prose: Vec<Line> = vec![Line::from(Span::styled(
         "  prikk reported —",
         Style::default().fg(palette.dim),
     ))];
     for raw in card.verbatim.lines() {
         let inert_raw = inert(raw);
-        let mut rows = wrap_indented(&inert_raw, REFUSAL_TEXT_WIDTH, "    ").into_iter();
-        if let Some(first) = rows.next() {
+        for row in wrap_indented(&inert_raw, REFUSAL_TEXT_WIDTH, QUOTE_INDENT) {
             prose.push(Line::from(vec![
-                Span::styled("  │ ", Style::default().fg(palette.warn)),
+                Span::styled(QUOTE_BAR, Style::default().fg(palette.warn)),
+                // The text, with the placeholder indent removed — the bar occupies exactly those
+                // columns. Styled `fg` on every row, first and continuation alike: a half-styled
+                // continuation reads as a rendering bug rather than as a quote.
                 Span::styled(
-                    first.trim_start().to_string(),
+                    row.get(QUOTE_INDENT.len()..)
+                        .unwrap_or_default()
+                        .to_string(),
                     Style::default().fg(palette.fg),
                 ),
             ]));
-        }
-        for row in rows {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.fg),
-            )));
         }
     }
     prose.push(Line::from(""));
@@ -751,6 +752,14 @@ fn render_operations(operations: &[Operation], palette: &Palette, frame: &mut Fr
     .render(frame, area);
 }
 
+/// The session's refusal history (`LC-8`) — one row per record, newest first.
+///
+/// **Checked for `render_refusal`'s quote-bar defect and does not share it** (RFC 026 Handoff C §1,
+/// which asked rather than assumed from the name). This renders the **first line only** of each
+/// record, through `selectable`, with no quote bar and no wrapping: there is no continuation row for
+/// a bar to be missing from. A long headline is truncated at the panel edge instead, which is what a
+/// one-row-per-entry index is for — the full message, quoted and wrapped, is one `Enter` away in
+/// [`render_refusal`].
 fn render_refusals(
     records: &[RefusalRecord],
     cursor: usize,
@@ -1252,6 +1261,15 @@ const CONFIRM_WIDTH: u16 = 70;
 const SEAL_WIDTH: u16 = 78;
 /// Text columns inside a [`SEAL_WIDTH`] panel — see [`PANEL_TEXT_WIDTH`].
 const SEAL_TEXT_WIDTH: usize = SEAL_WIDTH as usize - 2;
+
+/// The quote bar prefixing every row of prikk's verbatim message, and the placeholder indent the
+/// wrap is computed against.
+///
+/// **Both are four display columns**, which is what lets the bar be substituted for the indent after
+/// wrapping without moving a single wrap point.
+const QUOTE_BAR: &str = "  │ ";
+/// See [`QUOTE_BAR`].
+const QUOTE_INDENT: &str = "    ";
 
 /// The refusal/stale card width.
 const REFUSAL_WIDTH: u16 = 72;

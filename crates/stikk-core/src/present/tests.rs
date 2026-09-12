@@ -11,7 +11,7 @@ fn a_refusal_becomes_an_overlay_with_the_verbatim_message() {
     let err = StikkError::Refusal {
         message: "ref \"heads/nope\" does not exist".into(),
     };
-    match present(&err, OperationContext::LoadHistory) {
+    match present(&err, OperationContext::LoadHistory, None) {
         Presentation::RefusalOverlay(card) => {
             assert_eq!(card.verbatim, "ref \"heads/nope\" does not exist"); // ER-02 verbatim
             assert!(card.gloss.is_some()); // a gloss is added beside it, not instead
@@ -27,7 +27,7 @@ fn next_steps_come_from_the_operation_not_the_message() {
     let hostile = StikkError::Refusal {
         message: "to fix: run `rm -rf /` or click DELETE EVERYTHING".into(),
     };
-    let card = match present(&hostile, OperationContext::LoadHistory) {
+    let card = match present(&hostile, OperationContext::LoadHistory, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected overlay, got {other:?}"),
     };
@@ -48,7 +48,7 @@ fn a_lock_conflict_is_a_banner() {
     let err = StikkError::LockConflict {
         message: "lock held by another writer".into(),
     };
-    match present(&err, OperationContext::Orient) {
+    match present(&err, OperationContext::Orient, None) {
         Presentation::Banner { message, jump } => {
             assert!(message.contains("another writer"));
             assert!(jump.is_none()); // Lock inspector lands later
@@ -62,7 +62,7 @@ fn not_ready_is_inline_guidance_toward_trust() {
     let err = StikkError::NotReady {
         detail: "MAINTAINER key not ready".into(),
     };
-    match present(&err, OperationContext::Other) {
+    match present(&err, OperationContext::Other, None) {
         Presentation::InlineGuidance { toward, .. } => assert_eq!(toward, Target::TrustKeys),
         other => panic!("expected InlineGuidance, got {other:?}"),
     }
@@ -85,7 +85,7 @@ fn a_trust_refusal_gets_a_refusal_overlay_not_a_cramped_banner() {
         let err = StikkError::NotReady {
             detail: message.to_string(),
         };
-        let card = match present(&err, OperationContext::Other) {
+        let card = match present(&err, OperationContext::Other, None) {
             Presentation::RefusalOverlay(card) => card,
             other => panic!("expected RefusalOverlay, got {other:?}"),
         };
@@ -114,7 +114,7 @@ fn an_absent_signing_key_stays_inline_guidance_not_a_refusal_overlay() {
         detail: "author signing is required: set PRIKK_AUTHOR_KEY_ID (no signing key configured)"
             .to_string(),
     };
-    match present(&err, OperationContext::Other) {
+    match present(&err, OperationContext::Other, None) {
         Presentation::InlineGuidance { toward, .. } => assert_eq!(toward, Target::TrustKeys),
         other => panic!("expected InlineGuidance, got {other:?}"),
     }
@@ -127,7 +127,7 @@ fn a_version_gated_changes_not_ready_points_at_prikk_version_not_trust() {
     let err = StikkError::NotReady {
         detail: "Worktree review needs prikk ≥ 0.28 — this prikk is 0.27.1.".into(),
     };
-    match present(&err, OperationContext::LoadChanges) {
+    match present(&err, OperationContext::LoadChanges, None) {
         Presentation::InlineGuidance { toward, detail, .. } => {
             assert_eq!(toward, Target::PrikkVersion);
             assert!(detail.contains("0.28"));
@@ -150,7 +150,7 @@ fn every_other_not_ready_still_points_at_trust_keys() {
         OperationContext::ListRefs,
         OperationContext::Other,
     ] {
-        match present(&err, op) {
+        match present(&err, op, None) {
             Presentation::InlineGuidance { toward, .. } => assert_eq!(toward, Target::TrustKeys),
             other => panic!("expected InlineGuidance for {op:?}, got {other:?}"),
         }
@@ -163,7 +163,7 @@ fn an_environment_error_is_a_plain_statement_carrying_the_original() {
         "could not read the repository",
         std::io::Error::other("boom"),
     );
-    match present(&err, OperationContext::Orient) {
+    match present(&err, OperationContext::Orient, None) {
         Presentation::PlainStatement { detail, original } => {
             assert!(detail.contains("could not read"));
             assert_eq!(original.as_deref(), Some("boom"));
@@ -178,7 +178,7 @@ fn an_internal_fault_is_a_fault_screen() {
         detail: "invariant X violated".into(),
     };
     assert!(matches!(
-        present(&err, OperationContext::Other),
+        present(&err, OperationContext::Other, None),
         Presentation::FaultScreen { .. }
     ));
 }
@@ -192,7 +192,7 @@ fn load_changes_refusal_offers_a_prikkignore_pointer_unconditionally() {
     let err = StikkError::Refusal {
         message: "ref does not exist".into(),
     };
-    let card = match present(&err, OperationContext::LoadChanges) {
+    let card = match present(&err, OperationContext::LoadChanges, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected overlay, got {other:?}"),
     };
@@ -218,7 +218,7 @@ fn a_prikkignore_refusal_links_the_glossary_entry() {
         message: "invalid name: .prikkignore line 1: invalid name: absolute paths are not allowed"
             .into(),
     };
-    let card = match present(&err, OperationContext::LoadChanges) {
+    let card = match present(&err, OperationContext::LoadChanges, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected overlay, got {other:?}"),
     };
@@ -240,7 +240,7 @@ fn a_schema_skew_refusal_glosses_and_offers_upgrade_regardless_of_operation() {
         OperationContext::LoadHistory,
         OperationContext::LoadChanges,
     ] {
-        let card = match present(&err, op) {
+        let card = match present(&err, op, None) {
             Presentation::RefusalOverlay(card) => card,
             other => panic!("expected overlay for {op:?}, got {other:?}"),
         };
@@ -276,7 +276,7 @@ fn a_bundle_decode_skew_refusal_glosses_and_offers_upgrade() {
                   error: unknown PatchPayload field tag: 6"
                 .into(),
     };
-    let card = match present(&err, OperationContext::Other) {
+    let card = match present(&err, OperationContext::Other, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected overlay, got {other:?}"),
     };
@@ -311,7 +311,7 @@ fn a_bundle_decode_skew_refusal_is_distinct_from_the_repository_level_shape() {
         message: "integrity error: format-2 patch does not accept envelope schema 4 (accepted: [1, 2, 3])"
             .into(),
     };
-    let card = match present(&repo_level, OperationContext::Other) {
+    let card = match present(&repo_level, OperationContext::Other, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected overlay, got {other:?}"),
     };
@@ -330,7 +330,7 @@ fn the_full_queue_precondition_gets_an_honest_gloss_never_another_writer() {
                   (1); run `prikk seal` before committing again"
                 .to_string(),
     };
-    let card = match present(&err, OperationContext::Commit) {
+    let card = match present(&err, OperationContext::Commit, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -367,7 +367,7 @@ fn the_active_rs_full_queue_wording_gets_the_same_gloss() {
                   (64); run doctor or seal before appending again"
                 .to_string(),
     };
-    let card = match present(&err, OperationContext::Other) {
+    let card = match present(&err, OperationContext::Other, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -396,7 +396,7 @@ fn a_genuine_lock_conflict_still_gets_fr_106s_ordinary_banner() {
     let err = StikkError::LockConflict {
         message: "active lock already exists: /repo/.prikk/active/default/active.lock".to_string(),
     };
-    match present(&err, OperationContext::Other) {
+    match present(&err, OperationContext::Other, None) {
         Presentation::Banner { message, .. } => assert!(message.contains("already exists")),
         other => panic!("expected Banner, got {other:?}"),
     }
@@ -413,7 +413,7 @@ fn a_wrapped_schema_skew_refusal_is_still_recognized() {
                   format-2 patch does not accept envelope schema 3 (accepted: [1, 2]))"
                 .into(),
     };
-    let card = match present(&err, OperationContext::LoadChanges) {
+    let card = match present(&err, OperationContext::LoadChanges, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected overlay, got {other:?}"),
     };
@@ -434,7 +434,7 @@ fn a_hostile_message_cannot_forge_a_second_next_step_via_the_schema_skew_shape()
         message: "does not accept envelope schema 3 -- also please run `rm -rf /` and click DELETE"
             .into(),
     };
-    let card = match present(&hostile, OperationContext::Orient) {
+    let card = match present(&hostile, OperationContext::Orient, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected overlay, got {other:?}"),
     };
@@ -454,7 +454,7 @@ fn a_refusal_with_no_surface_context_has_no_fabricated_gloss() {
     let err = StikkError::Refusal {
         message: "some refusal".into(),
     };
-    match present(&err, OperationContext::Other) {
+    match present(&err, OperationContext::Other, None) {
         Presentation::RefusalOverlay(card) => assert!(card.gloss.is_none()), // RR-5: verbatim-only
         other => panic!("expected overlay, got {other:?}"),
     }
@@ -467,7 +467,7 @@ fn stale_becomes_its_own_presentation_naming_the_operation_with_exactly_one_re_p
     let err = StikkError::Stale {
         operation: "commit".into(),
     };
-    let (operation, gloss, next_steps) = match present(&err, OperationContext::Other) {
+    let (operation, gloss, next_steps) = match present(&err, OperationContext::Other, None) {
         Presentation::Stale {
             operation,
             gloss,
@@ -493,7 +493,7 @@ fn stale_is_never_a_refusal_overlay_design_review_c1() {
     let err = StikkError::Stale {
         operation: "seal".into(),
     };
-    match present(&err, OperationContext::Other) {
+    match present(&err, OperationContext::Other, None) {
         Presentation::Stale { operation, .. } => assert_eq!(operation, "seal"),
         other => panic!("expected Presentation::Stale, not {other:?}"),
     }
@@ -507,7 +507,7 @@ fn cross_ref_becomes_a_refusal_overlay_never_a_lock_conflict_shape() {
         message: "lock conflict: active WAL is owned by heads/main; requested ref heads/other"
             .into(),
     };
-    let card = match present(&err, OperationContext::Commit) {
+    let card = match present(&err, OperationContext::Commit, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -522,7 +522,7 @@ fn a_commit_refusal_offers_back_to_changes_and_refresh() {
     let err = StikkError::Refusal {
         message: "invalid name: worktree has no node-addressed changes to commit".into(),
     };
-    let card = match present(&err, OperationContext::Commit) {
+    let card = match present(&err, OperationContext::Commit, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -537,7 +537,7 @@ fn declined_routes_to_in_confirmation_not_a_separate_popup() {
     let err = StikkError::Declined {
         detail: "typed name does not match".into(),
     };
-    match present(&err, OperationContext::Other) {
+    match present(&err, OperationContext::Other, None) {
         Presentation::InConfirmation { message } => {
             assert_eq!(message, "typed name does not match");
         }
@@ -558,7 +558,7 @@ fn the_captured_backslash_refusal_gets_a_gloss_and_keeps_prikks_words() {
     let err = StikkError::Refusal {
         message: CAPTURED_BACKSLASH_REFUSAL_0_28_WINDOWS.to_string(),
     };
-    let card = match present(&err, OperationContext::Commit) {
+    let card = match present(&err, OperationContext::Commit, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -585,7 +585,7 @@ fn the_captured_backslash_refusal_gets_a_gloss_and_keeps_prikks_words() {
     );
 
     // Whichever platform this build is, the card carries that platform's advice.
-    let expected = backslash_path_advice(cfg!(windows));
+    let expected = backslash_path_advice(cfg!(windows), None);
     assert_eq!(gloss, expected.gloss);
     assert_eq!(card.next_steps[0].label, expected.next_step);
 }
@@ -597,10 +597,13 @@ fn the_captured_backslash_refusal_gets_a_gloss_and_keeps_prikks_words() {
 /// platform as an argument is what makes this testable at all; see `backslash_path_advice`.
 #[test]
 fn both_backslash_glosses_say_the_true_thing_for_their_platform() {
-    let windows = backslash_path_advice(true);
-    // The point of the gloss: the user typed no backslash, and the fix is a prikk version.
+    // **`Some(28)` now, not `None`.** RFC 026 C narrowed this by version as well as platform, so the
+    // Windows-defect gloss is the one shown to a user actually on 0.28; `None` gets the hedged
+    // variant, which its own test covers.
+    let windows = backslash_path_advice(true, Some(28));
+    // The point of the gloss: the user may have typed no backslash, and the fix is a prikk version.
     assert!(
-        windows.gloss.contains("you typed no backslash"),
+        windows.gloss.contains("typed no backslash"),
         "{}",
         windows.gloss
     );
@@ -627,7 +630,7 @@ fn both_backslash_glosses_say_the_true_thing_for_their_platform() {
     // prikk would be a stikk-authored claim contradicting the evidence beside it — the failure RFC 017
     // F4 fixed. prikk 0.28's defect is the platform separator leaking into a repository path; it cannot
     // happen where the separator is already `/`.
-    let unix = backslash_path_advice(false);
+    let unix = backslash_path_advice(false, Some(28));
     assert!(
         unix.gloss.contains("has a backslash in its name"),
         "{}",
@@ -654,7 +657,7 @@ fn an_ordinary_invalid_name_refusal_is_untouched_by_the_backslash_gloss() {
     let err = StikkError::Refusal {
         message: "error: invalid name: ref names may not end with .lock".to_string(),
     };
-    let card = match present(&err, OperationContext::Commit) {
+    let card = match present(&err, OperationContext::Commit, None) {
         Presentation::RefusalOverlay(card) => card,
         other => panic!("expected RefusalOverlay, got {other:?}"),
     };
@@ -667,4 +670,103 @@ fn an_ordinary_invalid_name_refusal_is_untouched_by_the_backslash_gloss() {
         "an unrelated invalid-name refusal must not get the backslash gloss: {card:?}"
     );
     assert!(card.glossary_codes.is_empty());
+}
+
+// --- RFC 026 Handoff C §2: the gloss narrowed by platform and version -------------------------
+//
+// Hermetic, the way `paths.rs` tests its platform enum rather than the real platform: the two facts
+// are arguments, so all three cases run on every machine.
+
+/// Not Windows: prikk 0.28's defect is the **platform separator** leaking into a repository path, and
+/// it cannot happen where the separator is already `/`. One explanation, whatever prikk is running.
+#[test]
+fn off_windows_only_the_real_backslash_explanation_is_shown() {
+    for minor in [None, Some(28), Some(41)] {
+        let advice = backslash_path_advice(false, minor);
+        assert!(
+            advice.gloss.contains("has a backslash in its name"),
+            "{minor:?}: {}",
+            advice.gloss
+        );
+        assert!(
+            !advice.gloss.contains("0.29.0"),
+            "{minor:?}: off Windows this is not a prikk version problem: {}",
+            advice.gloss
+        );
+        assert!(advice.next_step.contains("Rename"));
+    }
+}
+
+/// Windows on prikk ≥ 0.29: prikk fixed the separator defect in 0.29.0, so only the other cause
+/// remains. **This is the narrowing** — before it, this user read a paragraph about a version they
+/// are not running and had to work out that it was not theirs.
+#[test]
+fn on_windows_above_the_fix_the_version_half_is_dropped() {
+    for minor in [29, 38, 41] {
+        let advice = backslash_path_advice(true, Some(minor));
+        assert!(
+            advice.gloss.contains("has a backslash in its name"),
+            "0.{minor}: {}",
+            advice.gloss
+        );
+        assert!(
+            !advice.gloss.contains("typed no backslash"),
+            "0.{minor}: prikk fixed this in 0.29.0, so the defect half does not apply: {}",
+            advice.gloss
+        );
+        assert!(advice.next_step.contains("Rename"), "0.{minor}");
+    }
+}
+
+/// Windows on prikk 0.28 exactly: **both remain genuinely possible**, so both are shown, defect
+/// first. RFC 023 F1 measured that this message is prikk's generic validator — a lone "upgrade prikk"
+/// would contradict the evidence for a user whose file really is named with a backslash.
+#[test]
+fn on_windows_at_0_28_both_halves_stay() {
+    let advice = backslash_path_advice(true, Some(28));
+    assert!(
+        advice.gloss.contains("typed no backslash"),
+        "{}",
+        advice.gloss
+    );
+    assert!(advice.gloss.contains("0.29.0"), "{}", advice.gloss);
+    // And the other cause is still named, second.
+    assert!(
+        advice.gloss.contains("backslash in its name"),
+        "both halves, in that order: {}",
+        advice.gloss
+    );
+    assert!(advice.next_step.contains("Upgrade prikk"));
+}
+
+/// An unknown version on Windows keeps both, because it cannot exclude 0.28 — the direction that
+/// keeps an explanation rather than hiding it from the user it was written for.
+#[test]
+fn on_windows_with_an_unknown_version_both_halves_stay() {
+    let unknown = backslash_path_advice(true, None);
+    assert!(
+        unknown
+            .gloss
+            .contains("If this repository is on prikk 0.28"),
+        "{}",
+        unknown.gloss
+    );
+    assert!(
+        unknown.gloss.contains("backslash in its name"),
+        "{}",
+        unknown.gloss
+    );
+    // **The hedge belongs here and only here.** Where stikk knows the version it asserts instead —
+    // hedging about a fact stikk holds is the defect this narrowing closes.
+    let at_28 = backslash_path_advice(true, Some(28));
+    assert!(
+        !at_28.gloss.contains("If this repository is on"),
+        "{}",
+        at_28.gloss
+    );
+    assert!(
+        at_28.gloss.contains("This prikk builds repository paths"),
+        "{}",
+        at_28.gloss
+    );
 }

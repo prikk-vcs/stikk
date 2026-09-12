@@ -56,6 +56,10 @@ pub struct OrientationView {
     pub capability: Capability,
     /// The readiness the capability was derived from, for the signing-readiness badges (FR-104).
     pub readiness: Readiness,
+    /// prikk's parsed minor version — the same number the seam bands on, carried so a renderer can
+    /// narrow copy that is only true on some versions without re-parsing `prikk_version`'s text
+    /// (RFC 026 Handoff C §2).
+    pub prikk_minor: u32,
     /// Which `PRIKK_*_SEED` variables are set on a prikk that no longer reads them (RFC 026 §4).
     ///
     /// **Only this, not the seam's whole `RoleDetail`.** The Orientation view renders one sentence
@@ -91,6 +95,7 @@ pub fn orient(prikk: &impl Prikk, repo: &Path) -> Result<OrientationView> {
         prikk_validated: handshake.validated,
         validated_through: stikk_prikk::validated_ceiling_display(),
         prikk_persists_messages,
+        prikk_minor: version.minor,
         queued_patches: orientation.queued_patches,
         queued_target: orientation.queued_target,
         trailing_partial_wal_bytes: orientation.trailing_partial_wal_bytes,

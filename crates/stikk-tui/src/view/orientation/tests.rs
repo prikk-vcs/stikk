@@ -15,7 +15,8 @@ fn view(readiness: Readiness, supported: bool, queued: u64, partial: u64) -> Ori
         prikk_supported: supported,
         prikk_validated: supported,
         validated_through: "0.32".to_string(),
-        prikk_persists_messages: false, // fixed "prikk 0.27.1" above is well below the 0.32 threshold
+        prikk_persists_messages: false,
+        prikk_minor: 41, // fixed "prikk 0.27.1" above is well below the 0.32 threshold
         queued_patches: queued,
         queued_target: None,
         trailing_partial_wal_bytes: partial,

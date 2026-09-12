@@ -12,7 +12,8 @@ repository, and a key prikk publishes as an example is flagged every time (RFC 0
 size themselves by measurement**, so seal's confirmation shows how to confirm for the first time and no
 list hides its own selection (RFC 024). **The validated prikk range moves to 0.41**, three releases, one
 of which changed how prikk is configured at all (RFC 026). And **the real-binary suite now drives all
-eleven seam methods**, correcting an undercount 0.5.0 shipped (RFC 022).
+eleven seam methods**, correcting an undercount 0.5.0 shipped (RFC 022, and `readiness` in this
+release's preparation).
 
 ### Breaking
 
@@ -136,8 +137,9 @@ Everything else new is additive: `RoleReadiness` and `Binding`; `ReadinessReport
   narrowed to exactly that subcommand and still refuses `key generate`, `key public` and any other,
   however the call is formatted.
 
-- **No seed value is read anywhere in stikk**, on any prikk version — unchanged, and still enforced by
-  test.
+- **No seed value is read anywhere in stikk**, on any prikk version. The two modules that touch signing
+  variables — presence in `stikk_prikk::env`, key ids in `stikk_prikk::key_id` — are each held to that by
+  a source-level test, and no other shipped code names a seed variable except in text shown to you.
 
 ## 0.5.0 — 2026-09-12
 

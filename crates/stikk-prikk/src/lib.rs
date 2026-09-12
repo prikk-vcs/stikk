@@ -16,6 +16,7 @@
 
 pub mod cli_backend;
 pub mod env;
+mod json;
 pub mod key_id;
 pub mod null_backend;
 pub mod version;

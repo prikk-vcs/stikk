@@ -35,6 +35,7 @@ use crate::{
 
 mod classify;
 mod parse;
+mod parse_json;
 
 /// The exit code prikk uses for a usage error detected before any repository work — an unknown,
 /// duplicate, or malformed argument (prikk 0.28+; RFC 009 F6). This is a bug in the command *stikk*
@@ -58,6 +59,20 @@ impl Default for CliBackend {
 }
 
 impl CliBackend {
+    /// Whether this session's prikk offers `--format json` for `log`, `branch` and `tag` (RFC 026 §6).
+    ///
+    /// Reads the cached handshake, so the gate costs nothing after the first call. **The number lives
+    /// here and nowhere else**: a second copy in any of the three call sites is how `0.30` survived in
+    /// `stikk-tui`'s Orientation copy after the ceiling had moved twice (RFC 015).
+    ///
+    /// # Errors
+    /// Propagates the handshake's own error — a version stikk cannot read is not a version it can
+    /// choose a flag for.
+    fn reads_json(&self) -> Result<bool> {
+        const JSON_REPORTS_FROM: u32 = 39;
+        Ok(Prikk::handshake(self)?.version.minor >= JSON_REPORTS_FROM)
+    }
+
     /// Construct a backend using `prikk` on `PATH`, or the `STIKK_PRIKK_BIN` override if set.
     #[must_use]
     pub fn new() -> Self {
@@ -203,6 +218,25 @@ impl Prikk for CliBackend {
 
     fn history(&self, repo: &Path, reff: &str, limit: usize) -> Result<History> {
         let limit = limit.to_string();
+        // RFC 026 §6: JSON where prikk offers it, prose at the floor. The gate is here, beside the
+        // flag it adds, rather than inside either parser — a parser that had to know the version
+        // would be two parsers in one function.
+        if self.reads_json()? {
+            let out = self.run(
+                Some(repo),
+                RequestCategory::ReadHistory,
+                [
+                    "log",
+                    "--ref",
+                    reff,
+                    "--limit",
+                    limit.as_str(),
+                    "--format",
+                    "json",
+                ],
+            )?;
+            return parse_json::history(&out);
+        }
         let out = self.run(
             Some(repo),
             RequestCategory::ReadHistory,
@@ -221,6 +255,14 @@ impl Prikk for CliBackend {
     }
 
     fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+        if self.reads_json()? {
+            let out = self.run(
+                Some(repo),
+                RequestCategory::ReadHistory,
+                ["branch", "list", "--all", "--format", "json"],
+            )?;
+            return parse_json::refs(&out);
+        }
         let out = self.run(
             Some(repo),
             RequestCategory::ReadHistory,
@@ -230,6 +272,14 @@ impl Prikk for CliBackend {
     }
 
     fn tags(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+        if self.reads_json()? {
+            let out = self.run(
+                Some(repo),
+                RequestCategory::ReadHistory,
+                ["tag", "list", "--format", "json"],
+            )?;
+            return parse_json::tags(&out);
+        }
         let out = self.run(Some(repo), RequestCategory::ReadHistory, ["tag", "list"])?;
         parse::tags(&out)
     }

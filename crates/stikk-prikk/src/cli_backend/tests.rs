@@ -183,6 +183,9 @@ fn change_token_drives_exactly_branch_status_and_tag_no_more_no_repeats() {
             "#!/bin/sh\n\
              echo \"$1\" >> \"{log}\"\n\
              case \"$1\" in\n\
+             --version)\n\
+             echo 'prikk 0.38.0'\n\
+             ;;\n\
              branch)\n\
              echo 'heads/main {id}'\n\
              ;;\n\
@@ -214,6 +217,12 @@ fn change_token_drives_exactly_branch_status_and_tag_no_more_no_repeats() {
         retrying_transient_exec_busy(|| backend.change_token(&dir)).expect("change_token succeeds");
     // Composed from real (scripted) data — no tags, one branch — so it must equal a token built the
     // same way by hand.
+    //
+    // **The `--version` spawn is new in RFC 026 §6** and is the cost of the JSON gate: `refs` and
+    // `tags` each ask which era they are in. It appears **once**, not twice, because the handshake is
+    // cached per backend — which is the property this test's "none repeated" clause now also covers.
+    // Once per backend, not once per token: `change_token` is what every mutation preview is gated on,
+    // so a per-call probe would have been a real cost rather than a one-off.
     assert_eq!(
         token,
         stikk_model::ChangeToken::compose([("heads/main", "0".repeat(64).as_str())], 0, None)
@@ -225,7 +234,7 @@ fn change_token_drives_exactly_branch_status_and_tag_no_more_no_repeats() {
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(
         lines,
-        vec!["branch", "status", "tag"],
+        vec!["--version", "branch", "status", "tag"],
         "change_token must call exactly one branch-list, one status, and one tag-list — nothing else, \
          none repeated"
     );
@@ -236,6 +245,14 @@ fn change_token_drives_exactly_branch_status_and_tag_no_more_no_repeats() {
 /// fixed clean/empty report — for the `change_token` determinism tests below, where only the ref/tag
 /// listings vary. Returns the backend and its temp dir, which the caller must clean up.
 #[cfg(unix)]
+/// A scripted stand-in for prikk, answering `branch`, `tag`, `status` — and, since RFC 026 §6,
+/// `--version`.
+///
+/// **It reports 0.38.0 deliberately.** The outputs it returns are the *prose* forms, so the version it
+/// claims has to be one where stikk reads prose: at ≥ 0.39 `refs`/`tags` ask for `--format json` and
+/// would be handed line-oriented text, which is a different test than the one these are. It is also
+/// the era the tag-leak property below is *about* — `branch list --all` stopped including tag refs at
+/// 0.39, so the unspecified behaviour these tests pin is specific to this side of that line.
 fn fake_prikk_backend(
     name_suffix: &str,
     branch_output: &str,
@@ -255,6 +272,9 @@ fn fake_prikk_backend(
         format!(
             "#!/bin/sh\n\
              case \"$1\" in\n\
+             --version)\n\
+             printf 'prikk 0.38.0\\n'\n\
+             ;;\n\
              branch)\n\
              printf '{branch_output}'\n\
              ;;\n\

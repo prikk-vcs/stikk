@@ -1007,3 +1007,142 @@ fn the_key_id_module_reads_the_ids_a_real_fixture_configured() {
         assert_eq!(stikk_prikk::key_id::maintainer_key_id(), None);
     }
 }
+
+/// RFC 026 §6 — the three JSON reports, read from a **real** binary at both ends.
+///
+/// `log`, `branch` and `tag` were the entire remainder of stikk's prose parsing, and prikk 0.39 gave
+/// each a `--format json`. stikk now asks for JSON at ≥ 0.39 and prose below, so **this one test
+/// exercises two different parsers** depending on which binary it is handed — which is the only way to
+/// know both paths still work, since the floor is 0.28 and the prose readers are the only thing there.
+///
+/// **Seeded entirely through raw prikk, not through `CliBackend`.** Every other test here drives
+/// stikk's own `commit`/`seal`, and at ≥ 0.40 those are refused by stikk's client-side readiness gate
+/// (RFC 026 F1 — the model reads `PRIKK_*_SEED`, which prikk no longer uses). That defect is Handoff
+/// B's to fix and is deliberately untouched here; seeding with raw prikk keeps this test measuring the
+/// parsers rather than waiting on it. The reads themselves go through `Prikk`, which is the point.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn the_three_reports_parse_at_both_ends_json_above_prose_below() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+
+        // Raw prikk, inheriting the fixture's own era-correct configuration.
+        fixture.set_author_env();
+        fixture.set_maintainer_env();
+        let run = |args: &[&str]| {
+            let out = std::process::Command::new(&bin.path)
+                .args(args)
+                .current_dir(fixture.repo())
+                .output()
+                .unwrap_or_else(|e| panic!("0.{}: spawn prikk {args:?}: {e}", bin.minor));
+            assert!(
+                out.status.success(),
+                "0.{}: prikk {args:?} failed: {}",
+                bin.minor,
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        };
+        run(&[
+            "commit",
+            "--from-worktree",
+            "--ref",
+            "heads/main",
+            "-m",
+            "seeded for the report readers",
+        ]);
+        run(&["seal", "--ref", "heads/main", "--allow-no-audit"]);
+        run(&["branch", "create", "heads/feature", "--from", "heads/main"]);
+        run(&[
+            "tag",
+            "create",
+            "tags/v1",
+            "--target",
+            "heads/main",
+            "-m",
+            "one",
+        ]);
+        Fixture::clear_env();
+
+        // `log` — the message is the field whose shape moved most across re-baselines.
+        let history = backend
+            .history(fixture.repo(), "heads/main", 10)
+            .unwrap_or_else(|e| panic!("0.{}: history: {e}", bin.minor));
+        assert_eq!(history.reff, "heads/main", "0.{}", bin.minor);
+        assert_eq!(history.blocks.len(), 1, "0.{}: {history:?}", bin.minor);
+        let block = &history.blocks[0];
+        assert_eq!(block.patches, 1, "0.{}: {block:?}", bin.minor);
+        assert!(!block.block_id.is_empty(), "0.{}", bin.minor);
+        // Messages persist from prikk **0.32** (`UD-01` retired, RFC 015 F2); below it prikk validates
+        // and discards them, so an empty list there is correct rather than a parse failure — and
+        // `patch_count` stays the authoritative total either way (RFC 015 F4).
+        if bin.minor >= 32 {
+            assert!(
+                block
+                    .messages
+                    .iter()
+                    .any(|m| m.message == "seeded for the report readers"),
+                "0.{}: the commit message must survive the report: {block:?}",
+                bin.minor
+            );
+        } else {
+            assert!(
+                block.messages.is_empty(),
+                "0.{}: this prikk does not persist commit messages, so none should be reported: \
+                 {block:?}",
+                bin.minor
+            );
+        }
+
+        // `branch` — and the tag-leak difference between the two eras, asserted rather than assumed.
+        let refs = backend
+            .refs(fixture.repo())
+            .unwrap_or_else(|e| panic!("0.{}: refs: {e}", bin.minor));
+        for wanted in ["heads/main", "heads/feature"] {
+            assert!(
+                refs.iter().any(|r| r.name == wanted),
+                "0.{}: {wanted} missing from {refs:?}",
+                bin.minor
+            );
+        }
+        let leaks_tags = refs.iter().any(|r| r.name.starts_with("tags/"));
+        if bin.minor >= 39 {
+            assert!(
+                !leaks_tags,
+                "0.{}: prikk stopped listing tag refs in `branch list --all` at 0.39; it is listing \
+                 them again: {refs:?}",
+                bin.minor
+            );
+        } else {
+            assert!(
+                leaks_tags,
+                "0.{}: this era's `branch list --all` does list tag refs, which is why \
+                 `stikk_core::history::list_refs` de-duplicates by name: {refs:?}",
+                bin.minor
+            );
+        }
+
+        // `tag` — a tag points at a block, and that id must be the block `log` just reported.
+        let tags = backend
+            .tags(fixture.repo())
+            .unwrap_or_else(|e| panic!("0.{}: tags: {e}", bin.minor));
+        let tag = tags
+            .iter()
+            .find(|t| t.name == "tags/v1")
+            .unwrap_or_else(|| panic!("0.{}: tags/v1 missing from {tags:?}", bin.minor));
+        assert_eq!(
+            tag.id, block.block_id,
+            "0.{}: the tag must point at the block `log` reported",
+            bin.minor
+        );
+        assert!(
+            tags.iter().all(|t| t.name.starts_with("tags/")),
+            "0.{}",
+            bin.minor
+        );
+    }
+}

@@ -17,6 +17,17 @@
 //! A front-end that panicked a user's terminal on a malformed read would be a worse failure than not
 //! reading it at all.
 //!
+//! # Two places this reader is laxer than the spec, written down for the day someone swaps it
+//!
+//! Both matter only at the swap, and silently, which is why they are here rather than nowhere:
+//!
+//! - **Duplicate keys.** [`Json::get`] returns the **first** match; `serde_json` keeps the **last**.
+//!   prikk emits no duplicate key in any of the three schemas, so the two agree today and would
+//!   disagree without a compiler error.
+//! - **Leading zeros.** `007` reads as `7`, where strict JSON refuses it outright. Laxness in the
+//!   direction that cannot invent a value — but laxness, and the paragraph above is careful about what
+//!   this reader refuses, so it should be equally careful about where it does not.
+//!
 //! **This is a decision worth overruling if you disagree** (flagged in RFC 026 A's review request): the
 //! alternative is `serde_json`, which is better-tested than anything written here and costs a wider
 //! tree. The three parsers above this are written against [`Json`], not against the reader, so swapping

@@ -12,6 +12,24 @@
 //! reachable is a parser that is still tested. The version gate lives in `cli_backend.rs`, beside the
 //! call that chooses the flag, rather than here.
 //!
+//! # Names and ids are validated here, exactly as the prose readers validate them
+//!
+//! `parse.rs`'s module doc says **every ref name crossing this boundary goes through
+//! [`RefName::parse`], and every id through [`ObjectId::parse`]** (`INV-9`/`UD-02`; RFC 012 F-d,
+//! RFC 009 F2). When these readers first landed they did neither, which made that sentence false for
+//! the seam as a whole at prikk ≥ 0.39 — that is, on the path carrying all the traffic. A shape prikk
+//! would never emit means stikk misread prikk, so it refuses rather than travelling onward as an
+//! unvalidated string.
+//!
+//! **This is not about crashing.** Nothing downstream panics on a short id — `ObjectId::abbreviated`
+//! and the History view both slice defensively, and `inert()` neutralizes a control-bearing name at the
+//! cell (`C-T2a`). It is the defence-in-depth boundary this project chose twice, applied at the only
+//! place it can be: where prikk's bytes become stikk's values.
+//!
+//! Struct fields stay `String` above this boundary, as they do for the prose readers — the guarantee
+//! lives at the parse boundary, not in every downstream type (`parse.rs`'s `required_ref_field`
+//! records the measurement behind that call).
+//!
 //! # The schema version is checked, and checked loudly
 //!
 //! Every report names its own schema. stikk verifies that name before reading a field: a
@@ -19,7 +37,7 @@
 //! that is the RFC 012 F-e failure shape, applied to JSON. An unknown schema is an environment error
 //! naming both what was found and what stikk knows, the same way the version gate does.
 
-use stikk_model::StikkError;
+use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{BlockRow, History, PatchMessage, RefEntry};
@@ -30,6 +48,45 @@ type Result<T> = std::result::Result<T, StikkError>;
 const LOG_SCHEMA: &str = "log-report-v1";
 const BRANCH_SCHEMA: &str = "branch-list-v1";
 const TAG_SCHEMA: &str = "tag-list-v1";
+
+/// A required ref-name field, validated at this boundary (`INV-9`; RFC 012 F-d).
+///
+/// The error names the field **and** the value, the way the prose readers' do: a caller debugging this
+/// needs to see the shape prikk sent, and an environment error is the right class because a shape prikk
+/// would never emit means stikk misread prikk, not that the user did anything.
+fn ref_name_field<'a>(value: &'a Json, key: &str) -> Result<&'a str> {
+    let name = value.str_field(key)?;
+    RefName::parse(name).map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk's JSON report has an unrecognized ref name in `{key}`: {name:?}"
+        ))
+    })?;
+    Ok(name)
+}
+
+/// A required object-id field, validated at this boundary (RFC 009 F2).
+fn object_id_field<'a>(value: &'a Json, key: &str) -> Result<&'a str> {
+    let id = value.str_field(key)?;
+    ObjectId::parse(id).map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk's JSON report has an unrecognized object id in `{key}`: {id:?}"
+        ))
+    })?;
+    Ok(id)
+}
+
+/// An optional object-id field: absent or `null` read as `None`, and anything present is validated.
+fn opt_object_id_field<'a>(value: &'a Json, key: &str) -> Result<Option<&'a str>> {
+    let Some(id) = value.opt_str_field(key)? else {
+        return Ok(None);
+    };
+    ObjectId::parse(id).map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk's JSON report has an unrecognized object id in `{key}`: {id:?}"
+        ))
+    })?;
+    Ok(Some(id))
+}
 
 /// Parse `text`, then confirm it announces `want`.
 fn report(text: &str, want: &str) -> Result<Json> {
@@ -51,12 +108,12 @@ fn report(text: &str, want: &str) -> Result<Json> {
 /// field this shape requires.
 pub(super) fn history(text: &str) -> Result<History> {
     let value = report(text, LOG_SCHEMA)?;
-    let reff = value.str_field("ref")?.to_string();
+    let reff = ref_name_field(&value, "ref")?.to_string();
     let mut blocks = Vec::new();
     for block in value.array_field("blocks")? {
         blocks.push(BlockRow {
-            block_id: block.str_field("block_id")?.to_string(),
-            ref_state_id: block.str_field("ref_state_id")?.to_string(),
+            block_id: object_id_field(block, "block_id")?.to_string(),
+            ref_state_id: object_id_field(block, "ref_state_id")?.to_string(),
             update_seq: block.u64_field("update_seq")?,
             kind: block.str_field("kind")?.to_string(),
             rollback_block: block.bool_field("rollback_block")?,
@@ -65,8 +122,7 @@ pub(super) fn history(text: &str) -> Result<History> {
             rollback_patches: block.u64_field("rollback_patch_count")?,
             required_attestations: block.u64_field("required_attestation_count")?,
             messages: patch_messages(block)?,
-            previous_ref_state: block
-                .opt_str_field("previous_ref_state_id")?
+            previous_ref_state: opt_object_id_field(block, "previous_ref_state_id")?
                 .map(str::to_string),
         });
     }
@@ -77,14 +133,21 @@ pub(super) fn history(text: &str) -> Result<History> {
 /// block sealed entirely below prikk 0.32 carries no messages at all (RFC 015 F4), and `patch_count`
 /// stays the authoritative total either way.
 fn patch_messages(block: &Json) -> Result<Vec<PatchMessage>> {
-    let Some(Json::Array(items)) = block.get("patch_messages") else {
-        return Ok(Vec::new());
+    // **Absent is tolerated; a wrong type is not.** They are different rules and this file now gives
+    // one answer to both questions — absence is how a pre-0.32 block spells "no messages", while a
+    // `patch_messages` that is suddenly an object is a schema change and must say so.
+    let items = match block.get("patch_messages") {
+        None => return Ok(Vec::new()),
+        Some(Json::Array(items)) => items,
+        // `array_field` produces exactly the error this case needs, naming the field and what it
+        // found; calling it is cheaper than a second message that could drift from that one.
+        Some(_) => return block.array_field("patch_messages").map(|_| Vec::new()),
     };
     items
         .iter()
         .map(|item| {
             Ok(PatchMessage {
-                patch_id: item.str_field("patch_id")?.to_string(),
+                patch_id: object_id_field(item, "patch_id")?.to_string(),
                 message: item.str_field("message")?.to_string(),
             })
         })
@@ -103,8 +166,10 @@ pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
     let value = report(text, BRANCH_SCHEMA)?;
     let mut out = Vec::new();
     for (key, received) in [("branches", false), ("received", true)] {
-        // `received` is absent on a repository that has never received one; that is not a schema
-        // mismatch, it is an empty list spelled by omission.
+        // **prikk 0.41 always emits both arrays** — a repository that has never received anything
+        // reports `"received": []`, measured on a fresh one. The tolerance below is deliberate slack
+        // for a prikk that might omit an empty array, not a description of one that does; absence is
+        // read as empty, and a wrong type still errors.
         let entries = match value.get(key) {
             Some(Json::Array(items)) => items.as_slice(),
             None => &[],
@@ -112,9 +177,19 @@ pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
         };
         for entry in entries {
             out.push(RefEntry {
-                name: entry.str_field("ref_name")?.to_string(),
-                id: entry.str_field("ref_state_id")?.to_string(),
-                closed: entry.bool_field("closed").unwrap_or(false),
+                name: ref_name_field(entry, "ref_name")?.to_string(),
+                id: object_id_field(entry, "ref_state_id")?.to_string(),
+                // **Required on `branches`, structural on `received`.** prikk's emitter puts `closed`
+                // on every branch and on no received ref, deliberately, so which array an entry came
+                // from already answers the question — the same reasoning `received` itself uses. It
+                // was `unwrap_or(false)` and that was the one silent field in three parsers, on the
+                // one fact the ref picker shows: if prikk renamed it, every closed branch would have
+                // quietly rendered as open.
+                closed: if received {
+                    false
+                } else {
+                    entry.bool_field("closed")?
+                },
                 received,
             });
         }
@@ -136,8 +211,8 @@ pub(super) fn tags(text: &str) -> Result<Vec<RefEntry>> {
         .iter()
         .map(|tag| {
             Ok(RefEntry {
-                name: tag.str_field("ref_name")?.to_string(),
-                id: tag.str_field("target_block_id")?.to_string(),
+                name: ref_name_field(tag, "ref_name")?.to_string(),
+                id: object_id_field(tag, "target_block_id")?.to_string(),
                 closed: false,
                 received: false,
             })

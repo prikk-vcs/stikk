@@ -17,6 +17,11 @@
 //! `RefName`'s guarantee lives here, at the parse boundary, not in every downstream type — matching
 //! `ObjectId`'s own precedent rather than the alternative of changing every field's type (see the RFC
 //! 012 review request for the diff-size measurement behind that call).
+//!
+//! **The same boundary is enforced in [`super::parse_json`]**, which reads the same three surfaces at
+//! prikk ≥ 0.39 (RFC 026 §6). It did not at first, and that made the paragraph above false for the
+//! seam as a whole on the path carrying all the traffic — caught in review, with the evidence sitting
+//! in that module's own test fixtures, which had been using `"a"` as an object id.
 
 use stikk_model::{ObjectId, RefName, Result, StikkError};
 

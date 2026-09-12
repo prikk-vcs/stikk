@@ -26,9 +26,18 @@ pub enum StikkError {
         /// prikk's verbatim refusal message. Never rewritten by a layer above.
         message: String,
     },
-    /// Another writer holds a lock, or a CAS precondition failed. Presented as "another writer is
-    /// active", never as corruption (design FR-106). prikk distinguishes a genuine lock from a
-    /// ref-CAS mismatch; both arrive here and the message carries which.
+    /// Another writer holds a lock, or a CAS precondition failed. prikk distinguishes a genuine lock
+    /// from a ref-CAS mismatch; both arrive here and the message carries which.
+    ///
+    /// **Presented as prikk's verbatim message in a banner** (`present.rs`'s `LockConflict` arm), with
+    /// no gloss — the absence is deliberate (`ER-02`). This doc previously said it was presented as
+    /// `FR-106`'s *"another writer is active"*; that was true when written and is not now. RFC 017 F4
+    /// found that gloss rendered over six prikk messages that were **preconditions, not locks** —
+    /// nothing held, no other writer — and the fix narrowed the classifier so those reach `Refusal`
+    /// instead, leaving this class carrying only real conflicts and nothing to add to them. `FR-106`'s
+    /// wording is now `present()`'s alone, keyed on the one message shape it is true of, and this class
+    /// no longer implies it. That the correction was needed at all is the `F1` shape in the error
+    /// taxonomy's own documentation, and it is what put a wrong premise into RFC 022's Q1.
     LockConflict {
         /// prikk's verbatim conflict message.
         message: String,

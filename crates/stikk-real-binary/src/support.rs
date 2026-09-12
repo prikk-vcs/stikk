@@ -5,6 +5,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// One resolved, real `prikk` binary this suite drives, at a known minor version.
 pub struct PrikkBin {
@@ -39,28 +40,44 @@ impl PrikkBin {
         Self::resolve("STIKK_TEST_PRIKK_CEILING_BIN", ceiling)
     }
 
+    /// Resolve one end of the matrix from its environment variable, confirming the binary really is the
+    /// version this suite's matrix names.
+    ///
+    /// **Every failure here is a `HARNESS FAILURE`, not a product one** (RFC 022 §5). Resolution runs
+    /// before any test touches stikk, once per end per test, so a missing binary or a wrong version
+    /// produces one identical panic per test — the exact shape RFC 021's Windows break had, and the one
+    /// the architect hit again reviewing 0.5.0 when their scratch binaries were cleaned between
+    /// sessions. Routing it through [`harness_fail`] means the first failure explains itself and the
+    /// rest say they are its shadow.
     fn resolve(env_var: &str, expected_minor: u32) -> Self {
-        let path = env::var_os(env_var).unwrap_or_else(|| {
-            panic!(
+        let Some(path) = env::var_os(env_var) else {
+            harness_fail(&format!(
                 "{env_var} is not set.\n\n\
                  This suite needs two real prikk binaries. Install one for this end of the range:\n\n\
                  \tcargo install prikk --version 0.{expected_minor}.0 --locked --root <dir>\n\n\
                  then set {env_var}=<dir>/bin/prikk before running (see this crate's `lib.rs` and \
                  `tests/real_binary.rs` module docs for the other one and the full invocation)."
-            )
-        });
+            ));
+        };
         let path = PathBuf::from(path);
         let backend = stikk_prikk::CliBackend::with_program(&path);
-        let handshake = stikk_prikk::Prikk::handshake(&backend)
-            .unwrap_or_else(|e| panic!("{env_var}={path:?} did not answer `prikk --version`: {e}"));
-        assert_eq!(
-            handshake.version.minor, expected_minor,
-            "{env_var}={path:?} reports prikk {}, but this suite's version matrix (derived from \
-             stikk_prikk::version::supported_minor_range, not written here) expects minor \
-             {expected_minor} at this end of the range. Install the version that range actually names \
-             — do not edit this assertion to match whatever happens to be installed.",
-            handshake.version
-        );
+        let handshake = match stikk_prikk::Prikk::handshake(&backend) {
+            Ok(handshake) => handshake,
+            Err(e) => harness_fail(&format!(
+                "{env_var}={path:?} did not answer `prikk --version`: {e}\n\
+                 (a missing or non-executable binary at that path is the usual cause — scratch \
+                 installs do not survive between sessions)"
+            )),
+        };
+        if handshake.version.minor != expected_minor {
+            harness_fail(&format!(
+                "{env_var}={path:?} reports prikk {}, but this suite's version matrix (derived from \
+                 stikk_prikk::version::supported_minor_range, not written here) expects minor \
+                 {expected_minor} at this end of the range. Install the version that range actually \
+                 names — do not edit this assertion to match whatever happens to be installed.",
+                handshake.version
+            ));
+        }
         Self {
             path,
             minor: expected_minor,
@@ -104,6 +121,39 @@ pub struct Fixture {
     maintainer_seed: String,
 }
 
+/// Whether fixture construction has already failed once in this process (RFC 022 F3/§5).
+static HARNESS_ALREADY_FAILED: AtomicBool = AtomicBool::new(false);
+
+/// Fail the current test as a **harness** failure — the repository could not be built — rather than as
+/// a product failure, and say so on the first line.
+///
+/// RFC 021's Windows break produced **five identical panics** about `prikk key generate`, because every
+/// test builds its own fixture first. One broken setup step, five red tests, and nothing in the output
+/// distinguishing *"the harness could not construct a repository"* from *"stikk got an answer wrong"* —
+/// on the gate whose only job is telling a human whether to ship. At ten surfaces that is a misleading
+/// picture of a release's health.
+///
+/// Two things make it readable. Every message starts with `HARNESS FAILURE`, so one line answers which
+/// kind it is; and only the **first** carries the detail — every later one says the harness is already
+/// known broken and that this test never reached stikk at all, so a reader looks at one wall of text
+/// rather than N identical ones.
+fn harness_fail(what: &str) -> ! {
+    if HARNESS_ALREADY_FAILED.swap(true, Ordering::SeqCst) {
+        panic!(
+            "HARNESS FAILURE (already reported above): fixture construction is broken, so this test \
+             never ran stikk at all. Fix the first HARNESS FAILURE in this run; the others are its \
+             shadow, not independent findings."
+        );
+    }
+    panic!(
+        "HARNESS FAILURE: {what}\n\
+         \n\
+         This is the test harness failing to build a prikk repository — **not** stikk getting an \
+         answer wrong. Nothing below this line exercised stikk. Every other test in this run builds \
+         its own fixture the same way and will report the same cause in one line."
+    );
+}
+
 impl Fixture {
     /// Build a fresh repository against `bin`, with `readme.txt` already present in the worktree so the
     /// first commit has something to author.
@@ -126,15 +176,20 @@ impl Fixture {
         ));
         let repo = root.join("repo");
         let keys_dir = root.join("keys");
-        fs::create_dir_all(&repo).expect("create fixture repo dir");
-        fs::create_dir_all(&keys_dir).expect("create fixture keys dir");
+        for dir in [&repo, &keys_dir] {
+            if let Err(e) = fs::create_dir_all(dir) {
+                harness_fail(&format!("could not create {}: {e}", dir.display()));
+            }
+        }
 
-        let status = Command::new(&bin.path)
-            .arg("init")
-            .arg(&repo)
-            .status()
-            .expect("spawn prikk init");
-        assert!(status.success(), "prikk init failed at 0.{}", bin.minor);
+        match Command::new(&bin.path).arg("init").arg(&repo).status() {
+            Ok(status) if status.success() => {}
+            Ok(status) => harness_fail(&format!("`prikk init` at 0.{} exited {status}", bin.minor)),
+            Err(e) => harness_fail(&format!(
+                "could not spawn `prikk init` at 0.{}: {e}",
+                bin.minor
+            )),
+        }
 
         let (author_seed, maintainer_seed) = if bin.minor >= 33 {
             Self::setup_via_prikk_key(bin, &repo, &keys_dir)
@@ -142,7 +197,9 @@ impl Fixture {
             Self::setup_manually(bin, &repo, &keys_dir)
         };
 
-        fs::write(repo.join("readme.txt"), "hello\n").expect("seed worktree content");
+        if let Err(e) = fs::write(repo.join("readme.txt"), "hello\n") {
+            harness_fail(&format!("could not seed worktree content: {e}"));
+        }
 
         Self {
             root,
@@ -176,13 +233,18 @@ impl Fixture {
             ])
             .arg(&maintainer_pubkey)
             .current_dir(repo)
-            .status()
-            .expect("spawn prikk trust maintainer add");
-        assert!(
-            status.success(),
-            "prikk trust maintainer add failed at 0.{}",
-            bin.minor
-        );
+            .status();
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => harness_fail(&format!(
+                "`prikk trust maintainer add` at 0.{} exited {s}",
+                bin.minor
+            )),
+            Err(e) => harness_fail(&format!(
+                "could not spawn `prikk trust maintainer add` at 0.{}: {e}",
+                bin.minor
+            )),
+        }
 
         (author_seed, maintainer_seed)
     }
@@ -215,22 +277,26 @@ impl Fixture {
         if cfg!(unix) {
             command.arg("--out").arg(&out_path);
         }
-        let out = command
-            .output()
-            .unwrap_or_else(|e| panic!("spawn prikk key generate ({label}): {e}"));
-        assert!(
-            out.status.success(),
-            "prikk key generate ({label}) failed at 0.{}: {}",
-            bin.minor,
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        let out = match command.output() {
+            Ok(out) => out,
+            Err(e) => harness_fail(&format!(
+                "could not spawn `prikk key generate` ({label}): {e}"
+            )),
+        };
+        if !out.status.success() {
+            harness_fail(&format!(
+                "`prikk key generate` ({label}) failed at 0.{}: {}",
+                bin.minor,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
 
         let public_key = Self::extract_public_key_line(&out.stdout);
         let seed = if cfg!(unix) {
-            fs::read_to_string(&out_path)
-                .unwrap_or_else(|e| panic!("read {label} seed: {e}"))
-                .trim()
-                .to_string()
+            match fs::read_to_string(&out_path) {
+                Ok(seed) => seed.trim().to_string(),
+                Err(e) => harness_fail(&format!("could not read the {label} seed file: {e}")),
+            }
         } else {
             Self::extract_seed_line(&out.stdout, label)
         };
@@ -283,13 +349,18 @@ impl Fixture {
             ])
             .arg(&maintainer_pubkey)
             .current_dir(repo)
-            .status()
-            .expect("spawn prikk trust maintainer add");
-        assert!(
-            status.success(),
-            "prikk trust maintainer add failed at 0.{}",
-            bin.minor
-        );
+            .status();
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => harness_fail(&format!(
+                "`prikk trust maintainer add` at 0.{} exited {s}",
+                bin.minor
+            )),
+            Err(e) => harness_fail(&format!(
+                "could not spawn `prikk trust maintainer add` at 0.{}: {e}",
+                bin.minor
+            )),
+        }
 
         (author_seed, maintainer_seed)
     }
@@ -301,8 +372,13 @@ impl Fixture {
         let output = Command::new("openssl")
             .args(["rand", "-hex", "32"])
             .output()
-            .expect("spawn openssl rand");
-        assert!(output.status.success(), "openssl rand failed");
+            .unwrap_or_else(|e| harness_fail(&format!("could not spawn `openssl rand`: {e}")));
+        if !output.status.success() {
+            harness_fail(&format!(
+                "`openssl rand` failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
         String::from_utf8(output.stdout)
             .expect("openssl rand produced non-UTF-8 output")
             .trim()
@@ -319,7 +395,9 @@ impl Fixture {
         der.extend_from_slice(&seed_bytes);
         let priv_der = keys_dir.join("derived-priv.der");
         let pub_der = keys_dir.join("derived-pub.der");
-        fs::write(&priv_der, &der).expect("write private key DER");
+        if let Err(e) = fs::write(&priv_der, &der) {
+            harness_fail(&format!("could not write the private key DER: {e}"));
+        }
         // `prikk key generate --out` writes its own seed file at mode 0600; this file holds the same
         // kind of secret (a raw Ed25519 seed, DER-wrapped) and gets the same restriction on Unix, where
         // `std::fs::Permissions` can express it. No Windows equivalent is set here — a real gap on that
@@ -338,7 +416,7 @@ impl Fixture {
             .args(["-pubout", "-outform", "DER", "-out"])
             .arg(&pub_der)
             .status()
-            .expect("spawn openssl pkey");
+            .unwrap_or_else(|e| harness_fail(&format!("could not spawn `openssl pkey`: {e}")));
         assert!(status.success(), "openssl pkey derivation failed");
 
         let pub_bytes = fs::read(&pub_der).expect("read derived public key");

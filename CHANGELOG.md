@@ -2,6 +2,41 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Changed
+
+- **The real-binary suite now covers ten of the ten `Prikk` seam methods** (RFC 022), up from five. The
+  five it did not drive — `worktree_status`, `refs`, `tags`, `block_state`, `change_token` — are each
+  now driven against real prikk binaries at both ends of the supported range, asserting what the
+  repository *is* (re-read after the fact) rather than that a string parsed. `change_token` is asserted
+  in both directions, because a token that never changes and a token that always changes both pass a
+  one-sided test. Two failure-classifier arms are now provoked live rather than cited: a genuinely held
+  lock, and the full-queue precondition that prikk 0.35 silently reclassified — so the next re-baseline
+  finds a class-word change without a person looking for it.
+
+  **Correcting 0.5.0's own entry:** that release's Security note said the suite covered *"four of the
+  nine surfaces"*. It understated itself twice — there are **ten** seam methods, not nine, and
+  `handshake` was driven all along by the version guard every test runs at both ends, so 0.5.0 shipped
+  with **five of ten**. The released section is left as it stands; the number to trust is this one.
+
+- **The fabricated-worktree-entry fix (0.5.0's `### Fixed`) is now pinned by a real binary**, not only
+  by a captured fixture: the suite provokes it at 0.38 with a real `prikk mv` of a path whose first
+  token is a change kind. It announces its skip at 0.28, where `prikk mv` does not exist — a test that
+  quietly does nothing at one end is the inert-suite failure this project has warned itself about twice.
+
+- **A failed suite run now says in one line whether the harness could not build a repository or stikk
+  got an answer wrong.** Every test builds a fixture first, so one broken precondition previously
+  produced one identical panic per test — the shape RFC 021's Windows break had.
+
+- **`actions/checkout` is pinned past the Node 20 deprecation** in every workflow.
+
+### Fixed
+
+- **`StikkError::LockConflict`'s documentation said it is presented as `FR-106`'s "another writer is
+  active".** It is presented as prikk's verbatim message in a banner, with no gloss, and has been since
+  RFC 017 narrowed the classifier. Documentation only; no behaviour changed.
+
 ## 0.5.0 — 2026-09-12
 
 **stikk is checked.** 0.4.0 was the release where stikk writes; this is the one where what it writes is

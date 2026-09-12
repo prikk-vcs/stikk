@@ -113,13 +113,49 @@ fn is_cross_ref_conflict(lowered: &str) -> bool {
 
 /// The four genuine lock/CAS conflicts among `PrikkError::LockConflict`'s ten 0.33.0 construction
 /// sites (RFC 017 F4) — matched on each one's own semantic clause, never the shared `lock conflict:`
-/// class prefix every one of the ten carries (six of which are preconditions, not locks). Two are
-/// captured live: `"{kind} lock already exists: {path}"` (provoked with a pre-placed lock file) and the
-/// cross-ref clause above. The other two — `"active lock belongs to a different repository authority"`
-/// (`lock.rs`) and `"ref CAS mismatch for …"` / `"… target ref changed during planning …"`
-/// (`refs.rs`/`rollback_draft.rs`) — are read from source with a file:line citation, not provoked: they
-/// need a second live session or an in-flight rollback draft respectively, neither of which stikk has a
-/// UI path to construct today. Flagged in the review request as source-read, not live-captured.
+/// class prefix every one of the ten carries (six of which are preconditions, not locks). That
+/// narrowing is what let the six preconditions survive prikk 0.35's reclassification of their prefix
+/// to `precondition not met:` without stikk noticing, and it is now asserted against real binaries at
+/// both ends of the range rather than only against fixtures (RFC 022 §4):
+/// `the_full_queue_precondition_classifies_refusal_at_both_ends` and
+/// `a_genuinely_held_lock_classifies_lock_conflict_at_both_ends` in `stikk-real-binary`.
+///
+/// **Each clause carries either provenance or a reachability note.** A citation without one is what
+/// RFC 017 was about, one step removed: a reachability reason is a claim about prikk that can stop
+/// being true, and when it does the arm becomes provokable and should be provoked. Re-check these at
+/// each re-baseline the way a fixture's provenance is re-checked.
+///
+/// - **`lock already exists`** — captured, and now provoked live at 0.28 and 0.38 through
+///   `CliBackend::commit` with a pre-placed `.prikk/active/<queue>/active.lock`
+///   (`"{kind} lock already exists: {path}"`). This is the only one of the four with a stikk UI path,
+///   and the case `FR-106`'s retry guidance is actually for.
+/// - **`belongs to a different repository authority`** — source-read, prikk 0.38.0
+///   `crates/prikk-store/src/lock.rs:54` (`ActiveLock::require_layout`). Unreachable through the CLI:
+///   it compares a held `ActiveLock`'s bound mutation-root handle against the layout it is being used
+///   with, and one prikk invocation binds both from one repository, so they always agree. It would
+///   become reachable if prikk grew a path carrying a lock across repositories inside a single process
+///   — an embedding host, or a multi-repository command. **stikk drives one repository per invocation
+///   and has no way to construct that.**
+/// - **`cas mismatch`** — source-read, prikk 0.38.0 `crates/prikk-store/src/refs.rs:467`
+///   (`Refs::ensure_current_matches`). **prikk documents their own guard as unable to fire through the
+///   publish path**, verbatim: *"this refusal is defence against a lock-discipline regression, not a
+///   live CAS gate on the only path that reaches it today … By the time this function re-reads and
+///   compares, the equality is already established; it cannot fail through that path. It stays because
+///   it is exactly what would catch a future change that broke that locking discipline."* **stikk keeps
+///   this arm for the same reason they keep the guard**: if that discipline ever regresses the message
+///   reaches stikk, and an arm deleted for being unreachable would classify a real CAS conflict as a
+///   bare refusal at exactly the moment it mattered.
+/// - **`changed during planning`** — source-read, prikk 0.38.0
+///   `crates/prikk-store/src/rollback_draft.rs:168`. Needs the target ref to move between
+///   `rollback-draft` planning its inverse and applying it — that is, an in-flight rollback draft.
+///   **stikk builds no rollback draft**: there is no Rollback flow, and `Prikk` exposes no method that
+///   runs `rollback-draft`. It becomes provokable the day one lands, and this note should be revisited
+///   with that increment rather than after it.
+///
+/// RFC 022's Q1 asked whether the three unprovoked arms should be deleted; the architect ruled they
+/// stay, on the evidence that `present()` adds **no gloss** to a `LockConflict` — it renders prikk's
+/// verbatim message in a banner — so an unreachable arm's worst case is a banner instead of a refusal
+/// card, with nothing fabricated either way. That ruling is why the cost of keeping them is a note.
 fn is_lock_conflict(lowered: &str) -> bool {
     lowered.contains("lock already exists")
         || lowered.contains("belongs to a different repository authority")

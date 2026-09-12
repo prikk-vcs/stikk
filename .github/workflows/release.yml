@@ -33,7 +33,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       prerelease: ${{ steps.check.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tag must equal the workspace version
         id: check
         run: |
@@ -57,7 +57,7 @@ jobs:
     needs: guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Read the MSRV from Cargo.toml, never restate it
         # RFC 020 §4/F1: this pin read 1.85 after the workspace MSRV moved to 1.88, which would have
         # failed a release at tag time — after the tag was pushed, mid-publish, version already spent.
@@ -83,7 +83,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Extract the CHANGELOG section
         run: |
           set -euo pipefail
@@ -117,7 +117,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Plan — which crates are not yet on crates.io
         id: plan
         env:
@@ -193,7 +193,7 @@ jobs:
       VERSION: ${{ needs.guard.outputs.version }}
       TARGET: ${{ matrix.target }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:

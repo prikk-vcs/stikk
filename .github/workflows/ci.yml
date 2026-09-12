@@ -9,7 +9,7 @@ jobs:
     name: fmt · clippy · test · rustdoc
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Read the MSRV from Cargo.toml, never restate it
         # RFC 020 §4: the number appeared in five places at once and three of them went stale the day
         # it moved. One source (`Cargo.toml`'s `rust-version`), read here — the same discipline

@@ -472,7 +472,7 @@ fn a_malformed_public_key_is_refused_at_the_boundary() {
 /// then rewritten, and an untracked symlink `link.txt -> readme.txt` created beside it (RFC 027 F1's
 /// measured shape). `prikk commit` on this tree prints `error: ` followed by exactly `link.txt`'s
 /// `refusal`.
-const WORKTREE_SYMLINK_JSON_0_41: &str = r#"{
+pub(in crate::cli_backend) const WORKTREE_SYMLINK_JSON_0_41: &str = r#"{
   "schema_version": "worktree-status-report-v1",
   "repository": "/tmp/repo/.prikk",
   "ref": "heads/main",
@@ -510,7 +510,7 @@ const WORKTREE_QUEUED_JSON_0_41: &str = r#"{
 
 /// `fixture` with `from` replaced once by `to` — and a failure, not a silent no-op, if `from` is not
 /// there, so a variant cannot quietly become a copy of the capture.
-fn variant(fixture: &str, from: &str, to: &str) -> String {
+pub(in crate::cli_backend) fn variant(fixture: &str, from: &str, to: &str) -> String {
     assert!(
         fixture.contains(from),
         "variant source text {from:?} is not in the fixture"

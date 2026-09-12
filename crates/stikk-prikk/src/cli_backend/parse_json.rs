@@ -224,7 +224,9 @@ pub(super) fn tags(text: &str) -> Result<Vec<RefEntry>> {
 }
 
 #[cfg(test)]
-mod tests;
+// `pub(super)` so `cli_backend`'s own tests can drive a captured report through `CliBackend` (review
+// C1 of RFC 027 B) rather than keep a second copy of the capture.
+pub(super) mod tests;
 
 /// The `key-status-v1` schema name (prikk ≥ 0.41).
 const KEY_STATUS_SCHEMA: &str = "key-status-v1";

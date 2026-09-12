@@ -387,9 +387,17 @@ impl Prikk for CliBackend {
                 Some(repo),
                 ["worktree-status", "--ref", reff, "--format", "json"],
             )?;
+            // **A document that parses is a report** (RFC 027 B, review C1). When stdout is JSON and the
+            // reader rejects it — a rule broken, an unknown schema — that is stikk refusing prikk's
+            // report, a version-skew condition (`UD-02`), and it surfaces as the reader's own
+            // environment error naming the rule. Sent to `classify` instead, it fell to a `Refusal`
+            // that prefers stderr: prikk's `worktree has changes against the baseline` on a dirty tree,
+            // the raw report on a clean one — the validation invisible exactly when it fired. Only
+            // when stdout carries no JSON document at all is the outcome classified, as before.
             return match parse_json::worktree_status(&stdout) {
                 Ok(status) => Ok(status),
-                Err(_shape) => Err(classify::classify(
+                Err(rejected) if crate::json::parse(&stdout).is_ok() => Err(rejected),
+                Err(_no_report) => Err(classify::classify(
                     &stdout,
                     &stderr,
                     RequestCategory::WorktreeAnalysis,

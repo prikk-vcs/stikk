@@ -548,3 +548,119 @@ fn run_capturing_keeps_stdout_on_a_nonzero_exit() {
     assert!(stdout.contains("the report"));
     assert!(stderr.contains("oops"));
 }
+
+/// A stand-in prikk **0.41.0** — so `worktree_status` asks for `--format json` — whose `worktree-status`
+/// writes `stdout` to stdout and `stderr` to stderr and exits `code`: prikk's own dirty-exit shape (RFC
+/// 008 finding 2). Both payloads are files the script `cat`s, so a JSON document never meets shell
+/// quoting. Returns the backend and its temp dir, which the caller must clean up.
+#[cfg(unix)]
+fn fake_worktree_status_backend(
+    name_suffix: &str,
+    stdout: &str,
+    stderr: &str,
+    code: u8,
+) -> (CliBackend, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!(
+        "stikk-worktree-status-{name_suffix}-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let out = dir.join("stdout.txt");
+    let err = dir.join("stderr.txt");
+    std::fs::write(&out, stdout).expect("write stdout payload");
+    std::fs::write(&err, stderr).expect("write stderr payload");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             case \"$1\" in\n\
+             --version)\n\
+             printf 'prikk 0.41.0\\n'\n\
+             ;;\n\
+             worktree-status)\n\
+             cat '{}'\n\
+             cat '{}' >&2\n\
+             exit {code}\n\
+             ;;\n\
+             esac\n",
+            out.display(),
+            err.display()
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (CliBackend::with_program(&script), dir)
+}
+
+/// **RFC 027 B, review C1: a report stikk rejects is stikk's error, not prikk refusing.**
+///
+/// The report here is prikk 0.41.0's captured refused-symlink JSON with **one** rule broken —
+/// `refused_count` disagreeing with the entries — derived by `variant()`, so every other byte is prikk's.
+/// Before the fix, the JSON branch sent the reader's error to `classify`, which fell to its default
+/// `Refusal` and preferred stderr: on a dirty tree the user saw prikk's `worktree has changes against the
+/// baseline` as a refusal, and on a clean tree the raw JSON. **A document that parses is a report**, so
+/// its rejection must surface as what it is — an environment error naming the rule (`UD-02`).
+#[cfg(unix)]
+#[test]
+fn a_json_report_that_breaks_a_rule_is_an_environment_error_not_prikks_refusal() {
+    let report = super::parse_json::tests::variant(
+        super::parse_json::tests::WORKTREE_SYMLINK_JSON_0_41,
+        r#""refused_count": 1"#,
+        r#""refused_count": 0"#,
+    );
+    for (case, stderr, code) in [
+        (
+            "dirty",
+            "error: worktree has changes against the baseline\n",
+            1,
+        ),
+        ("clean", "", 0),
+    ] {
+        let (backend, dir) = fake_worktree_status_backend(case, &report, stderr, code);
+        let result = retrying_transient_exec_busy(|| backend.worktree_status(&dir, "heads/main"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let err = result.expect_err("a report that breaks a rule must not parse");
+        assert_eq!(
+            err.class(),
+            "environment",
+            "{case}: stikk rejecting prikk's report is not prikk refusing: {err:?}"
+        );
+        let text = err.to_string();
+        assert!(
+            text.contains("refused_count"),
+            "{case}: the error names the rule: {text}"
+        );
+        assert!(
+            !text.contains("worktree has changes"),
+            "{case}: prikk's stderr is not the message: {text}"
+        );
+        assert!(
+            !text.contains("schema_version"),
+            "{case}: the raw report is not the message: {text}"
+        );
+    }
+}
+
+/// The other half of C1: **when stdout carries no JSON document, classification is exactly as before.**
+/// A ref prikk cannot find leaves stdout empty and says why on stderr; that is prikk's refusal, and it
+/// must still read as one, word for word.
+#[cfg(unix)]
+#[test]
+fn a_worktree_status_with_no_json_on_stdout_still_classifies_exactly_as_before() {
+    let stderr = "error: ref does not exist: heads/nope\n";
+    let (backend, dir) = fake_worktree_status_backend("no-json", "", stderr, 1);
+    let result = retrying_transient_exec_busy(|| backend.worktree_status(&dir, "heads/nope"));
+    let _ = std::fs::remove_dir_all(&dir);
+    let err = result.expect_err("no report, so no status");
+    let expected = classify::classify("", stderr, RequestCategory::WorktreeAnalysis);
+    assert_eq!(err.class(), expected.class());
+    assert_eq!(err.to_string(), expected.to_string());
+}

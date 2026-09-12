@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 023 | [Three things stikk has and does not show](./proposed/023-what-stikk-has-and-does-not-show.md) | The prikk 0.28 Windows refusal stikk can explain and doesn't; four glossary explanations written, tested and unreachable; the AUTHOR key id open since RFC 014. **And `C-S2` — a control the threat model's coverage table lists as existing — has no implementation** |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

@@ -223,8 +223,9 @@ a fabricated worktree entry was fixed.
 
 ## Next — carried into 0.7.0, in order
 
-1. **`refused paths:`** — prikk 0.41 names the paths a commit would refuse — with `FR-050`'s question
-   (should commit's preview *prevent* them?) decided alongside it.
+1. **`refused paths:` — landed on `main`** ([RFC 027](rfcs/done/027-what-commit-would-refuse.md)): commit is
+   unavailable, with prikk's reasons, when prikk would refuse a path; and the unsupported paths stikk had
+   never listed are listed. Ships in 0.7.0.
 2. **The Queue view** (`FR-051`) — prikk has enumerated queued patches since 0.35; the seal ceremony
    still says how many patches it will freeze but not which.
 3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
@@ -233,6 +234,12 @@ a fabricated worktree entry was fixed.
 5. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
    and a source-level test holds that only in the two modules that name those variables. A guard
    over every shipped crate would let the sentence say *enforced by test* without a qualifier.
+6. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
+   about 64 characters clips on an entry row, and prikk reports unsupported paths absolute.
+7. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
+   where the JSON path now reports stikk's own error.
+8. **An unknown ref reads as an all-untracked tree** — prikk 0.41 answers `worktree-status` for a ref that does
+   not exist with a full report against an empty baseline. stikk should say *no such ref*; prikk may be asked.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

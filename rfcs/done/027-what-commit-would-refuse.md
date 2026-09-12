@@ -1,13 +1,44 @@
 # RFC 027 — What commit would refuse: prikk's verdict, and the unsupported paths stikk never listed
 
-**Status.** **Accepted by the project owner 2026-09-13**, **Q1 ruled (b)**. Proposed the same day by the
-architect, the first increment of 0.7.0. **Delivered in two handoffs**: A — F0; B — decisions 2–7. Every finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from
+**Status.** **Done 2026-09-13** — A and B landed on `main`; a **0.7.0 candidate**. Accepted by the project owner
+the same day, **Q1 ruled (b)**; F6 ruled by the architect. Proposed the same day, the first increment of 0.7.0.
+**Delivered in two handoffs**: A — F0; B — decisions 2–7 and F6. Every finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from
 their tags the same day, not read from prikk's changelog or letters.
 **Tracks.** `FR-034`, `FR-050`, `UD-06`, `UD-02`, `C-T4d`, `C-T2b`, `C-T2c′`, `ER-02`, `ASM-2`, and
 RFC 014 decisions 1 and 5b.
 **Touches.** `stikk-prikk` (the `worktree-status` readers, `WorktreeStatus`, `WorktreeEntry`),
 `stikk-core` (`changes`, the commit preview), `stikk-tui` (the Changes view), `stikk-real-binary`,
 `requirements.md`.
+
+## Delivered
+
+**A — F0** (`303668b`). Every indented line in the scoped entries region is an entry, whatever its first word;
+`unsupported-path` maps to `Unsupported`, and the never-printed `unsupported` arm is gone. The two documented
+guarantees that an unknown kind is kept became true, tested through the parser. A count invariant runs over
+every `worktree-status` fixture, and the new fixtures are verbatim at 0.28.0 and 0.41.0 — recaptured
+independently in review and identical to the byte.
+
+**B — decisions 2–7 and F6** (`94a7315` the 0.7.0 bump, `040e5e7`, `557629e`, `2d82d39`). `worktree-status` is
+read as JSON at ≥ 0.39, with `authoring`/`refusal` held to their two legal pairs and `refused_count` checked
+against the entries; a report stikk rejects is stikk's own environment error, not prikk's refusal. Each entry
+carries a three-valued verdict, and `refused` is never zero when unreported. Queued-elsewhere is two distinct
+forms: prikk's sentence verbatim below 0.39 — now wrapped, so it is readable at 80 columns for the first time —
+and, at ≥ 0.39, stikk's labelled words from prikk's ref, checked clause by clause. The Changes view marks a
+refused entry with prikk's reason and keeps its kind, fits every count at 80 columns, counts what it lists, and
+shows an unmodelled kind's own word. **Commit is unavailable with prikk's reasons when prikk would refuse**,
+in an overlay with the measured next steps.
+
+**Measured on the matrix, against this RFC's own expectations:** `windows-latest` can create a symlink, so the
+symlink test runs there; macOS accepts a backslash in a file name, so A's test is live there.
+
+### Carried forward
+
+- **`unsupported-path` prevention** waits on prikk's answer to letter 010 (Q1 ruled (b), F5).
+- **The would-refuse overlay does not scroll**, and a path past about 64 characters clips on an entry row;
+  prikk reports unsupported paths absolute.
+- **The prose path's parse failures** (prikk < 0.39) still reach the refusal classifier.
+- **An unknown ref reads as an all-untracked tree**: prikk 0.41 answers `worktree-status` for a ref that does not
+  exist with a full report against an empty baseline.
 
 ## Summary
 

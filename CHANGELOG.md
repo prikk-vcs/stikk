@@ -4,6 +4,26 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Changed
+
+- **The validated prikk range is now `>= 0.28`, through `0.41.0`** (was `0.38.0`) — three releases, one
+  of which changed how prikk is configured at all. prikk 0.40 moved signing seeds out of the
+  environment into a key directory, so the real-binary suite's own fixture builder had to be rebuilt
+  before the re-baseline could measure anything: it now configures prikk with `PRIKK_*_SEED` at ≤ 0.39
+  and `PRIKK_*_SEED_FILE` at ≥ 0.40, keeping one key pair per test.
+
+- **`log`, `branch` and `tag` are read as JSON on prikk ≥ 0.39**, and as prose below. These three were
+  the entire remainder of stikk's prose parsing, and each had already cost a re-baseline. The schema
+  name in each report is checked before any field is read, so an unknown version is refused rather than
+  parsed hopefully. The prose readers and their fixtures stay for the 0.28 floor.
+
+- **Recorded, not yet acted on: prikk 0.41 marks the paths a commit would refuse.** `worktree-status`
+  now reports `refused paths: N` beside `unsupported paths:`, and marks each entry with
+  `[refused: <reason>]`. That answers a question carried since 0.4.1 — a worktree symlink used to read
+  as an ordinary untracked file and then block every commit with nothing connecting the two. stikk
+  shows prikk's per-path text verbatim, so the reason is on screen; the count is not parsed and the
+  Changes view does not yet treat those paths differently.
+
 ### Fixed
 
 - **Seal's confirmation now shows `Enter to confirm · Esc to cancel`.** It never has — not at 80×24,

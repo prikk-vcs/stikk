@@ -74,7 +74,17 @@ asked in letter 007 §2:
 > seed we would sign with can disagree without a refusal** — after it, they cannot.
 
 **So on a repository where the id is `unrecorded`, our confirmation names a key that may not be the one
-that signs.** Their guidance is the fix: *"Show the id when `binding` is `matches`; when it is
+that signs — and that is the *default* state, not an edge case.** Measured on a real 0.41.0, immediately
+after `prikk setup`:
+
+```json
+{"role":"author",     "usable":true, "key_id":"author",     "binding":"unrecorded"}
+{"role":"maintainer", "usable":true, "key_id":"maintainer", "binding":"matches"}
+```
+
+`setup` adopts the maintainer key, so maintainer binds at once; **no author signature exists yet, so
+every freshly created repository starts `unrecorded`.** The first commit a new user makes is exactly the
+case where our confirmation is least entitled to name a key plainly. Their guidance is the fix: *"Show the id when `binding` is `matches`; when it is
 `unrecorded`, say so."*
 
 This is the `C-T2c′` shape a third time: **an answer that is true, an answer that is unknown, and a UI
@@ -144,6 +154,40 @@ targets whatever is published when the work starts, and the suite's version guar
   who can commit — the same user-visible outcome as the bug, honestly labelled.
 - **(c) Wait for 0.41 to publish** and do one band. Cleanest code; leaves the live wrong picture standing
   for however long publication takes, which is not ours to schedule.
+
+### RULED by the architect, 2026-09-12, after the question stopped being one
+
+**prikk 0.41.0 published the same day.** I wrote that Q1 was the owner's *"because it is a schedule
+judgement, not a design one"*, and the schedule judgement has been made by events: the window (c) was
+waiting for has closed, and (a)'s band no longer has a window to serve.
+
+**What remains is design, and it is mine. Ruled: (b), refined — and this is a narrowing of my own
+lean.**
+
+**The band is exactly one version.** ≤ 0.39 the env model is correct; ≥ 0.41 `key status` answers;
+**0.40 alone** is the odd version out. And 0.40 was the latest published release for roughly a day
+before 0.41 superseded it.
+
+**So on prikk 0.40 exactly, stikk reports signing readiness as unknown, names the cause, and names the
+fix** — *prikk 0.40 moved seeds to a key directory and stikk cannot see them; prikk 0.41 answers this
+directly, upgrade to it* — rather than probing. Three reasons:
+
+1. **It is honest and actionable**, which is the standard, not merely honest. A user is told what stikk
+   cannot determine, why, and what makes it determinable. That is the shape stikk already uses below the
+   0.28 floor.
+2. **The probe's cost is permanent and its benefit is not.** `key public --role` needs its own parse and
+   its own fixtures, re-verified at every re-baseline from now on, to serve one version that was current
+   for a day.
+3. **It cannot mislead.** The probe answers presence but says nothing about `binding`, so a 0.40 user
+   would get a confident `[AUT ✓]` on a repository where the id may not be the key that signs — the
+   defect F4 exists to remove, reintroduced in the band built to avoid a different one.
+
+**What I am giving up, and it is real**: a user on 0.40 sees commit and seal unavailable when they could
+commit. That is a worse outcome than the probe would give them, and I am choosing it because the
+alternative is a permanently-maintained code path that can state something wrong. **The owner may
+overrule; if 0.40 turns out to have real users, (a) is still available and nothing here forecloses it.**
+
+### The original question, for the record
 
 **My lean is (a)**, and the reason is that (b) and (c) both accept a user being told the wrong thing —
 or nothing — about whether they can commit, on a published prikk, to save code we would delete later.

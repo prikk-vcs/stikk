@@ -98,7 +98,7 @@ jobs:
             printf 'Release %s.\n' "$ver" > RELEASE_NOTES.md
           fi
       - name: Create or update the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: stikk ${{ needs.guard.outputs.version }}
@@ -245,7 +245,7 @@ jobs:
           subject-path: ${{ env.ASSET }}
 
       - name: Upload to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: |

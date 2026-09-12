@@ -1146,3 +1146,204 @@ fn the_three_reports_parse_at_both_ends_json_above_prose_below() {
         );
     }
 }
+
+/// Read one role's `binding` string out of prikk's own raw `key status --format json`, so the test can
+/// assert what **prikk** says rather than a constant stikk agrees with itself about.
+///
+/// A deliberately small reader: this crate has no JSON dependency, and the product's reader is the
+/// thing under test, so it must not also be the witness.
+fn raw_binding(json: &str, role: &str) -> Option<String> {
+    let start = json.find(&format!("\"role\": \"{role}\""))?;
+    let tail = &json[start..];
+    let end = tail.find('}').unwrap_or(tail.len());
+    let object = &tail[..end];
+    let at = object.find("\"binding\": ")? + "\"binding\": ".len();
+    let value = object[at..].trim_start();
+    if value.starts_with("null") {
+        return None;
+    }
+    let value = value.strip_prefix('"')?;
+    Some(value[..value.find('"')?].to_string())
+}
+
+/// **`Prikk::readiness` against a real binary at both ends** — the method 0.6.0 is about, and until
+/// this test the only one of eleven the suite never asserted an answer from (it ran only as the gate
+/// inside `commit`/`seal`).
+///
+/// Every expectation below comes from prikk's letter 007 measurement and RFC 026 F4, not from a run of
+/// this test. **If the binary answers differently, that is a finding to report, not an assertion to
+/// adjust.**
+///
+/// **No assertion depends on a real key directory.** prikk 0.41 resolves one from `$XDG_CONFIG_HOME`,
+/// `$HOME/.config` or `%APPDATA%`, none of which `clear_env` touches, so an "unconfigured" assertion at
+/// the ceiling would pass on a CI runner and pass or fail by laptop elsewhere. The ceiling's `NotReady`
+/// case instead points `PRIKK_AUTHOR_SEED_FILE` at a path that does not exist: prikk's own rule is that
+/// a set override always wins even when its file is missing, so no key directory is consulted.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn readiness_reports_each_band_as_prikk_does_at_both_ends() {
+    use stikk_model::{Binding, RoleReadiness};
+
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+
+    // --- floor: the ≤ 0.39 band, environment presence ---
+    let floor = PrikkBin::floor();
+    let fixture = Fixture::build(&floor);
+    let backend = CliBackend::with_program(&floor.path);
+    fixture.set_author_env();
+    fixture.set_maintainer_env();
+    let report = backend
+        .readiness(fixture.repo())
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", floor.minor));
+    assert_eq!(
+        report.readiness.author,
+        RoleReadiness::Unknown,
+        "0.{}",
+        floor.minor
+    );
+    assert_eq!(
+        report.readiness.maintainer,
+        RoleReadiness::Unknown,
+        "0.{}",
+        floor.minor
+    );
+    // Deterministic on this band: it has no key directory to fall back to.
+    Fixture::clear_env();
+    let report = backend
+        .readiness(fixture.repo())
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", floor.minor));
+    assert_eq!(
+        report.readiness.author,
+        RoleReadiness::NotReady,
+        "0.{}",
+        floor.minor
+    );
+    assert_eq!(
+        report.readiness.maintainer,
+        RoleReadiness::NotReady,
+        "0.{}",
+        floor.minor
+    );
+    drop(fixture);
+
+    // --- ceiling: the ≥ 0.41 band, prikk's own `key status` ---
+    let ceiling = PrikkBin::ceiling();
+    let fixture = Fixture::build(&ceiling);
+    let backend = CliBackend::with_program(&ceiling.path);
+    fixture.set_author_env();
+    fixture.set_maintainer_env();
+
+    let raw_status = || {
+        let out = std::process::Command::new(&ceiling.path)
+            .args(["key", "status", "--format", "json"])
+            .current_dir(fixture.repo())
+            .output()
+            .unwrap_or_else(|e| panic!("0.{}: spawn key status: {e}", ceiling.minor));
+        assert!(
+            out.status.success(),
+            "0.{}: raw key status failed",
+            ceiling.minor
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    let report = backend
+        .readiness(fixture.repo())
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", ceiling.minor));
+    let raw = raw_status();
+    println!("0.{} key status, fresh fixture:\n{raw}", ceiling.minor);
+    assert_eq!(
+        report.readiness.author,
+        RoleReadiness::Known(Binding::Unrecorded),
+        "0.{}: a fresh repository has recorded no author signature",
+        ceiling.minor
+    );
+    assert_eq!(
+        report.readiness.maintainer,
+        RoleReadiness::Known(Binding::Matches),
+        "0.{}: the fixture adopted this maintainer key",
+        ceiling.minor
+    );
+    assert_eq!(
+        report.author.key_id.as_deref(),
+        Some(fixture.author_key_id())
+    );
+    assert_eq!(report.author.key_id_source.as_deref(), Some("environment"));
+    // What prikk itself says, beside what stikk read.
+    assert_eq!(
+        raw_binding(&raw, "author").as_deref(),
+        Some("unrecorded"),
+        "{raw}"
+    );
+    assert_eq!(
+        raw_binding(&raw, "maintainer").as_deref(),
+        Some("matches"),
+        "{raw}"
+    );
+
+    // One raw commit as the author binds the id.
+    let out = std::process::Command::new(&ceiling.path)
+        .args([
+            "commit",
+            "--from-worktree",
+            "--ref",
+            "heads/main",
+            "-m",
+            "bind the author id",
+        ])
+        .current_dir(fixture.repo())
+        .output()
+        .unwrap_or_else(|e| panic!("0.{}: spawn commit: {e}", ceiling.minor));
+    assert!(
+        out.status.success(),
+        "0.{}: raw commit failed: {}",
+        ceiling.minor,
+        String::from_utf8_lossy(&out.stderr).trim()
+    );
+    let report = backend
+        .readiness(fixture.repo())
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", ceiling.minor));
+    let raw = raw_status();
+    println!("0.{} key status, after one commit:\n{raw}", ceiling.minor);
+    assert_eq!(
+        report.readiness.author,
+        RoleReadiness::Known(Binding::Matches),
+        "0.{}: a signature now records this id",
+        ceiling.minor
+    );
+    assert_eq!(
+        raw_binding(&raw, "author").as_deref(),
+        Some("matches"),
+        "{raw}"
+    );
+
+    // `NotReady` at the ceiling, deterministically: a set override that points at nothing.
+    let absent = fixture.repo().with_file_name("absent-author.seed");
+    // SAFETY: same discipline as `Fixture::set_*_env` — the caller holds `ENV_LOCK`, and
+    // `Fixture::clear_env` below removes this variable (it clears all six) before the lock is released.
+    #[allow(unsafe_code)]
+    unsafe {
+        std::env::set_var("PRIKK_AUTHOR_SEED_FILE", &absent);
+    }
+    let report = backend.readiness(fixture.repo());
+    let raw = raw_status();
+    Fixture::clear_env();
+    let report = report.unwrap_or_else(|e| panic!("0.{}: readiness: {e}", ceiling.minor));
+    println!("0.{} key status, missing override:\n{raw}", ceiling.minor);
+    assert_eq!(
+        report.readiness.author,
+        RoleReadiness::NotReady,
+        "0.{}",
+        ceiling.minor
+    );
+    assert_eq!(
+        report.author.reason.as_deref(),
+        Some("override-missing"),
+        "0.{}: prikk's reason, verbatim",
+        ceiling.minor
+    );
+    assert!(!absent.exists(), "nothing was written at the override path");
+}

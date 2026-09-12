@@ -130,8 +130,12 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
 /// Review v2, C2: this test used to also assert a wrapped note's tail (`"plan-first checkout."`), pinning
 /// a `.wrap(...)` that made the panel *less* reachable overall — at 80×24 it left exactly one term
 /// (`HEAD`) visible, because wrapping without scroll turns truncated-but-present into absent. The wrap
-/// was reverted; that assertion is not replaced with a weaker one, since the truncation it would have to
-/// assert around is now a known, recorded gap (filed for 0.5.0 with scroll), not a property to pin.
+/// was reverted and the gap recorded.
+///
+/// **That gap is closed** (RFC 023 F2): wrap and scroll landed together, and reachability is pinned by
+/// the `80×24` tests further down this file rather than by a tail assertion here. This test keeps doing
+/// its one job — the column padding — and deliberately does not also assert wrapped content, which is
+/// what made it fragile the first time.
 #[test]
 fn glossary_pads_the_longest_term_without_colliding_into_its_prikk_column() {
     let text = draw(&Overlay::Glossary {

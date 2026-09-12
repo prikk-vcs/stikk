@@ -23,7 +23,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use stikk_core::{
-    ConfirmationSummary, KeyClaim, NextStep, RefusalCard, RefusalRecord, glossary, palette,
+    ConfirmationSummary, KeyClaim, NextStep, RefusalCard, RefusalRecord, RefusedPath, glossary,
+    palette,
 };
 use stikk_model::{Capability, Tier};
 
@@ -90,6 +91,19 @@ pub enum Overlay {
         next_steps: Vec<NextStep>,
         /// The highlighted next-step.
         cursor: usize,
+    },
+    /// **Commit is unavailable because prikk reports it would refuse** (RFC 027 decision 5; prikk ≥
+    /// 0.39) — [`stikk_core::CommitPreviewOutcome::WouldRefuse`].
+    ///
+    /// Drawn in the refusal card's visual language — prikk's reasons verbatim and inert under quote
+    /// bars, stikk's next steps below — but deliberately **not** a [`Self::Refusal`]: nothing was
+    /// attempted, so there is no refusal to present, and this never passes through `present()` (RFC 014
+    /// decided a blocked preview is not an error). **Not the shell banner either**, which holds one line
+    /// and cannot list a path and a reason per entry at 80 columns. No selection: the next steps are
+    /// things to do in the worktree, not actions stikk can take.
+    CommitWouldRefuse {
+        /// The entries prikk would refuse, each with prikk's reason.
+        paths: Vec<RefusedPath>,
     },
     /// The command palette (TU-07): a filter and the highlighted match.
     Palette {
@@ -175,6 +189,7 @@ impl Overlay {
         match self {
             Self::Glossary { .. } => " Glossary & Help ",
             Self::Loading { .. } => " Loading ",
+            Self::CommitWouldRefuse { .. } => " Commit unavailable ",
             Self::Operations { .. } => " Background operations ",
             Self::RefPicker { .. } => " Choose ref ",
             Self::Refusal { .. } => " prikk refused ",
@@ -206,6 +221,9 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
             next_steps,
             cursor,
         } => render_stale(operation, gloss, next_steps, *cursor, palette, frame, area),
+        Overlay::CommitWouldRefuse { paths } => {
+            render_commit_would_refuse(paths, palette, frame, area);
+        }
         Overlay::Palette {
             filter,
             cursor,
@@ -594,6 +612,98 @@ fn render_stale(
     }
     Panel {
         title: " stikk stopped ",
+        width: REFUSAL_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.warn),
+    }
+    .render(frame, area);
+}
+
+/// Render [`Overlay::CommitWouldRefuse`] (RFC 027 decision 5).
+///
+/// Three parts, each in one voice:
+/// 1. **stikk's statement** of why commit is unavailable — stikk's words, above everything prikk said.
+/// 2. **Each refused entry**: its kind and path (inert, hard-wrapped so a long path stays whole), then
+///    `prikk reported —` and prikk's reason verbatim, under the quote bar on every wrapped row, exactly
+///    as the refusal card quotes prikk (RFC 026 Handoff C §1).
+/// 3. **stikk's next steps** ([`stikk_core::would_refuse_next_steps`]) in the panel's action region,
+///    which [`Panel`] never clips while a row remains — when there are more refused paths than rows,
+///    the prose is what gives way, and the title says so.
+fn render_commit_would_refuse(
+    paths: &[RefusedPath],
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose: Vec<Line> = Vec::new();
+    for row in wrap_indented(
+        "Commit is unavailable: prikk reports that it would refuse the paths below, and one refused \
+         path refuses the whole commit. Nothing was armed.",
+        REFUSAL_TEXT_WIDTH,
+        "  ",
+    ) {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.fg),
+        )));
+    }
+    prose.push(Line::from(""));
+
+    for path in paths {
+        let heading = format!("{} {}", inert(path.kind.label()), inert(&path.path));
+        for row in wrap_indented(&heading, REFUSAL_TEXT_WIDTH, "  ") {
+            prose.push(Line::from(Span::styled(
+                row,
+                Style::default().add_modifier(Modifier::BOLD),
+            )));
+        }
+        prose.push(Line::from(Span::styled(
+            "  prikk reported —",
+            Style::default().fg(palette.dim),
+        )));
+        let reason = inert(&path.reason);
+        for row in wrap_indented(&reason, REFUSAL_TEXT_WIDTH, QUOTE_INDENT) {
+            prose.push(Line::from(vec![
+                Span::styled(QUOTE_BAR, Style::default().fg(palette.warn)),
+                Span::styled(
+                    row.get(QUOTE_INDENT.len()..)
+                        .unwrap_or_default()
+                        .to_string(),
+                    Style::default().fg(palette.fg),
+                ),
+            ]));
+        }
+        prose.push(Line::from(""));
+    }
+
+    let mut actions: Vec<Line> = vec![Line::from(Span::styled(
+        "  What you can do:",
+        Style::default().fg(palette.dim),
+    ))];
+    for step in stikk_core::would_refuse_next_steps(paths) {
+        for (i, row) in wrap_indented(&step, REFUSAL_TEXT_WIDTH, "    ")
+            .into_iter()
+            .enumerate()
+        {
+            let text = if i == 0 {
+                format!("  · {}", row.get(4..).unwrap_or_default())
+            } else {
+                row
+            };
+            actions.push(Line::from(Span::styled(
+                text,
+                Style::default().fg(palette.fg),
+            )));
+        }
+    }
+    actions.push(Line::from(Span::styled(
+        "  Esc: close",
+        Style::default().fg(palette.dim),
+    )));
+
+    Panel {
+        title: " Commit unavailable ",
         width: REFUSAL_WIDTH,
         prose,
         actions,

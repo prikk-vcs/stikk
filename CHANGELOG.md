@@ -4,6 +4,49 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position; these land in 0.7.0:
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | `WorktreeEntry` gains `authoring: Authoring` — prikk's per-entry commit verdict: authored, refused with prikk's reason, or unreported below prikk 0.39 |
+| `stikk-prikk` | `WorktreeStatus` gains `refused: Option<u64>` — `None` below prikk 0.39, never `Some(0)` |
+| `stikk-prikk` | `WorktreeStatus::queued_elsewhere` changes type from `Option<String>` to `Option<QueuedElsewhere>` — prikk's sentence (`Note`) below 0.39, or prikk's queued ref (`Ref`) at ≥ 0.39 |
+| `stikk-core` | `ChangeEntry` gains `authoring`; `ChangesView` gains `refused` and its `queued_elsewhere` changes type the same way |
+| `stikk-core` | `CommitPreviewOutcome` gains a variant, `WouldRefuse(Vec<RefusedPath>)` — breaking for an exhaustive `match` |
+| `stikk-tui` | `Overlay` gains a variant, `CommitWouldRefuse { paths }` — breaking for an exhaustive `match` |
+
+All four structs are constructed with struct literals by anyone scripting a `NullBackend` or rendering a
+view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `Authoring`,
+`QueuedElsewhere` and `RefusedPath` types; `ChangeKind::label`, `queued_elsewhere_clauses` and
+`would_refuse_next_steps`; `NullBackend::with_queued_elsewhere_ref`; and their re-exports from
+`stikk-core`. No public function, trait method or re-export was removed or changed signature, and the
+`Prikk` trait is unchanged.
+
+### Added
+
+- **An entry commit would refuse is marked refused in the Changes view**, with prikk's reason verbatim
+  beside it and its kind still shown, and the header counts refusals. prikk ≥ 0.39 reports this per
+  entry, from the same classifier `commit` uses. Below 0.39 the view says the verdict is not reported —
+  never "0" (RFC 027).
+- **Commit is unavailable, with prikk's reasons, when prikk says it would refuse.** One refused entry
+  refuses the whole commit, so at prikk ≥ 0.39 stikk no longer offers a commit prikk has already said it
+  will refuse. It lists each refused path with prikk's reason, and says what to do: remove or replace the
+  path, or list it in `.prikkignore` — which is then part of that commit. Below 0.39 commit is offered as
+  before, and prikk's refusal comes back verbatim (RFC 027).
+
+### Changed
+
+- **`worktree-status` is read as JSON at prikk ≥ 0.39**, like `log`, `branch` and `tag` already are. The
+  report is held to its schema: an authoring verdict prikk never emits, or a refused count that
+  disagrees with the entries, is refused rather than guessed at (RFC 027).
+- **At prikk ≥ 0.39 the queued-elsewhere warning is in stikk's words**, labelled as stikk's, because
+  prikk's JSON report carries only the queued ref. It keeps every claim prikk's own sentence makes — the
+  queue holds unsealed patches for that ref, that is real committed work not shown here, an untracked
+  entry may be exactly that work, and nothing should be deleted on this view alone — and a test holds it
+  to that sentence clause by clause. Below 0.39 prikk's sentence is still shown verbatim (RFC 027 F6).
+
 ### Fixed
 
 - **The Changes view lists unsupported paths.** Since 0.1.0 it counted them in its header and showed
@@ -11,6 +54,11 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   `unsupported`, a word prikk has never printed, so every such line was dropped. Those paths also block
   commit, and prikk's reason is now visible beside each one. An entry of any kind stikk does not model
   is now listed too, rather than dropped (RFC 027 F0).
+- **Every count in the Changes header is on screen at 80 columns.** The counts line used to clip
+  `unsupported N` — the one number F0 is about — and now takes two rows. The headline counts the entries
+  listed, so it matches the list (RFC 027).
+- **An entry of a kind stikk does not model shows prikk's own word** in its tag, rather than stikk's
+  `changed` (RFC 027).
 
 ## 0.6.0 — 2026-09-13
 

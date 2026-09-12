@@ -577,6 +577,7 @@ impl App {
             Some(
                 Overlay::Operations { .. }
                 | Overlay::Loading { .. }
+                | Overlay::CommitWouldRefuse { .. }
                 | Overlay::CommitResult { .. }
                 | Overlay::SealResult { .. },
             )
@@ -727,6 +728,7 @@ impl App {
             Some(
                 Overlay::Operations { .. }
                 | Overlay::Loading { .. }
+                | Overlay::CommitWouldRefuse { .. }
                 | Overlay::Confirmation { .. }
                 | Overlay::CommitMessage { .. }
                 | Overlay::CommitResult { .. }
@@ -764,6 +766,7 @@ impl App {
                 Overlay::Glossary { .. }
                 | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
+                | Overlay::CommitWouldRefuse { .. }
                 | Overlay::Confirmation { .. }
                 | Overlay::CommitMessage { .. }
                 | Overlay::CommitResult { .. }
@@ -1007,6 +1010,14 @@ impl App {
             Ok(CommitPreviewOutcome::Blocked(reason)) => {
                 self.overlays.remove(index);
                 self.banner = Some(reason);
+            }
+            // RFC 027 decision 5: prikk says commit would refuse. In place of the loading placeholder,
+            // as an overlay — never the one-line banner above, which cannot hold a path and prikk's
+            // reason for each — and never through `present()`: nothing was attempted.
+            Ok(CommitPreviewOutcome::WouldRefuse(paths)) => {
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::CommitWouldRefuse { paths };
+                }
             }
             Ok(CommitPreviewOutcome::Ready { preview: _, token }) => {
                 let Some(PendingCommit::AwaitingPreview { reff, message }) = pending else {

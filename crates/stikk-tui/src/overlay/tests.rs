@@ -1168,6 +1168,9 @@ fn coverage(overlay: &Overlay) -> Coverage {
         Overlay::RefPicker { refs, .. } => Coverage::Selectable(refs.len()),
         Overlay::Refusal { card, .. } => Coverage::Selectable(card.next_steps.len()),
         Overlay::Stale { next_steps, .. } => Coverage::Selectable(next_steps.len()),
+        // A content card: the refused paths are prose, the next steps are text, nothing is selected
+        // (RFC 027 decision 5). One entry per refused path, so it grows with the worktree.
+        Overlay::CommitWouldRefuse { .. } => Coverage::NoSelection,
         Overlay::Palette { filter, .. } => {
             Coverage::Selectable(stikk_core::palette::matching(filter).len())
         }
@@ -1221,6 +1224,24 @@ fn cases() -> Vec<Case> {
     let long_note = "note: a long trailing note from prikk, repeated so that this card cannot fit \
                      inside an eighty by twenty-four terminal without either scrolling or saying so";
     vec![
+        Case {
+            name: "CommitWouldRefuse",
+            // Twelve refused symlinks, each reason in prikk 0.41's own shape — far more than 80×24 holds.
+            build: Box::new(|_| Overlay::CommitWouldRefuse {
+                paths: (0..12)
+                    .map(|i| stikk_core::RefusedPath {
+                        kind: stikk_core::ChangeKind::Untracked,
+                        path: format!("links/link-{i:02}.txt"),
+                        reason: format!(
+                            "precondition not met: links/link-{i:02}.txt: worktree symlink \
+                             authoring is out of scope"
+                        ),
+                    })
+                    .collect(),
+            }),
+            last_row: "links/link-11.txt: worktree symlink".to_string(),
+            entry: None,
+        },
         Case {
             name: "Glossary",
             build: Box::new(|_| Overlay::Glossary {
@@ -1528,15 +1549,15 @@ fn the_gate_is_fed_content_that_actually_overflows() {
 fn the_gate_covers_every_overlay_variant() {
     assert_eq!(
         cases().len(),
-        13,
-        "Overlay has thirteen variants and the gate must have one case each. If a variant was added, \
+        14,
+        "Overlay has fourteen variants and the gate must have one case each. If a variant was added, \
          `coverage()` will already have refused to compile; add its case to `cases()` too — built \
          oversized, or the new case asserts nothing."
     );
     let mut names: Vec<&str> = cases().iter().map(|c| c.name).collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 13, "duplicate case names: {names:?}");
+    assert_eq!(names.len(), 14, "duplicate case names: {names:?}");
 }
 
 // --- RFC 024 F1/F2/F5: the three shipped defects, each pinned by its own named test -------------
@@ -1855,5 +1876,66 @@ fn continuation_rows_are_styled_like_the_first() {
     assert!(
         checked >= 3,
         "expected at least three quoted rows, saw {checked}"
+    );
+}
+
+// RFC 027 decision 5 — commit unavailable because prikk would refuse.
+
+fn would_refuse(path: &str) -> Overlay {
+    Overlay::CommitWouldRefuse {
+        paths: vec![stikk_core::RefusedPath {
+            kind: stikk_core::ChangeKind::Untracked,
+            path: path.to_string(),
+            reason: format!(
+                "precondition not met: {path}: worktree symlink authoring is out of scope"
+            ),
+        }],
+    }
+}
+
+#[test]
+fn the_would_refuse_card_quotes_prikk_and_gives_stikks_steps_at_80_columns() {
+    let screen = draw_at(&would_refuse("link.txt"), 80, 24);
+    println!("{screen}");
+    assert!(screen.contains("Commit unavailable"), "{screen}");
+    // stikk's statement, then the entry with its kind, then prikk's words under the quote bar.
+    assert!(screen.contains("untracked link.txt"), "{screen}");
+    assert!(screen.contains("prikk reported —"), "{screen}");
+    // On the raw screen: `flattened` strips `│`, so it cannot tell a quote bar from a border.
+    assert!(
+        screen.contains("│ precondition not met: link.txt"),
+        "prikk's reason begins under the quote bar:\n{screen}"
+    );
+    let flat = flattened(&screen);
+    assert!(
+        flat.contains(&flattened(
+            "precondition not met: link.txt: worktree symlink authoring is out of scope"
+        )),
+        "prikk's reason is whole across its wrapped rows:\n{screen}"
+    );
+    // The measured next steps, including the clause that makes the `.prikkignore` step true.
+    assert!(
+        flat.contains(&flattened("Remove or replace each path above")),
+        "{screen}"
+    );
+    assert!(
+        flat.contains(&flattened(
+            ".prikkignore — that file is then part of this commit"
+        )),
+        "{screen}"
+    );
+    assert!(!screen.contains("not the file's real name"), "{screen}");
+    // stikk's own words are never under the quote bar.
+    assert!(!screen.contains("│ Remove"), "{screen}");
+    assert!(!screen.contains("│ Or list"), "{screen}");
+}
+
+#[test]
+fn the_would_refuse_card_cautions_about_a_substituted_name() {
+    let screen = draw_at(&would_refuse("bad\u{FFFD}name.txt"), 80, 24);
+    println!("{screen}");
+    assert!(
+        flattened(&screen).contains(&flattened("is not the file's real name")),
+        "{screen}"
     );
 }

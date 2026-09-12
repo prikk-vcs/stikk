@@ -1166,6 +1166,7 @@ dependencies = [
 name = "stikk-real-binary"
 version = "0.7.0"
 dependencies = [
+ "stikk-core",
  "stikk-model",
  "stikk-prikk",
 ]

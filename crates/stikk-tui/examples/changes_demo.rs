@@ -27,7 +27,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use stikk_prikk::{NullBackend, Orientation, WorktreeEntry, WorktreeStatus};
+use stikk_prikk::{Authoring, NullBackend, Orientation, WorktreeEntry, WorktreeStatus};
 use stikk_state::Config;
 
 fn entry(kind: &str, path: &str, note: &str) -> WorktreeEntry {
@@ -35,6 +35,8 @@ fn entry(kind: &str, path: &str, note: &str) -> WorktreeEntry {
         kind: kind.to_string(),
         path: path.to_string(),
         note: note.to_string(),
+        // prikk 0.28.1 reports no commit verdict (RFC 027 decision 3).
+        authoring: Authoring::Unreported,
     }
 }
 
@@ -64,6 +66,7 @@ fn main() -> ExitCode {
             modified: 1,
             untracked: 2,
             unsupported: 0,
+            refused: None,
             entries: vec![
                 entry(
                     "modified",

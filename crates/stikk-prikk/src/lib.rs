@@ -181,8 +181,42 @@ pub struct WorktreeEntry {
     pub kind: String,
     /// The repo-relative worktree path.
     pub path: String,
-    /// prikk's own one-line description of why the path is listed (preserved verbatim, NFR-I03).
+    /// prikk's own one-line description of why the path is listed (preserved verbatim, NFR-I03). At
+    /// prikk ≥ 0.39 this is JSON's `detail`, which carries no `[refused: …]` suffix — the verdict is in
+    /// [`Self::authoring`] instead.
     pub note: String,
+    /// Whether prikk's `commit` would author this entry, as prikk states it (RFC 027 decision 3).
+    pub authoring: Authoring,
+}
+
+/// prikk's verdict on one worktree entry: would `commit` author it? (RFC 027 decision 3; prikk ≥ 0.39.)
+///
+/// **Three states, because the third is real.** Below prikk 0.39 no verdict is reported, and "no entry
+/// is refused" is not knowable there — only unreported. `Unreported` is never `Authored` (`C-T2c′`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Authoring {
+    /// prikk reports that `commit` would author this entry.
+    Authored,
+    /// prikk reports that `commit` would refuse this entry, and the whole commit with it. The reason is
+    /// prikk's, verbatim — the same string `commit` prints (measured at 0.41) — and is never classified.
+    Refused(String),
+    /// This prikk does not report a verdict (below 0.39).
+    Unreported,
+}
+
+/// prikk's report that the active WAL holds queued patches for a **different** ref than the one asked
+/// about (RFC 009 F4; RFC 027 F6).
+///
+/// **Two different things, kept apart** rather than one string meaning either (`C-T2c′`): prikk's own
+/// sentence, which only the prose report carries, and prikk's queued ref, which is all the JSON report
+/// carries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueuedElsewhere {
+    /// prikk's warning sentence, verbatim (prose, below prikk 0.39). Never paraphrased (`ER-02`).
+    Note(String),
+    /// The ref the queued patches belong to, from `queued_elsewhere` (JSON, prikk ≥ 0.39), validated as
+    /// a ref name at the parse boundary. A front-end words the warning itself and labels it as its own.
+    Ref(String),
 }
 
 /// Worktree-vs-baseline status for a ref, from `prikk worktree-status` (design FR-034; RFC 008).
@@ -207,13 +241,17 @@ pub struct WorktreeStatus {
     pub untracked: u64,
     /// Paths prikk cannot represent against the baseline.
     pub unsupported: u64,
+    /// How many entries prikk reports `commit` would refuse (RFC 027 decision 3): `Some(n)` from prikk
+    /// ≥ 0.39's JSON report, checked there against the entries themselves; **`None` below 0.39, never
+    /// `Some(0)`** — a report that cannot say is not a report of zero (`C-T2c′`).
+    pub refused: Option<u64>,
     /// The per-path entries (the counts above summarize these).
     pub entries: Vec<WorktreeEntry>,
-    /// prikk's own warning, verbatim, when the active WAL holds queued patches for a **different** ref
-    /// than the one asked about: paths listed "untracked" here may be committed-but-unsealed work
-    /// (RFC 009 F4). `None` when prikk did not emit it. Never paraphrased (ER-02) — stikk transports
-    /// this warning, it does not restate it.
-    pub queued_elsewhere: Option<String>,
+    /// Present when the active WAL holds queued patches for a **different** ref than the one asked
+    /// about: paths listed "untracked" here may be committed-but-unsealed work (RFC 009 F4). `None`
+    /// when prikk did not report it. Below 0.39 it is prikk's sentence verbatim; at ≥ 0.39 it is prikk's
+    /// queued ref (RFC 027 F6) — see [`QueuedElsewhere`].
+    pub queued_elsewhere: Option<QueuedElsewhere>,
 }
 
 /// One file-level change `prikk commit` recorded, from its per-path output lines (design `FR-050`;

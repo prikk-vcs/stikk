@@ -890,6 +890,225 @@ fn f0_an_unsupported_path_is_listed_as_prikk_counts_it() {
     }
 }
 
+/// Create `link` as a symlink to `target`, or say why not — **measured, not assumed** (RFC 027 decision
+/// 6): creating a symlink on Windows needs a privilege a CI runner may or may not hold.
+fn make_symlink(target: &str, link: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link)
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_file(target, link)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (target, link);
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
+}
+
+/// **RFC 027 decisions 3, 5 and 6, against real binaries at both ends**: an untracked symlink beside an
+/// ordinary modification — the tree prikk 0.41 refuses to commit.
+///
+/// - **≥ 0.39**: the entry is `Refused`, and **its reason equals what `prikk commit` prints for this same
+///   tree** — compared against a real commit attempt made here, not a literal. `refused` is `Some(1)`,
+///   commit's preview is unavailable carrying that path, and once the symlink is gone the preview is
+///   ready.
+/// - **Below 0.39**: every entry is `Unreported`, `refused` is `None`, the preview offers commit exactly
+///   as before, and `commit` is refused with prikk's own message, verbatim.
+///
+/// **A platform that cannot create the symlink is announced as a skip**, with the OS error, rather than
+/// assumed either way.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn a_refused_symlink_is_reported_prevented_and_matches_commits_own_refusal() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "baseline")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+
+        std::fs::write(repo.join("readme.txt"), "hello again\n")
+            .unwrap_or_else(|e| panic!("0.{}: modify: {e}", bin.minor));
+        let link = repo.join("link.txt");
+        if let Err(e) = make_symlink("readme.txt", &link) {
+            eprintln!(
+                "RFC 027: SKIPPED at 0.{} — this platform could not create a symlink ({e}), so the \
+                 refused-symlink tree cannot be built here. Announced rather than silent (RFC 022 §3).",
+                bin.minor
+            );
+            continue;
+        }
+
+        let status = backend
+            .worktree_status(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: worktree_status: {e}", bin.minor));
+
+        // prikk's own commit on this very tree — the string every verdict is compared against.
+        fixture.set_author_env();
+        let attempt = backend.commit(&repo, "heads/main", "would be refused");
+        let preview = stikk_core::commit_preview(&backend, &repo, "heads/main");
+        Fixture::clear_env();
+        let message = match attempt {
+            Err(StikkError::Refusal { message }) => message,
+            other => panic!(
+                "0.{}: expected prikk to refuse the commit, got {other:?}",
+                bin.minor
+            ),
+        };
+
+        if bin.minor >= 39 {
+            assert_eq!(status.refused, Some(1), "0.{}: {status:?}", bin.minor);
+            let entry = status
+                .entries
+                .iter()
+                .find(|e| e.path == "link.txt")
+                .unwrap_or_else(|| panic!("0.{}: link.txt not listed: {status:?}", bin.minor));
+            let stikk_prikk::Authoring::Refused(reason) = &entry.authoring else {
+                panic!("0.{}: link.txt is not refused: {entry:?}", bin.minor);
+            };
+            // prikk prints `error: <reason>`; the verdict is that reason, exactly.
+            assert_eq!(
+                message.strip_prefix("error: "),
+                Some(reason.as_str()),
+                "0.{}: worktree-status's verdict and commit's own refusal disagree",
+                bin.minor
+            );
+            let readme = status
+                .entries
+                .iter()
+                .find(|e| e.path == "readme.txt")
+                .unwrap_or_else(|| panic!("0.{}: readme.txt not listed", bin.minor));
+            assert_eq!(readme.authoring, stikk_prikk::Authoring::Authored);
+
+            match preview {
+                Ok(stikk_core::CommitPreviewOutcome::WouldRefuse(paths)) => assert_eq!(
+                    paths,
+                    vec![stikk_core::RefusedPath {
+                        kind: stikk_core::ChangeKind::Untracked,
+                        path: "link.txt".to_string(),
+                        reason: reason.clone(),
+                    }],
+                    "0.{}",
+                    bin.minor
+                ),
+                other => panic!("0.{}: expected WouldRefuse, got {other:?}", bin.minor),
+            }
+
+            // Remove the one refused path, and commit is available again.
+            std::fs::remove_file(&link).unwrap_or_else(|e| panic!("0.{}: rm: {e}", bin.minor));
+            fixture.set_author_env();
+            let after = stikk_core::commit_preview(&backend, &repo, "heads/main");
+            Fixture::clear_env();
+            assert!(
+                matches!(after, Ok(stikk_core::CommitPreviewOutcome::Ready { .. })),
+                "0.{}: with the symlink removed the preview should be ready, got {after:?}",
+                bin.minor
+            );
+        } else {
+            assert_eq!(
+                status.refused, None,
+                "0.{}: unreported, never zero",
+                bin.minor
+            );
+            assert!(
+                status
+                    .entries
+                    .iter()
+                    .all(|e| e.authoring == stikk_prikk::Authoring::Unreported),
+                "0.{}: {:?}",
+                bin.minor,
+                status.entries
+            );
+            // Offered exactly as before: stikk infers no refusal prikk has not stated.
+            assert!(
+                matches!(preview, Ok(stikk_core::CommitPreviewOutcome::Ready { .. })),
+                "0.{}: expected Ready, got {preview:?}",
+                bin.minor
+            );
+            // And prikk's refusal, verbatim through the seam.
+            assert_matches_fixture(
+                &format!("commit refused symlink @ 0.{}", bin.minor),
+                "error: integrity error: worktree authoring: unsupported symlink authoring: \
+                 link.txt: worktree symlink authoring is out of scope",
+                &message,
+            );
+        }
+    }
+}
+
+/// **RFC 027 F6 against real binaries**: prikk's queued-elsewhere report arrives as prikk's own sentence
+/// below 0.39, where stikk reads prose, and as the typed ref at 0.39 and above, where it reads JSON.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn queued_elsewhere_arrives_as_prikks_note_below_0_39_and_as_its_ref_above() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        // One unsealed patch queued for heads/main; then ask about heads/other.
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "queued patch")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        Fixture::clear_env();
+
+        let status = backend
+            .worktree_status(&repo, "heads/other")
+            .unwrap_or_else(|e| panic!("0.{}: worktree_status: {e}", bin.minor));
+
+        match (bin.minor >= 39, &status.queued_elsewhere) {
+            (true, Some(stikk_prikk::QueuedElsewhere::Ref(queued))) => {
+                assert_eq!(queued, "heads/main", "0.{}", bin.minor);
+                assert_eq!(status.refused, Some(0), "0.{}", bin.minor);
+            }
+            (false, Some(stikk_prikk::QueuedElsewhere::Note(note))) => {
+                assert!(
+                    note.starts_with(
+                        "note: the active WAL has queued (unsealed) patches for heads/main, not \
+                         heads/other"
+                    ),
+                    "0.{}: {note:?}",
+                    bin.minor
+                );
+                assert!(
+                    note.contains("do not delete based on this report alone"),
+                    "0.{}: {note:?}",
+                    bin.minor
+                );
+            }
+            (_, other) => panic!(
+                "0.{}: expected the {} form, got {other:?}",
+                bin.minor,
+                if bin.minor >= 39 {
+                    "typed-ref"
+                } else {
+                    "verbatim-note"
+                }
+            ),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // RFC 022 §4 — classifier arms, provoked rather than cited.
 //

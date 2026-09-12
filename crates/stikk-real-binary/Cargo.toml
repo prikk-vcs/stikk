@@ -14,6 +14,10 @@ repository.workspace    = true
 stikk-model = { workspace = true }
 stikk-prikk = { workspace = true }
 
+[dev-dependencies]
+# RFC 027 B: the suite drives commit's preview, which lives above the seam in stikk-core.
+stikk-core = { workspace = true }
+
 # Deliberately NOT `workspace = true` (root Cargo.toml's `[workspace.lints]`), and specifically not its
 # `unsafe_code = "forbid"` — `deny` here instead (review C2). This is the one crate in the workspace that
 # legitimately needs `unsafe`: driving `CliBackend`'s real signing-readiness gate (`stikk-prikk::env`)

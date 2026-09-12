@@ -457,3 +457,240 @@ fn a_malformed_public_key_is_refused_at_the_boundary() {
     let err = key_status(&text).expect_err("a one-character public key is not a shape prikk emits");
     assert!(err.to_string().contains("public_key"), "{err}");
 }
+
+// ---------------------------------------------------------------------------------------------
+// `worktree-status-report-v1` (RFC 027 decision 2).
+//
+// **Both fixtures are captured from a real prikk 0.41.0 binary**, 2026-09-13, by RFC 027 Handoff B's
+// probe: the real-binary harness's own `Fixture`, its repository moved to the neutral `/tmp/repo`
+// before any capture, stdout on prikk's dirty exit (1). Never edited after capture. The rule-breaking
+// variants below are **derived from these by one textual substitution each**, so every other byte a
+// variant carries is still prikk's.
+// ---------------------------------------------------------------------------------------------
+
+/// `prikk worktree-status --ref heads/main --format json` at 0.41.0: `readme.txt` committed and sealed,
+/// then rewritten, and an untracked symlink `link.txt -> readme.txt` created beside it (RFC 027 F1's
+/// measured shape). `prikk commit` on this tree prints `error: ` followed by exactly `link.txt`'s
+/// `refusal`.
+const WORKTREE_SYMLINK_JSON_0_41: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "ref": "heads/main",
+  "tracked_files": 1,
+  "unchanged_files": 0,
+  "clean": false,
+  "refused_count": 1,
+  "queued_elsewhere": null,
+  "changes": [
+    {"path": "link.txt", "kind": "untracked", "detail": "worktree file is not in the baseline", "authoring": "refused", "refusal": "precondition not met: link.txt: worktree symlink authoring is out of scope"},
+    {"path": "readme.txt", "kind": "modified", "detail": "tracked file bytes differ from the baseline", "authoring": "authored", "refusal": null}
+  ],
+  "declarations": []
+}
+"#;
+
+/// `prikk worktree-status --ref heads/other --format json` at 0.41.0, on a repository whose active WAL
+/// holds one unsealed patch for `heads/main` (RFC 027 F6's measured shape). The prose report for the same
+/// tree carries prikk's warning sentence; this one carries the ref and nothing more.
+const WORKTREE_QUEUED_JSON_0_41: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "ref": "heads/other",
+  "tracked_files": 0,
+  "unchanged_files": 0,
+  "clean": false,
+  "refused_count": 0,
+  "queued_elsewhere": "heads/main",
+  "changes": [
+    {"path": "readme.txt", "kind": "untracked", "detail": "worktree file is not in the baseline", "authoring": "authored", "refusal": null}
+  ],
+  "declarations": []
+}
+"#;
+
+/// `fixture` with `from` replaced once by `to` — and a failure, not a silent no-op, if `from` is not
+/// there, so a variant cannot quietly become a copy of the capture.
+fn variant(fixture: &str, from: &str, to: &str) -> String {
+    assert!(
+        fixture.contains(from),
+        "variant source text {from:?} is not in the fixture"
+    );
+    fixture.replacen(from, to, 1)
+}
+
+#[test]
+fn a_refused_symlink_reads_with_prikks_reason_verbatim() {
+    let s = worktree_status(WORKTREE_SYMLINK_JSON_0_41).expect("parses");
+    assert_eq!(s.reff, "heads/main");
+    assert!(!s.clean);
+    assert_eq!((s.tracked, s.unchanged), (1, 0));
+    assert_eq!(s.refused, Some(1));
+    assert_eq!(s.queued_elsewhere, None);
+    assert_eq!(s.entries.len(), 2, "entries were {:?}", s.entries);
+
+    let link = s
+        .entries
+        .iter()
+        .find(|e| e.path == "link.txt")
+        .expect("link.txt");
+    assert_eq!(link.kind, "untracked");
+    assert_eq!(
+        link.authoring,
+        Authoring::Refused(
+            "precondition not met: link.txt: worktree symlink authoring is out of scope".into()
+        ),
+        "the reason is prikk's string, byte for byte"
+    );
+    // `detail`, not the prose line: no `[refused: ...]` suffix rides in the note.
+    assert_eq!(link.note, "worktree file is not in the baseline");
+
+    let readme = s
+        .entries
+        .iter()
+        .find(|e| e.path == "readme.txt")
+        .expect("readme.txt");
+    assert_eq!(readme.kind, "modified");
+    assert_eq!(readme.authoring, Authoring::Authored);
+
+    // Per-kind counts, derived from the same list prikk's own counters come from.
+    assert_eq!(
+        (s.modified, s.missing, s.untracked, s.unsupported),
+        (1, 0, 1, 0)
+    );
+}
+
+#[test]
+fn queued_elsewhere_reads_as_the_typed_ref() {
+    let s = worktree_status(WORKTREE_QUEUED_JSON_0_41).expect("parses");
+    assert_eq!(s.reff, "heads/other");
+    assert_eq!(
+        s.queued_elsewhere,
+        Some(QueuedElsewhere::Ref("heads/main".into())),
+        "JSON carries the ref, never a sentence stikk would then have to pretend is prikk's"
+    );
+    assert_eq!(s.refused, Some(0), "a JSON report of zero is a real zero");
+    assert_eq!(s.entries[0].authoring, Authoring::Authored);
+}
+
+#[test]
+fn the_worktree_report_schema_is_checked_first() {
+    let text = variant(
+        WORKTREE_SYMLINK_JSON_0_41,
+        "worktree-status-report-v1",
+        "worktree-status-report-v2",
+    );
+    let err = worktree_status(&text).unwrap_err();
+    assert_eq!(err.class(), "environment");
+    assert!(
+        err.to_string().contains("worktree-status-report-v2"),
+        "{err}"
+    );
+}
+
+#[test]
+fn only_prikks_two_authoring_pairs_are_read() {
+    let refused_reason = r#""authoring": "refused", "refusal": "precondition not met: link.txt: worktree symlink authoring is out of scope""#;
+    let authored = r#""authoring": "authored", "refusal": null"#;
+    let illegal = [
+        // "refused" with no reason is not a verdict stikk can show.
+        variant(
+            WORKTREE_SYMLINK_JSON_0_41,
+            refused_reason,
+            r#""authoring": "refused", "refusal": null"#,
+        ),
+        // "authored" with a reason contradicts itself.
+        variant(
+            WORKTREE_SYMLINK_JSON_0_41,
+            authored,
+            r#""authoring": "authored", "refusal": "why""#,
+        ),
+        // A third verdict word.
+        variant(
+            WORKTREE_SYMLINK_JSON_0_41,
+            authored,
+            r#""authoring": "deferred", "refusal": null"#,
+        ),
+        // `refusal` absent rather than null.
+        variant(
+            WORKTREE_SYMLINK_JSON_0_41,
+            authored,
+            r#""authoring": "authored""#,
+        ),
+    ];
+    for text in illegal {
+        let err = worktree_status(&text).expect_err("an illegal authoring pair must not parse");
+        assert_eq!(err.class(), "environment", "{err}");
+    }
+}
+
+#[test]
+fn a_refused_count_that_disagrees_with_the_entries_is_refused() {
+    for count in ["0", "2"] {
+        let text = variant(
+            WORKTREE_SYMLINK_JSON_0_41,
+            r#""refused_count": 1"#,
+            &format!(r#""refused_count": {count}"#),
+        );
+        let err = worktree_status(&text).expect_err("no number is picked between the two");
+        assert_eq!(err.class(), "environment");
+        assert!(err.to_string().contains("refused_count"), "{err}");
+    }
+}
+
+#[test]
+fn a_missing_queued_elsewhere_is_refused_not_read_as_nothing_queued() {
+    let text = variant(
+        WORKTREE_SYMLINK_JSON_0_41,
+        "  \"queued_elsewhere\": null,\n",
+        "",
+    );
+    let err = worktree_status(&text).expect_err("absence is not null");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("queued_elsewhere"), "{err}");
+}
+
+#[test]
+fn the_ref_and_the_queued_ref_are_validated_as_ref_names() {
+    // The JSON escape `` decodes to BEL — a control character no ref name may carry.
+    let bad_ref = variant(
+        WORKTREE_SYMLINK_JSON_0_41,
+        r#""ref": "heads/main""#,
+        r#""ref": "heads/main""#,
+    );
+    assert_eq!(
+        worktree_status(&bad_ref).unwrap_err().class(),
+        "environment"
+    );
+
+    let bad_queued = variant(
+        WORKTREE_QUEUED_JSON_0_41,
+        r#""queued_elsewhere": "heads/main""#,
+        r#""queued_elsewhere": """#,
+    );
+    assert_eq!(
+        worktree_status(&bad_queued).unwrap_err().class(),
+        "environment"
+    );
+}
+
+#[test]
+fn an_unsupported_path_is_carried_as_reported_not_validated() {
+    // RFC 027 decision 2: an `unsupported-path` entry's path is by definition not a safe repository
+    // path — absolute, and here with a backslash and prikk's U+FFFD (the JSON escapes `\\` and
+    // `�`). Validating it would drop F0's entries a second way. `authored`, as prikk 0.41 marks
+    // these (F5).
+    let text = variant(
+        WORKTREE_SYMLINK_JSON_0_41,
+        r#"{"path": "link.txt", "kind": "untracked", "detail": "worktree file is not in the baseline", "authoring": "refused", "refusal": "precondition not met: link.txt: worktree symlink authoring is out of scope"}"#,
+        r#"{"path": "/tmp/repo/back\\sl�sh.txt", "kind": "unsupported-path", "detail": "worktree path is not representable as a safe Prikk path", "authoring": "authored", "refusal": null}"#,
+    );
+    let text = variant(&text, r#""refused_count": 1"#, r#""refused_count": 0"#);
+    let s = worktree_status(&text).expect("parses");
+    let entry = s
+        .entries
+        .iter()
+        .find(|e| e.kind == "unsupported-path")
+        .expect("listed");
+    assert_eq!(entry.path, "/tmp/repo/back\\sl\u{fffd}sh.txt");
+    assert_eq!(s.unsupported, 1);
+}

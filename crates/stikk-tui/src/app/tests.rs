@@ -159,16 +159,19 @@ fn dirty_changes() -> ChangesView {
         modified: 1,
         untracked: 1,
         unsupported: 0,
+        refused: None,
         entries: vec![
             ChangeEntry {
                 kind: ChangeKind::Modified,
                 path: "readme.txt".into(),
                 note: "bytes differ".into(),
+                authoring: stikk_core::Authoring::Unreported,
             },
             ChangeEntry {
                 kind: ChangeKind::Untracked,
                 path: "notes.tmp".into(),
                 note: "not in the baseline".into(),
+                authoring: stikk_core::Authoring::Unreported,
             },
         ],
         queued_elsewhere: None,
@@ -1047,6 +1050,7 @@ fn dirty_worktree_status() -> WorktreeStatus {
         modified: 1,
         untracked: 0,
         unsupported: 0,
+        refused: None,
         entries: Vec::new(),
         queued_elsewhere: None,
     }
@@ -1593,4 +1597,37 @@ fn back_on_the_consent_step_clears_the_pending_seal() {
     app.begin_seal();
     let second_req = next_request(&rx);
     assert!(matches!(second_req.kind, RequestKind::SealPreview { .. }));
+}
+
+#[test]
+fn a_would_refuse_commit_preview_opens_an_overlay_not_a_banner() {
+    // RFC 027 decision 5: the refused entries need a path and a reason each — not the one-line banner,
+    // and not `present()`, since nothing was attempted.
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.input_char('x');
+    app.select();
+    let req = next_request(&rx);
+    let paths = vec![stikk_core::RefusedPath {
+        kind: ChangeKind::Untracked,
+        path: "link.txt".into(),
+        reason: "precondition not met: link.txt: worktree symlink authoring is out of scope".into(),
+    }];
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::CommitPreview(Ok(CommitPreviewOutcome::WouldRefuse(paths.clone()))),
+    });
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::CommitWouldRefuse { paths: shown }) if *shown == paths),
+        "expected the would-refuse overlay, got {:?}",
+        app.top_overlay()
+    );
+    assert!(app.banner().is_none(), "not the banner");
+    // Nothing to confirm: dismissing it leaves no pending commit and no overlay.
+    app.back();
+    assert!(!app.has_overlay());
 }

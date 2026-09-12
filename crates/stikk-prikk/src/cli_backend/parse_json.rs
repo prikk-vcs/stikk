@@ -40,7 +40,10 @@
 use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
-use crate::{BlockRow, History, PatchMessage, RefEntry};
+use crate::{
+    Authoring, BlockRow, History, PatchMessage, QueuedElsewhere, RefEntry, WorktreeEntry,
+    WorktreeStatus,
+};
 
 type Result<T> = std::result::Result<T, StikkError>;
 
@@ -275,4 +278,102 @@ pub(super) fn key_status(text: &str) -> Result<Vec<(String, crate::RoleDetail, R
 pub(super) struct RoleFacts {
     pub(super) usable: bool,
     pub(super) binding: stikk_model::Binding,
+}
+
+/// The worktree-status report's schema (prikk ≥ 0.38; the verdict fields are additive from 0.39).
+const WORKTREE_SCHEMA: &str = "worktree-status-report-v1";
+
+/// `prikk worktree-status --format json` (`worktree-status-report-v1`), prikk ≥ 0.39 (RFC 027
+/// decision 2).
+///
+/// **Held to the shape prikk's emitter writes, and refused otherwise** — this report decides whether
+/// commit is offered, so a field read optimistically is a verdict stikk invented:
+///
+/// - `authoring` is exactly `"authored"` with `refusal: null`, or `"refused"` with a string `refusal`.
+///   Any other pair is a schema error.
+/// - `refused_count` must equal the number of refused entries. prikk computes both from one list, so a
+///   disagreement means stikk misread the report — there is no right number to pick between.
+/// - `ref` and a non-null `queued_elsewhere` are ref names, validated at this boundary (`INV-9`).
+/// - `queued_elsewhere` must be **present** (as `null` or a name): its absence would read as "nothing
+///   queued elsewhere", which is the one warning RFC 009 exists to keep.
+///
+/// **Paths are not validated as repository paths** (RFC 027 decision 2): an `unsupported-path` entry's
+/// path is by definition not one, and is carried as reported, to be rendered inert. Per-kind counts are
+/// derived from `changes`, which is the list prikk's own counters are computed from. `declarations` is
+/// not read.
+///
+/// # Errors
+/// [`StikkError::Environment`] if the text is not JSON, announces another schema, or breaks any rule
+/// above.
+pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
+    let value = report(text, WORKTREE_SCHEMA)?;
+    let reff = ref_name_field(&value, "ref")?.to_string();
+    let tracked = value.u64_field("tracked_files")?;
+    let unchanged = value.u64_field("unchanged_files")?;
+    let clean = value.bool_field("clean")?;
+    let refused_count = value.u64_field("refused_count")?;
+
+    let queued_elsewhere = match value.get("queued_elsewhere") {
+        None => {
+            return Err(StikkError::environment_msg(
+                "prikk's JSON report is missing `queued_elsewhere`; stikk does not read its absence \
+                 as \"nothing queued elsewhere\"",
+            ));
+        }
+        Some(Json::Null) => None,
+        Some(_) => Some(QueuedElsewhere::Ref(
+            ref_name_field(&value, "queued_elsewhere")?.to_string(),
+        )),
+    };
+
+    let mut entries = Vec::new();
+    for change in value.array_field("changes")? {
+        entries.push(WorktreeEntry {
+            kind: change.str_field("kind")?.to_string(),
+            path: change.str_field("path")?.to_string(),
+            note: change.str_field("detail")?.to_string(),
+            authoring: authoring(change)?,
+        });
+    }
+
+    let refused_listed = entries
+        .iter()
+        .filter(|entry| matches!(entry.authoring, Authoring::Refused(_)))
+        .count();
+    if u64::try_from(refused_listed).ok() != Some(refused_count) {
+        return Err(StikkError::environment_msg(format!(
+            "prikk's JSON report says `refused_count` is {refused_count} but lists {refused_listed} \
+             refused entries; stikk does not choose between them"
+        )));
+    }
+
+    let count = |kind: &str| {
+        u64::try_from(entries.iter().filter(|entry| entry.kind == kind).count()).unwrap_or(u64::MAX)
+    };
+    Ok(WorktreeStatus {
+        reff,
+        clean,
+        tracked,
+        unchanged,
+        missing: count("missing"),
+        modified: count("modified"),
+        untracked: count("untracked"),
+        unsupported: count("unsupported-path"),
+        refused: Some(refused_count),
+        queued_elsewhere,
+        entries,
+    })
+}
+
+/// One change's verdict: exactly one of prikk's two legal `authoring`/`refusal` pairs.
+fn authoring(change: &Json) -> Result<Authoring> {
+    let verdict = change.str_field("authoring")?;
+    match (verdict, change.get("refusal")) {
+        ("authored", Some(Json::Null)) => Ok(Authoring::Authored),
+        ("refused", Some(Json::String(reason))) => Ok(Authoring::Refused(reason.clone())),
+        (verdict, refusal) => Err(StikkError::environment_msg(format!(
+            "prikk's JSON report has an entry with `authoring` {verdict:?} and `refusal` {refusal:?}; \
+             stikk reads only \"authored\" with null, or \"refused\" with a reason"
+        ))),
+    }
 }

@@ -6,11 +6,13 @@
 //! [`ChangesView`] would let the change token assert freshness the view does not have), and execution
 //! is the one and only seam call that writes ([`stikk_prikk::Prikk::commit`]).
 //!
-//! Two refusals prikk would otherwise give are **prevented**, not merely classified (RFC 014 F2/F6,
-//! decisions 1/5b): a cross-ref commit (the focused ref is not the active WAL's queue target) and a
-//! clean-worktree commit (nothing to author) both make commit **unavailable with a reason**
-//! ([`CommitPreviewOutcome::Blocked`], `C-T4d`) before any [`PreviewToken`] exists — never offered and
-//! then refused. Both reads (`orientation`, `worktree-status`) happen inside [`crate::confirm::preview`]'s
+//! Three refusals prikk would otherwise give are **prevented**, not merely classified (RFC 014 F2/F6,
+//! decisions 1/5b; RFC 027 decision 5): a cross-ref commit (the focused ref is not the active WAL's
+//! queue target) and a clean-worktree commit (nothing to author) both make commit **unavailable with a
+//! reason** ([`CommitPreviewOutcome::Blocked`], `C-T4d`), and at prikk ≥ 0.39 a worktree holding an
+//! entry prikk's own verdict says `commit` would refuse makes it unavailable **with those entries and
+//! prikk's reasons** ([`CommitPreviewOutcome::WouldRefuse`]) — all before any [`PreviewToken`] exists,
+//! never offered and then refused. Below 0.39 prikk states no verdict, and stikk infers none. Both reads (`orientation`, `worktree-status`) happen inside [`crate::confirm::preview`]'s
 //! `compute` closure, i.e. **after** the change token is stamped, so the token and the blocking decision
 //! describe the same instant.
 
@@ -19,7 +21,7 @@ use std::path::Path;
 use stikk_model::{Capability, RequestCategory, Result};
 use stikk_prikk::{CommitResult, Prikk};
 
-use crate::changes::{self, ChangesView};
+use crate::changes::{self, ChangeKind, ChangesView};
 use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
 
 /// stikk's own short name for this operation — used verbatim in [`stikk_model::StikkError::Stale`]/
@@ -49,6 +51,13 @@ pub enum CommitPreviewOutcome {
     /// Commit is unavailable, with the reason to show (disabled-with-reason, `C-T4d`) — no
     /// [`PreviewToken`] exists for this outcome; nothing was armed.
     Blocked(String),
+    /// **Commit is unavailable because prikk reports it would refuse** (RFC 027 decision 5; prikk ≥
+    /// 0.39): one or more entries carry prikk's `refused` verdict, and one refused entry refuses the
+    /// whole commit (RFC 027 F2). Carries **the refused entries themselves**, never a summary string —
+    /// the reasons are prikk's, one per path, and a one-line banner cannot hold them. Like
+    /// [`Self::Blocked`], not an error and not routed through `present()`: nothing was armed.
+    /// Stikk's own next steps for this outcome come from [`would_refuse_next_steps`].
+    WouldRefuse(Vec<RefusedPath>),
     /// Commit is available: the preview to show and the token to carry into confirmation. `token` is
     /// boxed only to keep this enum's two variants close in size (`clippy::large_enum_variant`) — no
     /// meaning attaches to the indirection.
@@ -82,6 +91,7 @@ pub fn commit_preview(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<Com
         confirm::preview(prikk, repo, intent, || compute(prikk, repo, &reff_owned))?;
     Ok(match view {
         CommitReadView::Blocked(reason) => CommitPreviewOutcome::Blocked(reason),
+        CommitReadView::WouldRefuse(paths) => CommitPreviewOutcome::WouldRefuse(paths),
         CommitReadView::Ready(preview) => CommitPreviewOutcome::Ready {
             preview,
             token: Box::new(token),
@@ -93,7 +103,45 @@ pub fn commit_preview(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<Com
 /// unwraps this into [`CommitPreviewOutcome`], attaching the token only to the `Ready` case.
 enum CommitReadView {
     Blocked(String),
+    WouldRefuse(Vec<RefusedPath>),
     Ready(CommitPreview),
+}
+
+/// One entry prikk reports `commit` would refuse (RFC 027 decision 5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefusedPath {
+    /// The entry's change kind — kept, because refused is orthogonal to kind (RFC 027 F1).
+    pub kind: ChangeKind,
+    /// The path as prikk reported it; render inert.
+    pub path: String,
+    /// prikk's reason, verbatim — the string `commit` itself prints (RFC 027 F1). Never classified.
+    pub reason: String,
+}
+
+/// **stikk's own next steps** for [`CommitPreviewOutcome::WouldRefuse`] — the measured ways out (RFC
+/// 027 F3), in stikk's words (`C-T2b`). stikk never edits `.prikkignore` itself (`CON-1`, `C-E2`).
+///
+/// - Remove or replace the path.
+/// - Or list it in `.prikkignore` — **and that file is then part of the commit** (F3: prikk authors
+///   `.prikkignore` as an untracked entry in the same commit). A step that said "ignore it" without that
+///   clause would not be true.
+/// - **Only when a shown name contains `U+FFFD`**: prikk substituted that character for bytes it could
+///   not show, so the displayed name is not the file's real name, and typing it into `.prikkignore`
+///   would not match.
+#[must_use]
+pub fn would_refuse_next_steps(paths: &[RefusedPath]) -> Vec<String> {
+    let mut steps = vec![
+        "Remove or replace each path above, then preview the commit again.".to_string(),
+        "Or list it in .prikkignore — that file is then part of this commit too.".to_string(),
+    ];
+    if paths.iter().any(|path| path.path.contains('\u{FFFD}')) {
+        steps.push(
+            "A name shown with \u{FFFD} is not the file's real name: prikk replaced bytes it could not \
+             show, so typing that name into .prikkignore will not match the file."
+                .to_string(),
+        );
+    }
+    steps
 }
 
 /// The `compute` closure `preview()` runs after stamping the change token (RFC 013 `OPL-02`).
@@ -131,6 +179,27 @@ fn compute(
     }
 
     let view = changes::from_status(status);
+
+    // RFC 027 decision 5: prevent a commit prikk has already said it would refuse. After the two
+    // checks above — a clean tree has no entries, and a cross-ref commit is refused whatever the
+    // entries say. **Only prikk's `Refused` verdict blocks**: `Unreported` (below 0.39) offers commit
+    // exactly as before, and an `unsupported-path` entry prikk marks `Authored` does not block either
+    // (Q1 ruled (b)) — stikk infers no refusal prikk has not stated.
+    let refused: Vec<RefusedPath> = view
+        .entries
+        .iter()
+        .filter_map(|entry| match &entry.authoring {
+            changes::Authoring::Refused(reason) => Some(RefusedPath {
+                kind: entry.kind.clone(),
+                path: entry.path.clone(),
+                reason: reason.clone(),
+            }),
+            changes::Authoring::Authored | changes::Authoring::Unreported => None,
+        })
+        .collect();
+    if !refused.is_empty() {
+        return Ok((CommitReadView::WouldRefuse(refused), placeholder_summary()));
+    }
     // RFC 026 §5: the id and how firmly it may be claimed, decided in one place for both ceremonies.
     let report = prikk.readiness(repo)?;
     let (signing_key_id, claim) = crate::confirm::signing_key_claim(

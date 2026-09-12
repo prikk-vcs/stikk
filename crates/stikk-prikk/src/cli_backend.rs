@@ -378,6 +378,24 @@ impl Prikk for CliBackend {
         // `worktree-status` exits 1 for a *dirty* tree and 0 for a clean one, writing the report to
         // stdout either way (RFC 008 finding 2). Capture without classifying, and parse stdout
         // regardless of exit; only when stdout carries no report is the outcome a real failure.
+        //
+        // RFC 027 decision 2: JSON at ≥ 0.39, where each entry carries commit's own verdict. The exit
+        // handling is the same on both paths, deliberately — the JSON report is written on a dirty
+        // exit exactly as the prose one is (measured at 0.41).
+        if self.reads_json()? {
+            let (stdout, stderr, _success) = self.run_capturing(
+                Some(repo),
+                ["worktree-status", "--ref", reff, "--format", "json"],
+            )?;
+            return match parse_json::worktree_status(&stdout) {
+                Ok(status) => Ok(status),
+                Err(_shape) => Err(classify::classify(
+                    &stdout,
+                    &stderr,
+                    RequestCategory::WorktreeAnalysis,
+                )),
+            };
+        }
         let (stdout, stderr, _success) =
             self.run_capturing(Some(repo), ["worktree-status", "--ref", reff])?;
         match parse::worktree_status(&stdout) {

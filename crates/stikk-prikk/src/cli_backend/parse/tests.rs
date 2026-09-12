@@ -748,7 +748,13 @@ fn carries_the_queued_elsewhere_warning_verbatim() {
     let s = worktree_status(WORKTREE_QUEUED_ELSEWHERE_FIXTURE).expect("parses");
     assert!(!s.clean);
     assert_eq!(s.untracked, 2);
-    let note = s.queued_elsewhere.expect("warning must be captured");
+    // Below 0.39 prikk's sentence is what stikk carries (RFC 027 F6), and prose is its only source.
+    let Some(QueuedElsewhere::Note(note)) = s.queued_elsewhere else {
+        panic!(
+            "warning must be captured as prikk's note; got {:?}",
+            s.queued_elsewhere
+        );
+    };
     assert!(note.starts_with("note: the active WAL has queued (unsealed) patches for heads/main"));
     assert!(note.contains("do not delete based on this report alone"));
     // Byte-identical to prikk's own line (modulo the leading/trailing whitespace `field`-style readers
@@ -1315,6 +1321,82 @@ live rename declarations: 0
 note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
 ";
 
+// Captured verbatim (stdout; the dirty-exit `error:` line is on stderr) from a real prikk **0.28.0**
+// binary on 2026-09-13, RFC 027 Handoff B's probe: the harness's `Fixture` at 0.28 with `readme.txt`
+// committed and sealed, moved to the neutral `/tmp/repo`, then `readme.txt` rewritten and an untracked
+// symlink `link.txt → readme.txt` created. Nothing edited after capture.
+//
+// **No verdict anywhere** — no `refused paths:` line and no suffix — and `prikk commit` on this very tree
+// refuses (`integrity error: worktree authoring: unsupported symlink authoring: link.txt: …`). Below
+// 0.39 "nothing is refused" is not knowable (RFC 027 F4).
+const WORKTREE_SYMLINK_0_28_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 0
+modified files: 1
+untracked files: 1
+unsupported paths: 0
+worktree: changed against baseline
+  untracked link.txt — worktree file is not in the baseline
+  modified readme.txt — tracked file bytes differ from the baseline
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+// Captured verbatim from a real prikk **0.41.0** binary, the same probe, day and tree. prikk's prose
+// marks the symlink `[refused: …]` and counts `refused paths: 1`; **stikk does not read either from
+// prose** — at ≥ 0.39 it reads the verdict from JSON, so here the suffix stays in the note and the
+// verdict is unreported (RFC 027 §3 of Handoff A).
+const WORKTREE_SYMLINK_0_41_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 0
+modified files: 1
+untracked files: 1
+unsupported paths: 0
+refused paths: 1
+worktree: changed against baseline
+  untracked link.txt — worktree file is not in the baseline [refused: precondition not met: link.txt: worktree symlink authoring is out of scope]
+  modified readme.txt — tracked file bytes differ from the baseline
+live rename declarations: 0
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+#[test]
+fn the_prose_reader_reports_no_verdict_at_either_end() {
+    // RFC 027 decision 3: prose is read below 0.39, where prikk states no verdict — unreported, and the
+    // count `None`, never `Some(0)`. At 0.41 the prose report *does* carry one, and stikk still reads it
+    // from JSON only; prose never manufactures a verdict from a suffix.
+    for (end, text) in [
+        ("0.28", WORKTREE_SYMLINK_0_28_FIXTURE),
+        ("0.41", WORKTREE_SYMLINK_0_41_FIXTURE),
+    ] {
+        let s = worktree_status(text).unwrap_or_else(|e| panic!("{end}: {e:?}"));
+        assert_eq!(s.refused, None, "{end}");
+        assert!(
+            s.entries
+                .iter()
+                .all(|e| e.authoring == Authoring::Unreported),
+            "{end}: {:?}",
+            s.entries
+        );
+    }
+    let s = worktree_status(WORKTREE_SYMLINK_0_41_FIXTURE).expect("parses");
+    let link = s
+        .entries
+        .iter()
+        .find(|e| e.path == "link.txt")
+        .expect("link.txt");
+    assert_eq!(
+        link.note,
+        "worktree file is not in the baseline [refused: precondition not met: link.txt: worktree \
+         symlink authoring is out of scope]"
+    );
+}
+
 #[test]
 fn unsupported_path_entries_are_listed_at_both_ends() {
     // RFC 027 F0. prikk counted two and printed two; stikk counted two and listed none.
@@ -1401,7 +1483,7 @@ live rename declarations: 0
 /// Every `worktree-status` fixture constant in this file, by name. Kept complete by
 /// [`the_count_invariant_covers_every_worktree_status_fixture`] — a new fixture that is not added here
 /// fails that test, so the invariant cannot quietly skip one.
-fn every_worktree_status_fixture() -> [(&'static str, &'static str); 8] {
+fn every_worktree_status_fixture() -> [(&'static str, &'static str); 10] {
     [
         ("WORKTREE_CLEAN_FIXTURE", WORKTREE_CLEAN_FIXTURE),
         ("WORKTREE_DIRTY_FIXTURE", WORKTREE_DIRTY_FIXTURE),
@@ -1422,6 +1504,14 @@ fn every_worktree_status_fixture() -> [(&'static str, &'static str); 8] {
         (
             "WORKTREE_UNSUPPORTED_0_41_FIXTURE",
             WORKTREE_UNSUPPORTED_0_41_FIXTURE,
+        ),
+        (
+            "WORKTREE_SYMLINK_0_28_FIXTURE",
+            WORKTREE_SYMLINK_0_28_FIXTURE,
+        ),
+        (
+            "WORKTREE_SYMLINK_0_41_FIXTURE",
+            WORKTREE_SYMLINK_0_41_FIXTURE,
         ),
     ]
 }

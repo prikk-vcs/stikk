@@ -18,21 +18,25 @@ fn dirty_status() -> WorktreeStatus {
         modified: 1,
         untracked: 1,
         unsupported: 0,
+        refused: None,
         entries: vec![
             WorktreeEntry {
                 kind: "modified".into(),
                 path: "readme.txt".into(),
                 note: "tracked file bytes differ from the baseline".into(),
+                authoring: Authoring::Unreported,
             },
             WorktreeEntry {
                 kind: "missing".into(),
                 path: "src/main.rs".into(),
                 note: "tracked file is absent from the worktree".into(),
+                authoring: Authoring::Unreported,
             },
             WorktreeEntry {
                 kind: "untracked".into(),
                 path: "notes.tmp".into(),
                 note: "worktree file is not in the baseline".into(),
+                authoring: Authoring::Unreported,
             },
         ],
         queued_elsewhere: None,
@@ -109,7 +113,9 @@ fn prikks_unsupported_path_word_maps_to_unsupported() {
 /// **An invented kind, through the real reader**: prikk's text → `CliBackend`'s parser →
 /// [`from_status`] → `ChangeKind::Other(word)`. The direct `from_label` test above could never catch the
 /// defect RFC 027 F0 found, because the parser discarded an unknown word before `from_label` saw it.
-/// Unix-only: the stand-in `prikk` is a shell script.
+/// Unix-only: the stand-in `prikk` is a shell script. **It reports 0.38.0 on purpose**: this is the
+/// prose reader's test, and from 0.39 the seam asks for `--format json` (RFC 027 decision 2), which a
+/// prose-printing stand-in would not answer.
 #[cfg(unix)]
 #[test]
 fn an_invented_kind_survives_the_parser_and_arrives_as_other() {
@@ -124,7 +130,7 @@ fn an_invented_kind_survives_the_parser_and_arrives_as_other() {
         "#!/bin/sh\n\
          case \"$1\" in\n\
          --version)\n\
-         printf 'prikk 0.41.0\\n'\n\
+         printf 'prikk 0.38.0\\n'\n\
          ;;\n\
          worktree-status)\n\
          printf 'ref: heads/main\\n\
@@ -134,7 +140,6 @@ fn an_invented_kind_survives_the_parser_and_arrives_as_other() {
          modified files: 1\\n\
          untracked files: 0\\n\
          unsupported paths: 0\\n\
-         refused paths: 0\\n\
          worktree: changed against baseline\\n\
          \x20 modified readme.txt \\342\\200\\224 tracked file bytes differ from the baseline\\n\
          \x20 typechange link.txt \\342\\200\\224 a kind prikk does not print today\\n\
@@ -165,14 +170,18 @@ fn carries_the_queued_elsewhere_warning_through_unmodified() {
     // RFC 009 F4: the operation layer transports prikk's warning verbatim; it never computes or
     // paraphrases it (ER-02).
     let mut status = dirty_status();
-    status.queued_elsewhere = Some("note: the active WAL has queued patches for heads/main".into());
+    status.queued_elsewhere = Some(QueuedElsewhere::Note(
+        "note: the active WAL has queued patches for heads/main".into(),
+    ));
     let backend = NullBackend::supported()
         .with_version(0, 28, 1)
         .with_worktree_status(status);
     let view = changes_view(&backend, Path::new("/repo"), "heads/main").expect("changes");
     assert_eq!(
-        view.queued_elsewhere.as_deref(),
-        Some("note: the active WAL has queued patches for heads/main")
+        view.queued_elsewhere,
+        Some(QueuedElsewhere::Note(
+            "note: the active WAL has queued patches for heads/main".into()
+        ))
     );
 }
 
@@ -183,4 +192,97 @@ fn queued_elsewhere_is_none_when_prikk_did_not_emit_it() {
         .with_worktree_status(dirty_status());
     let view = changes_view(&backend, Path::new("/repo"), "heads/main").expect("changes");
     assert_eq!(view.queued_elsewhere, None);
+}
+
+/// prikk's queued-elsewhere sentence exactly as the **0.41.0** binary printed it on 2026-09-13 (RFC 027
+/// Handoff B probe: `Fixture` commit on `heads/main`, repository moved to `/tmp/repo`, then
+/// `prikk worktree-status --ref heads/other`). Byte-identical to the same probe at 0.28.0.
+const PRIKK_QUEUED_ELSEWHERE_SENTENCE: &str = "note: the active WAL has queued (unsealed) patches for \
+     heads/main, not heads/other -- that is real, committed work, not shown above; any \"untracked\" \
+     file here may be exactly that work seen from this ref's own baseline, so do not delete based on \
+     this report alone (see `prikk status`)";
+
+/// **RFC 027 F6, clause by clause.** At prikk ≥ 0.39 stikk words the warning itself; this holds each of
+/// its sentences to the claim in prikk's sentence it stands for — one assertion per clause, so an edit
+/// that drops or weakens a claim fails by name. Each assertion checks prikk's sentence too, so the test
+/// cannot keep passing against a sentence prikk no longer prints.
+#[test]
+fn stikks_queued_elsewhere_wording_keeps_every_claim_prikks_sentence_makes() {
+    let prikk = PRIKK_QUEUED_ELSEWHERE_SENTENCE;
+    let [queued, real_work, untracked, do_not_delete] =
+        queued_elsewhere_clauses("heads/main", "heads/other");
+
+    // Clause 1 — queued, unsealed patches exist for *that* ref, not for this one.
+    assert!(prikk.contains("queued (unsealed) patches for heads/main, not heads/other"));
+    assert!(
+        queued.contains("unsealed patches for heads/main")
+            && queued.contains("queue")
+            && queued.contains("not for heads/other"),
+        "clause 1 (queued, unsealed, that ref not this one) lost: {queued:?}"
+    );
+
+    // Clause 2 — that is real committed work, not shown here.
+    assert!(prikk.contains("that is real, committed work, not shown above"));
+    assert!(
+        real_work.contains("real, committed work") && real_work.contains("not shown here"),
+        "clause 2 (real committed work, not shown) lost: {real_work:?}"
+    );
+
+    // Clause 3 — an untracked entry may be exactly that work, seen from this ref's baseline.
+    assert!(prikk.contains(
+        "any \"untracked\" file here may be exactly that work seen from this ref's own baseline"
+    ));
+    assert!(
+        untracked.contains("untracked")
+            && untracked.contains("may be exactly that work")
+            && untracked.contains("this ref's own baseline"),
+        "clause 3 (untracked may be that work, this ref's baseline) lost: {untracked:?}"
+    );
+
+    // Clause 4 — do not delete on the strength of this view alone.
+    assert!(prikk.contains("do not delete based on this report alone"));
+    assert!(
+        do_not_delete.contains("Do not delete") && do_not_delete.contains("alone"),
+        "clause 4 (do not delete on this alone) lost: {do_not_delete:?}"
+    );
+}
+
+#[test]
+fn stikks_queued_elsewhere_wording_adds_no_claim() {
+    // "Adds none": four clauses, each a single sentence. A fifth claim would be a fifth sentence.
+    for clause in queued_elsewhere_clauses("heads/main", "heads/other") {
+        assert_eq!(
+            clause.matches(". ").count(),
+            0,
+            "one sentence per clause: {clause:?}"
+        );
+        assert!(clause.ends_with('.'), "{clause:?}");
+    }
+}
+
+#[test]
+fn a_typed_queued_ref_and_the_refused_count_travel_into_the_view() {
+    let mut status = dirty_status();
+    status.refused = Some(1);
+    status.entries[2].authoring = Authoring::Refused("precondition not met: r".into());
+    status.queued_elsewhere = Some(QueuedElsewhere::Ref("heads/main".into()));
+    let backend = NullBackend::supported()
+        .with_version(0, 41, 0)
+        .with_worktree_status(status);
+    let view = changes_view(&backend, Path::new("/repo"), "heads/other").expect("changes");
+    assert_eq!(view.refused, Some(1));
+    assert_eq!(
+        view.entries[2].authoring,
+        Authoring::Refused("precondition not met: r".into())
+    );
+    assert_eq!(
+        view.queued_elsewhere,
+        Some(QueuedElsewhere::Ref("heads/main".into()))
+    );
+}
+
+#[test]
+fn the_kind_label_is_prikks_word() {
+    assert_eq!(ChangeKind::Unsupported.label(), "unsupported-path");
+    assert_eq!(ChangeKind::Other("typechange".into()).label(), "typechange");
 }

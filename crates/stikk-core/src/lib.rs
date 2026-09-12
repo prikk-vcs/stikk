@@ -26,10 +26,13 @@ pub mod refusal_history;
 pub mod seal;
 
 pub use change_token::{change_token, staleness_notice};
-pub use changes::{ChangeEntry, ChangeKind, ChangesView, changes_view};
+pub use changes::{
+    Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewhere, changes_view,
+    queued_elsewhere_clauses,
+};
 pub use commit::{
-    COMMIT_OPERATION, CommitPreview, CommitPreviewOutcome, commit_confirm_and_execute,
-    commit_preview,
+    COMMIT_OPERATION, CommitPreview, CommitPreviewOutcome, RefusedPath, commit_confirm_and_execute,
+    commit_preview, would_refuse_next_steps,
 };
 pub use confirm::{
     ConfirmationSummary, ConfirmedToken, Evidence, Intent, KeyClaim, Outcome, PreviewToken,

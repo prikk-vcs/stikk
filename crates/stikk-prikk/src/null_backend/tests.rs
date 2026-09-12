@@ -68,7 +68,21 @@ fn with_queued_elsewhere_sets_the_note_on_the_scripted_status() {
         .worktree_status(Path::new("/x"), "heads/main")
         .unwrap();
     assert_eq!(
-        status.queued_elsewhere.as_deref(),
-        Some("note: queued elsewhere")
+        status.queued_elsewhere,
+        Some(crate::QueuedElsewhere::Note(
+            "note: queued elsewhere".into()
+        ))
+    );
+}
+
+#[test]
+fn with_queued_elsewhere_ref_sets_the_typed_ref_on_the_scripted_status() {
+    let backend = NullBackend::supported().with_queued_elsewhere_ref("heads/main");
+    let status = backend
+        .worktree_status(Path::new("/x"), "heads/other")
+        .unwrap();
+    assert_eq!(
+        status.queued_elsewhere,
+        Some(crate::QueuedElsewhere::Ref("heads/main".into()))
     );
 }

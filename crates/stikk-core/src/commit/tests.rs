@@ -18,6 +18,7 @@ fn dirty_worktree() -> WorktreeStatus {
         modified: 1,
         untracked: 0,
         unsupported: 0,
+        refused: None,
         entries: Vec::new(),
         queued_elsewhere: None,
     }
@@ -63,6 +64,7 @@ fn a_clean_worktree_blocks_before_arming_anything() {
         modified: 0,
         untracked: 0,
         unsupported: 0,
+        refused: None,
         entries: Vec::new(),
         queued_elsewhere: None,
     });
@@ -71,6 +73,7 @@ fn a_clean_worktree_blocks_before_arming_anything() {
             assert!(reason.contains("nothing to commit"));
         }
         CommitPreviewOutcome::Ready { .. } => panic!("expected Blocked"),
+        CommitPreviewOutcome::WouldRefuse(paths) => panic!("expected Blocked, got {paths:?}"),
     }
 }
 
@@ -83,6 +86,7 @@ fn a_cross_ref_queue_blocks_before_arming_anything() {
             assert!(reason.contains("heads/main"));
         }
         CommitPreviewOutcome::Ready { .. } => panic!("expected Blocked"),
+        CommitPreviewOutcome::WouldRefuse(paths) => panic!("expected Blocked, got {paths:?}"),
     }
 }
 
@@ -95,6 +99,7 @@ fn a_ready_preview_carries_the_worktree_counts_and_a_token() {
             assert_eq!(token.tier(), stikk_model::Tier::Two);
         }
         CommitPreviewOutcome::Blocked(reason) => panic!("expected Ready, got Blocked({reason})"),
+        CommitPreviewOutcome::WouldRefuse(paths) => panic!("expected Ready, got {paths:?}"),
     }
 }
 
@@ -122,6 +127,7 @@ fn the_active_patch_warning_is_carried_verbatim_into_the_preview_and_consequence
             );
         }
         CommitPreviewOutcome::Blocked(reason) => panic!("expected Ready, got Blocked({reason})"),
+        CommitPreviewOutcome::WouldRefuse(paths) => panic!("expected Ready, got {paths:?}"),
     }
 }
 
@@ -278,4 +284,149 @@ fn declined_evidence_refuses_without_touching_the_seam() {
     )
     .expect_err("must refuse");
     assert_eq!(err.class(), "declined");
+}
+
+// RFC 027 decision 5 — commit's prevention, on prikk's verdict and nothing else.
+
+fn entry(kind: &str, path: &str, authoring: stikk_prikk::Authoring) -> stikk_prikk::WorktreeEntry {
+    stikk_prikk::WorktreeEntry {
+        kind: kind.to_string(),
+        path: path.to_string(),
+        note: "a note".to_string(),
+        authoring,
+    }
+}
+
+/// A dirty ≥ 0.39 tree: prikk 0.41's own measured shape — an authored modification beside an untracked
+/// symlink `commit` refuses, with the reason `commit` prints.
+fn refused_symlink_worktree() -> WorktreeStatus {
+    WorktreeStatus {
+        untracked: 1,
+        refused: Some(1),
+        entries: vec![
+            entry(
+                "untracked",
+                "link.txt",
+                stikk_prikk::Authoring::Refused(
+                    "precondition not met: link.txt: worktree symlink authoring is out of scope"
+                        .to_string(),
+                ),
+            ),
+            entry("modified", "readme.txt", stikk_prikk::Authoring::Authored),
+        ],
+        ..dirty_worktree()
+    }
+}
+
+#[test]
+fn a_refused_entry_makes_commit_unavailable_and_carries_the_entry() {
+    let backend = ready_backend()
+        .with_version(0, 41, 0)
+        .with_worktree_status(refused_symlink_worktree());
+    match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::WouldRefuse(paths) => {
+            assert_eq!(
+                paths,
+                vec![RefusedPath {
+                    kind: ChangeKind::Untracked,
+                    path: "link.txt".to_string(),
+                    reason: "precondition not met: link.txt: worktree symlink authoring is out of \
+                             scope"
+                        .to_string(),
+                }],
+                "only the refused entry is carried, with its kind and prikk's reason verbatim"
+            );
+        }
+        other => panic!("expected WouldRefuse, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_cross_ref_and_clean_checks_still_come_first() {
+    // Decision 5: after both. A cross-ref commit is refused whatever the entries say, and says so.
+    let backend = ready_backend()
+        .with_version(0, 41, 0)
+        .with_worktree_status(refused_symlink_worktree())
+        .with_orientation(orientation(2, Some("heads/other")));
+    assert!(matches!(
+        commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads"),
+        CommitPreviewOutcome::Blocked(_)
+    ));
+}
+
+#[test]
+fn an_unreported_verdict_offers_commit_exactly_as_before() {
+    // Below 0.39: prikk states no verdict, so stikk infers no refusal (decision 5).
+    let mut status = dirty_worktree();
+    status.untracked = 1;
+    status.entries = vec![entry(
+        "untracked",
+        "link.txt",
+        stikk_prikk::Authoring::Unreported,
+    )];
+    let backend = ready_backend()
+        .with_version(0, 28, 1)
+        .with_worktree_status(status);
+    assert!(matches!(
+        commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads"),
+        CommitPreviewOutcome::Ready { .. }
+    ));
+}
+
+#[test]
+fn an_unsupported_path_prikk_marks_authored_does_not_block() {
+    // Q1 ruled (b): prevention rests on prikk's verdict alone. prikk 0.41 marks these `authored`.
+    let mut status = dirty_worktree();
+    status.unsupported = 1;
+    status.refused = Some(0);
+    status.entries = vec![entry(
+        "unsupported-path",
+        "/tmp/repo/back\\slash.txt",
+        stikk_prikk::Authoring::Authored,
+    )];
+    let backend = ready_backend()
+        .with_version(0, 41, 0)
+        .with_worktree_status(status);
+    assert!(matches!(
+        commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads"),
+        CommitPreviewOutcome::Ready { .. }
+    ));
+}
+
+#[test]
+fn the_next_steps_say_prikkignore_is_committed_too() {
+    // RFC 027 F3: `.prikkignore` is authored into the same commit. A step without that clause is false.
+    let steps = would_refuse_next_steps(&[RefusedPath {
+        kind: ChangeKind::Untracked,
+        path: "link.txt".to_string(),
+        reason: "r".to_string(),
+    }]);
+    assert!(steps.iter().any(|s| s.contains("Remove or replace")));
+    let ignore = steps
+        .iter()
+        .find(|s| s.contains(".prikkignore"))
+        .expect("a .prikkignore step");
+    assert!(
+        ignore.contains("part of this commit"),
+        "the .prikkignore step must say the file is committed: {ignore:?}"
+    );
+    assert!(
+        !steps.iter().any(|s| s.contains('\u{FFFD}')),
+        "no substituted name, so no caution about one: {steps:?}"
+    );
+}
+
+#[test]
+fn a_substituted_name_gets_the_caution_that_it_is_not_the_real_name() {
+    let steps = would_refuse_next_steps(&[RefusedPath {
+        kind: ChangeKind::Untracked,
+        path: "bad\u{FFFD}name.txt".to_string(),
+        reason: "r".to_string(),
+    }]);
+    let caution = steps
+        .iter()
+        .find(|s| s.contains('\u{FFFD}'))
+        .expect("a caution for a name shown with U+FFFD");
+    assert!(caution.contains("not the file's real name"));
+    assert!(caution.contains("will not match"));
 }

@@ -112,6 +112,7 @@ impl NullBackend {
                 modified: 0,
                 untracked: 0,
                 unsupported: 0,
+                refused: None,
                 entries: Vec::new(),
                 queued_elsewhere: None,
             }),
@@ -165,13 +166,23 @@ impl NullBackend {
         self
     }
 
-    /// Set the `queued_elsewhere` warning on the worktree status this backend returns, leaving
-    /// everything else as previously set (RFC 009 F4) — the state that caused the defect, made
-    /// drivable with no prikk and no repository.
+    /// Set prikk's queued-elsewhere **sentence** on the worktree status this backend returns, as the
+    /// prose report below prikk 0.39 carries it, leaving everything else as previously set (RFC 009
+    /// F4) — the state that caused the defect, made drivable with no prikk and no repository.
     #[must_use]
     pub fn with_queued_elsewhere(mut self, note: impl Into<String>) -> Self {
         if let Ok(status) = &mut self.worktree {
-            status.queued_elsewhere = Some(note.into());
+            status.queued_elsewhere = Some(crate::QueuedElsewhere::Note(note.into()));
+        }
+        self
+    }
+
+    /// Set prikk's queued-elsewhere **ref** on the worktree status this backend returns, as the JSON
+    /// report at prikk ≥ 0.39 carries it (RFC 027 F6), leaving everything else as previously set.
+    #[must_use]
+    pub fn with_queued_elsewhere_ref(mut self, queued_ref: impl Into<String>) -> Self {
+        if let Ok(status) = &mut self.worktree {
+            status.queued_elsewhere = Some(crate::QueuedElsewhere::Ref(queued_ref.into()));
         }
         self
     }

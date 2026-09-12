@@ -26,8 +26,8 @@
 use stikk_model::{ObjectId, RefName, Result, StikkError};
 
 use crate::{
-    BlockRow, CommitChange, CommitResult, History, Orientation, PatchMessage, RefEntry, SealResult,
-    StateFiles, WorktreeEntry, WorktreeStatus,
+    Authoring, BlockRow, CommitChange, CommitResult, History, Orientation, PatchMessage,
+    QueuedElsewhere, RefEntry, SealResult, StateFiles, WorktreeEntry, WorktreeStatus,
 };
 
 /// Parse `prikk status` output into an [`Orientation`].
@@ -422,11 +422,12 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         })
         .filter_map(parse_worktree_entry)
         .collect();
+    // Prose carries prikk's sentence itself; the JSON reader carries only the ref (RFC 027 F6).
     let queued_elsewhere = text
         .lines()
         .map(str::trim)
         .find(|line| line.starts_with(QUEUED_ELSEWHERE_PREFIX))
-        .map(str::to_string);
+        .map(|line| QueuedElsewhere::Note(line.to_string()));
     Ok(WorktreeStatus {
         reff,
         clean,
@@ -436,6 +437,8 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         modified: required_u64(text, "modified files:")?,
         untracked: required_u64(text, "untracked files:")?,
         unsupported: required_u64(text, "unsupported paths:")?,
+        // Prose is read only below 0.39, where prikk reports no verdict: unreported, never zero.
+        refused: None,
         entries,
         queued_elsewhere,
     })
@@ -461,6 +464,9 @@ fn parse_worktree_entry(line: &str) -> Option<WorktreeEntry> {
         kind: kind.to_string(),
         path: path.to_string(),
         note: note.to_string(),
+        // RFC 027 decision 3. A ≥ 0.39 prose line's `[refused: …]` suffix stays in the note unparsed:
+        // stikk reads the verdict from JSON there, and never from prose.
+        authoring: Authoring::Unreported,
     })
 }
 

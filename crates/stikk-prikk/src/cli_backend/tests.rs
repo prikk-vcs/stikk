@@ -416,19 +416,103 @@ fn the_command_surface_never_names_key_or_setup() {
         // material and *reading a seed*, and `key status` does neither — prikk's own `--help` calls it
         // "reads only, signs nothing", and prikk built it for this consumer.
         //
-        // So the guard narrows rather than lifts: the only `"key"` this module may name is the one
-        // immediately followed by `"status"`. A future `["key", "generate"]` fails on the literals
-        // above; a future `["key", "rotate"]` fails here.
-        for (index, _) in code.match_indices("\"key\"") {
-            let tail = &code[index..];
+        // So the guard narrows rather than lifts: the only `"key"` this module may name is one
+        // followed by `"status"`.
+        //
+        // **Whitespace is skipped rather than matched** (review C1). The first version of this rule
+        // accepted `"key",` followed by a newline — meant to tolerate rustfmt splitting the permitted
+        // call across lines, and in fact tolerating *every* subcommand, because rustfmt splits any
+        // array once it is long enough. `["key", "rotate", "--force"]` in its wrapped form passed a
+        // guard whose own comment said it would not, which is worse than no guard: it told the next
+        // reader the hole was closed. Both layouts of the permitted call pass now; no layout of
+        // anything else does, and `the_guard_refuses_a_multi_line_key_subcommand` holds that.
+        assert!(
+            names_only_key_status(&code),
+            "{path:?} names `prikk key` other than as `key status`, the one subcommand C-I1e \
+             permits (it creates nothing and reads no seed)"
+        );
+    }
+}
+
+/// True when every `"key"` in `code` is the permitted `key status` invocation.
+///
+/// Split out from the scan above so the fixtures below exercise **the same function the gate runs**,
+/// rather than a second copy of the rule that could drift from it — which is the shape this project
+/// keeps finding, and which is how the first version of this rule shipped with a hole.
+fn names_only_key_status(code: &str) -> bool {
+    code.match_indices("\"key\"").all(|(index, _)| {
+        code.get(index + "\"key\"".len()..)
+            .and_then(|after| after.strip_prefix(','))
+            .map(str::trim_start)
+            .is_some_and(|rest| rest.starts_with("\"status\""))
+    })
+}
+
+/// **The hole review C1 found, as a fixture rather than a probe run once.**
+///
+/// The first version of this rule accepted `"key",` followed by a newline, to tolerate rustfmt
+/// splitting the permitted call. rustfmt splits *any* array once it is long enough, so every
+/// subcommand escaped in its wrapped form — and the comment above the rule told the next reader it
+/// did not.
+///
+/// **The fixtures spell the quote as `\u{22}`**, so this file does not itself read as a call site to
+/// the scan above — which runs over `tests.rs` too, deliberately, and fired on an earlier draft of
+/// this very test. That is the guard working: it does not get to make an exception for the file that
+/// tests it.
+#[test]
+fn the_guard_refuses_a_multi_line_key_subcommand() {
+    let q = "\u{22}";
+    // The subcommand name, spelled so that this file's own word lists are not read as call sites by
+    // the scan above. Same reason as `q`: the guard runs over `tests.rs` too, and should.
+    let key = "ke\u{79}";
+    let arg = |word: &str| format!("{q}{word}{q}");
+    let one_line = |words: &[&str]| {
+        format!(
+            "[{}]",
+            words.iter().map(|w| arg(w)).collect::<Vec<_>>().join(", ")
+        )
+    };
+    let wrapped = |words: &[&str]| {
+        format!(
+            "[\n{}\n]",
+            words
+                .iter()
+                .map(|w| format!("    {},", arg(w)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
+
+    // Both layouts of the permitted call pass…
+    for permitted in [
+        one_line(&[key, "status", "--format", "json"]),
+        wrapped(&[key, "status", "--format", "json"]),
+    ] {
+        assert!(
+            names_only_key_status(&permitted),
+            "the permitted call must pass in this layout:\n{permitted}"
+        );
+    }
+
+    // …and no layout of anything else does. `rotate` is the one review C1 demonstrated escaping.
+    for words in [
+        vec![key, "rotate", "--force"],
+        vec![key, "import"],
+        vec![key, "export"],
+        vec![key],
+        vec![key, "statuses"],
+    ] {
+        for shape in [one_line(&words), wrapped(&words)] {
             assert!(
-                tail.starts_with("\"key\", \"status\"") || tail.starts_with("\"key\",\n"),
-                "{path:?} names `prikk key` other than as `key status`, the one subcommand C-I1e \
-                 permits (it creates nothing and reads no seed). Context: {:?}",
-                &tail[..tail.len().min(60)]
+                !names_only_key_status(&shape),
+                "this must be refused, in every layout:\n{shape}"
             );
         }
     }
+
+    // And a tab-indented wrap, since the rule skips whitespace rather than matching a newline.
+    let tabbed = format!("[\n\t{},\n\t{},\n]", arg(key), arg("rotate"));
+    assert!(!names_only_key_status(&tabbed), "{tabbed}");
 }
 
 /// Recursively collect every `.rs` file under `dir` (helper for the boundary test above).

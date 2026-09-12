@@ -62,7 +62,7 @@ repo. crates.io requires a crate to exist before a trusted publisher can be atta
 ## Cutting a release
 
 1. Move the `## Unreleased` section of `CHANGELOG.md` under a `## <version> — <date>` heading (em dash,
-   no brackets — match the file's own three released sections) and set `[workspace.package] version` in
+   no brackets — match the file's own released sections) and set `[workspace.package] version` in
    `Cargo.toml` to the same `<version>`.
 2. Land that on `main` (green CI), then tag and push:
 
@@ -84,12 +84,14 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.4.x release is (and is not)
+## What a v0.6.x release is (and is not)
 
-v0.4.x is where stikk starts writing: orientation, history, block detail, worktree changes, and the
-refusal/glossary surfaces, plus two mutations — **commit** (author a worktree capture) and **seal**
-(freeze the queue into signed history) — both preview-first with tiered confirmation. Merge, sync, tag
-create, and branch create/close remain unbuilt. It drives the external `prikk` binary at runtime (not a
-Cargo dependency), validated against prikk **>= 0.28, through 0.41.0** — so the release notes must state
-which prikk version it was validated against and how to install it — a `cargo install stikk` with no
-`prikk` on `PATH` will open and then explain that prikk is missing, by design.
+v0.6.x reads orientation, history, block detail, worktree changes, and the refusal/glossary surfaces,
+and performs two mutations — **commit** (author a worktree capture) and **seal** (freeze the queue into
+signed history) — both preview-first with tiered confirmation, naming the key that will sign. Signing
+readiness is read from prikk itself on prikk ≥ 0.41. Merge, sync, tag create, and branch create/close
+remain unbuilt: the `Prikk` seam has no method for any of them. It drives the external `prikk` binary
+at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.41.0** — so the release
+notes must state which prikk version it was validated against and how to install it — a
+`cargo install stikk` with no `prikk` on `PATH` will open and then explain that prikk is missing, by
+design.

@@ -81,7 +81,7 @@ The goal: a running TUI you can browse a repository with. Nothing here needs a m
 
 ---
 
-## Next — responsive & correct (0.3.0, breaking)
+## Shipped — responsive & correct (0.3.0, breaking)
 
 Two increments, in a load-bearing order: RFC 010 reshapes the seam trait, so anything landing after it
 would otherwise be re-touched. Recorded in
@@ -103,7 +103,7 @@ would otherwise be re-touched. Recorded in
 **Then 0.3.0 is cut.** RFC 003 moves to 0.4.0, where its consumers actually live — see the
 release-boundary note in RFC 012.
 
-## Then — the working cycle (0.4.0)
+## Shipped — the working cycle (0.4.0)
 
 _Re-sequenced 2026-09-04: session persistence no longer precedes this. It was placed first when stikk
 could not open a real repository; now that it can, being able to commit matters more than resuming a
@@ -195,8 +195,41 @@ published API docs, grown from 19 while nothing gated them — fixed, and a **ru
 CI**, which prikk's own CI has and stikk's previously did not.
 
 **0.4.0 shipped.** What it does not have, named rather than left implicit: a Trust & Keys view, the
-AUTHOR/MAINTAINER key-id display module (deferred out of RFC 014 into RFC 016 and carried past it,
-unbuilt), a Queue view, Compare, Patch detail, and verify/branches/merge — see "Later".
+AUTHOR/MAINTAINER key-id display module (deferred out of RFC 014 into RFC 016 and carried past it;
+built in 0.6.0), a Queue view, Compare, Patch detail, and verify/branches/merge — see "Later".
+
+## Shipped — stikk is checked (0.5.0)
+
+A **real-binary integration suite** drives stikk against actual prikk binaries at both ends of the
+supported range, asserting what the repository became rather than what stikk parsed
+([RFC 019](rfcs/done/019-the-real-binary-integration-suite.md)); a **supply-chain gate** runs advisories
+and licences over the dependency tree ([RFC 020](rfcs/done/020-msrv-1-88-consistency-and-a-supply-chain-gate.md));
+the validated prikk range moved **0.33 → 0.38** ([RFC 021](rfcs/done/021-prikk-0-38-rebaseline.md)); and
+a fabricated worktree entry was fixed.
+
+## Shipped — stikk says what it knows (0.6.0, breaking)
+
+- **Signing readiness is read from prikk**, not inferred from the environment: `prikk key status` at
+  prikk ≥ 0.41, *unknown and said to be* at 0.40, presence at ≤ 0.39
+  ([RFC 026](rfcs/done/026-readiness-after-the-key-directory.md)). The validated range is now **0.28
+  through 0.41**, and `log`/`branch`/`tag` are read as JSON at ≥ 0.39.
+- **Confirmations name the key that will sign**, and say whether it is bound, unbound, or unchecked;
+  prikk's published example keys are flagged (`C-S2`, implemented)
+  ([RFC 023](rfcs/done/023-what-stikk-has-and-does-not-show.md), RFC 026).
+- **Overlays size themselves by measurement** and say when they are clipped; seal's confirm affordance
+  is on screen for the first time ([RFC 024](rfcs/done/024-overlay-sizing-and-the-fix-that-did-not-travel.md)).
+- **The real-binary suite drives all eleven `Prikk` seam methods**
+  ([RFC 022](rfcs/done/022-widening-the-real-binary-suite.md), and `readiness` in 0.6.0's prep).
+
+## Next — carried into 0.7.0, in order
+
+1. **`refused paths:`** — prikk 0.41 names the paths a commit would refuse — with `FR-050`'s question
+   (should commit's preview *prevent* them?) decided alongside it.
+2. **The Queue view** (`FR-051`) — prikk has enumerated queued patches since 0.35; the seal ceremony
+   still says how many patches it will freeze but not which.
+3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
+4. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
+   to move to.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 
@@ -213,10 +246,9 @@ unbuilt), a Queue view, Compare, Patch detail, and verify/branches/merge — see
   production caller, which it does not have today.
 - **Exchange**: bundle export/verify/import and the **sync assistant** (`FR-090…094`), with the input
   ceilings surfaced before an operation runs.
-- **Trust & keys** (`FR-103/104`): the Trust & Keys view; the AUTHOR/MAINTAINER key-id display module
-  (RFC 014's review named it as a follow-up landing with the seal ceremony; RFC 016 shipped without it
-  — still unbuilt); adopted maintainer keys; TOFU-conflict-as-security-event; and signing readiness —
-  still presence-only, still no seed ever stored.
+- **Trust & keys** (`FR-103/104`): the Trust & Keys view; adopted maintainer keys;
+  TOFU-conflict-as-security-event. *(The key-id display shipped in 0.6.0 — RFC 023 B — and signing
+  readiness asks prikk's `key status` at ≥ 0.41 since RFC 026 B; still no seed is ever stored.)*
 - **The GUI** (`GU-01…09`): the same operations rendered natively, reaching TUI parity through the
   shared operation layer, with drag-and-drop constrained to prikk-legal targets.
 - **Internationalization** (en / ja / nb) and accessibility hardening across both frontends
@@ -244,12 +276,12 @@ issues for the prikk project (requirement `UD-01…UD-05`):
 | Dependency | prikk gap | stikk behavior meanwhile |
 |---|---|---|
 | `UD-01` | **retired at prikk 0.32** — messages are stored (schema 4, tag 6) and `log` enumerates a patch id and message for every patch that carries one; no author display name either way (permanent, no-clock design) | stikk supports prikk on both sides of the boundary: the commit-message prompt's copy is version-conditional, and Block detail shows the id/message list a messaged patch carries, beside the block's own patch count |
-| `UD-02` | machine-readable output only on `verify` | the seam parses confined, version-gated output and refuses rather than guesses; never screen-scrapes unpinned prose |
+| `UD-02` | **narrowing release by release** — `verify` first; `status --format json` at prikk 0.35 and `show --format json` at 0.36 (`ASM-2`); `log`/`branch`/`tag --format json` at 0.39 and `key status --format json` at 0.41 (RFC 026) | the seam parses confined, version-gated output and refuses rather than guesses; never screen-scrapes unpinned prose |
 | `UD-03` | **resolved at prikk 0.28** (was a 0.27.x defect) | Changes uses `worktree-status` directly, version-gated at ≥ 0.28; below it stikk explains rather than runs it |
 | `UD-04` | the CLI panics on EPIPE | the seam drains output fully (already implemented) |
 | `UD-08` | **retired at prikk 0.29** — `.prikkignore` excludes matching paths from `commit`'s walk and `worktree-status`'s untracked scan | prikk filters ignored paths before reporting them; stikk keeps its display-only untracked filter for what remains, and no longer claims files cannot be excluded |
 | `UD-05` | **revised at prikk 0.28**: `0`/`1`/`2` (2 = usage error); exit 1 still covers refusal, dirty worktree and integrity failure alike | the seam classifies exit 1 by message + context; exit 2 is a stikk argument bug, surfaced as `stikk-internal` (RFC 009) |
-| `UD-09` | **narrowed, not retired, at prikk 0.32** — a messaged patch's *id* is now enumerable via `log`'s `patch <id>: <message>` line; its operations, preimages, and any machine-readable export remain absent; still no `show`/`diff` on an individual patch | History shows block lineage + a block's state file list; Block detail lists a messaged patch's id/message; Patch detail as a rendered diff (3b) still waits; the gap is named where a user would open a patch |
+| `UD-09` | **narrowed at prikk 0.32** (a messaged patch's *id* became enumerable via `log`), and its **content half retired at 0.36** — `prikk show <block-id\|patch-id> [--format json]` renders a patch's operations and content (RFC 021 F1; `FR-034`) | History shows block lineage + a block's state file list; Block detail lists a messaged patch's id/message; Patch detail as a rendered diff (3b) still waits; the gap is named where a user would open a patch |
 
 ## Releases and versioning
 

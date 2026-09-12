@@ -23,8 +23,16 @@
 //! workspace's edition (2024). Every other crate in this workspace forbids `unsafe_code` outright
 //! (`unsafe is forbidden (no FFI in stikk yet)`); rather than weaken that for code that ships, this
 //! crate's own `Cargo.toml` `deny`s it instead (review C2: `deny`, unlike `forbid`, can be locally
-//! overridden) with `#[allow(unsafe_code)]` on exactly the three `set_var`/`remove_var` call sites in
-//! [`support`] that need it — a fourth `unsafe` anywhere else in this crate still fails the build. This
+//! overridden), and **every `unsafe` in this crate carries its own `#[allow(unsafe_code)]` and a
+//! `SAFETY:` comment naming `ENV_LOCK`** — an `unsafe` block without its own `#[allow]` still fails the
+//! build. The sites are enumerated by command rather than by count, because a count written here drifted
+//! once already (three, while there were five):
+//!
+//! ```sh
+//! grep -rn 'allow(unsafe_code)' crates/stikk-real-binary
+//! ```
+//!
+//! This
 //! crate is never built into any shipped binary, is never a dependency of a published crate, and is
 //! excluded from `cargo package --workspace` (`publish = false`; see the release-prep checklist in
 //! `.git-exclude/specs/` for the exact invocation, review C3).

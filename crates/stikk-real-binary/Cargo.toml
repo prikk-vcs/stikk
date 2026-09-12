@@ -20,9 +20,10 @@ stikk-prikk = { workspace = true }
 # means actually setting *this process's* environment variables before spawning prikk, and
 # `std::env::set_var`/`remove_var` became `unsafe fn` under edition 2024 for reasons unrelated to
 # repository or key safety (thread-safety of the C `environ` array). `deny`, not `forbid`, so the
-# exception can sit on exactly the three call sites that earned it (each carries its own
-# `#[allow(unsafe_code)]`, in `src/support.rs`) rather than being unenforced for the whole crate — a
-# fourth `unsafe` anywhere else still fails the build. This crate ships in no binary, is never a
+# exception sits on each call site that earned it — every `unsafe` in this crate carries its own
+# `#[allow(unsafe_code)]` and a `SAFETY:` comment naming `ENV_LOCK` — rather than being unenforced for the
+# whole crate; an `unsafe` without its own `#[allow]` still fails the build. Enumerate the sites with
+# `grep -rn 'allow(unsafe_code)' crates/stikk-real-binary` (no count here: it drifted once). This crate ships in no binary, is never a
 # dependency of any published crate, and is excluded from `cargo package --workspace` (see the
 # release-prep checklist in `.git-exclude/specs/`) — the blanket forbid stays exactly where it protects
 # something: every crate that actually ships. `src/lib.rs`'s module doc records the `C-I1e` boundary this

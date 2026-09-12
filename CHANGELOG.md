@@ -2,186 +2,142 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.6.0 — 2026-09-13
+
+**stikk says what it knows.** 0.5.0 made stikk checked against a real prikk; 0.6.0 makes it honest about
+what it can and cannot tell you. **Signing readiness is read from prikk itself** instead of guessed from
+your environment — which fixes a picture that was wrong in both directions on the prikk that is current
+(RFC 026). **Confirmations name the key that will sign** and say whether it is already bound to this
+repository, and a key prikk publishes as an example is flagged every time (RFC 023, RFC 026). **Overlays
+size themselves by measurement**, so seal's confirmation shows how to confirm for the first time and no
+list hides its own selection (RFC 024). **The validated prikk range moves to 0.41**, three releases, one
+of which changed how prikk is configured at all (RFC 026). And **the real-binary suite now drives all
+eleven seam methods**, correcting an undercount 0.5.0 shipped (RFC 022).
 
 ### Breaking
 
-- **Signing readiness is now read from prikk, not from the environment** (RFC 026). `Readiness`'s
-  fields change shape — `author_ready: bool` and `MaintainerReadiness` become one `RoleReadiness` per
-  role, mirroring prikk's own `binding` vocabulary — and `Prikk` gains a `readiness` method. Per
-  RFC 011, for a `0.x` crate the minor is the breaking position.
+Per RFC 011, for a `0.x` crate the minor version is the breaking position; these land in 0.6.0:
 
-### Fixed
+| Crate | Change |
+|---|---|
+| `stikk-model` | `Readiness`'s `author_ready: bool` and `maintainer_readiness` become `author` and `maintainer`, each a `RoleReadiness` mirroring prikk's own `binding` vocabulary |
+| `stikk-model` | `MaintainerReadiness` is removed; `RoleReadiness` replaces it |
+| `stikk-prikk` | the `Prikk` trait gains `readiness(&self, repo)` — every implementor must add it |
+| `stikk-core` | `present()` gains a third parameter, `prikk_minor: Option<u32>` |
+| `stikk-core` | `ConfirmationSummary` gains `signing_key_id`, `signing_key_claim` and `signing_key_is_published_example`; `OrientationView` gains `prikk_minor` and `stale_seed_variables` — breaking for anyone constructing either with a struct literal |
+| `stikk-tui` | `Overlay::Glossary` becomes `Overlay::Glossary { offset }` — the Glossary scrolls now, and its scroll position lives on the variant |
 
-- **stikk's signing readiness was wrong on prikk ≥ 0.40, in both directions.** prikk 0.40 moved signing
-  keys out of the environment into a key directory; stikk kept reading `PRIKK_*_SEED` presence, so it
-  **hid commit and seal from users who could perform them** (the correct modern setup) and **offered
-  them to users prikk would refuse** (a stale exported variable). On prikk ≥ 0.41 stikk now asks
-  `prikk key status`, which answers from the same computation `commit` and `seal` use.
-
-  On **prikk 0.40 exactly** — one release, superseded within a day — stikk reports readiness as
-  **unknown**, says why, and points at 0.41, rather than guessing.
-
-- **The confirmation card showed no signing key id on a default setup.** prikk always has one, falling
-  back to the role's own name, so reading only `PRIKK_<ROLE>_KEY_ID` rendered nothing while prikk would
-  have signed as `author`. It also named an id without saying whether that key is the one this
-  repository records. The card now states a bound key plainly, says of an unbound one that this
-  signature binds it, and says of an unchecked one that stikk is naming rather than confirming.
-
-- **A long refusal lost its quote bar on every wrapped row**, exactly where a reader needs to know they
-  are still inside prikk's words. Every row carries it now, and the wrap points are unchanged.
-
-- **The backslash-path explanation no longer asks the reader which half applies to them.** stikk holds
-  the platform and the prikk version, so it shows only the cause that can apply — both only on Windows
-  at prikk 0.28, where both genuinely remain possible.
-
-### Security
-
-- **`C-S2` is implemented.** stikk recognizes the example public keys prikk publishes in its own
-  documentation and flags them on **every** confirmation that would sign with one — persistently, not
-  as a dismissable notice. A signature made with a published key is forgeable by anyone. The threat
-  model's three `NOT IMPLEMENTED` markers come off in the same commit, and the control's own entry now
-  states what it covers (documentation examples, enumerable) and what it cannot (prikk's tests and
-  issue comments, which its rule also names and no list can close over).
-
-- **`C-I1e` narrowed, not broken.** stikk now invokes `prikk key status` — and only that. The rule's
-  reason was never the word `key`: it forbids creating key material and reading a seed, and `key status`
-  does neither. The source-level guard was narrowed in step and still refuses `key generate`,
-  `key public`, and any `prikk key` subcommand that does not yet exist.
-
-### Changed
-
-- **The validated prikk range is now `>= 0.28`, through `0.41.0`** (was `0.38.0`) — three releases, one
-  of which changed how prikk is configured at all. prikk 0.40 moved signing seeds out of the
-  environment into a key directory, so the real-binary suite's own fixture builder had to be rebuilt
-  before the re-baseline could measure anything: it now configures prikk with `PRIKK_*_SEED` at ≤ 0.39
-  and `PRIKK_*_SEED_FILE` at ≥ 0.40, keeping one key pair per test.
-
-- **`log`, `branch` and `tag` are read as JSON on prikk ≥ 0.39**, and as prose below. These three were
-  the entire remainder of stikk's prose parsing, and each had already cost a re-baseline. The schema
-  name in each report is checked before any field is read, so an unknown version is refused rather than
-  parsed hopefully. The prose readers and their fixtures stay for the 0.28 floor.
-
-- **Recorded, not yet acted on: prikk 0.41 marks the paths a commit would refuse.** `worktree-status`
-  now reports `refused paths: N` beside `unsupported paths:`, and marks each entry with
-  `[refused: <reason>]`. That answers a question carried since 0.4.1 — a worktree symlink used to read
-  as an ordinary untracked file and then block every commit with nothing connecting the two. stikk
-  shows prikk's per-path text verbatim, so the reason is on screen; the count is not parsed and the
-  Changes view does not yet treat those paths differently.
-
-### Fixed
-
-- **Seal's confirmation now shows `Enter to confirm · Esc to cancel`.** It never has — not at 80×24,
-  not at any terminal height — on the path every user takes, and it shipped that way in 0.4.0, 0.4.1
-  and 0.5.0. The overlay sized itself by counting *logical* lines while the widget drew *wrapped* rows,
-  and seal's consequence under `MaintainerReadiness::Unknown` (the only value any supported prikk can
-  produce) is one logical line that draws as four. The affordance fell outside the box.
-
-- **The commit message prompt shows its footer and the text being typed** at 80×24. Same cause.
-
-- **The ref picker keeps its selection on screen.** It rendered from the top and clipped, so holding
-  `↓` past the fold moved the selection somewhere invisible while nothing on screen changed — since
-  0.1.0. Lists now window to the cursor, and say which part of the list they are showing.
-
-  `Recent refusals` had the identical defect and is fixed by the same change: its ring holds fifty
-  records and only about twenty fit at 80×24. The command palette shares the shape but not the
-  symptom — ten commands fit — and is now protected for when that stops being true.
-
-### Changed
-
-- **Overlays size themselves by measurement rather than estimate.** Eleven of fourteen renderers
-  carried a hand-tuned `lines.len() + N` guess; they now share one shape that wraps its prose in stikk
-  (so the height is a fact) and lays out the action region at its exact height at the bottom (so a
-  wrong measurement costs prose, never the thing the user has to press). Where a terminal really is
-  shorter than the content, an overlay now says so — `lines 19–40 of 40` — instead of clipping
-  silently. **A test asserts both properties over every `Overlay` variant**, and a new variant will not
-  compile until it is covered.
+Everything else new is additive: `RoleReadiness` and `Binding`; `ReadinessReport` and `RoleDetail`;
+`stikk_prikk::key_id`; `stikk_prikk::env::stale_seed_variables` and `StaleSeedVariables`;
+`stikk_model::example_keys` with `ExampleKey` and `published_example`; `KeyClaim` and
+`signing_key_claim`; `NullBackend::with_readiness`; and `stikk_tui::text::wrap_indented`.
 
 ### Added
 
-- **Commit's and seal's confirmations now name the key id that will sign.** `FL-05` step 5 has required
-  this since before 0.4.0 — the confirmation showed `Consumes: AUTHOR`, a capability, where the
-  requirement asks for the key. `FL-06` is amended to ask the same of seal: RFC 016 removed a typed
-  key-id **act**, not the **information**, and a ceremony that freezes patches into permanent signed
-  history should say which key is about to sign. Absent renders as nothing — there is no placeholder,
-  because a confirmation is unreachable without the readiness the id accompanies.
+- **Commit's and seal's confirmations name the key id that will sign — and say how far that can be
+  trusted.** On prikk ≥ 0.41 stikk reads the id from `prikk key status`, which always has one (it falls
+  back to the role's own name when `PRIKK_<ROLE>_KEY_ID` is unset). A key this repository already
+  records is stated plainly; a key that has never signed here says *this signature binds it*; on an
+  older prikk that cannot report which key will sign, stikk says it is naming the id it will pass rather
+  than one prikk confirmed. With no key configured, no id line is shown at all.
 
-  The id is read by a **new module**, `stikk_prikk::key_id`, deliberately separate from the
-  presence-only `stikk_prikk::env`: that module is forbidden by a source-level test from materializing
-  any environment value, and reading an id requires exactly the calls it forbids. The new module has the
-  mirror-image guard — it may read `PRIKK_*_KEY_ID` values and may not so much as name a `*_SEED`
-  variable. **No seed is read anywhere, and `env.rs` is untouched.** A key id is a label prikk prints
-  itself, not key material.
+- **The glossary's code explanations are reachable.** Seven explanations — for schema skew, a full
+  queue, a trust refusal, the Windows path refusal and others — were written and rendered nowhere: a
+  refusal card named a code with no way to read it. The Glossary & Help overlay now lists them, and it
+  **scrolls and wraps** (`↑`/`↓` or `j`/`k`; the panel's own Keys section says so). Wrapping without
+  scrolling was tried in 0.4.1 and reverted, because it hid content rather than showing it.
 
-- **The glossary's code explanations are reachable.** stikk has shipped **six** authored, reviewed,
-  test-covered `GlossaryEntry` explanations whose text was rendered **nowhere** (a seventh arrives with
-  the Windows gloss below): a refusal card's
-  `glossary: <code>` line named a code with no way to read it. The Glossary & Help overlay now lists
-  them — code, title, explanation, see-also — and **scrolls**, and **wraps**. Those three are one change
-  on purpose: 0.4.1 shipped wrapping on its own and had to revert it, because without somewhere to
-  scroll to, wrapping turned *truncated-but-present* into *absent* and left one of eleven terminology
-  entries readable at 80×24. The scroll keys are `↑/↓` (or `j`/`k`), and the panel's own Keys section
-  lists them.
-
-- **A gloss for prikk 0.28's Windows path refusal.** `invalid name: backslashes are not allowed in
-  repository paths` is verbatim, honest, and baffling to the user who typed no backslash — prikk 0.28
-  built that path itself while committing a subdirectory on Windows (found by the widened suite; fixed
-  upstream in prikk 0.29.0). stikk now says so beside prikk's own words, naming the version and the fix,
-  and **without overstating it**: a top-level file commits normally at 0.28 on Windows. Off Windows the
-  same message has the other cause entirely — a file whose name really does contain a backslash — and
-  gets that gloss instead, because telling that user to upgrade prikk would be a stikk-authored claim
-  contradicting the evidence beside it.
+- **An explanation for prikk's backslash-path refusal**, shown beside prikk's own words. `invalid name:
+  backslashes are not allowed in repository paths` has two causes that need opposite fixes: on Windows
+  with prikk 0.28, prikk built the path itself and the fix is upgrading prikk; anywhere else, a file
+  really does have a backslash in its name. stikk knows the platform and your prikk version, so it shows
+  only the cause that can apply — both only on Windows at prikk 0.28, where both genuinely can.
 
 ### Changed
 
-- **The real-binary suite now covers ten of the ten `Prikk` seam methods** (RFC 022), up from five. The
-  five it did not drive — `worktree_status`, `refs`, `tags`, `block_state`, `change_token` — are each
-  now driven against real prikk binaries at both ends of the supported range, asserting what the
-  repository *is* (re-read after the fact) rather than that a string parsed. `change_token` is asserted
-  in both directions, because a token that never changes and a token that always changes both pass a
-  one-sided test. Two failure-classifier arms are now provoked live rather than cited: a genuinely held
-  lock, and the full-queue precondition that prikk 0.35 silently reclassified — so the next re-baseline
-  finds a class-word change without a person looking for it.
+- **The validated prikk range is now `>= 0.28`, through `0.41.0`** (was `0.38.0`) — prikk 0.39, 0.40 and
+  0.41. prikk 0.40 moved signing seeds out of the environment and into a key directory; see `### Fixed`
+  for what that did to stikk.
 
-  **Correcting 0.5.0's own entry:** that release's Security note said the suite covered *"four of the
-  nine surfaces"*. It understated itself twice — there are **ten** seam methods, not nine, and
-  `handshake` was driven all along by the version guard every test runs at both ends, so 0.5.0 shipped
-  with **five of ten**. The released section is left as it stands; the number to trust is this one.
+- **`log`, `branch` and `tag` are read as JSON on prikk ≥ 0.39**, and as text below it. These were the
+  last of stikk's text parsing, and each had cost a re-baseline. Each report's schema name is checked
+  before anything is read from it, so an unknown version is refused rather than guessed at.
 
-- **The fabricated-worktree-entry fix (0.5.0's `### Fixed`) is now pinned by a real binary**, not only
-  by a captured fixture: the suite provokes it at 0.38 with a real `prikk mv` of a path whose first
-  token is a change kind. It announces its skip at 0.28, where `prikk mv` does not exist — a test that
-  quietly does nothing at one end is the inert-suite failure this project has warned itself about twice.
+- **Overlays size themselves by measurement rather than estimate**, and say when a terminal is too short
+  to show everything (`lines 19–40 of 40`) instead of clipping in silence. A test asserts this over every
+  overlay, and a new overlay does not compile until it is covered.
 
-- **A failed suite run now says in one line whether the harness could not build a repository or stikk
-  got an answer wrong.** Every test builds a fixture first, so one broken precondition previously
-  produced one identical panic per test — the shape RFC 021's Windows break had.
+- **The real-binary suite drives all eleven `Prikk` seam methods** at both ends of the supported range,
+  asserting what the repository is rather than that a string parsed — including `readiness`, checked
+  against prikk's own `key status` output. It also provokes a genuinely held lock and the full-queue
+  precondition against real binaries, so the next re-baseline catches a class-word change by itself.
 
-- **`actions/checkout` is pinned past the Node 20 deprecation** in every workflow.
+  **Correcting 0.5.0's entry:** that release said the suite covered *"four of the nine surfaces"*. There
+  were ten seam methods then, not nine, and `handshake` was already driven by every test — so 0.5.0
+  shipped covering **five of ten**. That section is left as released.
 
-- **Documented: prikk 0.28 cannot commit a file in a subdirectory on Windows.** **Found by the widened
-  suite on its first matrix run**, not by a person reading source: prikk 0.28's commit-side worktree
-  scan built the repository path with the platform separator, and its own validator then refused the
-  backslash. It is prikk's defect, fixed upstream in **0.29.0**, and affects only the floor of stikk's
-  supported range and only on Windows — but it is a supported configuration, so it is now stated in
-  Getting Started rather than left for a user to hit. The suite skips that one combination with an
-  announced message and still asserts the rest.
+- **A failed suite run says in one line** whether the harness could not build a repository or stikk got
+  an answer wrong.
 
-### Security
+- **Release workflow actions moved off Node 20**: `actions/checkout` to v5 in every workflow, and
+  `softprops/action-gh-release` to v3 in both release steps (its only change is the Node 24 runtime).
 
-- **`C-S2` is now marked *not implemented* in the threat model.** The control — recognizing prikk's
-  published example keys and flagging them as unsafe — **has no implementation in stikk and never had
-  one**, but §6's coverage table listed it beside `C-I1a–d` and `SEAM-06` as though all three were in
-  force. Two are. The bullet, the coverage table and the attack-surface map all say so now, along with
-  what it was waiting on and which increment ships it. **Nothing about stikk's behaviour changed**; what
-  changed is that the document most responsible for telling a reader what protects them no longer makes
-  a claim it cannot support.
+- **Recorded, not yet acted on: prikk 0.41 marks paths a commit would refuse.** `worktree-status` now
+  reports `refused paths: N` and tags each such entry `[refused: <reason>]`, which is how a worktree
+  symlink finally explains why it blocks a commit. stikk shows prikk's per-path text verbatim; it does
+  not yet count those paths or treat them differently.
 
 ### Fixed
 
-- **`StikkError::LockConflict`'s documentation said it is presented as `FR-106`'s "another writer is
-  active".** It is presented as prikk's verbatim message in a banner, with no gloss, and has been since
-  RFC 017 narrowed the classifier. Documentation only; no behaviour changed.
+- **Signing readiness was wrong on prikk ≥ 0.40, in both directions.** stikk decided readiness from
+  whether `PRIKK_*_SEED` was set in your environment, and prikk 0.40 stopped reading it. So stikk
+  **hid commit and seal from users who could perform them** — anyone using the key directory, which is
+  what `prikk setup` produces — and **offered them to users prikk would refuse**, anyone with an old
+  exported seed. On prikk ≥ 0.41 stikk asks `prikk key status`, which answers from the same computation
+  `commit` and `seal` use, and withholds an action prikk would refuse — a key that does not match this
+  repository's record, or a maintainer key the repository has not adopted — instead of offering a
+  failure. On **prikk 0.40 exactly**, which has no way to ask, stikk reports readiness as **unknown**,
+  says why, and points at 0.41. A `PRIKK_*_SEED` still set on a prikk that ignores it is called out.
+
+- **Seal's confirmation shows `Enter to confirm · Esc to cancel`.** It never had — at any terminal size,
+  on the path every user takes — since seal shipped in 0.4.0: the confirmation's own explanation wrapped
+  to more rows than the overlay had reserved, and the instruction fell outside the box.
+
+- **The commit message prompt shows its footer and the text being typed** at 80×24, for the same reason.
+
+- **Lists keep their selection on screen.** The ref picker rendered from the top and clipped, so holding
+  `↓` past the fold moved the selection somewhere invisible — since 0.1.0. `Recent refusals` had the
+  same defect (it holds fifty entries and about twenty fit at 80×24). Both now scroll with the cursor,
+  and the command palette, whose ten commands fit today, is covered for when they stop fitting.
+
+- **A long refusal keeps its quote bar on every wrapped row**, so you can tell prikk's words from
+  stikk's all the way down, not only on the first line.
+
+- **prikk 0.28 cannot commit a file in a subdirectory on Windows**, and Getting Started now says so. The
+  defect is prikk's and was fixed in prikk 0.29.0; it is documented because 0.28 is still supported.
+
+- **`StikkError::LockConflict`'s documentation** described a presentation stikk stopped using in 0.4.0.
+  Documentation only.
+
+### Security
+
+- **`C-S2` is implemented: prikk's published example keys are flagged.** A signature made with a key
+  from prikk's own documentation is forgeable by anyone who has read it. stikk compares the public key
+  that would sign against the two example keys prikk publishes in its user-facing documentation and
+  warns on **every** confirmation that would use one — persistently, not a dismissable notice. It covers
+  the documentation examples, which is where a person following a guide copies a key from; it cannot
+  cover values in prikk's tests or issue comments, which prikk's own rule also names and no list can
+  enumerate. The threat model states both halves. No secret is stored: the values compared are public
+  keys.
+
+- **stikk now invokes `prikk key status`, and it is the only `prikk key` subcommand it may invoke.** The
+  rule (`C-I1e`) forbids stikk creating key material or reading a seed; `key status` does neither — prikk
+  describes it as *"reads only, signs nothing"*. The source-level guard that enforces the rule was
+  narrowed to exactly that subcommand and still refuses `key generate`, `key public` and any other,
+  however the call is formatted.
+
+- **No seed value is read anywhere in stikk**, on any prikk version — unchanged, and still enforced by
+  test.
 
 ## 0.5.0 — 2026-09-12
 

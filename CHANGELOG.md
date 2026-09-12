@@ -31,6 +31,14 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 - **`actions/checkout` is pinned past the Node 20 deprecation** in every workflow.
 
+- **Documented: prikk 0.28 cannot commit a file in a subdirectory on Windows.** **Found by the widened
+  suite on its first matrix run**, not by a person reading source: prikk 0.28's commit-side worktree
+  scan built the repository path with the platform separator, and its own validator then refused the
+  backslash. It is prikk's defect, fixed upstream in **0.29.0**, and affects only the floor of stikk's
+  supported range and only on Windows — but it is a supported configuration, so it is now stated in
+  Getting Started rather than left for a user to hit. The suite skips that one combination with an
+  announced message and still asserts the rest.
+
 ### Fixed
 
 - **`StikkError::LockConflict`'s documentation said it is presented as `FR-106`'s "another writer is

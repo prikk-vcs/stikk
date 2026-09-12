@@ -449,6 +449,22 @@ fn refs_and_tags_report_what_the_repository_actually_has() {
 
 /// `block_state` on a block this test sealed itself, so the expected paths are known from what was
 /// committed rather than from a fixture.
+///
+/// **This test found a real upstream defect on its first matrix run** (RFC 022, run `34675099061`):
+/// **prikk 0.28 cannot commit a file in a subdirectory on Windows.** Its commit-side worktree scan
+/// built the repository path with `path.to_str()`, which yields `src\main.rs` on Windows, and prikk's
+/// own `RepoPath::parse` then refuses it — `error: invalid name: backslashes are not allowed in
+/// repository paths`. prikk fixed it in **0.29.0**, routing that call through the separator-safe
+/// `pathbuf_to_slash_string` the RFC 124 ignore-mechanism bug had already produced
+/// (`crates/prikk-store/.../node_authoring/worktree_files.rs`, and their own comment says the call
+/// "pre-dates RFC 124 … the same latent defect"). **Only the floor of stikk's supported range is
+/// affected, and only on Windows.**
+///
+/// It is **not a stikk defect** — stikk passes no path here; `prikk commit` walks the worktree itself —
+/// so nothing is worked around. The subdirectory half is skipped on that one combination and the skip
+/// is **announced**, the same discipline F0's 0.28 skip follows: a test that quietly does less on one
+/// platform is how a platform-specific hole stays invisible. The top-level file is still asserted at
+/// both ends everywhere, so the test never becomes a no-op.
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn block_state_lists_the_files_the_suite_itself_committed() {
@@ -461,11 +477,22 @@ fn block_state_lists_the_files_the_suite_itself_committed() {
         let backend = CliBackend::with_program(&bin.path);
 
         // `Fixture` already wrote readme.txt; add a second file in a subdirectory so the assertion is
-        // about a set of paths rather than a single one.
-        std::fs::create_dir_all(fixture.repo().join("src"))
-            .unwrap_or_else(|e| panic!("0.{}: mkdir: {e}", bin.minor));
-        std::fs::write(fixture.repo().join("src/main.rs"), "fn main() {}\n")
-            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        // about a set of paths rather than a single one — except on the one combination where prikk
+        // itself cannot do it (see this test's doc comment).
+        let subdirectory_committable = !(cfg!(windows) && bin.minor == 28);
+        if subdirectory_committable {
+            std::fs::create_dir_all(fixture.repo().join("src"))
+                .unwrap_or_else(|e| panic!("0.{}: mkdir: {e}", bin.minor));
+            std::fs::write(fixture.repo().join("src/main.rs"), "fn main() {}\n")
+                .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        } else {
+            println!(
+                "block_state: SKIPPING the subdirectory path at 0.28 on Windows — prikk 0.28's \
+                 commit-side worktree scan builds `src\\main.rs` and its own RepoPath::parse refuses \
+                 the backslash. Upstream, fixed in prikk 0.29.0; found by this suite's first matrix \
+                 run. The top-level file is still asserted here. (RFC 022 §2.)"
+            );
+        }
 
         fixture.set_author_env();
         backend
@@ -489,9 +516,13 @@ fn block_state_lists_the_files_the_suite_itself_committed() {
         );
         let mut files = state.files.clone();
         files.sort();
+        let expected = if subdirectory_committable {
+            vec!["readme.txt".to_string(), "src/main.rs".to_string()]
+        } else {
+            vec!["readme.txt".to_string()]
+        };
         assert_eq!(
-            files,
-            vec!["readme.txt".to_string(), "src/main.rs".to_string()],
+            files, expected,
             "0.{}: replayed state does not match what was committed",
             bin.minor
         );

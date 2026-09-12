@@ -24,6 +24,14 @@ stikk requires prikk **≥ 0.28** and is validated through **0.38.0**. A prikk b
 to read-only where it can; a prikk above the validated ceiling still runs, but Orientation says its
 output shapes have not actually been checked against it, rather than silently assuming they have.
 
+**One known upstream limitation at the floor, on Windows only:** prikk **0.28** cannot commit a file
+that lives in a subdirectory when running on Windows — its worktree scan builds the repository path
+with the platform separator and its own path validator then refuses the backslash
+(`invalid name: backslashes are not allowed in repository paths`). This is prikk's, not stikk's, and
+prikk fixed it in **0.29.0**; on Windows, use prikk ≥ 0.29. Every other supported version is
+unaffected, and so is 0.28 on Linux and macOS. stikk's real-binary suite covers this combination
+explicitly rather than skipping it quietly.
+
 ## Open a repository
 
 ```sh

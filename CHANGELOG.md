@@ -4,6 +4,34 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Fixed
+
+- **Seal's confirmation now shows `Enter to confirm · Esc to cancel`.** It never has — not at 80×24,
+  not at any terminal height — on the path every user takes, and it shipped that way in 0.4.0, 0.4.1
+  and 0.5.0. The overlay sized itself by counting *logical* lines while the widget drew *wrapped* rows,
+  and seal's consequence under `MaintainerReadiness::Unknown` (the only value any supported prikk can
+  produce) is one logical line that draws as four. The affordance fell outside the box.
+
+- **The commit message prompt shows its footer and the text being typed** at 80×24. Same cause.
+
+- **The ref picker keeps its selection on screen.** It rendered from the top and clipped, so holding
+  `↓` past the fold moved the selection somewhere invisible while nothing on screen changed — since
+  0.1.0. Lists now window to the cursor, and say which part of the list they are showing.
+
+  `Recent refusals` had the identical defect and is fixed by the same change: its ring holds fifty
+  records and only about twenty fit at 80×24. The command palette shares the shape but not the
+  symptom — ten commands fit — and is now protected for when that stops being true.
+
+### Changed
+
+- **Overlays size themselves by measurement rather than estimate.** Eleven of fourteen renderers
+  carried a hand-tuned `lines.len() + N` guess; they now share one shape that wraps its prose in stikk
+  (so the height is a fact) and lays out the action region at its exact height at the bottom (so a
+  wrong measurement costs prose, never the thing the user has to press). Where a terminal really is
+  shorter than the content, an overlay now says so — `lines 19–40 of 40` — instead of clipping
+  silently. **A test asserts both properties over every `Overlay` variant**, and a new variant will not
+  compile until it is covered.
+
 ### Added
 
 - **Commit's and seal's confirmations now name the key id that will sign.** `FL-05` step 5 has required

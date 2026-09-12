@@ -105,7 +105,14 @@ Notation: each requirement is "stikk shall …". *[M/S/C]* = v1 priority. *(→ 
 - **FR-011** *[M]* Present, per block row: block id (abbreviated, expandable), kind (Root/Normal/Merge/Repair/Import), patch count, sealing maintainer key id, update-seq; per patch row: patch id, author key id, purpose (normal/rollback-draft), operation summary (counts by type, touched paths).
 - **FR-012** *[M]* Filter the history view by: ref; author key id; block kind; patch purpose; path touched (exact or prefix). *(`UD-01` retired at prikk 0.32 — RFC 015 F2)* Message filtering is now **possible** for a repository whose patches carry one, but is not built by RFC 015: it is its own increment (RFC 015 decision 7), scoped against messages that may be absent for any pre-0.32 patch.
 - **FR-013** *[M]* Free-text find over what exists: object ids (prefix), path names, tag names and tag messages, ref names. Content search inside blob bytes is *[C]* and must be labelled by cost (walks blob data).
-- **FR-014** *[M]* Show received refs (`remotes/…`) in the same browser, visually distinct, read-only, with their trust standing (blocks signed by adopted keys or not) summarized at the ref level.
+- **FR-014** *[M]* Show received refs (`remotes/…`) in the same browser, visually distinct, read-only, with their trust standing (blocks signed by adopted keys or not) summarized at the ref level. *(**Measured 2026-09-13, RFC 026** — the ref picker merges `branch list --all` and `tag list`, and `stikk_core::history::list_refs` de-duplicates the two **by name**, keeping the tag entry. That guard was written defensively in 2026 against undocumented behaviour, and re-verification found it was doing more than avoiding a duplicate row. At prikk 0.28 the same tag appears in **both** reads **with two different ids** — `branch list --all` reports `tags/v1` with its **RefState** id, `tag list` reports it with the **block** id a tag actually points at:
+
+  ```
+  branch list --all   tags/v1 2c83e0e4437efd08d9b1882bb92f126dcaeb0e22f7d3a3c64e5a48b68dd479ae
+  tag list            tags/v1 5a1903a2ccb300cf683cd97dd41aa31ab4d9bc15fe8a36997beaf2af51873fee
+  ```
+
+  Keeping the tag entry is therefore what kept the **right** id on a row that would have looked correct either way. prikk stopped listing tag refs under `branch list` at **0.39**, so the de-duplication is dead code above that — and it **stays**, because the floor is 0.28. The real-binary suite asserts the leak in **both** directions rather than only its absence, so the ≤ 0.38 path is exercised rather than assumed.)*
 - **FR-015** *[S]* Show closed branches on demand (default hidden), rendered as closed, with the closure RefState visible in the chain.
 - **FR-016** *[S]* From any block, show its ref-chain context: the RefState/RefUpdate entries that published it (the reflog-equivalent), including recovery-relevant fields (previous state id, update seq, publishing key id).
 - **FR-017** *[C]* Graph view across refs sharing lineage (merge blocks connect two parents; mainline parent distinguished from adopted parent).

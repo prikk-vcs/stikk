@@ -1,6 +1,6 @@
 # RFC 023 — Three things stikk has and does not show, and a control it says it has
 
-**Status.** Proposed (2026-09-12). The next 0.6.0 increment after RFC 022. Groups three small gaps that
+**Status.** **Accepted by the project owner 2026-09-12**, Q1 left unruled and **resolved by the architect the same day — by a fourth option none of the three was** (below). Proposed 2026-09-12. The next 0.6.0 increment after RFC 022. Groups three small gaps that
 share a shape — **stikk holds the information and withholds it** — and records a fourth thing found
 while tracing them, which is not that shape at all.
 **Tracks.** `FL-05`/`FL-06`/`FL-10` (the key id), `FR-111` (the glossary), `FR-104`, `C-S2`, `C-I1`,
@@ -124,7 +124,50 @@ See Q1.
 **It does not construct three-valued `Ready`** — `FR-103`'s increment, which will read the same
 `trust maintainer list` surface Q1 turns on, and should probably follow whichever way Q1 goes.
 
-## Open question
+## Q1 — RESOLVED 2026-09-12: **(d)**, which I did not see when I wrote the question
+
+**The question assumed stikk must either transcribe prikk's prose or ask prikk for a surface. It has to
+do neither: prikk's own binary will derive the comparison values, and the suite can verify it.**
+
+Verified against a real prikk 0.38.0. prikk's docs publish **two seeds and one public key**:
+
+```
+PRIKK_AUTHOR_SEED="00112233…"        (seed, public key NOT published)
+PRIKK_MAINTAINER_SEED="11112222…"    (seed)
+--public-key "a00899df…"             (public key)
+
+$ prikk key public --seed-env <the maintainer seed>
+a00899dfd3357aee69729405913f9324dfc033cec04a2215239eda64ae6d9d91   ← exactly the published one
+$ prikk key public --seed-env <the author seed>
+3ccd241cffc9b3618044b97d036d8614593d8b017c340f1dee8773385517654b   ← derivable, never published
+```
+
+**So the design is:**
+
+- stikk stores **public keys only** — `3ccd241c…` and `a00899df…`. No secret, satisfying `C-S2`'s own
+  *"never by storing the secret"* literally rather than by argument.
+- **A suite test derives them from the published seeds using prikk's own `key public` and asserts the
+  stored list still matches.** The values stikk compares against are therefore **captured from prikk's
+  output**, verified every run — not transcribed from prose. **RFC 017 F2's objection dissolves**, and it
+  was the whole reason I could not rule this.
+- At runtime stikk compares adopted `public_key`s from `trust maintainer list --format json`
+  (prikk ≥ 0.34) against that list.
+- **`C-I1e` is not violated.** It binds the product, not the harness — RFC 019's ruling — and the harness
+  spawns `key public` via `std::process::Command`, never through `CliBackend`. The seeds appear only as
+  test inputs, and they are compromised-by-publication rather than secrets.
+
+**What survives, weakly: drift.** If prikk publishes a *new* example seed, nothing notices. **So the
+letter of (a) is still worth sending and is no longer blocking** — the control works without it. Drafted
+as a follow-up, ranked below the increments, and explicitly not a dependency.
+
+**(c) is not foreclosed.** `C-S2`'s wording remains the owner's; (d) satisfies it as written, so no
+amendment is needed, but narrowing it later remains available.
+
+**Scheduling:** `C-S2`'s implementation reads `trust maintainer list`, which is the same surface
+`FR-103`'s three-valued `Ready` needs. **They ship together, as a third increment** — not in Handoff A
+or B. **Decision 5 does not wait for it**: the threat model is corrected in Handoff A.
+
+### The original question, for the record
 
 **Q1 — where does the compromised-key list come from, if anywhere?**
 

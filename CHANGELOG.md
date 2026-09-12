@@ -6,6 +6,20 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Added
 
+- **Commit's and seal's confirmations now name the key id that will sign.** `FL-05` step 5 has required
+  this since before 0.4.0 — the confirmation showed `Consumes: AUTHOR`, a capability, where the
+  requirement asks for the key. `FL-06` is amended to ask the same of seal: RFC 016 removed a typed
+  key-id **act**, not the **information**, and a ceremony that freezes patches into permanent signed
+  history should say which key is about to sign. Absent renders as nothing — there is no placeholder,
+  because a confirmation is unreachable without the readiness the id accompanies.
+
+  The id is read by a **new module**, `stikk_prikk::key_id`, deliberately separate from the
+  presence-only `stikk_prikk::env`: that module is forbidden by a source-level test from materializing
+  any environment value, and reading an id requires exactly the calls it forbids. The new module has the
+  mirror-image guard — it may read `PRIKK_*_KEY_ID` values and may not so much as name a `*_SEED`
+  variable. **No seed is read anywhere, and `env.rs` is untouched.** A key id is a label prikk prints
+  itself, not key material.
+
 - **The glossary's code explanations are reachable.** stikk has shipped **six** authored, reviewed,
   test-covered `GlossaryEntry` explanations whose text was rendered **nowhere** (a seventh arrives with
   the Windows gloss below): a refusal card's

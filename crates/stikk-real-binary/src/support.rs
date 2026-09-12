@@ -115,10 +115,17 @@ const ED25519_PKCS8_PREFIX: [u8; 16] = [
 pub struct Fixture {
     root: PathBuf,
     repo: PathBuf,
+    /// The prikk minor this fixture was built against — the harness configures prikk differently on
+    /// either side of 0.40 (see [`Fixture::set_author_env`]).
+    minor: u32,
     author_key_id: String,
     author_seed: String,
+    /// A `0600` file holding the AUTHOR seed, for the `PRIKK_AUTHOR_SEED_FILE` override at ≥ 0.40.
+    author_seed_file: PathBuf,
     maintainer_key_id: String,
     maintainer_seed: String,
+    /// As [`Fixture::author_seed_file`], for MAINTAINER.
+    maintainer_seed_file: PathBuf,
 }
 
 /// Whether fixture construction has already failed once in this process (RFC 022 F3/§5).
@@ -197,6 +204,14 @@ impl Fixture {
             Self::setup_manually(bin, &repo, &keys_dir)
         };
 
+        // RFC 026 §2: at ≥ 0.40 prikk no longer reads `PRIKK_*_SEED`, so the harness configures it with
+        // `PRIKK_*_SEED_FILE` instead — which needs a file to point at on **every** platform, including
+        // the Windows path where `key generate --out` is refused and the seed arrives on stdout. Written
+        // here rather than in `generate_key` so the manual pre-0.33 path gets one too and the two eras
+        // differ in one place only.
+        let author_seed_file = Self::write_seed_file(&keys_dir, "author", &author_seed);
+        let maintainer_seed_file = Self::write_seed_file(&keys_dir, "maintainer", &maintainer_seed);
+
         if let Err(e) = fs::write(repo.join("readme.txt"), "hello\n") {
             harness_fail(&format!("could not seed worktree content: {e}"));
         }
@@ -204,11 +219,38 @@ impl Fixture {
         Self {
             root,
             repo,
+            minor: bin.minor,
             author_key_id: AUTHOR_KEY_ID.to_string(),
             author_seed,
+            author_seed_file,
             maintainer_key_id: MAINTAINER_KEY_ID.to_string(),
             maintainer_seed,
+            maintainer_seed_file,
         }
+    }
+
+    /// Write `seed_hex` to `<keys_dir>/<label>.seedfile`, `0600` on Unix, and return the path.
+    ///
+    /// Distinct from the file `key generate --out` may already have written: that one is prikk's, exists
+    /// only on Unix at ≥ 0.33, and this harness must have one path that exists on every platform and in
+    /// every era. Overwriting prikk's would be the same file with two owners.
+    ///
+    /// **The seed is written and never read back by this type.** It leaves only as a path in
+    /// `PRIKK_*_SEED_FILE`, which is prikk reading its own secret from disk — the same posture as the
+    /// `--out` file, and inside the `C-I1e` boundary for the same reason.
+    fn write_seed_file(keys_dir: &Path, label: &str, seed_hex: &str) -> PathBuf {
+        let path = keys_dir.join(format!("{label}.seedfile"));
+        if let Err(e) = fs::write(&path, format!("{seed_hex}\n")) {
+            harness_fail(&format!("could not write the {label} seed file: {e}"));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(0o600)) {
+                harness_fail(&format!("could not chmod the {label} seed file: {e}"));
+            }
+        }
+        path
     }
 
     /// ≥ 0.33: `prikk key generate` derives a keypair and prints the public key, in the same call that
@@ -450,11 +492,30 @@ impl Fixture {
         &self.maintainer_key_id
     }
 
-    /// Set this process's environment to AUTHOR signing readiness (design `env.rs`: presence of both
-    /// `PRIKK_AUTHOR_KEY_ID` and `PRIKK_AUTHOR_SEED`). One of the three call sites `unsafe_code = "deny"`
-    /// (this crate's `Cargo.toml`, review C2) allows explicitly — see `lib.rs`'s module doc — and callers
-    /// must hold `real_binary::ENV_LOCK` for the duration, since process environment mutation is not
-    /// safe across concurrent test threads.
+    /// The first prikk minor that stopped reading `PRIKK_*_SEED` (RFC 026 F1). At **0.40** setting one
+    /// is a refusal; at **0.41** it is ignored in favour of the key directory. Either way the harness
+    /// stops configuring the binary it is testing, which is why this had to be rebuilt before anything
+    /// else in this re-baseline could be measured.
+    const KEY_DIRECTORY_ERA: u32 = 40;
+
+    /// Set this process's environment to AUTHOR signing readiness.
+    ///
+    /// **Two eras, chosen by version** — the same shape [`Fixture::build`] already uses to pick between
+    /// `prikk key generate` and manual derivation at 0.33:
+    ///
+    /// | prikk | variable | why |
+    /// |---|---|---|
+    /// | ≤ 0.39 | `PRIKK_AUTHOR_SEED` | the only mechanism; `_SEED_FILE` does not exist at the 0.28 floor |
+    /// | ≥ 0.40 | `PRIKK_AUTHOR_SEED_FILE` | `_SEED` is refused (0.40) or ignored (0.41) |
+    ///
+    /// **The override, not a key directory.** `XDG_CONFIG_HOME` would give prikk a key directory and
+    /// work — but it is *shared* state, and every test here owns its own repository **and its own
+    /// keys**, which is the per-test isolation RFC 022 measured at ~0.3s a fixture and kept on purpose.
+    /// The override keeps one seed pair per fixture with nothing in common between them.
+    ///
+    /// One of the three call sites `unsafe_code = "deny"` (this crate's `Cargo.toml`, review C2) allows
+    /// explicitly — see `lib.rs`'s module doc — and callers must hold `real_binary::ENV_LOCK` for the
+    /// duration, since process environment mutation is not safe across concurrent test threads.
     pub fn set_author_env(&self) {
         // SAFETY: the caller (every call site in `tests/real_binary.rs`) holds `ENV_LOCK` for as long as
         // these values are set, and clears them (`Fixture::clear_env`, at both entry and exit of every
@@ -463,22 +524,32 @@ impl Fixture {
         #[allow(unsafe_code)]
         unsafe {
             env::set_var("PRIKK_AUTHOR_KEY_ID", &self.author_key_id);
-            env::set_var("PRIKK_AUTHOR_SEED", &self.author_seed);
+            if self.minor >= Self::KEY_DIRECTORY_ERA {
+                env::set_var("PRIKK_AUTHOR_SEED_FILE", &self.author_seed_file);
+            } else {
+                env::set_var("PRIKK_AUTHOR_SEED", &self.author_seed);
+            }
         }
     }
 
     /// Set this process's environment to MAINTAINER signing readiness. See [`Fixture::set_author_env`]
-    /// for the safety discipline this holds to.
+    /// for the two eras and the safety discipline this holds to.
     pub fn set_maintainer_env(&self) {
         // SAFETY: see `set_author_env`.
         #[allow(unsafe_code)]
         unsafe {
             env::set_var("PRIKK_MAINTAINER_KEY_ID", &self.maintainer_key_id);
-            env::set_var("PRIKK_MAINTAINER_SEED", &self.maintainer_seed);
+            if self.minor >= Self::KEY_DIRECTORY_ERA {
+                env::set_var("PRIKK_MAINTAINER_SEED_FILE", &self.maintainer_seed_file);
+            } else {
+                env::set_var("PRIKK_MAINTAINER_SEED", &self.maintainer_seed);
+            }
         }
     }
 
-    /// Clear every `PRIKK_*_KEY_ID`/`PRIKK_*_SEED` variable this fixture may have set. Called at both the
+    /// Clear every `PRIKK_*_KEY_ID`/`PRIKK_*_SEED`/`PRIKK_*_SEED_FILE` variable this fixture may have
+    /// set — **all six regardless of era**, so a fixture built against one end of the range can never
+    /// leave a variable behind that configures the other. Called at both the
     /// start and the end of every test that calls [`Fixture::set_author_env`]/
     /// [`Fixture::set_maintainer_env`], still under the same `ENV_LOCK` guard: at the end so the next
     /// test never inherits this one's leftover readiness, and at the start so a test's own starting state
@@ -490,8 +561,10 @@ impl Fixture {
         unsafe {
             env::remove_var("PRIKK_AUTHOR_KEY_ID");
             env::remove_var("PRIKK_AUTHOR_SEED");
+            env::remove_var("PRIKK_AUTHOR_SEED_FILE");
             env::remove_var("PRIKK_MAINTAINER_KEY_ID");
             env::remove_var("PRIKK_MAINTAINER_SEED");
+            env::remove_var("PRIKK_MAINTAINER_SEED_FILE");
         }
     }
 }

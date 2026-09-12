@@ -23,9 +23,26 @@ fn an_ordinary_key_is_not_flagged() {
 
 /// Every entry is a real 64-hex public key with real provenance — a list whose entries could not have
 /// come out of prikk would flag the wrong values, which is worse than the honest marker it replaced.
+///
+/// **The count is pinned**, not merely "non-empty". Completeness of this list was established by
+/// sweeping prikk's own documentation, and a sweep is not something to re-run from memory when
+/// somebody edits the list. Re-establish it with, at prikk's tag:
+///
+/// ```sh
+/// for f in $(git ls-tree -r --name-only 0.41.0 | grep -E '^(README|docs/src/)' | grep '\.md$'); do
+///     git show "0.41.0:$f" | grep -oE '[0-9a-f]{64}'
+/// done | sort | uniq -c
+/// ```
+///
+/// Two values at 0.41.0, both below. If that ever returns three, this assertion is what says so.
 #[test]
 fn every_entry_is_well_formed_and_sourced() {
-    assert!(!PUBLISHED_EXAMPLE_KEYS.is_empty());
+    assert_eq!(
+        PUBLISHED_EXAMPLE_KEYS.len(),
+        2,
+        "prikk 0.41.0 publishes exactly two example public keys in its user-facing docs; if that \
+         changed, re-run the sweep in this test's doc comment rather than adjusting the number"
+    );
     for example in PUBLISHED_EXAMPLE_KEYS {
         assert_eq!(example.public_key.len(), 64, "{example:?}");
         assert!(

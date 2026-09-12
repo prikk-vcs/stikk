@@ -1,6 +1,6 @@
 # RFC 022 — Widening the real-binary suite: the five surfaces, and the arms nothing can reach
 
-**Status.** Proposed (2026-09-12). Opens 0.6.0. Scheduled at RFC 021 Handoff B's review, where the
+**Status.** **Accepted by the project owner 2026-09-12**, Q1 left unruled and **ruled by the architect the same day on evidence** (below). Opens 0.6.0. Scheduled at RFC 021 Handoff B's review, where the
 suite's first real job found nothing **in what it checks** — and the six stale classifier fixtures that
 re-baseline did move were found by hand, which is the cost RFC 019 exists to remove.
 **Tracks.** `TS-07`, `TS-03`, `UD-02`, `UD-05`, `NFR-T01`, `T-T4`, `FR-106`.
@@ -123,7 +123,45 @@ different question with a different cost curve, and nothing has asked for it.
 **It does not chase coverage for its own sake.** Three arms are unreachable for reasons that are not
 stikk's to fix, and Decision 3 is honesty about that rather than a plan to reach them.
 
-## Open question
+## Q1 — RULED by the architect, 2026-09-12: **(a)**, on a stronger basis than the question assumed
+
+**The owner accepted without answering, and the question did not need them**: I said the answer depends
+on whether RFC 017 Decision 4's binding on `FR-106`'s gloss holds in the current code. It does — and the
+reason is better than the binding.
+
+**There is no gloss.** `present()`'s arm is:
+
+```rust
+StikkError::LockConflict { message } => Presentation::Banner {
+    message: message.clone(),   // prikk's own words, verbatim
+    jump: None,
+},
+```
+
+**stikk adds nothing to a lock conflict.** Grepped every occurrence of *"another writer is active"* in
+the workspace: all of them are comments narrating RFC 017's history, one stale doc comment (F6 below),
+and **two test assertions checking its absence** (`present/tests.rs:344`, `:379`). The only places
+"another writer" reaches a user are fixtures where **prikk's own message** contains it — and those
+assertions check prikk's words survive, which is `ER-02`, not a stikk claim.
+
+**So (c)'s premise is gone.** I wrote that deleting all three would be *"the only safe answer"* if the
+gloss could assert a writer without evidence. It cannot, because it asserts nothing. The worst case from
+keeping an unreachable arm is prikk's verbatim message rendered as a banner rather than a refusal card —
+no fabricated claim, either way.
+
+**(a) stands, with Decision 3's reachability note**, and the asymmetry in the original lean is now
+decisive rather than arguable: keeping costs nothing until the condition arrives; deleting costs correct
+classification if prikk's locking ever regresses, which is exactly the scenario their dormant guard
+exists for.
+
+### F6 — found while ruling this: the taxonomy's own doc comment is stale
+
+`stikk-model/src/error.rs:29` says `LockConflict` is *"Presented as 'another writer is active', never as
+corruption (design FR-106)."* **It is presented as prikk's verbatim message in a banner.** The sentence
+was true when written and describes a presentation that no longer exists — the F1 shape, in the error
+taxonomy's own documentation, and the source of my own wrong premise in Q1. **Fix it in this increment.**
+
+### The original question, for the record
 
 **Q1 — does RFC 017's rule mean *captured*, or *citable*?** I wrote *"no arm survives without a captured
 message behind it"*, and three arms have survived a release on source citations. The sharpest case is

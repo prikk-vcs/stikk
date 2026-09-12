@@ -1,6 +1,6 @@
 # RFC 023 — Three things stikk has and does not show, and a control it says it has
 
-**Status.** **Accepted by the project owner 2026-09-12**, Q1 left unruled and **resolved by the architect the same day — by a fourth option none of the three was** (below). Proposed 2026-09-12. The next 0.6.0 increment after RFC 022. Groups three small gaps that
+**Status.** **Done** — shipped on `main` 2026-09-12, 0.6.0 candidate: A (`12561e6`) and B (`ead26c8`, `02db349`, `c16fe11`, `18f5b84`, `8acfed6`). Accepted by the project owner 2026-09-12, Q1 left unruled and **resolved by the architect the same day — by a fourth option none of the three was** (below). Proposed 2026-09-12. The next 0.6.0 increment after RFC 022. Groups three small gaps that
 share a shape — **stikk holds the information and withholds it** — and records a fourth thing found
 while tracing them, which is not that shape at all.
 **Tracks.** `FL-05`/`FL-06`/`FL-10` (the key id), `FR-111` (the glossary), `FR-104`, `C-S2`, `C-I1`,
@@ -187,3 +187,11 @@ or B. **Decision 5 does not wait for it**: the threat model is corrected in Hand
 so the control exists now and stops depending on transcription later. **But `C-S2` is a threat-model
 control and its wording is the owner's**, not mine to amend, and (c) is a real option I do not want to
 foreclose by treating (a) as obviously right.
+
+
+## Carried forward, recorded at completion 2026-09-12
+
+- **`C-S2`'s implementation** — the control is now marked *not implemented* in all three places it was claimed. Q1's derivation route unblocks it; it ships with `FR-103`'s three-valued `Ready`, both reading `trust maintainer list`.
+- **A letter to prikk on example-key drift** — non-blocking. Q1's mechanism captures the comparison values from prikk's own `key public`, but a newly published example seed would go unnoticed. Ranked below the increments and explicitly not a dependency.
+- **The backslash gloss reading `prikk_version`** rather than hedging *"If this repository is on prikk 0.28"* about a fact stikk holds.
+- **`render_refusal`'s lost `│ ` on wrapped verbatim lines** — framing rather than sizing, so deliberately not folded into RFC 024.

@@ -59,6 +59,10 @@ view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `
   listed, so it matches the list (RFC 027).
 - **An entry of a kind stikk does not model shows prikk's own word** in its tag, rather than stikk's
   `changed` (RFC 027).
+- **prikk's queued-elsewhere warning is readable in full at 80 columns.** Below prikk 0.39 stikk shows
+  prikk's sentence verbatim, and it was one unwrapped row: at 80 columns it stopped after the first
+  clause, so "real, committed work" and "do not delete" were never on screen. It now wraps, prikk's
+  words unchanged, with the quote bar on every row (RFC 027).
 
 ## 0.6.0 — 2026-09-13
 

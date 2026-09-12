@@ -107,13 +107,23 @@ pub fn render(
         // RFC 009 F4: prikk's queued-elsewhere warning, verbatim and inert, in a quoted band clearly
         // distinct from stikk's own chrome (C-T2a/C-T2b) — the same "prikk reported" pattern the
         // refusal overlay uses for prikk's own text.
+        //
+        // **Wrapped, with the bar on every row** (RFC 027 B). Unwrapped, prikk's sentence clipped at 80
+        // columns after "not hea", so a user below prikk 0.39 never saw "real, committed work" or "do
+        // not delete" — the claims this band exists for. The words are unchanged; only where the rows
+        // break is stikk's, exactly as the refusal card wraps prikk's text (RFC 026 Handoff C §1).
         Some(QueuedElsewhere::Note(note)) => {
             lines.push(Line::from(Span::styled("  prikk reported —", dim)));
             for raw in note.lines() {
-                lines.push(Line::from(vec![
-                    Span::styled("  │ ", Style::default().fg(palette.warn)),
-                    Span::styled(inert(raw), Style::default().fg(palette.fg)),
-                ]));
+                for row in wrap_indented(&inert(raw), text_width, "    ") {
+                    lines.push(Line::from(vec![
+                        Span::styled("  │ ", Style::default().fg(palette.warn)),
+                        Span::styled(
+                            row.get(4..).unwrap_or_default().to_string(),
+                            Style::default().fg(palette.fg),
+                        ),
+                    ]));
+                }
             }
             lines.push(Line::from(""));
         }

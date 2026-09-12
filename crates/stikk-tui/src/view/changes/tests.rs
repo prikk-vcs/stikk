@@ -407,3 +407,46 @@ fn a_hostile_queued_ref_is_rendered_inert() {
     let text = draw_80(&view, false);
     assert!(!text.contains('\u{1b}'));
 }
+
+/// prikk's queued-elsewhere sentence exactly as the **0.28.0** binary printed it on 2026-09-13 (RFC 027
+/// Handoff B probe: `Fixture` commit on `heads/main`, repository moved to `/tmp/repo`, then
+/// `prikk worktree-status --ref heads/other`). Byte-identical to 0.41.0's prose for the same tree.
+const PRIKK_QUEUED_ELSEWHERE_0_28: &str = "note: the active WAL has queued (unsealed) patches for \
+     heads/main, not heads/other -- that is real, committed work, not shown above; any \"untracked\" \
+     file here may be exactly that work seen from this ref's own baseline, so do not delete based on \
+     this report alone (see `prikk status`)";
+
+#[test]
+fn prikks_whole_queued_elsewhere_sentence_is_on_screen_at_80_columns() {
+    // Before RFC 027 B this band did not wrap, and at 80 columns it clipped after "not hea" — every
+    // safety claim after the first was off screen below prikk 0.39.
+    let mut view = dirty_view();
+    view.reff = "heads/other".into();
+    view.queued_elsewhere = Some(QueuedElsewhere::Note(PRIKK_QUEUED_ELSEWHERE_0_28.into()));
+    let text = draw_80(&view, false);
+    println!("{text}");
+    assert!(
+        joined(&text).contains(PRIKK_QUEUED_ELSEWHERE_0_28),
+        "prikk's sentence is not whole on screen:\n{text}"
+    );
+    // Every row of it is inside the quote band — prikk's words, and marked as prikk's, row by row.
+    let band: Vec<&str> = text
+        .lines()
+        .skip_while(|row| !row.contains("prikk reported —"))
+        .skip(1)
+        .take_while(|row| {
+            !row.trim_matches(|c: char| c == '│' || c.is_whitespace())
+                .is_empty()
+        })
+        .collect();
+    assert!(
+        band.len() > 1,
+        "the sentence should wrap at 80 columns:\n{text}"
+    );
+    for row in band {
+        assert!(
+            row.starts_with("│  │ "),
+            "a row of prikk's sentence lost its bar: {row:?}"
+        );
+    }
+}

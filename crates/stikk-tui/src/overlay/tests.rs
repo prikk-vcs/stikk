@@ -1107,3 +1107,513 @@ fn a_hostile_key_id_renders_inert_and_forges_no_chrome() {
         .expect("the id row is on screen");
     assert!(id_row.contains("Consumes: MAINTAINER"), "{id_row:?}");
 }
+
+// =============================================================================================
+// RFC 024 §4 — the overlay sizing gate.
+//
+// **This is the half of the increment that matters.** RFC 016 C2 found the clipping defect in
+// `render_refusal`, fixed it correctly, and the fix reached three of fourteen renderers. Eleven kept
+// guessing, and two of them shipped live defects: seal's confirmation never showed `Enter to confirm`
+// on the path every user takes, and the ref picker clipped its own cursor. A gate is what turns "we
+// fixed the instance" into "the class cannot come back".
+//
+// **Two assertions**, ruled in RFC 024's Q1:
+//
+//   1. **No silent clipping.** Either the last content row is on screen, or the render says there is
+//      more — the Glossary's `— rows 1–20 of 128` idiom, now shared by `Panel` and `ListPanel`.
+//      Clipped-and-honest is fine; clipped-and-quiet is the defect.
+//   2. **A cursor is always visible.** Where an overlay has a selection, the selected row is on screen
+//      at *every* cursor position. No "or an indicator" clause: a hidden selection has no honest form.
+//
+// **The tripwire is `coverage()` below**, an exhaustive `match` over `Overlay` with no `_` arm.
+// `Overlay` is not `#[non_exhaustive]`, so a fourteenth variant **fails to compile** until someone
+// comes here and says what it is. That is RFC 022 §7b's shape — the only mechanism this project has
+// that catches the architect as readily as the implementer.
+//
+// **Every case is built oversized.** A gate fed short fixtures passes while asserting nothing, which
+// is the failure mode every render test here has had to be proven against. `cases()` builds content
+// that exceeds an 80×24 viewport, and `the_gate_is_fed_content_that_actually_overflows` refuses to let
+// that quietly stop being true.
+// =============================================================================================
+
+/// What the gate needs to know about one variant, decided by an **exhaustive match** so a new variant
+/// cannot slip past uncovered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Coverage {
+    /// A selectable list: assertion 2 applies, over this many entries.
+    Selectable(usize),
+    /// Content with no selection: assertion 1 only.
+    NoSelection,
+    /// Fixed-size and structurally unable to overflow — assertion 1 holds trivially, and the reason is
+    /// stated here rather than left as an absence.
+    CannotOverflow,
+}
+
+/// The exhaustive match. **Adding an `Overlay` variant breaks the build here until it is covered.**
+fn coverage(overlay: &Overlay) -> Coverage {
+    match overlay {
+        // Scrolls with an offset and advertises its position in the title (RFC 023 F2). Not a
+        // selection — the keys move a viewport, not a cursor — so assertion 2 does not apply.
+        Overlay::Glossary { .. } => Coverage::NoSelection,
+        // One short line in a fixed 3-row box. It has no content that can grow.
+        Overlay::Loading { .. } => Coverage::CannotOverflow,
+        Overlay::Operations { operations } => {
+            let _ = operations;
+            Coverage::NoSelection
+        }
+        Overlay::RefPicker { refs, .. } => Coverage::Selectable(refs.len()),
+        Overlay::Refusal { card, .. } => Coverage::Selectable(card.next_steps.len()),
+        Overlay::Stale { next_steps, .. } => Coverage::Selectable(next_steps.len()),
+        Overlay::Palette { filter, .. } => {
+            Coverage::Selectable(stikk_core::palette::matching(filter).len())
+        }
+        Overlay::Refusals { records, .. } => Coverage::Selectable(records.len()),
+        Overlay::Confirmation { .. } => Coverage::NoSelection,
+        Overlay::CommitMessage { .. } => Coverage::NoSelection,
+        Overlay::CommitResult { .. } => Coverage::NoSelection,
+        Overlay::SealConsent { .. } => Coverage::NoSelection,
+        Overlay::SealResult { .. } => Coverage::NoSelection,
+    }
+}
+
+/// One gate case: a name, a builder taking a cursor position, and the text of the row that must be
+/// reachable for assertion 1.
+struct Case {
+    name: &'static str,
+    build: Box<dyn Fn(usize) -> Overlay>,
+    /// A distinctive fragment of the **last** content row. Assertion 1 requires this on screen unless
+    /// the render advertises that it is showing only part of its content.
+    last_row: String,
+    /// For a selectable case, the text of entry `i`, so assertion 2 can find the selected row.
+    entry: Option<Box<dyn Fn(usize) -> String>>,
+}
+
+fn long_refs(n: usize) -> Vec<String> {
+    (0..n).map(|i| format!("heads/branch-{i:03}")).collect()
+}
+
+/// The real seal consequence — `MaintainerReadiness::Unknown`, the only value any supported prikk can
+/// produce (RFC 016 F3), and therefore the text every user actually sees. This is the string that made
+/// RFC 024 F1 a shipped defect.
+const SEAL_CONSEQUENCE: &str = "Freezes the active WAL's queued patches into a new, MAINTAINER-signed \
+     block. This does not promise success. A trust refusal is possible here — stikk cannot verify key \
+     adoption on any supported prikk, before or after this attempt.";
+
+fn gate_summary(consequence: &str) -> ConfirmationSummary {
+    ConfirmationSummary {
+        operation: "Seal the active WAL".to_string(),
+        target_ids: vec!["heads/main".to_string()],
+        counts: vec![("patches", 3)],
+        capability: Capability::Maintainer,
+        consequence: consequence.to_string(),
+        target_name: None,
+        signing_key_id: Some("dev-maintainer".to_string()),
+    }
+}
+
+fn cases() -> Vec<Case> {
+    let long_note = "note: a long trailing note from prikk, repeated so that this card cannot fit \
+                     inside an eighty by twenty-four terminal without either scrolling or saying so";
+    vec![
+        Case {
+            name: "Glossary",
+            build: Box::new(|_| Overlay::Glossary {
+                offset: std::cell::Cell::new(0),
+            }),
+            // The last code entry's title; the Glossary scrolls, so assertion 1 is met by its indicator.
+            last_row: stikk_core::glossary::code_entries()
+                .last()
+                .expect("entries")
+                .title
+                .to_string(),
+            entry: None,
+        },
+        Case {
+            name: "Loading",
+            build: Box::new(|_| Overlay::Loading {
+                what: "refs",
+                seq: 1,
+            }),
+            last_row: "loading refs".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "Operations",
+            build: Box::new(|_| Overlay::Operations {
+                operations: (0..40)
+                    .map(|i| Operation {
+                        seq: i,
+                        label: "history",
+                        status: OperationStatus::Running,
+                    })
+                    .collect(),
+            }),
+            last_row: "history".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "RefPicker",
+            build: Box::new(|cursor| Overlay::RefPicker {
+                refs: long_refs(40),
+                cursor,
+            }),
+            last_row: "heads/branch-039".to_string(),
+            entry: Some(Box::new(|i| format!("heads/branch-{i:03}"))),
+        },
+        Case {
+            name: "Refusal",
+            build: Box::new(|cursor| Overlay::Refusal {
+                card: RefusalCard {
+                    verbatim: format!("error: {}", "a very long refusal message ".repeat(30)),
+                    gloss: Some("a very long gloss ".repeat(60)),
+                    next_steps: (0..4)
+                        .map(|i| NextStep {
+                            label: format!("next step {i}"),
+                            target: NextTarget::Refresh,
+                        })
+                        .collect(),
+                    glossary_codes: Vec::new(),
+                },
+                cursor,
+            }),
+            last_row: "next step 3".to_string(),
+            entry: Some(Box::new(|i| format!("next step {i}"))),
+        },
+        Case {
+            name: "Stale",
+            build: Box::new(|cursor| Overlay::Stale {
+                operation: "commit".to_string(),
+                gloss: "a very long stale gloss ".repeat(60),
+                next_steps: (0..3)
+                    .map(|i| NextStep {
+                        label: format!("stale step {i}"),
+                        target: NextTarget::Refresh,
+                    })
+                    .collect(),
+                cursor,
+            }),
+            last_row: "stale step 2".to_string(),
+            entry: Some(Box::new(|i| format!("stale step {i}"))),
+        },
+        Case {
+            name: "Palette",
+            build: Box::new(|cursor| Overlay::Palette {
+                filter: String::new(),
+                cursor,
+                readiness: stikk_model::Readiness {
+                    author_ready: true,
+                    maintainer_readiness: stikk_model::MaintainerReadiness::Unknown,
+                    read_only: false,
+                },
+            }),
+            last_row: stikk_core::palette::matching("")
+                .last()
+                .expect("commands")
+                .name
+                .to_string(),
+            entry: Some(Box::new(|i| {
+                stikk_core::palette::matching("")
+                    .get(i)
+                    .map(|c| c.name.to_string())
+                    .unwrap_or_default()
+            })),
+        },
+        Case {
+            name: "Refusals",
+            build: Box::new(|cursor| Overlay::Refusals {
+                records: (0..40)
+                    .map(|i| RefusalRecord {
+                        verbatim: format!("refusal number {i:03}"),
+                        class: "refusal",
+                        operation: OperationContext::Commit,
+                        seq: i,
+                    })
+                    .collect(),
+                cursor,
+            }),
+            last_row: "refusal number 039".to_string(),
+            entry: Some(Box::new(|i| format!("refusal number {i:03}"))),
+        },
+        Case {
+            name: "Confirmation",
+            build: Box::new(|_| Overlay::Confirmation {
+                summary: gate_summary(SEAL_CONSEQUENCE),
+                tier: Tier::Three,
+                typed: String::new(),
+                error: None,
+            }),
+            last_row: "Enter to confirm".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "CommitMessage",
+            build: Box::new(|_| Overlay::CommitMessage {
+                reff: "heads/main".to_string(),
+                typed: "a commit message".to_string(),
+                messages_persist: false,
+            }),
+            last_row: "Enter to continue".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "CommitResult",
+            build: Box::new(move |_| Overlay::CommitResult {
+                result: stikk_prikk::CommitResult {
+                    baseline_ref: "heads/main".to_string(),
+                    patch_id: "a".repeat(64),
+                    wal_sequence: 1,
+                    operations: 40,
+                    referenced_blobs: 40,
+                    text_edits: 0,
+                    changes: (0..40)
+                        .map(|i| stikk_prikk::CommitChange {
+                            operation: "modified".to_string(),
+                            path: format!("src/file-{i:03}.rs"),
+                        })
+                        .collect(),
+                    notes: vec![long_note.to_string()],
+                },
+            }),
+            last_row: "Enter · Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "SealConsent",
+            build: Box::new(|_| Overlay::SealConsent {
+                reff: "heads/main".to_string(),
+                acknowledged: false,
+            }),
+            last_row: "Esc to cancel".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "SealResult",
+            build: Box::new(move |_| Overlay::SealResult {
+                result: stikk_prikk::SealResult {
+                    block_id: "b".repeat(64),
+                    patches: 40,
+                    reff: "heads/main".to_string(),
+                    ref_state: "c".repeat(64),
+                    notes: (0..30).map(|i| format!("note: line {i:03}")).collect(),
+                },
+            }),
+            last_row: "Enter · Esc to dismiss".to_string(),
+            entry: None,
+        },
+    ]
+}
+
+/// The viewport indicator both panels use — the Glossary's idiom, shared (RFC 023 F2, RFC 024 §4).
+fn advertises_more(screen: &str) -> bool {
+    screen.contains("lines ") && screen.contains(" of ")
+}
+
+/// The two heights every case is checked at.
+///
+/// **80×24** is `MIN_WIDTH`×`MIN_HEIGHT`, the real floor — the size all three shipped defects were
+/// found at. **80×8 is a squeeze**, below what the shell will render an overlay in at all, and it is
+/// here because some variants' content is fixed by the product rather than by a fixture: the command
+/// palette ships ten commands and no test can give it forty, so at 80×24 it simply fits and its sizing
+/// path is never exercised. Squeezing is the only way to put *every* variant under pressure, and a
+/// property that holds only when there is room is not the property RFC 024 asserts.
+const GATE_SIZES: [(u16, u16); 2] = [(80, 24), (80, 8)];
+
+/// **Assertion 1 — nothing is clipped silently.**
+#[test]
+fn every_overlay_either_fits_or_says_it_does_not() {
+    for case in cases() {
+        for (w, h) in GATE_SIZES {
+            let overlay = (case.build)(0);
+            let screen = draw_at(&overlay, w, h);
+            let flat = flattened(&screen);
+            let fits = flat.contains(&flattened(&case.last_row));
+            assert!(
+                fits || advertises_more(&screen),
+                "{} at {w}×{h}: the last content row ({:?}) is off screen and the overlay does not \
+                 say so. Clipping is allowed; clipping in silence is RFC 024's defect — either size \
+                 it so the last row fits, or carry the `lines X–Y of Z` indicator the shared panels \
+                 provide.\n{screen}",
+                case.name,
+                case.last_row
+            );
+        }
+    }
+}
+
+/// **Assertion 2 — a cursor is never the thing that gets clipped.**
+///
+/// Every position, not a sample: RFC 024 F5 was found at the *last* index of forty, which is exactly
+/// the position a spot-check skips.
+#[test]
+fn every_selectable_overlay_keeps_its_cursor_on_screen() {
+    for case in cases() {
+        let probe = (case.build)(0);
+        let Coverage::Selectable(count) = coverage(&probe) else {
+            continue;
+        };
+        let entry = case
+            .entry
+            .as_ref()
+            .unwrap_or_else(|| panic!("{}: selectable but supplies no entry text", case.name));
+        assert!(
+            count >= 3,
+            "{}: only {count} entries — too few to clip",
+            case.name
+        );
+        for cursor in 0..count {
+            let screen = draw_at(&(case.build)(cursor), 80, 24);
+            let wanted = entry(cursor);
+            let selected_row = screen
+                .lines()
+                .find(|row| row.contains('▶'))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{}: no selected row on screen at cursor {cursor} of {count}\n{screen}",
+                        case.name
+                    )
+                });
+            assert!(
+                selected_row.contains(&wanted),
+                "{}: at cursor {cursor} of {count} the selection is {wanted:?} but the row marked \
+                 selected is {selected_row:?}. A list that cannot show what is selected is worse than \
+                 one that cannot show everything — this is the defect the ref picker shipped with \
+                 since 0.1.0.\n{screen}",
+                case.name
+            );
+        }
+    }
+}
+
+/// **The gate's own premise.** A case whose content fits is a case asserting nothing.
+///
+/// Every case except the two that structurally cannot overflow must be big enough that an 80×24
+/// viewport is not sufficient — otherwise assertion 1 above passes on a panel that was never under
+/// pressure, which is how a gate quietly stops being one.
+#[test]
+fn the_gate_is_fed_content_that_actually_overflows() {
+    let mut checked = 0;
+    for case in cases() {
+        let overlay = (case.build)(0);
+        if coverage(&overlay) == Coverage::CannotOverflow {
+            continue;
+        }
+        // Under pressure at the squeeze height, unpressured at 200 rows. Identical renders mean this
+        // case never overflows and so asserts nothing about sizing.
+        let (w, h) = GATE_SIZES[1];
+        let small = draw_at(&overlay, w, h);
+        let large = draw_at(&overlay, w, 200);
+        assert_ne!(
+            flattened(&small),
+            flattened(&large),
+            "{}: renders identically at {w}×{h} and {w}×200, so it never overflows and asserts \
+             nothing. Give it more content.",
+            case.name
+        );
+        checked += 1;
+    }
+    assert!(checked >= 11, "only {checked} cases actually overflow");
+}
+
+/// Coverage is complete, and stays complete.
+///
+/// `coverage()`'s match is exhaustive with no `_` arm, so a fourteenth `Overlay` variant **will not
+/// compile** until it is classified there. This asserts the second half: that it also gets a case.
+#[test]
+fn the_gate_covers_every_overlay_variant() {
+    assert_eq!(
+        cases().len(),
+        13,
+        "Overlay has thirteen variants and the gate must have one case each. If a variant was added, \
+         `coverage()` will already have refused to compile; add its case to `cases()` too — built \
+         oversized, or the new case asserts nothing."
+    );
+    let mut names: Vec<&str> = cases().iter().map(|c| c.name).collect();
+    names.sort_unstable();
+    names.dedup();
+    assert_eq!(names.len(), 13, "duplicate case names: {names:?}");
+}
+
+// --- RFC 024 F1/F2/F5: the three shipped defects, each pinned by its own named test -------------
+//
+// The gate above asserts the *property*; these assert the *instances*, because a reader asking "is
+// the seal affordance back?" should find a test that says so by name rather than infer it from a
+// property test passing.
+
+/// **F1** — seal's confirmation shows `Enter to confirm · Esc to cancel`, at both heights the RFC
+/// measured it absent at.
+///
+/// It shipped missing in 0.4.0, 0.4.1 and 0.5.0 on the path *every* user takes:
+/// `MaintainerReadiness::Unknown` is the only value any supported prikk can produce (RFC 016 F3), and
+/// its consequence is one logical line that draws as four rows. `80×40` is here because the terminal's
+/// size was never the constraint — the estimate was.
+#[test]
+fn f1_seals_confirmation_shows_its_confirm_affordance() {
+    let summary = gate_summary(SEAL_CONSEQUENCE);
+    for height in [24, 26, 40] {
+        let text = draw_at(
+            &Overlay::Confirmation {
+                summary: summary.clone(),
+                tier: Tier::Three,
+                typed: String::new(),
+                error: None,
+            },
+            80,
+            height,
+        );
+        assert!(
+            text.contains("Enter to confirm"),
+            "80×{height}: seal's confirm affordance is off screen again\n{text}"
+        );
+        // And the consequence it is anchored below is still readable, not sacrificed to make room.
+        assert!(
+            flattened(&text).contains("A trust refusal is possible here"),
+            "80×{height}: the consequence should still be there\n{text}"
+        );
+    }
+}
+
+/// **F2** — the commit message prompt shows its footer, and the input row the user is typing into.
+#[test]
+fn f2_commit_message_prompt_shows_its_footer_at_80x24() {
+    let text = draw_at(
+        &Overlay::CommitMessage {
+            reff: "heads/main".to_string(),
+            typed: "fix the thing".to_string(),
+            messages_persist: false,
+        },
+        80,
+        24,
+    );
+    assert!(text.contains("Enter to continue"), "{text}");
+    assert!(
+        text.contains("fix the thing"),
+        "the typed input must be visible\n{text}"
+    );
+}
+
+/// **F5** — the ref picker keeps its selection on screen at the fortieth of forty.
+///
+/// Rendered from the top and clipped since 0.1.0: a user holding ↓ watched nothing move while the
+/// selection travelled somewhere invisible.
+#[test]
+fn f5_ref_picker_shows_the_last_of_forty_refs_when_selected() {
+    let refs = long_refs(40);
+    let text = draw_at(
+        &Overlay::RefPicker {
+            refs: refs.clone(),
+            cursor: 39,
+        },
+        80,
+        24,
+    );
+    let selected = text
+        .lines()
+        .find(|row| row.contains('▶'))
+        .expect("a selected row must be on screen");
+    assert!(
+        selected.contains("heads/branch-039"),
+        "the fortieth ref is selected but the marked row is {selected:?}\n{text}"
+    );
+    // And the panel says where in the list it is, rather than looking like the whole of it.
+    assert!(advertises_more(&text), "{text}");
+}

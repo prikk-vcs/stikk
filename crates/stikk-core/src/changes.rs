@@ -33,7 +33,7 @@ pub enum ChangeKind {
     Missing,
     /// A worktree file not in the baseline.
     Untracked,
-    /// A path prikk cannot represent against the baseline.
+    /// A path prikk cannot represent against the baseline (prikk's `unsupported-path`).
     Unsupported,
     /// A kind stikk does not yet model (kept verbatim, never dropped).
     Other(String),
@@ -45,7 +45,7 @@ impl ChangeKind {
             "modified" => Self::Modified,
             "missing" => Self::Missing,
             "untracked" => Self::Untracked,
-            "unsupported" => Self::Unsupported,
+            "unsupported-path" => Self::Unsupported,
             other => Self::Other(other.to_string()),
         }
     }

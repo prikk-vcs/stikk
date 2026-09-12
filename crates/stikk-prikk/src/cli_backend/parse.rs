@@ -30,10 +30,6 @@ use crate::{
     StateFiles, WorktreeEntry, WorktreeStatus,
 };
 
-/// The per-path change kinds `worktree-status` emits; used to tell an indented entry line from a
-/// flush-left count line that happens to share a first word (`modified files:` vs `  modified …`).
-const WORKTREE_KINDS: [&str; 4] = ["modified", "missing", "untracked", "unsupported"];
-
 /// Parse `prikk status` output into an [`Orientation`].
 ///
 /// Expected lines (order-independent), from `prikk status`:
@@ -445,14 +441,16 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
     })
 }
 
-/// Decode one indented entry line `  <kind> <path> — <note>`. Returns `None` for an indented line
-/// that is not an entry (its first word is not a change kind), e.g. a wrapped note.
+/// Decode one indented entry line `  <kind> <path> — <note>`. **The kind is the first word, whatever
+/// the word is** (RFC 027 F0): prikk prints exactly one indented line per change inside the region
+/// [`worktree_status`] scopes (`print_worktree_status`, read at 0.28.0, 0.38.0, 0.39.0 and 0.41.0), so
+/// there is no other indented line there to tell apart. A closed list of kind words is how
+/// `unsupported-path` — printed at every one of those tags — was counted and never listed.
+///
+/// Returns `None` only for a line with no word boundary at all: blank, or a single bare word.
 fn parse_worktree_entry(line: &str) -> Option<WorktreeEntry> {
     let trimmed = line.trim_start();
     let (kind, rest) = trimmed.split_once(' ')?;
-    if !WORKTREE_KINDS.contains(&kind) {
-        return None;
-    }
     // The path runs up to the " — " separator; the note is the remainder. A path may contain spaces,
     // so split on the separator rather than on whitespace.
     let (path, note) = match rest.split_once(" — ") {

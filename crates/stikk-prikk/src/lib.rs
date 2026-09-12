@@ -175,8 +175,9 @@ impl RefEntry {
 /// content difference (the UD-09 ceiling).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorktreeEntry {
-    /// The change kind as prikk names it (`modified`, `missing`, `untracked`, `unsupported`); kept as
-    /// text so a future kind renders rather than breaks parsing.
+    /// The change kind as prikk names it (`modified`, `missing`, `untracked`, `unsupported-path`); kept
+    /// as text so a future kind renders rather than breaks parsing — the reader takes any first word
+    /// (RFC 027 F0).
     pub kind: String,
     /// The repo-relative worktree path.
     pub path: String,

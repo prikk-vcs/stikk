@@ -810,6 +810,86 @@ fn f0_a_renamed_kind_word_path_is_not_a_fabricated_entry() {
     );
 }
 
+/// **RFC 027 F0, against real binaries at both ends: a path prikk cannot represent is listed.**
+///
+/// prikk names it `unsupported-path` at every tag from 0.28.0 to 0.41.0; stikk matched `unsupported` and
+/// dropped the line, so the Changes header counted what its list never showed. A backslash in a file
+/// name is the reachable case on Unix. The entry count is checked against prikk's own
+/// `unsupported paths:` counter, which prikk computes from the list it prints.
+///
+/// **Skipped on Windows, and the skip is announced**: a backslash is the path separator there and cannot
+/// be part of a name. A non-UTF-8 name is deliberately absent — macOS is expected to refuse creating one
+/// and Windows cannot express one; the captured parser fixtures cover that shape.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn f0_an_unsupported_path_is_listed_as_prikk_counts_it() {
+    if cfg!(windows) {
+        eprintln!(
+            "RFC 027 F0: SKIPPED on Windows — a backslash is the path separator there, so a file name \
+             cannot contain one and prikk's `unsupported-path` entry cannot be provoked this way. \
+             Announced rather than silent (RFC 022 §3)."
+        );
+        return;
+    }
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        // A baseline to compare against: the fixture's `readme.txt`, committed and sealed.
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "first patch")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+
+        std::fs::write(repo.join("back\\slash.txt"), "x\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+
+        let status = backend
+            .worktree_status(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: worktree_status: {e}", bin.minor));
+
+        let unsupported: Vec<_> = status
+            .entries
+            .iter()
+            .filter(|e| e.kind == "unsupported-path")
+            .collect();
+        assert_eq!(
+            status.unsupported, 1,
+            "0.{}: prikk counted {} unsupported paths; expected the one backslash name",
+            bin.minor, status.unsupported
+        );
+        assert_eq!(
+            u64::try_from(unsupported.len()).expect("fits"),
+            status.unsupported,
+            "0.{}: prikk's `unsupported paths:` is {}, stikk listed {:?}",
+            bin.minor,
+            status.unsupported,
+            status.entries
+        );
+        assert!(
+            unsupported[0].path.ends_with("back\\slash.txt"),
+            "0.{}: the unsupported entry names {:?}",
+            bin.minor,
+            unsupported[0].path
+        );
+        assert!(
+            !unsupported[0].note.is_empty(),
+            "0.{}: prikk's reason should ride beside the entry",
+            bin.minor
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // RFC 022 §4 — classifier arms, provoked rather than cited.
 //

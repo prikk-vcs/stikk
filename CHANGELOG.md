@@ -2,6 +2,16 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Fixed
+
+- **The Changes view lists unsupported paths.** Since 0.1.0 it counted them in its header and showed
+  none of them: prikk names a path it cannot represent `unsupported-path`, and stikk matched
+  `unsupported`, a word prikk has never printed, so every such line was dropped. Those paths also block
+  commit, and prikk's reason is now visible beside each one. An entry of any kind stikk does not model
+  is now listed too, rather than dropped (RFC 027 F0).
+
 ## 0.6.0 — 2026-09-13
 
 **stikk says what it knows.** 0.5.0 made stikk checked against a real prikk; 0.6.0 makes it honest about

@@ -1256,3 +1256,228 @@ fn every_fixture_constant_carries_a_provenance_comment() {
         );
     }
 }
+
+// Captured verbatim (stdout; the dirty-exit `error: worktree has changes against the baseline` line is
+// on stderr and is not part of the report) from a real prikk **0.28.0** binary on 2026-09-13, RFC 027
+// F0. The repository is the real-binary harness's own `Fixture` at 0.28 — `readme.txt` committed and
+// sealed — moved to the neutral `/tmp/repo` before anything was captured, because prikk prints an
+// unsupported entry's path **absolute**, and no fixture may carry anyone's home directory or be edited
+// afterwards to remove one. Then, in `/tmp/repo` (written with `std::fs::write`):
+//
+//   readme.txt            rewritten to `hello again\n`          → one ordinary modification
+//   back\slash.txt        a backslash in the name               → unsupported-path
+//   bad<0xFF>name.txt     one byte that is not UTF-8            → unsupported-path
+//   prikk worktree-status --ref heads/main
+//
+// Nothing was edited after capture. The two `�` are prikk's own — it prints U+FFFD (`EF BF BD`) for the
+// byte it cannot decode — and each `\\` below is one backslash, escaped only as Rust source requires.
+//
+// **This is the shape stikk has dropped since 0.1.0:** `unsupported paths: 2`, and two lines whose kind
+// is `unsupported-path` — a word stikk's reader did not know.
+const WORKTREE_UNSUPPORTED_0_28_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 0
+modified files: 1
+untracked files: 0
+unsupported paths: 2
+worktree: changed against baseline
+  unsupported-path /tmp/repo/back\\slash.txt — worktree path is not representable as a safe Prikk path: invalid name: backslashes are not allowed in repository paths
+  unsupported-path /tmp/repo/bad�name.txt — worktree path is not representable as a safe Prikk path: integrity error: worktree path is not UTF-8: bad�name.txt
+  modified readme.txt — tracked file bytes differ from the baseline
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+// Captured verbatim (stdout; the dirty-exit `error:` line is on stderr) from a real prikk **0.41.0**
+// binary on 2026-09-13, RFC 027 F0 — the same probe, the same three files, the same neutral
+// `/tmp/repo`, the harness's `Fixture` at 0.41. Nothing edited after capture.
+//
+// The entry lines' shape is unchanged from 0.28; what differs at the ceiling is around them —
+// `refused paths: 0` (0.39+), `live rename declarations: 0` (0.38+), and the non-UTF-8 entry's own note
+// wording, which is prikk's and is carried as-is.
+const WORKTREE_UNSUPPORTED_0_41_FIXTURE: &str = "\
+worktree-status repository: /tmp/repo/.prikk
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 0
+modified files: 1
+untracked files: 0
+unsupported paths: 2
+refused paths: 0
+worktree: changed against baseline
+  unsupported-path /tmp/repo/back\\slash.txt — worktree path is not representable as a safe Prikk path: invalid name: backslashes are not allowed in repository paths
+  unsupported-path /tmp/repo/bad�name.txt — worktree path is not representable as a safe Prikk path: invalid name: worktree path is not valid UTF-8: bad�name.txt
+  modified readme.txt — tracked file bytes differ from the baseline
+live rename declarations: 0
+note: use `prikk commit -m <message>` to author node-addressed worktree changes; text nodes use deterministic arbitrary-span EditText
+";
+
+#[test]
+fn unsupported_path_entries_are_listed_at_both_ends() {
+    // RFC 027 F0. prikk counted two and printed two; stikk counted two and listed none.
+    for (end, text) in [
+        ("0.28", WORKTREE_UNSUPPORTED_0_28_FIXTURE),
+        ("0.41", WORKTREE_UNSUPPORTED_0_41_FIXTURE),
+    ] {
+        let s = worktree_status(text).unwrap_or_else(|e| panic!("{end}: {e:?}"));
+        assert_eq!(s.unsupported, 2, "{end}");
+        assert_eq!(s.entries.len(), 3, "{end}: entries were {:?}", s.entries);
+        assert!(
+            s.entries.iter().any(|e| e.kind == "unsupported-path"
+                && e.path == "/tmp/repo/back\\slash.txt"
+                && e.note.contains("backslashes are not allowed")),
+            "{end}: no backslash entry in {:?}",
+            s.entries
+        );
+        assert!(
+            s.entries.iter().any(|e| e.kind == "unsupported-path"
+                && e.path == "/tmp/repo/bad\u{fffd}name.txt"
+                && e.note.contains("UTF-8")),
+            "{end}: no non-UTF-8 entry in {:?}",
+            s.entries
+        );
+        assert!(
+            s.entries
+                .iter()
+                .any(|e| e.kind == "modified" && e.path == "readme.txt"),
+            "{end}"
+        );
+    }
+}
+
+#[test]
+fn an_indented_line_with_an_invented_kind_is_an_entry() {
+    // RFC 027 F0: every indented line in the scoped region is an entry, whatever its first word.
+    // `typechange` is a kind prikk does not print at any supported version — which is the point:
+    // `WorktreeEntry::kind` promises a future kind renders, and a closed list made that unreachable.
+    let text = "\
+ref: heads/main
+tracked files: 1
+unchanged files: 0
+missing files: 0
+modified files: 0
+untracked files: 0
+unsupported paths: 0
+worktree: changed against baseline
+  typechange link.txt — a kind prikk does not print today
+live rename declarations: 0
+";
+    let s = worktree_status(text).expect("parses");
+    assert_eq!(s.entries.len(), 1, "entries were {:?}", s.entries);
+    assert_eq!(s.entries[0].kind, "typechange");
+    assert_eq!(s.entries[0].path, "link.txt");
+    assert_eq!(s.entries[0].note, "a kind prikk does not print today");
+}
+
+#[test]
+fn a_refused_suffix_stays_in_the_note() {
+    // RFC 027 §3: at 0.39+ a refused entry's line ends ` [refused: <reason>]` (`"  {} {} — {}{}"` in
+    // prikk's printer). Handoff A does not parse it; it is prikk's text and rides in the note.
+    let text = "\
+ref: heads/main
+tracked files: 0
+unchanged files: 0
+missing files: 0
+modified files: 0
+untracked files: 1
+unsupported paths: 0
+refused paths: 1
+worktree: changed against baseline
+  untracked big.bin — worktree file is not in the baseline [refused: some reason]
+live rename declarations: 0
+";
+    let s = worktree_status(text).expect("parses");
+    assert_eq!(s.entries.len(), 1);
+    assert_eq!(s.entries[0].path, "big.bin");
+    assert_eq!(
+        s.entries[0].note,
+        "worktree file is not in the baseline [refused: some reason]"
+    );
+}
+
+/// Every `worktree-status` fixture constant in this file, by name. Kept complete by
+/// [`the_count_invariant_covers_every_worktree_status_fixture`] — a new fixture that is not added here
+/// fails that test, so the invariant cannot quietly skip one.
+fn every_worktree_status_fixture() -> [(&'static str, &'static str); 8] {
+    [
+        ("WORKTREE_CLEAN_FIXTURE", WORKTREE_CLEAN_FIXTURE),
+        ("WORKTREE_DIRTY_FIXTURE", WORKTREE_DIRTY_FIXTURE),
+        (
+            "WORKTREE_QUEUED_ELSEWHERE_FIXTURE",
+            WORKTREE_QUEUED_ELSEWHERE_FIXTURE,
+        ),
+        ("WORKTREE_RENAME_0_38_FIXTURE", WORKTREE_RENAME_0_38_FIXTURE),
+        (
+            "WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE",
+            WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE,
+        ),
+        ("WORKTREE_CLEAN_0_38_FIXTURE", WORKTREE_CLEAN_0_38_FIXTURE),
+        (
+            "WORKTREE_UNSUPPORTED_0_28_FIXTURE",
+            WORKTREE_UNSUPPORTED_0_28_FIXTURE,
+        ),
+        (
+            "WORKTREE_UNSUPPORTED_0_41_FIXTURE",
+            WORKTREE_UNSUPPORTED_0_41_FIXTURE,
+        ),
+    ]
+}
+
+#[test]
+fn every_worktree_status_fixture_lists_as_many_entries_as_prikk_counts() {
+    // RFC 027 §4.2 — **the invariant that would have caught F0.** prikk computes each counter with
+    // `count_kind` over the very list it then prints, so for every kind the parsed entry count equals
+    // prikk's own number. A reader that drops a kind's lines passes every per-fixture assertion that
+    // never looked at that kind; it cannot pass this.
+    for (name, text) in every_worktree_status_fixture() {
+        let s = worktree_status(text).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        let listed = |kind: &str| {
+            u64::try_from(s.entries.iter().filter(|e| e.kind == kind).count()).unwrap()
+        };
+        assert_eq!(listed("modified"), s.modified, "{name}: `modified files:`");
+        assert_eq!(listed("missing"), s.missing, "{name}: `missing files:`");
+        assert_eq!(
+            listed("untracked"),
+            s.untracked,
+            "{name}: `untracked files:`"
+        );
+        assert_eq!(
+            listed("unsupported-path"),
+            s.unsupported,
+            "{name}: `unsupported paths:`"
+        );
+        // And nothing listed beyond what prikk counted: no kind in a captured fixture lacks a counter.
+        assert_eq!(
+            u64::try_from(s.entries.len()).unwrap(),
+            s.modified + s.missing + s.untracked + s.unsupported,
+            "{name}: entries {:?}",
+            s.entries
+        );
+    }
+}
+
+#[test]
+fn the_count_invariant_covers_every_worktree_status_fixture() {
+    let listed: Vec<&str> = every_worktree_status_fixture()
+        .iter()
+        .map(|(name, _)| *name)
+        .collect();
+    let source = include_str!("tests.rs");
+    let declared: Vec<&str> = source
+        .lines()
+        .filter_map(|line| line.strip_prefix("const WORKTREE_"))
+        .filter_map(|rest| rest.split_once(": &str"))
+        .map(|(name, _)| name)
+        .collect();
+    assert!(!declared.is_empty(), "the scan found no worktree fixtures");
+    for name in declared {
+        let full = format!("WORKTREE_{name}");
+        assert!(
+            listed.contains(&full.as_str()),
+            "{full} is a worktree-status fixture the count invariant does not run over"
+        );
+    }
+}

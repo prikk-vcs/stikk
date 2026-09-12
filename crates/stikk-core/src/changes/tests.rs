@@ -93,6 +93,74 @@ fn an_unknown_kind_is_preserved_as_other() {
 }
 
 #[test]
+fn prikks_unsupported_path_word_maps_to_unsupported() {
+    // RFC 027 F0: `unsupported-path` is what prikk prints, at every tag from 0.28.0 to 0.41.0. The
+    // never-printed `unsupported` has no arm of its own any more; if it ever appeared it would render.
+    assert_eq!(
+        ChangeKind::from_label("unsupported-path"),
+        ChangeKind::Unsupported
+    );
+    assert_eq!(
+        ChangeKind::from_label("unsupported"),
+        ChangeKind::Other("unsupported".into())
+    );
+}
+
+/// **An invented kind, through the real reader**: prikk's text → `CliBackend`'s parser →
+/// [`from_status`] → `ChangeKind::Other(word)`. The direct `from_label` test above could never catch the
+/// defect RFC 027 F0 found, because the parser discarded an unknown word before `from_label` saw it.
+/// Unix-only: the stand-in `prikk` is a shell script.
+#[cfg(unix)]
+#[test]
+fn an_invented_kind_survives_the_parser_and_arrives_as_other() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-core-invented-kind-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\n\
+         case \"$1\" in\n\
+         --version)\n\
+         printf 'prikk 0.41.0\\n'\n\
+         ;;\n\
+         worktree-status)\n\
+         printf 'ref: heads/main\\n\
+         tracked files: 1\\n\
+         unchanged files: 0\\n\
+         missing files: 0\\n\
+         modified files: 1\\n\
+         untracked files: 0\\n\
+         unsupported paths: 0\\n\
+         refused paths: 0\\n\
+         worktree: changed against baseline\\n\
+         \x20 modified readme.txt \\342\\200\\224 tracked file bytes differ from the baseline\\n\
+         \x20 typechange link.txt \\342\\200\\224 a kind prikk does not print today\\n\
+         live rename declarations: 0\\n'\n\
+         exit 1\n\
+         ;;\n\
+         esac\n",
+    )
+    .expect("write fake prikk");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+
+    let backend = stikk_prikk::CliBackend::with_program(&script);
+    let view = changes_view(&backend, &dir, "heads/main").expect("the view builds");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(view.entries.len(), 2, "entries were {:?}", view.entries);
+    let invented = view
+        .entries
+        .iter()
+        .find(|e| e.path == "link.txt")
+        .expect("the invented-kind line is listed, not dropped");
+    assert_eq!(invented.kind, ChangeKind::Other("typechange".into()));
+    assert_eq!(invented.note, "a kind prikk does not print today");
+}
+
+#[test]
 fn carries_the_queued_elsewhere_warning_through_unmodified() {
     // RFC 009 F4: the operation layer transports prikk's warning verbatim; it never computes or
     // paraphrases it (ER-02).

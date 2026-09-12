@@ -344,6 +344,11 @@ fn a_deliberately_wrong_fixture_is_detected_as_a_mismatch() {
 // test's mutation silently becoming another's precondition — to save something invisible next to the
 // install. The number is here so the next person tempted to optimise this finds the reason rather than
 // the opportunity.
+//
+// **Re-measured on the widened suite** (RFC 022, run `34675342447`): 13 tests, 25 fixture repositories,
+// **0.87s on ubuntu, 4.23s on macOS, 9.84s on Windows** — the whole body, both prikk ends, per platform.
+// Widening the suite by 8 tests cost under 10s on the slowest platform, inside jobs still dominated by
+// the two `cargo install prikk` invocations. The expensive part was already paid, and still is.
 // ---------------------------------------------------------------------------------------------
 
 /// `refs` and `tags`, after a real `branch create`, `branch close` and `tag create`.

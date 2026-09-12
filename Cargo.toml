@@ -3,7 +3,7 @@ resolver = "3"
 members  = ["crates/*"]
 
 [workspace.package]
-version         = "0.6.0"
+version         = "0.7.0"
 edition         = "2024"
 # 1.88: ratatui 0.30's own MSRV is 1.86, but the 0.30 tree pulls `time` transitively (through
 # ratatui-widgets' non-optional calendar), and the fix for RUSTSEC-2026-0009 (time >=0.3.47) needs
@@ -15,11 +15,11 @@ repository      = "https://github.com/prikk-vcs/stikk"
 homepage        = "https://github.com/prikk-vcs/stikk"
 
 [workspace.dependencies]
-stikk-model = { version = "0.6.0", path = "crates/stikk-model" }
-stikk-prikk = { version = "0.6.0", path = "crates/stikk-prikk" }
-stikk-state = { version = "0.6.0", path = "crates/stikk-state" }
-stikk-core  = { version = "0.6.0", path = "crates/stikk-core" }
-stikk-tui   = { version = "0.6.0", path = "crates/stikk-tui" }
+stikk-model = { version = "0.7.0", path = "crates/stikk-model" }
+stikk-prikk = { version = "0.7.0", path = "crates/stikk-prikk" }
+stikk-state = { version = "0.7.0", path = "crates/stikk-state" }
+stikk-core  = { version = "0.7.0", path = "crates/stikk-core" }
+stikk-tui   = { version = "0.7.0", path = "crates/stikk-tui" }
 
 # RFC 001 (accepted 2026-09-01): the TUI is built on ratatui over the crossterm backend. crossterm is
 # used through ratatui's own re-export (`ratatui::crossterm`) so the two can never drift to

@@ -28,7 +28,7 @@ resolve per platform on Linux, macOS, and Windows (RFC 012). stikk can now **com
 capture into prikk's active queue (RFC 014) and **seal** that queue into permanent, MAINTAINER-signed
 history (RFC 016) — both behind preview-first, tiered-confirmation machinery that makes skipping a step
 a compile error, not a review finding (RFC 013). Piped/CI invocation keeps the one-shot orientation.
-stikk targets prikk **≥ 0.28**, validated through **0.38.0**. **Patch detail** is deferred behind
+stikk targets prikk **≥ 0.28**, validated through **0.41.0**. **Patch detail** is deferred behind
 `UD-09` — prikk exposes no per-patch content yet — and **Compare** is deferred behind the same ceiling,
 with a recorded future route (RFC 008); neither is "next", both are named gaps. Merge, sync, tag
 create, and branch create/close remain unbuilt; a **Queue view** and **Trust & Keys** view are named

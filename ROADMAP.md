@@ -254,7 +254,7 @@ issues for the prikk project (requirement `UD-01…UD-05`):
 ## Releases and versioning
 
 stikk versions independently of prikk and declares, per release, the prikk range it was validated
-against — currently **`>= 0.28`, validated through `0.38.0`** (`NFR-R03`; 0.27.x dropped by owner
+against — currently **`>= 0.28`, validated through `0.41.0`** (`NFR-R03`; 0.27.x dropped by owner
 ruling 2026-09-04, RFC 009). A prikk newer than the validated ceiling still runs, and stikk says the
 range is unvalidated rather than pretending to know it. Before a 1.0, the repository format and command surface of
 prikk are still moving, so stikk stays pre-1.0 too and treats its own APIs as unstable. Changes are

@@ -132,6 +132,24 @@ unrepresentable names. prikk deliberately keeps `refused` apart from `unsupporte
 an entry — and that distinction is sound; the narrower question is whether `authored` is the intended
 verdict for an entry `commit` refuses. That question is prikk's, and it is what Q1 turns on.
 
+### F6 — reading JSON loses prikk's queued-elsewhere warning, verbatim
+
+*(Found 2026-09-13 while writing Handoff B, after acceptance. Measured on 0.41.0.)*
+
+Decision 2 moves `worktree-status` to `--format json` at ≥ 0.39. **The JSON report carries the
+queued-elsewhere fact as a ref name and nothing else**; the prose report carries prikk's safety sentence:
+
+```
+prose  note: the active WAL has queued (unsealed) patches for heads/main, not heads/other -- that is
+       real, committed work, not shown above; any "untracked" file here may be exactly that work seen
+       from this ref's own baseline, so do not delete based on this report alone (see `prikk status`)
+json   "queued_elsewhere": "heads/main"
+```
+
+**RFC 009 decision 3 requires that sentence carried verbatim** — *"stikk carries prikk's warning, it does
+not paraphrase it"* — because stikk once dropped it and then contradicted it, on the screen where a user
+decides what to delete. Decision 2 as written would drop it again at every prikk anyone runs.
+
 ## Decisions
 
 1. **F0 is fixed first, in its own handoff.** The prose reader recognizes `unsupported-path`, and stops
@@ -199,11 +217,33 @@ visible for the first time — with prikk's own detail; commit is offered, and p
 verbatim. Letter 010 asks prikk whether those entries should carry `authoring: "refused"`. If prikk
 agrees, decision 5 covers them with no change here.
 
+### F6, RULED by the architect, 2026-09-13 — the owner may overrule
+
+**At ≥ 0.39 stikk carries prikk's queued-elsewhere ref as a typed fact, and renders the warning in its own
+words, visibly as stikk's.** Below 0.39, prikk's sentence stays verbatim, exactly as RFC 009 decision 3
+says.
+
+- **The stikk-worded band keeps every safety claim prikk's sentence makes, and adds none**: queued,
+  unsealed patches exist for *that* ref, not this one; they are real committed work not shown here;
+  untracked entries may be that work seen from this ref's baseline; do not delete on this view alone. A
+  test checks it clause by clause against prikk's sentence.
+- **It is rendered outside the *"prikk reported —"* quote band**, which stays reserved for prikk's own
+  words (`C-T2b`), and RFC 009 decision 3's suppression of the untracked filter's banner still applies.
+- **The model keeps the two apart** — a verbatim note and a ref are different things, and one
+  `Option<String>` holding either would be the conflation `C-T2c′` forbids.
+
+**Why not keep the sentence verbatim at ≥ 0.39:** a second prose call per read doubles the spawn and races
+the JSON read, so the warning and the entries could describe two different trees; reading prose and
+parsing the `[refused: …]` suffix instead reverses decision 2 on the surface re-baselines break most.
+**What this gives up:** at ≥ 0.39 the words are stikk's rather than prikk's. The fact is still prikk's,
+from a field prikk built for consumers, and the danger RFC 009 guarded against — the warning dropped or
+contradicted — stays guarded.
+
 ## Delivery
 
 - **Handoff A — F0.** The prose reader, the two unreachable documented guarantees, fixtures at both ends,
   and its `### Fixed` entry. Not breaking, and small; it is a defect in every release, so it goes first.
-- **Handoff B — decisions 2–7.** The JSON reader, the three-valued verdict, the Changes view, commit's
+- **Handoff B — decisions 2–7, and F6's ruling.** The JSON reader, the three-valued verdict, the Changes view, commit's
   prevention, the suite, and the 0.7.0 bump. Built on A's reader.
 
 `FR-034` and `FR-050` are amended when this is accepted.

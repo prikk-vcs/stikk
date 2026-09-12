@@ -31,7 +31,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 027 | [What commit would refuse](./accepted/027-what-commit-would-refuse.md) | `FR-050` decided on prikk 0.39's per-entry authoring verdict — commit unavailable-with-a-reason when prikk refuses an entry; and the unsupported paths stikk has never listed, in any release since 0.1.0. **Accepted 2026-09-13, Q1 ruled (b)** | [A: unsupported-path entries](./handoffs/027-what-commit-would-refuse/a-unsupported-path-entries-handoff-v1.md) · B: pending |
+| 027 | [What commit would refuse](./accepted/027-what-commit-would-refuse.md) | `FR-050` decided on prikk 0.39's per-entry authoring verdict — commit unavailable-with-a-reason when prikk refuses an entry; and the unsupported paths stikk has never listed, in any release since 0.1.0. **Accepted 2026-09-13, Q1 ruled (b)** | [A: unsupported-path entries](./handoffs/027-what-commit-would-refuse/a-unsupported-path-entries-handoff-v1.md) · [B: verdict and prevention](./handoffs/027-what-commit-would-refuse/b-verdict-and-prevention-handoff-v1.md) |
 
 ## Done (implemented)
 

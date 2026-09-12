@@ -29,9 +29,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 022 | [Widening the real-binary suite](./accepted/022-widening-the-real-binary-suite.md) | The suite covers **five of ten** seam methods, not four of nine — `handshake` was covered and uncounted, so 0.5.0's changelog understates it. **Three of the four clauses behind "another writer is active" have never been seen from a real binary**; Q1 ruled (a) on evidence — `present()` adds no gloss at all. **Accepted 2026-09-12; opens 0.6.0** | [Suite widening](./handoffs/022-widening-the-real-binary-suite/suite-widening-handoff-v1.md) |
+_None currently._
 
 ## Done (implemented)
 
@@ -43,6 +41,7 @@ _Design settled; implementer may start; work has not yet shipped._
 | 007 | [Explanation & discovery surface](./done/007-explanation-and-discovery-surface.md) | 0.1.0 | `RoutedIntoView`/`InConfirmation` renderers; merge/checkout/seal/trust next-steps + witness glossary; refusal-history persistence + `LC-8` gate | [Explanation surface](./handoffs/007-explanation-and-discovery-surface/explanation-surface-handoff-v1.md) |
 | 008 | [Worktree changes & the Compare ceiling](./done/008-worktree-changes-and-the-compare-ceiling.md) | 0.1.0 | Compare (`FR-033`); per-file content diffs (`UD-09`); the `C` commit action; status-bar worktree marker. **Amended by RFC 009** | [Changes view](./handoffs/008-worktree-changes-and-the-compare-ceiling/changes-view-handoff-v1.md) |
 | 016 | [The seal ceremony](./done/016-the-seal-ceremony.md) | 0.4.0 candidate (on `main`) | the other seven gated operations; `MaintainerReadiness::Ready` unconstructible until prikk ships `trust maintainer check`; `Target::TrustKeys` has no renderer; **no `GlossaryEntry` explanation is rendered anywhere** (`FR-111`'s unbuilt half — four codes now ship with unreadable text) | [Seal ceremony](./handoffs/016-the-seal-ceremony/seal-ceremony-handoff-v1.md) |
+| 022 | [Widening the real-binary suite](./done/022-widening-the-real-binary-suite.md) | 0.6.0 candidate (on `main`) | a gloss for prikk 0.28's Windows subdirectory refusal; an audit of every action's runtime; three `is_lock_conflict` clauses still source-read, each with a reachability note | [Suite widening](./handoffs/022-widening-the-real-binary-suite/suite-widening-handoff-v1.md) |
 | 021 | [The prikk 0.38 re-baseline: `UD-09` retires, and a fabricated worktree entry](./done/021-prikk-0-38-rebaseline.md) | **0.5.0** | the four unblocked views, each its own RFC; `UD-10`; the symlink report; suite widening | [A: F0](./handoffs/021-prikk-0-38-rebaseline/f0-worktree-entry-scoping-handoff-v1.md) · [B: re-baseline](./handoffs/021-prikk-0-38-rebaseline/rebaseline-handoff-v1.md) |
 | 020 | [MSRV 1.88 consistency & a supply-chain gate](./done/020-msrv-1-88-consistency-and-a-supply-chain-gate.md) | **0.5.0** | a `schedule:` trigger for the gate (owner's, deliberately open); `[graph] all-features = false` inert until a crate declares features | [Supply chain](./handoffs/020-msrv-1-88-consistency-and-a-supply-chain-gate/supply-chain-handoff-v1.md) |
 | 019 | [The real-binary integration suite](./done/019-the-real-binary-integration-suite.md) | **0.5.0** | a `schedule:` trigger (owner's); the full `NFR-T01` platform matrix has never actually run — the Windows leg's `openssl` dependency is untested | [Integration suite](./handoffs/019-the-real-binary-integration-suite/integration-suite-handoff-v1.md) |

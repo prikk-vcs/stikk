@@ -1,6 +1,6 @@
 # RFC 022 — Widening the real-binary suite: the five surfaces, and the arms nothing can reach
 
-**Status.** **Accepted by the project owner 2026-09-12**, Q1 left unruled and **ruled by the architect the same day on evidence** (below). Opens 0.6.0. Scheduled at RFC 021 Handoff B's review, where the
+**Status.** **Done** — shipped on `main` 2026-09-12 (`8221c15`, `3938d02`, `4613cd2`), 0.6.0 candidate. The suite now drives **ten of ten** seam methods at both ends on three platforms, and its first widened run found a real prikk 0.28 Windows defect. Accepted by the project owner 2026-09-12, Q1 left unruled and **ruled by the architect the same day on evidence** (below). Opens 0.6.0. Scheduled at RFC 021 Handoff B's review, where the
 suite's first real job found nothing **in what it checks** — and the six stale classifier fixtures that
 re-baseline did move were found by hand, which is the cost RFC 019 exists to remove.
 **Tracks.** `TS-07`, `TS-03`, `UD-02`, `UD-05`, `NFR-T01`, `T-T4`, `FR-106`.
@@ -185,3 +185,10 @@ and RFC 017 Decision 4 already bound it — *may not assert another writer unles
 one*. **If that binding holds, (a) is safe; if it does not, (c) is the only safe answer.** Verifying
 which is true of the current code is the first thing this increment should do, and it is why I am not
 ruling this myself.
+
+
+## Carried forward, recorded at completion 2026-09-12
+
+- **A gloss for prikk 0.28's Windows subdirectory refusal.** A Windows user on the supported floor gets `invalid name: backslashes are not allowed in repository paths` for a path they never typed a backslash into. Honest and baffling. `present()`'s message-shape recognition is the mechanism; its own increment, because this one forbade behaviour changes.
+- **An audit of every GitHub action's runtime**, written down once, so the next deprecation is a lookup rather than a survey. `actions/checkout` is pinned to `v5` across all five workflows; nine other actions are unaudited and named in the review request.
+- **Three `is_lock_conflict` clauses remain source-read**, each now carrying a reachability note saying what would make it provokable. `changed during planning` is to be revisited **with** the Rollback increment, not after it.

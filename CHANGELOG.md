@@ -4,6 +4,51 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+- **Signing readiness is now read from prikk, not from the environment** (RFC 026). `Readiness`'s
+  fields change shape — `author_ready: bool` and `MaintainerReadiness` become one `RoleReadiness` per
+  role, mirroring prikk's own `binding` vocabulary — and `Prikk` gains a `readiness` method. Per
+  RFC 011, for a `0.x` crate the minor is the breaking position.
+
+### Fixed
+
+- **stikk's signing readiness was wrong on prikk ≥ 0.40, in both directions.** prikk 0.40 moved signing
+  keys out of the environment into a key directory; stikk kept reading `PRIKK_*_SEED` presence, so it
+  **hid commit and seal from users who could perform them** (the correct modern setup) and **offered
+  them to users prikk would refuse** (a stale exported variable). On prikk ≥ 0.41 stikk now asks
+  `prikk key status`, which answers from the same computation `commit` and `seal` use.
+
+  On **prikk 0.40 exactly** — one release, superseded within a day — stikk reports readiness as
+  **unknown**, says why, and points at 0.41, rather than guessing.
+
+- **The confirmation card showed no signing key id on a default setup.** prikk always has one, falling
+  back to the role's own name, so reading only `PRIKK_<ROLE>_KEY_ID` rendered nothing while prikk would
+  have signed as `author`. It also named an id without saying whether that key is the one this
+  repository records. The card now states a bound key plainly, says of an unbound one that this
+  signature binds it, and says of an unchecked one that stikk is naming rather than confirming.
+
+- **A long refusal lost its quote bar on every wrapped row**, exactly where a reader needs to know they
+  are still inside prikk's words. Every row carries it now, and the wrap points are unchanged.
+
+- **The backslash-path explanation no longer asks the reader which half applies to them.** stikk holds
+  the platform and the prikk version, so it shows only the cause that can apply — both only on Windows
+  at prikk 0.28, where both genuinely remain possible.
+
+### Security
+
+- **`C-S2` is implemented.** stikk recognizes the example public keys prikk publishes in its own
+  documentation and flags them on **every** confirmation that would sign with one — persistently, not
+  as a dismissable notice. A signature made with a published key is forgeable by anyone. The threat
+  model's three `NOT IMPLEMENTED` markers come off in the same commit, and the control's own entry now
+  states what it covers (documentation examples, enumerable) and what it cannot (prikk's tests and
+  issue comments, which its rule also names and no list can close over).
+
+- **`C-I1e` narrowed, not broken.** stikk now invokes `prikk key status` — and only that. The rule's
+  reason was never the word `key`: it forbids creating key material and reading a seed, and `key status`
+  does neither. The source-level guard was narrowed in step and still refuses `key generate`,
+  `key public`, and any `prikk key` subcommand that does not yet exist.
+
 ### Changed
 
 - **The validated prikk range is now `>= 0.28`, through `0.41.0`** (was `0.38.0`) — three releases, one

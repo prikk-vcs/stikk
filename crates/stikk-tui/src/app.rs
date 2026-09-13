@@ -35,7 +35,9 @@ use crate::overlay::Overlay;
 use crate::theme::Palette;
 use crate::worker::{Request, RequestKind, Response, ResponseKind};
 
-/// The default focused ref — prikk has no HEAD, so stikk focuses a named ref explicitly (FR-055).
+/// The default focused ref — prikk has no HEAD, and below 0.42 no current-branch pointer either (from 0.42
+/// a default for `--ref`, which prikk calls never an authority; RFC 029), so stikk focuses a named ref
+/// explicitly (FR-055).
 const DEFAULT_REF: &str = "heads/main";
 
 /// The most background operations `App` remembers, for the Background Operations overlay (TU-01).

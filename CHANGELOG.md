@@ -46,6 +46,13 @@ view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `
   queue holds unsealed patches for that ref, that is real committed work not shown here, an untracked
   entry may be exactly that work, and nothing should be deleted on this view alone — and a test holds it
   to that sentence clause by clause. Below 0.39 prikk's sentence is still shown verbatim (RFC 027 F6).
+- **The validated prikk range is `>= 0.28`, through `0.42.0`.** The real-binary suite passed unchanged at
+  0.28 and 0.42 on Linux, macOS and Windows, and every captured fixture was re-verified against the 0.42
+  binary (RFC 029).
+- **On prikk ≥ 0.42, commit is unavailable, with prikk's reason, when a file's name cannot be a
+  repository path** — a backslash in it, or bytes that are not UTF-8. prikk 0.42 began reporting those
+  paths as ones `commit` would refuse, and stikk already declines to offer a commit prikk has said it
+  will refuse. This is the first release in which a user sees it happen (RFC 029).
 
 ### Fixed
 
@@ -63,6 +70,9 @@ view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `
   prikk's sentence verbatim, and it was one unwrapped row: at 80 columns it stopped after the first
   clause, so "real, committed work" and "do not delete" were never on screen. It now wraps, prikk's
   words unchanged, with the quote bar on every row (RFC 027).
+- **The Glossary no longer says prikk has no current-branch pointer.** That was true below prikk 0.42.
+  From 0.42, `.prikk/current-branch` names a default for `--ref`, which prikk calls "a default, never an
+  authority" — still not a HEAD (RFC 029).
 
 ## 0.6.0 — 2026-09-13
 

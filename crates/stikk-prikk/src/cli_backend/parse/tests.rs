@@ -126,6 +126,69 @@ warning: active patches (1) at or above the configured hard limit (1); commit is
 status: multi-operation text diff minimization and plugins not yet implemented
 ";
 
+// Captured verbatim (stdout, exit 0) from a real prikk **0.42.0** binary on 2026-09-13, RFC 029 Handoff A
+// §4: the real-binary harness's `Fixture` at 0.42 with one patch committed and **not** sealed, moved to
+// the neutral `/tmp/repo` before capture, then `prikk status`. No `.prikk/current-branch` file exists,
+// so prikk reports its default. Nothing edited after capture.
+//
+// **The one prose surface stikk still reads that 0.42 changed:** a new flush-left `current branch:`
+// line between `heads/main RefState:` and `queued patches:`. The same state as `STATUS_QUEUED_FIXTURE`
+// (0.30.0) in every other line.
+const STATUS_QUEUED_0_42_FIXTURE: &str = "\
+prikk repository: /tmp/repo/.prikk
+active WAL records: 1
+trailing partial WAL bytes: 0
+heads/main RefState: <not published>
+current branch: heads/main
+queued patches: 1 targeting heads/main
+status: multi-operation text diff minimization and plugins not yet implemented
+";
+
+// Captured verbatim from the same real prikk **0.42.0** binary, the same repository a moment later,
+// after writing `heads/main` **without a trailing newline** to `.prikk/current-branch` — the first
+// malformed case in prikk 0.42.0's own `tests/rfc151_current_branch.rs`. prikk's unresolved form, byte for
+// byte as RFC 029 Handoff A's §4 table records it, backticks included. Nothing edited after capture.
+const STATUS_QUEUED_UNRESOLVED_0_42_FIXTURE: &str = "\
+prikk repository: /tmp/repo/.prikk
+active WAL records: 1
+trailing partial WAL bytes: 0
+heads/main RefState: <not published>
+current branch: <unresolved; run `prikk doctor`>
+queued patches: 1 targeting heads/main
+status: multi-operation text diff minimization and plugins not yet implemented
+";
+
+#[test]
+fn a_0_42_status_parses_exactly_as_its_older_equivalent_under_both_pointer_forms() {
+    // RFC 029 Handoff A §4: **what makes "the reader ignores the new line" a fact rather than a reason.**
+    // Orientation looks its fields up by label, so 0.42's `current branch:` line — resolved or not —
+    // changes nothing it reports. A reads no current branch into any type; RFC 030 extends this test
+    // with that field's own assertions.
+    let older = orientation(STATUS_QUEUED_FIXTURE).expect("the 0.30.0 fixture parses");
+    for (form, text, line) in [
+        (
+            "resolved",
+            STATUS_QUEUED_0_42_FIXTURE,
+            "current branch: heads/main",
+        ),
+        (
+            "unresolved",
+            STATUS_QUEUED_UNRESOLVED_0_42_FIXTURE,
+            "current branch: <unresolved; run `prikk doctor`>",
+        ),
+    ] {
+        assert!(
+            text.lines().any(|l| l == line),
+            "{form}: the capture carries prikk's line {line:?}"
+        );
+        let parsed = orientation(text).unwrap_or_else(|e| panic!("{form}: {e:?}"));
+        assert_eq!(
+            parsed, older,
+            "{form}: a 0.42 status parses to exactly what the equivalent 0.30 status gives"
+        );
+    }
+}
+
 #[test]
 fn parses_a_clean_empty_status() {
     let o = orientation(STATUS_EMPTY_FIXTURE).expect("status parses");

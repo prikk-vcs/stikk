@@ -374,8 +374,10 @@ fn an_unreported_verdict_offers_commit_exactly_as_before() {
 }
 
 #[test]
-fn an_unsupported_path_prikk_marks_authored_does_not_block() {
-    // Q1 ruled (b): prevention rests on prikk's verdict alone. prikk 0.41 marks these `authored`.
+fn at_0_41_an_unsupported_path_prikk_marks_authored_does_not_block() {
+    // Q1 ruled (b): prevention rests on prikk's verdict alone. **A prikk 0.41 fact, kept true of 0.41**
+    // (RFC 029 Handoff A §5): 0.41 marks these `authored`. 0.42 marks them refused, and the next test is
+    // the same rule doing what it waited for.
     let mut status = dirty_worktree();
     status.unsupported = 1;
     status.refused = Some(0);
@@ -391,6 +393,37 @@ fn an_unsupported_path_prikk_marks_authored_does_not_block() {
         commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads"),
         CommitPreviewOutcome::Ready { .. }
     ));
+}
+
+#[test]
+fn at_0_42_a_refused_unsupported_path_makes_commit_unavailable() {
+    // RFC 029 Handoff A §5: prikk 0.42 reports an unrepresentable name as refused, with `commit`'s own
+    // reason, so RFC 027's Q1 ruling (b) now prevents that commit — **with no change in stikk**. The entry
+    // is in prikk 0.42's captured shape (`WORKTREE_UNSUPPORTED_JSON_0_42`): relative path, refused.
+    let reason = "invalid name: backslashes are not allowed in repository paths";
+    let mut status = dirty_worktree();
+    status.modified = 0;
+    status.unsupported = 1;
+    status.refused = Some(1);
+    status.entries = vec![entry(
+        "unsupported-path",
+        "back\\slash.txt",
+        stikk_prikk::Authoring::Refused(reason.to_string()),
+    )];
+    let backend = ready_backend()
+        .with_version(0, 42, 0)
+        .with_worktree_status(status);
+    match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::WouldRefuse(paths) => assert_eq!(
+            paths,
+            vec![RefusedPath {
+                kind: ChangeKind::Unsupported,
+                path: "back\\slash.txt".to_string(),
+                reason: reason.to_string(),
+            }]
+        ),
+        other => panic!("expected WouldRefuse at 0.42, got {other:?}"),
+    }
 }
 
 #[test]

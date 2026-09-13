@@ -1931,6 +1931,40 @@ fn the_would_refuse_card_quotes_prikk_and_gives_stikks_steps_at_80_columns() {
 }
 
 #[test]
+fn at_0_42_the_substituted_name_caution_renders_for_a_refused_non_utf8_name() {
+    // RFC 029 Handoff A §5: **unreachable until prikk 0.42**, which began reporting a non-UTF-8 name as a
+    // refused `unsupported-path`. The entry is prikk 0.42.0's captured shape for `bad<0xFF>name.txt`:
+    // relative path with prikk's U+FFFD, and `commit`'s own reason. 80×24, the width it has to fit.
+    let name = "bad\u{FFFD}name.txt";
+    let overlay = Overlay::CommitWouldRefuse {
+        paths: vec![stikk_core::RefusedPath {
+            kind: stikk_core::ChangeKind::Unsupported,
+            path: name.to_string(),
+            reason: format!("invalid name: worktree path is not valid UTF-8: {name}"),
+        }],
+    };
+    let screen = draw_at(&overlay, 80, 24);
+    println!("{screen}");
+    let flat = flattened(&screen);
+    assert!(
+        flat.contains(&flattened(&format!("unsupported-path {name}"))),
+        "{screen}"
+    );
+    assert!(
+        flat.contains(&flattened(&format!(
+            "invalid name: worktree path is not valid UTF-8: {name}"
+        ))),
+        "prikk's reason, whole:\n{screen}"
+    );
+    // The third next step, stikk's words, shown only for a substituted name.
+    assert!(
+        flat.contains(&flattened("is not the file's real name")),
+        "{screen}"
+    );
+    assert!(flat.contains(&flattened("will not match")), "{screen}");
+}
+
+#[test]
 fn the_would_refuse_card_cautions_about_a_substituted_name() {
     let screen = draw_at(&would_refuse("bad\u{FFFD}name.txt"), 80, 24);
     println!("{screen}");

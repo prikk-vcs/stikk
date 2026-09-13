@@ -91,7 +91,7 @@ and performs two mutations — **commit** (author a worktree capture) and **seal
 signed history) — both preview-first with tiered confirmation, naming the key that will sign. Signing
 readiness is read from prikk itself on prikk ≥ 0.41. Merge, sync, tag create, and branch create/close
 remain unbuilt: the `Prikk` seam has no method for any of them. It drives the external `prikk` binary
-at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.41.0** — so the release
+at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.42.0** — so the release
 notes must state which prikk version it was validated against and how to install it — a
 `cargo install stikk` with no `prikk` on `PATH` will open and then explain that prikk is missing, by
 design.

@@ -1,14 +1,19 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.41.0` (**RFC 026**, the 0.41 re-baseline —
-//! raised from 0.38 across three releases, 0.39 through 0.41, one of which changed how prikk is
-//! configured at all: 0.40 moved signing seeds out of the environment and into a key directory, which
-//! the real-binary suite's own fixture builder had to be rebuilt around before it could measure
-//! anything. See `cli_backend/parse/tests.rs` for what each version changed).
+//! stikk targets prikk `>= 0.28`, validated through `0.42.0` (**RFC 029**, the 0.42 re-baseline: the
+//! real-binary suite passed unchanged at 0.28 and 0.42 on every platform, and every fixture was
+//! re-verified against the 0.42 binary. The one prose surface stikk reads that 0.42 changed is
+//! `status`, which gained a `current branch:` line Orientation does not read. See
+//! `cli_backend/parse/tests.rs` for what each version changed).
 //!
-//! The previous ceiling was `0.38.0` (**RFC 021**, raised from 0.33 across five releases at once and
-//! verified by RFC 019's real-binary suite rather than by hand).
+//! The previous ceiling was `0.41.0` (**RFC 026**, the 0.41 re-baseline — raised from 0.38 across three
+//! releases, 0.39 through 0.41, one of which changed how prikk is configured at all: 0.40 moved signing
+//! seeds out of the environment and into a key directory, which the real-binary suite's own fixture
+//! builder had to be rebuilt around before it could measure anything).
+//!
+//! Before it, `0.38.0` (**RFC 021**, raised from 0.33 across five releases at once and verified by RFC
+//! 019's real-binary suite rather than by hand).
 //!
 //! The previous ceiling, for the history the raises form: `0.33.0` (RFC 017, re-verified 2026-09-06
 //! against a real, **released** prikk 0.33.0 binary — every `cli_backend/parse/tests.rs` fixture shape
@@ -121,7 +126,7 @@ impl Version {
     }
 }
 
-/// The validated ceiling as a display string (`"0.41"` at the time of writing), for UI copy that says
+/// The validated ceiling as a display string (`"0.42"` at the time of writing), for UI copy that says
 /// what range stikk has actually checked its shapes against. **Nothing else may hardcode this number**:
 /// a renderer that copies it as a string literal instead of calling this drifts the moment the ceiling
 /// moves again — exactly what RFC 015 found in `stikk-tui`'s own Orientation view, still reading "0.30"

@@ -674,7 +674,10 @@ fn the_ref_and_the_queued_ref_are_validated_as_ref_names() {
 }
 
 #[test]
-fn an_unsupported_path_is_carried_as_reported_not_validated() {
+fn at_0_41_an_unsupported_path_is_carried_as_reported_not_validated() {
+    // **A prikk 0.41 fact, kept true of 0.41** (RFC 029 Handoff A §5): 0.41 marked these `authored`
+    // with an absolute path. 0.42 marks them refused, relative — see
+    // `at_0_42_every_unsupported_path_reads_as_refused_with_prikks_reason`.
     // RFC 027 decision 2: an `unsupported-path` entry's path is by definition not a safe repository
     // path — absolute, and here with a backslash and prikk's U+FFFD (the JSON escapes `\\` and
     // `�`). Validating it would drop F0's entries a second way. `authored`, as prikk 0.41 marks
@@ -693,4 +696,116 @@ fn an_unsupported_path_is_carried_as_reported_not_validated() {
         .expect("listed");
     assert_eq!(entry.path, "/tmp/repo/back\\sl\u{fffd}sh.txt");
     assert_eq!(s.unsupported, 1);
+}
+
+// ---------------------------------------------------------------------------------------------
+// prikk 0.42 (RFC 029 Handoff A §4–§5). Captured, never written: a real 0.42.0 binary, the harness's
+// own `Fixture`, moved to the neutral `/tmp/repo` before capture, nothing edited after.
+// ---------------------------------------------------------------------------------------------
+
+/// `prikk worktree-status --ref heads/main --format json` at **0.42.0**, 2026-09-13: `readme.txt` committed
+/// and sealed, then three names prikk cannot represent written beside it — `back\slash.txt`, a name with
+/// the byte `0xFF`, and `nested/sub\dir.txt`. Stdout on prikk's dirty exit (1).
+///
+/// **What moved since 0.41** (RFC 029 F-table): every `unsupported-path` entry is `"refused"` with
+/// `commit`'s own text and counted in `refused_count`, and `path` is relative to the worktree. At 0.41
+/// the same names were `"authored"` and absolute (`WORKTREE_UNSUPPORTED_0_41_FIXTURE`).
+const WORKTREE_UNSUPPORTED_JSON_0_42: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "ref": "heads/main",
+  "current_branch": "heads/main",
+  "tracked_files": 1,
+  "unchanged_files": 1,
+  "clean": false,
+  "refused_count": 3,
+  "queued_elsewhere": null,
+  "changes": [
+    {"path": "back\\slash.txt", "kind": "unsupported-path", "detail": "worktree path is not representable as a safe Prikk path: invalid name: backslashes are not allowed in repository paths", "authoring": "refused", "refusal": "invalid name: backslashes are not allowed in repository paths"},
+    {"path": "bad�name.txt", "kind": "unsupported-path", "detail": "worktree path is not representable as a safe Prikk path: invalid name: worktree path is not valid UTF-8: bad�name.txt", "authoring": "refused", "refusal": "invalid name: worktree path is not valid UTF-8: bad�name.txt"},
+    {"path": "nested/sub\\dir.txt", "kind": "unsupported-path", "detail": "worktree path is not representable as a safe Prikk path: invalid name: backslashes are not allowed in repository paths", "authoring": "refused", "refusal": "invalid name: backslashes are not allowed in repository paths"}
+  ],
+  "declarations": []
+}
+"#;
+
+/// `prikk log --ref heads/main --format json` at **0.42.0**, 2026-09-13, with `.prikk/current-branch`
+/// malformed (`heads/main`, no newline) and `--ref` given explicitly, so prikk answers with
+/// `"current_branch": null`. **Kept so that a reader which someday requires the field fails a test, not
+/// a user** (RFC 029 Handoff A §4.3).
+const LOG_CURRENT_BRANCH_NULL_0_42: &str = r#"{
+  "schema_version": "log-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "ref": "heads/main",
+  "current_branch": null,
+  "blocks": [
+    {
+      "block_id": "a1f061a21cc916a9d85275ad9dba207f798df4b154e7a67c213a37044c5caaf1",
+      "ref_state_id": "ca027b8ca6ee25ecf032eb8bda8c259057910d486849f3985ffbafdefe9acbdb",
+      "update_seq": 1,
+      "kind": "Root",
+      "rollback_block": false,
+      "parent_count": 0,
+      "patch_count": 1,
+      "rollback_patch_count": 0,
+      "required_attestation_count": 0,
+      "patch_messages": [
+        {"patch_id": "319961d778c4ef2829dcf619ae2eae08c6c91cbb023c8fa65ca10e81d6b55fdf", "message": "first patch"}
+      ],
+      "previous_ref_state_id": null
+    }
+  ]
+}
+"#;
+
+#[test]
+fn at_0_42_every_unsupported_path_reads_as_refused_with_prikks_reason() {
+    // RFC 029 Handoff A §5. prikk 0.42 began reporting unrepresentable names as refused — the answer
+    // RFC 027's Q1 ruling (b) waited for. Nothing in stikk's reader changed to read it.
+    let s = worktree_status(WORKTREE_UNSUPPORTED_JSON_0_42).expect("captured 0.42 report");
+    assert_eq!(s.unsupported, 3);
+    assert_eq!(s.refused, Some(3), "refused_count counts them");
+    let mut paths: Vec<&str> = Vec::new();
+    for entry in &s.entries {
+        assert_eq!(entry.kind, "unsupported-path", "{entry:?}");
+        let Authoring::Refused(reason) = &entry.authoring else {
+            panic!("0.42 marks every unsupported-path refused: {entry:?}");
+        };
+        assert!(
+            entry.note.ends_with(reason.as_str()),
+            "prikk's detail ends with commit's own reason: {entry:?}"
+        );
+        assert!(
+            !entry.path.starts_with('/'),
+            "0.42 reports the path relative to the worktree: {entry:?}"
+        );
+        paths.push(&entry.path);
+    }
+    paths.sort_unstable();
+    assert_eq!(
+        paths,
+        [
+            "back\\slash.txt",
+            "bad\u{fffd}name.txt",
+            "nested/sub\\dir.txt"
+        ]
+    );
+    let backslash = s
+        .entries
+        .iter()
+        .find(|e| e.path == "back\\slash.txt")
+        .expect("listed");
+    assert_eq!(
+        backslash.authoring,
+        Authoring::Refused("invalid name: backslashes are not allowed in repository paths".into())
+    );
+}
+
+#[test]
+fn a_0_42_json_report_whose_current_branch_is_null_still_reads() {
+    // RFC 029 Handoff A §4.3: stikk reads no `current_branch` at A; a `null` there must not fail a read.
+    assert!(LOG_CURRENT_BRANCH_NULL_0_42.contains("\"current_branch\": null"));
+    let h = history(LOG_CURRENT_BRANCH_NULL_0_42).expect("captured 0.42 log report");
+    assert_eq!(h.reff, "heads/main");
+    assert_eq!(h.blocks.len(), 1);
 }

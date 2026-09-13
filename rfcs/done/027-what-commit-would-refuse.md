@@ -33,7 +33,12 @@ symlink test runs there; macOS accepts a backslash in a file name, so A's test i
 
 ### Carried forward
 
-- **`unsupported-path` prevention** waits on prikk's answer to letter 010 (Q1 ruled (b), F5).
+- **`unsupported-path` prevention — answered by prikk (reply 011).** prikk's RFC 147 §3f makes those entries
+  `authoring: "refused"` with `commit`'s own error, counted in `refused_count`, so decision 5 covers them with
+  **no stikk change** once prikk ships it — Q1's ruling working as intended. The same round makes their `path`
+  worktree-relative instead of absolute. **The next re-baseline verifies both**, re-captures the
+  `unsupported-path` fixtures (their `path` changes), and makes
+  `an_unsupported_path_prikk_marks_authored_does_not_block` version-conditional.
 - **The would-refuse overlay does not scroll**, and a path past about 64 characters clips on an entry row;
   prikk reports unsupported paths absolute.
 - **The prose path's parse failures** (prikk < 0.39) still reach the refusal classifier.

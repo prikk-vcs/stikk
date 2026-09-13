@@ -251,8 +251,8 @@ a fabricated worktree entry was fixed.
    accepted; Q1 ruled (b).** Handoff A, the mechanical re-baseline, is issued. Handoff B — stikk opens focused on
    prikk's current branch, names both refs on a confirmation when they differ, and falls back to the ref picker
    when `heads/main` is not published — follows A and item 10.
-10. **A confirmed commit authors the worktree its preview showed — [RFC 030](rfcs/proposed/030-a-confirmed-commit-authors-the-worktree-it-previewed.md),
-    proposed.** A worktree changed between commit's preview and its confirmation — one terminal `prikk branch switch`
+10. **A confirmed commit authors the worktree its preview showed — [RFC 030](rfcs/accepted/030-a-confirmed-commit-authors-the-worktree-it-previewed.md),
+    accepted 2026-09-13.** A worktree changed between commit's preview and its confirmation — one terminal `prikk branch switch`
     is enough — is committed today with nothing on screen. Live against prikk 0.42, so it goes before item 9's
     Handoff B.
 

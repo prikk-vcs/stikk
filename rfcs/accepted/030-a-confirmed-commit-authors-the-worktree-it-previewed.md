@@ -1,6 +1,6 @@
 # RFC 030 — A confirmed commit authors the worktree its preview showed
 
-**Status.** **Proposed 2026-09-13** by the architect, from RFC 029 F7. Scheduled **before** RFC 029's Handoff B,
+**Status.** **Accepted by the project owner 2026-09-13.** Proposed the same day by the architect, from RFC 029 F7. Scheduled **before** RFC 029's Handoff B,
 because the risk is live for anyone running stikk against prikk 0.42 today. No open question.
 **Tracks.** `OPL-02` (the change token), RFC 003 decision 3, RFC 013's confirm primitive, RFC 014, `FR-050`,
 `FR-052`, `T-T4`, RFC 029 F7 and F8.
@@ -76,8 +76,11 @@ compares **what prikk reports about the worktree**, not the pointer.
 4. **The limits in F4 are recorded in `FR-050`** on delivery. The confirmation is not dressed as a guarantee it
    cannot make.
 5. **The suite drives it against real binaries:**
-   - **at 0.42:** a preview on `heads/main`, then a raw `prikk branch switch heads/dev`, then confirmation — the
-     result is `Stale` and nothing is queued;
+   - **at 0.42:** a preview on `heads/main` whose only change is an untracked file, then a raw `prikk branch
+     switch heads/dev`, then confirmation — the result is `Stale` and nothing is queued. *(Amended on acceptance,
+     measured at 0.42.0: prikk refuses to switch over a modified tracked file, so a preview holding one cannot
+     reach the race. An untracked file is carried across the switch, and the worktree then also lists dev's
+     files against `heads/main`; committing records them there.)*
    - **at both ends:** a preview, then a file added, then confirmation — the result is `Stale` and nothing is
      queued;
    - **below 0.42** there is no branch switch, and safeguard 2 still holds. That skip is announced.

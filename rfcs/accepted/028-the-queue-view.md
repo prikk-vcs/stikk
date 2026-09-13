@@ -190,6 +190,29 @@ statement of what prikk does not report stands as written.
 seal naming what it freezes, and History's tier (F5). **F5 is stikk's own defect and depends on nothing from
 prikk**; it can be split out and delivered alone on the owner's word.
 
+### Measured at prikk 0.42.0 (RFC 029 F3) — decision 2 revised
+
+prikk 0.42.0 shipped what reply 012 described. Measured on the binary:
+
+- **A queue entry carries `message`**, after `patch_id`. `commit` requires `-m` at 0.42, so `null` means a patch
+  from an older prikk. **Below 0.42 the field is absent.**
+- **`show` renders a queued patch.** Every patch in `show-report-v1` carries `queued` — `true` or `false`, always
+  present — and **carries no message**.
+- **An id found nowhere** is `precondition not met: no object … in the object store or the active WAL`.
+
+**Decision 2, revised:**
+
+- **Each patch shows its message where prikk reports one.** The reader keeps **three states apart**: the field
+  absent (this prikk does not report queued messages, 0.39–0.41), `null` (the patch has none), and a string. An
+  absent field is never rendered as *"no message"* (`C-T2c′`). At 0.39–0.41 the view keeps decision 2's
+  statement that prikk does not report a queued patch's message.
+- **Content stays out of the Queue view.** `show` can now render a queued patch, which makes `FR-030` Patch
+  detail possible for queued patches as well as sealed ones. That rendering is Patch detail's own increment,
+  and the Queue view links to it once it exists. F2's *"not its content"* becomes, at ≥ 0.42, *"its content is
+  Patch detail's to show"*.
+
+**The handoffs are issued after RFC 029's re-baseline lands**, with the ceiling at 42.
+
 ## Delivery
 
 **Both handoffs are issued after prikk's next release is published and stikk has re-baselined to it** (Q1

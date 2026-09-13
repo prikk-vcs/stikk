@@ -25,13 +25,14 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 029 | [The prikk 0.42 re-baseline, and prikk's current branch](./proposed/029-prikk-0-42-rebaseline-and-the-current-branch.md) | ceiling 41 → 42 (stikk's suite already passes at 0.28 and 0.42); prikk's new current branch against stikk's client-side focused ref |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 028 | [The Queue view](./accepted/028-the-queue-view.md) | `FR-051`'s Queue view on prikk's queue enumeration, seal naming what it freezes (`FR-052`), and History's queued tier shown on refs the queue is not for. **Accepted 2026-09-13, Q1 ruled (b)** — waits for prikk's next release, which carries each queued patch's message and a queued `show` (reply 012) | pending — issued after that release and its re-baseline |
+| 028 | [The Queue view](./accepted/028-the-queue-view.md) | `FR-051`'s Queue view on prikk's queue enumeration, seal naming what it freezes (`FR-052`), and History's queued tier shown on refs the queue is not for. **Accepted 2026-09-13, Q1 ruled (b)** — waits for prikk's next release, which carries each queued patch's message and a queued `show` (reply 012) | pending — prikk 0.42.0 shipped it; issued after the 0.42 re-baseline (RFC 029) lands |
 
 ## Done (implemented)
 

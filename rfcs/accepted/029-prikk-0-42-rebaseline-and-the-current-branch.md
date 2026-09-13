@@ -1,7 +1,7 @@
 # RFC 029 — The prikk 0.42 re-baseline, and prikk's current branch
 
-**Status.** **Accepted by the project owner 2026-09-13; Q1 is still open.** Handoff A does not depend on Q1 and is
-issued; Handoff B waits for the ruling. Proposed the same day by the architect. Measured against real prikk
+**Status.** **Accepted by the project owner 2026-09-13; Q1 ruled (b)** the same day, with safeguard 3 and the
+fallback folded into Handoff B. Handoff A is issued; Handoff B follows it. Proposed the same day by the architect. Measured against real prikk
 **0.28.0** and **0.42.0** binaries built from their tags, and by running stikk's own real-binary suite at both
 ends with only the validated ceiling raised, in a scratch copy of `b1460cc`.
 **Tracks.** `ASM-2`, `NFR-R03`, `FR-055`, `FR-002`, `TU-02`, `TU-03`, the requirements' terminology table,
@@ -106,6 +106,38 @@ targets `heads/main` explicitly, while prikk's own default is `heads/dev`. **Not
 call names its ref. But the two defaults disagree, and nothing on screen says so. This is the roadmap's
 default-focus item, in a sharper form.
 
+### F7 — a branch switch lets stikk commit another branch's files onto the focused ref
+
+*(Measured 2026-09-13 on 0.42.0, answering the owner's question about data safety before ruling Q1.)* `heads/main`
+holds `shared.txt` and `main-only.txt`; `heads/dev` holds a different `shared.txt` and `dev-only.txt`. stikk is
+focused on `heads/main`, and the user runs `prikk branch switch heads/dev` in a terminal:
+
+```
+worktree-status --ref heads/main      current branch: heads/dev
+                                      untracked dev-only.txt · missing main-only.txt · modified shared.txt
+commit --ref heads/main -m …          recorded worktree patch in active WAL
+                                      delete-file main-only.txt · create-file dev-only.txt · edit-text shared.txt
+```
+
+**prikk accepts it** — an explicit `--ref` is the authority, by prikk's design — **and stikk does not catch it.**
+Before executing, `confirm::confirm` re-checks the capability and the change token, and the token composes refs,
+tags and the queue. **Neither prikk's current branch nor the worktree is in it**, and `prikk commit` authors the
+worktree as it is when the user confirms, not as the preview showed it. So a switch *between* preview and confirm
+also passes.
+
+The gap predates 0.42 for any worktree change between preview and confirm. `branch switch` makes it one command
+that replaces the whole tree. **It exists under every option in Q1**: (a) leaves it silent, (b) makes it unlikely
+at startup but not while stikk is open, (c) would have stikk move the worktree itself.
+
+### F8 — prikk's pointer is not evidence of whose files are in the worktree
+
+`prikk checkout --patch-materialize --ref heads/dev` wrote `dev-only.txt` and then refused to overwrite
+`shared.txt` (`integrity error: refusing to overwrite existing file with different content`) — **and left
+`.prikk/current-branch` on `heads/main`.** Only `init`, `setup` and `branch switch` write the pointer. So "focus
+equals prikk's current branch" does not guarantee the worktree holds that branch's files, and no safeguard may
+rest on the pointer alone. *(That the materialization stopped part-way, having written one file, is prikk's
+behaviour and a question for prikk, not a stikk finding.)*
+
 ## Decisions
 
 1. **The ceiling moves 41 → 42**, and the suite runs on the full matrix at 0.28 and 0.42. Fixtures are
@@ -144,11 +176,34 @@ default-focus item, in a sharper form.
 **My lean is (b).** stikk starts where prikk would, keeps the safety `FR-055` bought, and says out loud when
 the two defaults part. A `branch switch` action can be its own RFC later, if it is wanted.
 
+### RULED by the project owner, 2026-09-13: (b), with safeguard 3 and the fallback
+
+**Handoff B builds this:**
+
+- **At prikk ≥ 0.42, stikk opens focused on prikk's current branch**, read from the `status` report Orientation
+  already makes — no new read, and stikk never reads `.prikk/current-branch` itself (decision 3).
+- **Switching focus stays client-side** and never touches the worktree (`FR-055`).
+- **When focus and prikk's current branch differ, the header shows prikk's beside it**, labelled as prikk's
+  default, and it refreshes with every Orientation read, so it cannot go stale behind a terminal switch.
+- **The fallback, at every prikk version.** stikk focuses `heads/main` only if it is published — Orientation's
+  `heads/main RefState:` already says so. Otherwise no ref is focused until the user picks one, and the ref picker
+  opens. An unresolved pointer shows prikk's `<unresolved; run prikk doctor>` verbatim. This also settles the
+  roadmap's default-focus item.
+- **Safeguard 3: at prikk ≥ 0.42, commit's and seal's confirmations name both refs when the target differs from
+  prikk's current branch**, in stikk's words, as a notice rather than a block. prikk allows it, and deliberately
+  committing to another branch is legitimate.
+- **Never HEAD, never an authority** (decision 4).
+
+**Safeguards 1 and 2 are not this RFC's.** Putting prikk's current branch in the change token, and re-checking the
+worktree when a commit is confirmed, answer F7 whichever way Q1 went, and change the confirmation primitive every
+mutation relies on. They are **RFC 030**, scheduled before Handoff B, because the risk is live against prikk 0.42
+today.
+
 ## Delivery
 
 - **Handoff A — decisions 1–3 and 5.** The mechanical re-baseline. It does not depend on Q1, and RFC 028
   unblocks when it lands.
-- **Handoff B — Q1's outcome.** Issued after Q1 is ruled; nothing, if the ruling is (a).
+- **Handoff B — Q1's outcome, ruled (b).** Issued after A lands, and after RFC 030's safeguards.
 
 ## What this RFC does not do
 

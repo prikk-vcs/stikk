@@ -247,10 +247,14 @@ a fabricated worktree entry was fixed.
    prikk. stikk has no free-text ref entry, so the only way to reach it is the default focus; Orientation
    already shows `<unpublished>`, and the Changes view should say the same rather than show a whole tree as
    untracked without comment.
-9. **The prikk 0.42 re-baseline — [RFC 029](rfcs/proposed/029-prikk-0-42-rebaseline-and-the-current-branch.md),
-   proposed.** Mechanically small: stikk's suite already passes at 0.28 and 0.42 with only the ceiling raised.
-   The decision is how stikk's client-side focused ref relates to prikk's new **current branch**, which stikk's
-   design said did not exist.
+9. **The prikk 0.42 re-baseline — [RFC 029](rfcs/accepted/029-prikk-0-42-rebaseline-and-the-current-branch.md),
+   accepted; Q1 ruled (b).** Handoff A, the mechanical re-baseline, is issued. Handoff B — stikk opens focused on
+   prikk's current branch, names both refs on a confirmation when they differ, and falls back to the ref picker
+   when `heads/main` is not published — follows A and item 10.
+10. **A confirmed commit authors the worktree its preview showed — [RFC 030](rfcs/proposed/030-a-confirmed-commit-authors-the-worktree-it-previewed.md),
+    proposed.** A worktree changed between commit's preview and its confirmation — one terminal `prikk branch switch`
+    is enough — is committed today with nothing on screen. Live against prikk 0.42, so it goes before item 9's
+    Handoff B.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

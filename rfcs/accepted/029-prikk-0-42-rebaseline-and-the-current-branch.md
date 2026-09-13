@@ -1,6 +1,7 @@
 # RFC 029 — The prikk 0.42 re-baseline, and prikk's current branch
 
-**Status.** **Proposed 2026-09-13** by the architect. One open question (Q1). Measured against real prikk
+**Status.** **Accepted by the project owner 2026-09-13; Q1 is still open.** Handoff A does not depend on Q1 and is
+issued; Handoff B waits for the ruling. Proposed the same day by the architect. Measured against real prikk
 **0.28.0** and **0.42.0** binaries built from their tags, and by running stikk's own real-binary suite at both
 ends with only the validated ceiling raised, in a scratch copy of `b1460cc`.
 **Tracks.** `ASM-2`, `NFR-R03`, `FR-055`, `FR-002`, `TU-02`, `TU-03`, the requirements' terminology table,

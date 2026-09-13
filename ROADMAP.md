@@ -226,9 +226,9 @@ a fabricated worktree entry was fixed.
 1. **`refused paths:` — landed on `main`** ([RFC 027](rfcs/done/027-what-commit-would-refuse.md)): commit is
    unavailable, with prikk's reasons, when prikk would refuse a path; and the unsupported paths stikk had
    never listed are listed. Ships in 0.7.0.
-2. **The Queue view** (`FR-051`) — **[RFC 028](rfcs/proposed/028-the-queue-view.md), proposed.** prikk has
-   enumerated queued patches since 0.35; the seal ceremony still says how many patches it will freeze but
-   not which.
+2. **The Queue view** (`FR-051`) — **[RFC 028](rfcs/accepted/028-the-queue-view.md), accepted; it waits for
+   prikk's next release**, which carries each queued patch's message and lets `show` render a queued patch
+   (prikk's reply 012). Until then the seal ceremony still says how many patches it will freeze but not which.
 3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
 4. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
@@ -246,6 +246,12 @@ a fabricated worktree entry was fixed.
    prikk. stikk has no free-text ref entry, so the only way to reach it is the default focus; Orientation
    already shows `<unpublished>`, and the Changes view should say the same rather than show a whole tree as
    untracked without comment.
+9. **The next re-baseline is not routine.** prikk's unreleased `main` adds a **current branch**: `prikk branch
+   switch`, `--ref` defaulting to it, a `current branch:` line in `status`, `worktree-status` and `log`, and
+   `"current"` on each `branch-list-v1` entry. stikk's design has no HEAD and keeps a client-side focused ref
+   (`FR-055`, `TU-03`), so whether stikk adopts prikk's current branch is an RFC-level decision, taken when that
+   release is measured — the same release RFC 028 waits for. stikk always passes `--ref` explicitly, so nothing
+   breaks silently meanwhile; where the new prose lines fall relative to the scoped entry region is measured then.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

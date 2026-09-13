@@ -1,6 +1,7 @@
 # RFC 028 — The Queue view: what a seal will freeze, and what prikk cannot yet say about it
 
-**Status.** **Proposed 2026-09-13** by the architect, 0.7.0's second increment. One open question (Q1). Every
+**Status.** **Accepted by the project owner 2026-09-13, Q1 ruled (b)** — the work waits for the prikk release that
+answers letter 011. Proposed the same day by the architect, 0.7.0's second increment. Every
 finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from their tags the
 same day.
 **Tracks.** `FR-051`, `FR-052`, `FR-010`, `FR-030`, `TU-01`, `C-T2b`, `C-T2c′`, `ER-02`, `UD-02`, `ASM-2`,
@@ -150,7 +151,7 @@ already carries `queued_target`, so the fix needs no new read.
 7. **Breaking, inside the release that is already breaking.** `Prikk` gains a method and two view-models change.
    0.7.0 is unreleased and already the breaking position, so there is no further bump.
 
-8. **On acceptance**, `FR-051` records the Queue view as built, `FR-052` records that the ceremony names the
+8. **On delivery** — not on acceptance, since nothing is built until prikk's release — `FR-051` records the Queue view as built, `FR-052` records that the ceremony names the
    patches at ≥ 0.39, and `TU-01`'s Queue row is un-parked.
 
 ## Open question
@@ -167,7 +168,32 @@ already carries `queued_target`, so the fix needs no new read.
 says yes, the message arrives as an additive field and the view gains a line. **It is yours because it is a
 schedule call that rests on another project's answer.**
 
+### RULED by the project owner, 2026-09-13: (b) — and prikk has already answered
+
+**The Queue view waits for prikk.** prikk's reply 012 to letter 011 came the same day:
+
+- **A queued entry gains `message`** — `null` exactly where `log` would show none, additive within
+  `status-report-v1`.
+- **`show` renders a queued patch** from the active WAL, as the same `show-report-v1` with `"queued": true`.
+- **An id that resolves nowhere becomes `precondition not met:`**, naming both places prikk looked. An object a
+  ref names and the store lacks stays an integrity error.
+
+prikk's `main` already carries it (`93eb49ea`); its latest tag is still 0.41.0.
+
+**What this changes.** F2's two limits lift in prikk's next release. When that release is published, stikk
+re-baselines to it, **measures the message and a queued `show` on the binary**, and revises decision 2 so the view
+shows each patch's message where prikk reports one. How far the view goes with a queued patch's content through
+`show` is decided then, against the measured report, not from this letter. Below that release, decision 2's
+statement of what prikk does not report stands as written.
+
+**Held with it.** Option (c) was the one that shipped decisions 4 and 5 first, so under (b) they wait too:
+seal naming what it freezes, and History's tier (F5). **F5 is stikk's own defect and depends on nothing from
+prikk**; it can be split out and delivered alone on the owner's word.
+
 ## Delivery
+
+**Both handoffs are issued after prikk's next release is published and stikk has re-baselined to it** (Q1
+ruled (b)).
 
 - **Handoff A** — decisions 1, 2, 3, 5 and 6: the reader, the seam method, the Queue view, History's tier and
   the suite.

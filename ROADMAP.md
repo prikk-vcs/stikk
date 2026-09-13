@@ -226,8 +226,9 @@ a fabricated worktree entry was fixed.
 1. **`refused paths:` — landed on `main`** ([RFC 027](rfcs/done/027-what-commit-would-refuse.md)): commit is
    unavailable, with prikk's reasons, when prikk would refuse a path; and the unsupported paths stikk had
    never listed are listed. Ships in 0.7.0.
-2. **The Queue view** (`FR-051`) — prikk has enumerated queued patches since 0.35; the seal ceremony
-   still says how many patches it will freeze but not which.
+2. **The Queue view** (`FR-051`) — **[RFC 028](rfcs/proposed/028-the-queue-view.md), proposed.** prikk has
+   enumerated queued patches since 0.35; the seal ceremony still says how many patches it will freeze but
+   not which.
 3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
 4. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
@@ -238,8 +239,13 @@ a fabricated worktree entry was fixed.
    about 64 characters clips on an entry row, and prikk reports unsupported paths absolute.
 7. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
    where the JSON path now reports stikk's own error.
-8. **An unknown ref reads as an all-untracked tree** — prikk 0.41 answers `worktree-status` for a ref that does
-   not exist with a full report against an empty baseline. stikk should say *no such ref*; prikk may be asked.
+8. **stikk opens focused on `heads/main`, which a repository may not have.** Measured at prikk 0.28 and 0.41,
+   a ref with no published history reads as an empty baseline everywhere — `worktree-status` lists every
+   file untracked, `log` reports empty history, and `commit` authors onto the new name. **That is prikk's
+   deliberate model, not a defect**: it is exactly how a first commit is previewed, so nothing is asked of
+   prikk. stikk has no free-text ref entry, so the only way to reach it is the default focus; Orientation
+   already shows `<unpublished>`, and the Changes view should say the same rather than show a whole tree as
+   untracked without comment.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

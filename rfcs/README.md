@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 028 | [The Queue view](./proposed/028-the-queue-view.md) | `FR-051`'s Queue view on prikk 0.35's enumeration, and seal's confirmation naming what it freezes (`FR-052`); plus History's queued tier shown on refs the queue is not for |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

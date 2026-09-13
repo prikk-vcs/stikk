@@ -37,8 +37,8 @@ use stikk_model::{Result, StikkError};
 const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
-/// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, to 38 by RFC 021, then to **41 by
-/// RFC 026** — each only
+/// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, to 38 by RFC 021, to 41 by RFC 026,
+/// then to **42 by RFC 029** — each only
 /// after empirical re-verification against a real released binary, never a changelog). RFC 017's
 /// re-verification found no output-shape drift; it found the classifier's own provenance gap instead
 /// (`classify.rs`'s module doc). A prikk above this still runs; [`Version::is_validated`] tells the
@@ -50,7 +50,7 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// established that order across five releases at once; **RFC 026 had to put one step before it** —
 /// the suite's fixture builder configures prikk through the environment, and prikk 0.40 stopped
 /// reading it, so the harness had to work before the raise could be measured at all.
-const VALIDATED_MAX_MINOR: u32 = 41;
+const VALIDATED_MAX_MINOR: u32 = 42;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -1,7 +1,8 @@
 # RFC 028 — The Queue view: what a seal will freeze, and what prikk cannot yet say about it
 
-**Status.** **Accepted by the project owner 2026-09-13, Q1 ruled (b)** — the work waits for the prikk release that
-answers letter 011. Proposed the same day by the architect, 0.7.0's second increment. Every
+**Status.** **Accepted by the project owner 2026-09-13, Q1 ruled (b)** — the work waited for the prikk release that
+answered letter 011. prikk 0.42.0 shipped it, and stikk re-baselined to it (RFC 029 A). **Handoff A issued
+2026-09-15**, to follow RFC 029's Handoff B. Proposed the same day by the architect, 0.7.0's second increment. Every
 finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from their tags the
 same day.
 **Tracks.** `FR-051`, `FR-052`, `FR-010`, `FR-030`, `TU-01`, `C-T2b`, `C-T2c′`, `ER-02`, `UD-02`, `ASM-2`,
@@ -212,6 +213,15 @@ prikk 0.42.0 shipped what reply 012 described. Measured on the binary:
   Patch detail's to show"*.
 
 **The handoffs are issued after RFC 029's re-baseline lands**, with the ceiling at 42.
+
+### Corrections, on issuing Handoff A (2026-09-15)
+
+- **Decision 6's ceiling is 0.42, not 0.41.** The re-baseline moved it.
+- **`prikk mv` does not exist below 0.38, not 0.33.** The suite's F0 test has announced that skip since RFC 022,
+  so the rename case skips below 0.38.
+- **Measured again at 0.42.0 for the handoff:** `message` follows `patch_id`; a `rename-path` operation carries
+  both paths and `author_key_id`; and `prikk commit` requires `-m`, so a `null` message is a patch an older
+  prikk committed.
 
 ## Delivery
 

@@ -71,9 +71,8 @@ trait is unchanged.
   is now part of what stikk compares, and a commit or seal confirmation armed before the switch is stale
   (RFC 030).
 - **A stale confirmation now says whether the repository or the worktree changed**, and no longer
-  attributes the change to "another writer" — most often it was you. The worktree wording names what
-  stikk compares: which paths prikk lists, their status, prikk's verdict on them, and rename
-  declarations (RFC 030).
+  attributes the change to "another writer". The worktree wording names what stikk compares: which paths
+  prikk lists, their status, prikk's verdict on them, and rename declarations (RFC 030).
 
 ### Fixed
 
@@ -97,11 +96,12 @@ trait is unchanged.
 - **A commit confirmed after the worktree changed no longer commits the changed worktree.** Between a
   commit's preview and its confirmation, a terminal `prikk branch switch`, a file added or removed, or a
   `prikk mv` used to go straight into the commit, onto the ref the preview showed, with nothing on screen
-  saying so — measured at prikk 0.28 and 0.42. stikk now re-reads what prikk reports about the worktree
-  immediately before committing; if it no longer matches the preview, stikk says the worktree changed and
-  commits nothing. **What this cannot see is stated rather than implied away:** a further edit to a file
-  the preview already listed as modified, and anything that changes in the moment between that re-read
-  and prikk's own commit (RFC 030).
+  saying so. A file added was measured at prikk 0.28 and 0.42; a branch switch and a `prikk mv`, which
+  need prikk 0.42 and 0.38, were measured at 0.42. stikk now re-reads what prikk reports about the
+  worktree immediately before committing; if it no longer matches the preview, stikk says the worktree
+  changed and commits nothing. **What this cannot see is stated rather than implied away:** a further
+  edit to a file the preview already listed as modified, and anything that changes in the moment between
+  that re-read and prikk's own commit (RFC 030).
 
 ## 0.6.0 — 2026-09-13
 

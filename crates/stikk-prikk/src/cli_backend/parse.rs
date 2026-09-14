@@ -445,7 +445,10 @@ const QUEUED_ELSEWHERE_PREFIX: &str = "note: the active WAL has queued";
 /// introduces is introduced by a flush-left *label*, so a label is what ends the region. Ending it on a
 /// blank line instead would risk dropping a real entry — the same wrong-picture failure in the other
 /// direction.
-pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
+///
+/// **`prikk_minor` is passed in** for the same reason [`orientation`] takes it: only the version tells a
+/// prikk with no rename declarations (below 0.38) from a 0.38 report that lost its section.
+pub(super) fn worktree_status(text: &str, prikk_minor: u32) -> Result<WorktreeStatus> {
     // One lookup for the headline: its value decides `clean`, and its position opens the entries
     // region below. Locating it twice — once by value, once by position — is how those two could
     // disagree about which line they mean.
@@ -491,25 +494,37 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         refused: None,
         entries,
         queued_elsewhere,
-        declarations: prose_declarations(text)?,
+        declarations: prose_declarations(text, prikk_minor)?,
     })
 }
 
+/// The first prikk minor whose `worktree-status` prints `live rename declarations:` (prikk 0.38).
+const RENAME_DECLARATIONS_FROM_MINOR: u32 = 38;
+
 /// The `live rename declarations: N` section of prose `worktree-status` (prikk ≥ 0.38; RFC 030
 /// amendment A1): the count, then one indented `  <old> -> <new>` line per declaration, as
-/// `WORKTREE_RENAME_0_38_FIXTURE` shows. **No section is an empty list**, which below 0.38 is a version
-/// fact: `prikk mv` does not exist there.
+/// `WORKTREE_RENAME_0_38_FIXTURE` shows. **No section below 0.38 is an empty list**, a version fact:
+/// `prikk mv` does not exist there. **No section at 0.38 or later is a parse error**, because prikk
+/// prints it unconditionally from 0.38 — `0` on a clean worktree — so its absence is an unreported
+/// zero, not "none" (`C-T2c′`). The declaration comparison is the only thing that catches a `prikk mv`
+/// between a commit's preview and its confirmation (RFC 030 M7), so it must not lose its input silently.
 ///
 /// **Held to prikk's own count, and refused rather than guessed.** prikk prints each line as
 /// `"  {} -> {}"` with no quoting, so a name that itself contains ` -> ` leaves the split point
 /// unknowable from the text: such a line is a parse error, not a best guess.
-fn prose_declarations(text: &str) -> Result<Vec<RenameDeclaration>> {
+fn prose_declarations(text: &str, prikk_minor: u32) -> Result<Vec<RenameDeclaration>> {
     let mut lines = text.lines();
     let Some(count) = lines
         .by_ref()
         .find_map(|line| line.strip_prefix("live rename declarations:"))
     else {
-        return Ok(Vec::new());
+        if prikk_minor < RENAME_DECLARATIONS_FROM_MINOR {
+            return Ok(Vec::new());
+        }
+        return Err(StikkError::environment_msg(format!(
+            "prikk 0.{prikk_minor}'s worktree-status is missing its \"live rename declarations:\" \
+             section, which prikk 0.{RENAME_DECLARATIONS_FROM_MINOR} and later always print"
+        )));
     };
     let count: u64 = count.trim().parse().map_err(|_| {
         StikkError::environment_msg(format!(

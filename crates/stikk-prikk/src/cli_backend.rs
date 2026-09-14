@@ -409,7 +409,10 @@ impl Prikk for CliBackend {
         }
         let (stdout, stderr, _success) =
             self.run_capturing(Some(repo), ["worktree-status", "--ref", reff])?;
-        match parse::worktree_status(&stdout) {
+        // RFC 030: only the version tells "no rename declarations exist" (< 0.38) from a report that
+        // lost its `live rename declarations:` section (≥ 0.38) — the handshake is cached.
+        let prikk_minor = Prikk::handshake(self)?.version.minor;
+        match parse::worktree_status(&stdout, prikk_minor) {
             Ok(status) => Ok(status),
             Err(_shape) => Err(classify::classify(
                 &stdout,

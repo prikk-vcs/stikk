@@ -791,7 +791,7 @@ note: use `prikk commit -m <message>` to author node-addressed worktree changes;
 
 #[test]
 fn parses_a_clean_worktree() {
-    let s = worktree_status(WORKTREE_CLEAN_FIXTURE).expect("clean parses");
+    let s = worktree_status(WORKTREE_CLEAN_FIXTURE, 30).expect("clean parses");
     assert!(s.clean);
     assert_eq!(s.reff, "heads/main");
     assert_eq!(s.tracked, 2);
@@ -802,7 +802,7 @@ fn parses_a_clean_worktree() {
 
 #[test]
 fn parses_a_dirty_worktree_with_all_kinds() {
-    let s = worktree_status(WORKTREE_DIRTY_FIXTURE).expect("dirty parses");
+    let s = worktree_status(WORKTREE_DIRTY_FIXTURE, 30).expect("dirty parses");
     assert!(!s.clean);
     assert_eq!(s.missing, 1);
     assert_eq!(s.modified, 1);
@@ -822,7 +822,7 @@ fn carries_the_queued_elsewhere_warning_verbatim() {
     // RFC 009 F4 — the acceptance-critical fix: this warning exists specifically so a front-end cannot
     // mislead a user into deleting real, committed-but-unsealed work. The note must be transported
     // byte-identical (ER-02), never paraphrased.
-    let s = worktree_status(WORKTREE_QUEUED_ELSEWHERE_FIXTURE).expect("parses");
+    let s = worktree_status(WORKTREE_QUEUED_ELSEWHERE_FIXTURE, 30).expect("parses");
     assert!(!s.clean);
     assert_eq!(s.untracked, 2);
     // Below 0.39 prikk's sentence is what stikk carries (RFC 027 F6), and prose is its only source.
@@ -855,7 +855,7 @@ unsupported paths: 0
 worktree: changed against baseline
   modified my docs/read me.txt — tracked file bytes differ from the baseline
 ";
-    let s = worktree_status(text).expect("parses");
+    let s = worktree_status(text, 30).expect("parses");
     assert_eq!(s.entries[0].path, "my docs/read me.txt");
 }
 
@@ -865,7 +865,10 @@ fn worktree_status_refuses_a_control_character_bearing_ref_name() {
     let text = "ref: heads/ma\x07in\nworktree: clean against baseline\ntracked files: 0\nunchanged \
                 files: 0\nmissing files: 0\nmodified files: 0\nuntracked files: 0\nunsupported \
                 paths: 0\n";
-    assert_eq!(worktree_status(text).unwrap_err().class(), "environment");
+    assert_eq!(
+        worktree_status(text, 30).unwrap_err().class(),
+        "environment"
+    );
 }
 
 #[test]
@@ -873,13 +876,19 @@ fn worktree_status_refuses_without_the_headline() {
     // UD-02: no `worktree:` headline ⇒ not a worktree-status report ⇒ environment fault (the caller
     // then treats the outcome as a real failure rather than a status).
     let text = "some unrelated prikk output\n";
-    assert_eq!(worktree_status(text).unwrap_err().class(), "environment");
+    assert_eq!(
+        worktree_status(text, 30).unwrap_err().class(),
+        "environment"
+    );
 }
 
 #[test]
 fn worktree_status_refuses_on_a_missing_count() {
     let text = "ref: heads/main\nworktree: clean against baseline\n";
-    assert_eq!(worktree_status(text).unwrap_err().class(), "environment");
+    assert_eq!(
+        worktree_status(text, 30).unwrap_err().class(),
+        "environment"
+    );
 }
 
 // Captured verbatim (stdout; the dirty-exit `error: worktree has changes against the baseline` line is
@@ -946,7 +955,7 @@ note: use `prikk commit -m <message>` to author node-addressed worktree changes;
 fn a_0_38_rename_declaration_is_not_a_worktree_entry() {
     // RFC 021 F0. prikk reported two changes; stikk reported three, the third a file that does not
     // exist in a state prikk never named (`T-T4` manufactured out of correct prikk output).
-    let s = worktree_status(WORKTREE_RENAME_0_38_FIXTURE).expect("parses");
+    let s = worktree_status(WORKTREE_RENAME_0_38_FIXTURE, 38).expect("parses");
     assert_eq!(
         s.entries.len(),
         2,
@@ -983,7 +992,7 @@ fn a_file_named_exactly_modified_does_not_fabricate_an_entry_when_renamed() {
     // The narrowest form of prikk's prediction: the declaration is `  modified -> untracked`. A `->`
     // reject heuristic would also catch this one — which is why the synthetic-section test below
     // exists, to tell the boundary fix apart from the heuristic.
-    let s = worktree_status(WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE).expect("parses");
+    let s = worktree_status(WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE, 38).expect("parses");
     assert_eq!(
         s.entries.len(),
         2,
@@ -1027,7 +1036,7 @@ pending attestation requests: 1
   modified readme.txt requested by someone
 note: use `prikk commit -m <message>` to author node-addressed worktree changes
 ";
-    let s = worktree_status(text).expect("parses");
+    let s = worktree_status(text, 30).expect("parses");
     assert_eq!(
         s.entries.len(),
         1,
@@ -1069,7 +1078,7 @@ fn a_clean_0_38_worktree_reports_no_entries_despite_the_rename_section() {
     // The `live rename declarations: 0` line is flush-left, so it closes an already-empty region
     // rather than opening one — and the count fields are read by label, not by position, so the line
     // between them and the note changes nothing about them either.
-    let s = worktree_status(WORKTREE_CLEAN_0_38_FIXTURE).expect("parses");
+    let s = worktree_status(WORKTREE_CLEAN_0_38_FIXTURE, 38).expect("parses");
     assert!(s.clean);
     assert!(
         s.entries.is_empty(),
@@ -1149,7 +1158,7 @@ untracked files: 0
 unsupported paths: 0
 worktree: clean against baseline
 ";
-    let s = worktree_status(text).expect("parses");
+    let s = worktree_status(text, 30).expect("parses");
     assert!(s.clean);
     assert!(s.entries.is_empty());
 }
@@ -1447,11 +1456,11 @@ fn the_prose_reader_reports_no_verdict_at_either_end() {
     // RFC 027 decision 3: prose is read below 0.39, where prikk states no verdict — unreported, and the
     // count `None`, never `Some(0)`. At 0.41 the prose report *does* carry one, and stikk still reads it
     // from JSON only; prose never manufactures a verdict from a suffix.
-    for (end, text) in [
-        ("0.28", WORKTREE_SYMLINK_0_28_FIXTURE),
-        ("0.41", WORKTREE_SYMLINK_0_41_FIXTURE),
+    for (end, minor, text) in [
+        ("0.28", 28, WORKTREE_SYMLINK_0_28_FIXTURE),
+        ("0.41", 41, WORKTREE_SYMLINK_0_41_FIXTURE),
     ] {
-        let s = worktree_status(text).unwrap_or_else(|e| panic!("{end}: {e:?}"));
+        let s = worktree_status(text, minor).unwrap_or_else(|e| panic!("{end}: {e:?}"));
         assert_eq!(s.refused, None, "{end}");
         assert!(
             s.entries
@@ -1461,7 +1470,7 @@ fn the_prose_reader_reports_no_verdict_at_either_end() {
             s.entries
         );
     }
-    let s = worktree_status(WORKTREE_SYMLINK_0_41_FIXTURE).expect("parses");
+    let s = worktree_status(WORKTREE_SYMLINK_0_41_FIXTURE, 41).expect("parses");
     let link = s
         .entries
         .iter()
@@ -1477,11 +1486,11 @@ fn the_prose_reader_reports_no_verdict_at_either_end() {
 #[test]
 fn unsupported_path_entries_are_listed_at_both_ends() {
     // RFC 027 F0. prikk counted two and printed two; stikk counted two and listed none.
-    for (end, text) in [
-        ("0.28", WORKTREE_UNSUPPORTED_0_28_FIXTURE),
-        ("0.41", WORKTREE_UNSUPPORTED_0_41_FIXTURE),
+    for (end, minor, text) in [
+        ("0.28", 28, WORKTREE_UNSUPPORTED_0_28_FIXTURE),
+        ("0.41", 41, WORKTREE_UNSUPPORTED_0_41_FIXTURE),
     ] {
-        let s = worktree_status(text).unwrap_or_else(|e| panic!("{end}: {e:?}"));
+        let s = worktree_status(text, minor).unwrap_or_else(|e| panic!("{end}: {e:?}"));
         assert_eq!(s.unsupported, 2, "{end}");
         assert_eq!(s.entries.len(), 3, "{end}: entries were {:?}", s.entries);
         assert!(
@@ -1524,7 +1533,7 @@ worktree: changed against baseline
   typechange link.txt — a kind prikk does not print today
 live rename declarations: 0
 ";
-    let s = worktree_status(text).expect("parses");
+    let s = worktree_status(text, 41).expect("parses");
     assert_eq!(s.entries.len(), 1, "entries were {:?}", s.entries);
     assert_eq!(s.entries[0].kind, "typechange");
     assert_eq!(s.entries[0].path, "link.txt");
@@ -1548,7 +1557,7 @@ worktree: changed against baseline
   untracked big.bin — worktree file is not in the baseline [refused: some reason]
 live rename declarations: 0
 ";
-    let s = worktree_status(text).expect("parses");
+    let s = worktree_status(text, 41).expect("parses");
     assert_eq!(s.entries.len(), 1);
     assert_eq!(s.entries[0].path, "big.bin");
     assert_eq!(
@@ -1560,34 +1569,48 @@ live rename declarations: 0
 /// Every `worktree-status` fixture constant in this file, by name. Kept complete by
 /// [`the_count_invariant_covers_every_worktree_status_fixture`] — a new fixture that is not added here
 /// fails that test, so the invariant cannot quietly skip one.
-fn every_worktree_status_fixture() -> [(&'static str, &'static str); 10] {
+fn every_worktree_status_fixture() -> [(&'static str, u32, &'static str); 10] {
     [
-        ("WORKTREE_CLEAN_FIXTURE", WORKTREE_CLEAN_FIXTURE),
-        ("WORKTREE_DIRTY_FIXTURE", WORKTREE_DIRTY_FIXTURE),
+        ("WORKTREE_CLEAN_FIXTURE", 30, WORKTREE_CLEAN_FIXTURE),
+        ("WORKTREE_DIRTY_FIXTURE", 30, WORKTREE_DIRTY_FIXTURE),
         (
             "WORKTREE_QUEUED_ELSEWHERE_FIXTURE",
+            30,
             WORKTREE_QUEUED_ELSEWHERE_FIXTURE,
         ),
-        ("WORKTREE_RENAME_0_38_FIXTURE", WORKTREE_RENAME_0_38_FIXTURE),
+        (
+            "WORKTREE_RENAME_0_38_FIXTURE",
+            38,
+            WORKTREE_RENAME_0_38_FIXTURE,
+        ),
         (
             "WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE",
+            38,
             WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE,
         ),
-        ("WORKTREE_CLEAN_0_38_FIXTURE", WORKTREE_CLEAN_0_38_FIXTURE),
+        (
+            "WORKTREE_CLEAN_0_38_FIXTURE",
+            38,
+            WORKTREE_CLEAN_0_38_FIXTURE,
+        ),
         (
             "WORKTREE_UNSUPPORTED_0_28_FIXTURE",
+            28,
             WORKTREE_UNSUPPORTED_0_28_FIXTURE,
         ),
         (
             "WORKTREE_UNSUPPORTED_0_41_FIXTURE",
+            41,
             WORKTREE_UNSUPPORTED_0_41_FIXTURE,
         ),
         (
             "WORKTREE_SYMLINK_0_28_FIXTURE",
+            28,
             WORKTREE_SYMLINK_0_28_FIXTURE,
         ),
         (
             "WORKTREE_SYMLINK_0_41_FIXTURE",
+            41,
             WORKTREE_SYMLINK_0_41_FIXTURE,
         ),
     ]
@@ -1599,8 +1622,8 @@ fn every_worktree_status_fixture_lists_as_many_entries_as_prikk_counts() {
     // `count_kind` over the very list it then prints, so for every kind the parsed entry count equals
     // prikk's own number. A reader that drops a kind's lines passes every per-fixture assertion that
     // never looked at that kind; it cannot pass this.
-    for (name, text) in every_worktree_status_fixture() {
-        let s = worktree_status(text).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+    for (name, minor, text) in every_worktree_status_fixture() {
+        let s = worktree_status(text, minor).unwrap_or_else(|e| panic!("{name}: {e:?}"));
         let listed = |kind: &str| {
             u64::try_from(s.entries.iter().filter(|e| e.kind == kind).count()).unwrap()
         };
@@ -1630,7 +1653,7 @@ fn every_worktree_status_fixture_lists_as_many_entries_as_prikk_counts() {
 fn the_count_invariant_covers_every_worktree_status_fixture() {
     let listed: Vec<&str> = every_worktree_status_fixture()
         .iter()
-        .map(|(name, _)| *name)
+        .map(|(name, _, _)| *name)
         .collect();
     let source = include_str!("tests.rs");
     let declared: Vec<&str> = source
@@ -1687,7 +1710,7 @@ fn a_current_branch_that_is_neither_prikks_unresolved_form_nor_a_ref_name_is_a_p
 
 #[test]
 fn the_0_38_rename_fixtures_carry_their_declarations() {
-    let s = worktree_status(WORKTREE_RENAME_0_38_FIXTURE).expect("parses");
+    let s = worktree_status(WORKTREE_RENAME_0_38_FIXTURE, 38).expect("parses");
     assert_eq!(
         s.declarations,
         vec![RenameDeclaration {
@@ -1695,7 +1718,7 @@ fn the_0_38_rename_fixtures_carry_their_declarations() {
             new_path: "renamed.txt".into(),
         }]
     );
-    let bare = worktree_status(WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE).expect("parses");
+    let bare = worktree_status(WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE, 38).expect("parses");
     assert_eq!(
         bare.declarations,
         vec![RenameDeclaration {
@@ -1704,19 +1727,25 @@ fn the_0_38_rename_fixtures_carry_their_declarations() {
         }]
     );
     // `live rename declarations: 0`, and no section at all below 0.38, are both an empty list.
-    for (name, text) in [
-        ("WORKTREE_CLEAN_0_38_FIXTURE", WORKTREE_CLEAN_0_38_FIXTURE),
+    for (name, minor, text) in [
+        (
+            "WORKTREE_CLEAN_0_38_FIXTURE",
+            38,
+            WORKTREE_CLEAN_0_38_FIXTURE,
+        ),
         (
             "WORKTREE_SYMLINK_0_41_FIXTURE",
+            41,
             WORKTREE_SYMLINK_0_41_FIXTURE,
         ),
-        ("WORKTREE_DIRTY_FIXTURE (0.30)", WORKTREE_DIRTY_FIXTURE),
+        ("WORKTREE_DIRTY_FIXTURE (0.30)", 30, WORKTREE_DIRTY_FIXTURE),
         (
             "WORKTREE_SYMLINK_0_28_FIXTURE",
+            28,
             WORKTREE_SYMLINK_0_28_FIXTURE,
         ),
     ] {
-        let s = worktree_status(text).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        let s = worktree_status(text, minor).unwrap_or_else(|e| panic!("{name}: {e:?}"));
         assert!(s.declarations.is_empty(), "{name}: {:?}", s.declarations);
     }
 }
@@ -1725,7 +1754,7 @@ fn the_0_38_rename_fixtures_carry_their_declarations() {
 fn a_declaration_count_that_disagrees_with_its_lines_is_a_parse_error() {
     let text = WORKTREE_RENAME_0_38_FIXTURE
         .replace("live rename declarations: 1", "live rename declarations: 2");
-    let err = worktree_status(&text).expect_err("prikk's own count is held to its lines");
+    let err = worktree_status(&text, 38).expect_err("prikk's own count is held to its lines");
     assert_eq!(err.class(), "environment");
     assert!(
         err.to_string().contains("live rename declarations"),
@@ -1740,7 +1769,24 @@ fn a_declaration_line_that_cannot_be_split_unambiguously_is_a_parse_error() {
         "  modified draft.txt -> renamed.txt",
         "  a -> b.txt -> c.txt",
     );
-    let err = worktree_status(&text).expect_err("not guessed");
+    let err = worktree_status(&text, 38).expect_err("not guessed");
     assert_eq!(err.class(), "environment");
     assert!(err.to_string().contains("unambiguously"), "{err}");
+}
+
+#[test]
+fn a_missing_declarations_section_at_0_38_is_a_parse_error() {
+    // 0.38 prints `live rename declarations: N` unconditionally, so its absence there is an unreported
+    // zero, not "none" (`C-T2c′`) — the same rule `current branch:` follows at 0.42. Below 0.38 the
+    // same text is an empty list: `prikk mv` does not exist there.
+    let text = WORKTREE_CLEAN_0_38_FIXTURE.replace("live rename declarations: 0\n", "");
+    assert_ne!(text, WORKTREE_CLEAN_0_38_FIXTURE, "the line was removed");
+    let err = worktree_status(&text, 38).expect_err("not read as no declarations");
+    assert_eq!(err.class(), "environment");
+    assert!(
+        err.to_string().contains("live rename declarations"),
+        "{err}"
+    );
+    let below = worktree_status(&text, 37).expect("below 0.38 there is no section to lose");
+    assert!(below.declarations.is_empty());
 }

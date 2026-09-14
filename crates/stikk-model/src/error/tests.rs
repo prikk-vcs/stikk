@@ -40,6 +40,7 @@ fn every_class_has_a_stable_name() {
         (
             StikkError::Stale {
                 operation: "commit".into(),
+                cause: StaleCause::Repository,
             },
             "stale",
         ),
@@ -104,7 +105,8 @@ fn stale_and_declined_are_never_auto_retried_either() {
     // RFC 013 decision 3: retrying a Stale execution as-is is precisely the prohibited thing.
     assert!(
         StikkError::Stale {
-            operation: "commit".into()
+            operation: "commit".into(),
+            cause: StaleCause::Worktree,
         }
         .is_user_resolved()
     );
@@ -135,6 +137,28 @@ fn stale_names_the_operation_never_prikks_words() {
     // since prikk was never asked.
     let err = StikkError::Stale {
         operation: "commit".into(),
+        cause: StaleCause::Repository,
     };
     assert!(err.to_string().contains("commit"));
+}
+
+#[test]
+fn stale_display_follows_its_cause() {
+    // RFC 030 amendment A3, byte-exact: a worktree change is not a repository change.
+    let repository = StikkError::Stale {
+        operation: "commit".into(),
+        cause: StaleCause::Repository,
+    };
+    let worktree = StikkError::Stale {
+        operation: "commit".into(),
+        cause: StaleCause::Worktree,
+    };
+    assert_eq!(
+        repository.to_string(),
+        "stale: commit's preview no longer matches the repository"
+    );
+    assert_eq!(
+        worktree.to_string(),
+        "stale: commit's preview no longer matches the worktree"
+    );
 }

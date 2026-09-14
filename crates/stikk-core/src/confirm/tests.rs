@@ -61,6 +61,7 @@ fn backend_with_token(seed: &str) -> NullBackend {
         [("heads/main", seed)],
         0,
         None,
+        &stikk_model::CurrentBranch::NotReported,
     ))
 }
 
@@ -119,7 +120,7 @@ fn confirm_refuses_when_the_change_token_moved_between_preview_and_confirm() {
     )
     .expect_err("must refuse — the world moved");
     assert_eq!(err.class(), "stale");
-    assert!(matches!(err, StikkError::Stale { operation } if operation == "test-op"));
+    assert!(matches!(err, StikkError::Stale { operation, .. } if operation == "test-op"));
 }
 
 #[test]

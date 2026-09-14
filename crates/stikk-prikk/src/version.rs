@@ -8,7 +8,7 @@
 //! `LOG_FIXTURE_STRADDLING`, which needs patches authored by 0.31.1 and 0.32.0 in one block; and the
 //! seven RFC 027 captures (`WORKTREE_UNSUPPORTED_*`, `WORKTREE_SYMLINK_*`, `WORKTREE_QUEUED_JSON_0_41`),
 //! which record 0.28 and 0.41 by design. The one prose surface stikk reads that 0.42 changed is
-//! `status`, which gained a `current branch:` line Orientation does not read. See
+//! `status`, which gained a `current branch:` line — read into `Orientation` since RFC 030. See
 //! `cli_backend/parse/tests.rs` for what each version changed).
 //!
 //! The previous ceiling was `0.41.0` (**RFC 026**, the 0.41 re-baseline — raised from 0.38 across three

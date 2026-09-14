@@ -19,6 +19,8 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
+use crate::CurrentBranch;
+
 /// An opaque, cheap-to-store staleness marker (design `LC-4`). Two tokens composed from an unchanged
 /// signal set are equal; that is the only guarantee — nothing above the seam may branch on, decode, or
 /// otherwise interpret a token's contents (RFC 003 decision 3). Its `Debug` prints the digest only, on
@@ -27,18 +29,25 @@ use std::hash::{Hash, Hasher};
 pub struct ChangeToken(u64);
 
 impl ChangeToken {
-    /// Compose a token from the RFC 003 signal set: every ref's `(name, `RefState`/pointer id)`, plus
-    /// the queued-patch count and its target ref (or `None` for an empty or unpublished queue).
+    /// Compose a token from the RFC 003 signal set: every ref's `(name, `RefState`/pointer id)`, the
+    /// queued-patch count and its target ref (or `None` for an empty or unpublished queue), and **prikk's
+    /// current branch** (RFC 030 decision 2).
     ///
     /// `refs` need not be pre-sorted — this always sorts by name internally before hashing, so a
     /// caller (or a future prikk version) returning the same refs in a different order can never look
     /// like a repository change. This is deliberate, not incidental: relying on a sort prikk merely
     /// happens to do today would make an upstream ordering change indistinguishable from a real one.
+    ///
+    /// **The current branch is hashed with a discriminant per state**, so prikk's unresolved text
+    /// `heads/x` can never compose the same token as the branch `heads/x`, and "not reported" never
+    /// equals either. A terminal `prikk branch switch` at ≥ 0.42 moves no ref, tag or queue — this input
+    /// is the only one that sees it.
     #[must_use]
     pub fn compose<'a>(
         refs: impl IntoIterator<Item = (&'a str, &'a str)>,
         queued_patches: u64,
         queued_target: Option<&str>,
+        current_branch: &CurrentBranch,
     ) -> Self {
         let mut sorted: Vec<(&str, &str)> = refs.into_iter().collect();
         sorted.sort_unstable_by_key(|(name, _)| *name);
@@ -51,6 +60,17 @@ impl ChangeToken {
         }
         queued_patches.hash(&mut hasher);
         queued_target.hash(&mut hasher);
+        match current_branch {
+            CurrentBranch::NotReported => 0u8.hash(&mut hasher),
+            CurrentBranch::Unresolved(text) => {
+                1u8.hash(&mut hasher);
+                text.hash(&mut hasher);
+            }
+            CurrentBranch::Branch(name) => {
+                2u8.hash(&mut hasher);
+                name.as_str().hash(&mut hasher);
+            }
+        }
         Self(hasher.finish())
     }
 }

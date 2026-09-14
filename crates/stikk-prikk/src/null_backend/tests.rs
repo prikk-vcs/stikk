@@ -52,8 +52,18 @@ fn with_version_recomputes_both_supported_and_validated() {
 fn with_change_token_scripts_an_arbitrary_token() {
     // RFC 003: independent of this backend's own refs/orientation fields — a script may want a token
     // with no matching ref/orientation state, since only equality between two tokens is load-bearing.
-    let a = stikk_model::ChangeToken::compose([("heads/main", "a".repeat(64).as_str())], 0, None);
-    let b = stikk_model::ChangeToken::compose([("heads/main", "b".repeat(64).as_str())], 0, None);
+    let a = stikk_model::ChangeToken::compose(
+        [("heads/main", "a".repeat(64).as_str())],
+        0,
+        None,
+        &stikk_model::CurrentBranch::NotReported,
+    );
+    let b = stikk_model::ChangeToken::compose(
+        [("heads/main", "b".repeat(64).as_str())],
+        0,
+        None,
+        &stikk_model::CurrentBranch::NotReported,
+    );
     assert_ne!(a, b);
 
     let backend = NullBackend::supported().with_change_token(a);

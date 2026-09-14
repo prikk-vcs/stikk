@@ -23,6 +23,7 @@
 pub mod capability;
 pub mod category;
 pub mod change_token;
+pub mod current_branch;
 pub mod error;
 pub mod example_keys;
 pub mod id;
@@ -30,6 +31,7 @@ pub mod id;
 pub use capability::{Binding, Capability, Readiness, RoleReadiness};
 pub use category::{RequestCategory, Tier};
 pub use change_token::ChangeToken;
-pub use error::{Result, StikkError};
+pub use current_branch::CurrentBranch;
+pub use error::{Result, StaleCause, StikkError};
 pub use example_keys::{ExampleKey, published_example};
 pub use id::{ObjectId, RefName};

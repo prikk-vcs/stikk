@@ -42,6 +42,7 @@ fn dirty_view() -> ChangesView {
             },
         ],
         queued_elsewhere: None,
+        declarations: Vec::new(),
     }
 }
 
@@ -82,6 +83,7 @@ fn a_clean_worktree_says_so() {
         refused: None,
         entries: Vec::new(),
         queued_elsewhere: None,
+        declarations: Vec::new(),
     };
     let text = draw(&view, false);
     assert!(text.contains("clean against baseline"));
@@ -116,6 +118,7 @@ fn a_hostile_path_is_rendered_inert() {
             authoring: Authoring::Unreported,
         }],
         queued_elsewhere: None,
+        declarations: Vec::new(),
     };
     let text = draw(&view, false);
     assert!(!text.contains('\u{1b}'));
@@ -207,6 +210,7 @@ fn refused_view() -> ChangesView {
             },
         ],
         queued_elsewhere: None,
+        declarations: Vec::new(),
     }
 }
 

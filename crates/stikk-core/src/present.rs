@@ -165,7 +165,12 @@ pub enum Presentation {
     Stale {
         /// The operation whose preview no longer matches (stikk's own short name, e.g. `"commit"`).
         operation: String,
-        /// stikk's explanation, in its own voice — never attributed to prikk.
+        /// Which check found the preview stale (RFC 030 amendment A3). The headline and gloss follow it.
+        cause: stikk_model::StaleCause,
+        /// stikk's headline, rendered after the operation name — from [`stale_headline`], so every
+        /// frontend says the same thing and none keeps its own literal.
+        headline: String,
+        /// stikk's explanation, in its own voice — never attributed to prikk. From [`stale_gloss`].
         gloss: String,
         /// Next-steps that exist, stikk-authored (`C-T2b`) — today always exactly one: re-preview
         /// (`NFR-S04` forbids any that re-runs the execution).
@@ -217,7 +222,11 @@ pub fn present(error: &StikkError, op: OperationContext, prikk_minor: Option<u32
                 } else if is_full_queue {
                     Some(FULL_QUEUE_GLOSS.to_string())
                 } else if is_backslash_path {
-                    Some(backslash_path_advice(cfg!(windows), prikk_minor).gloss.to_string())
+                    Some(
+                        backslash_path_advice(cfg!(windows), prikk_minor)
+                            .gloss
+                            .to_string(),
+                    )
                 } else {
                     refusal_gloss(op)
                 },
@@ -276,7 +285,8 @@ pub fn present(error: &StikkError, op: OperationContext, prikk_minor: Option<u32
             // instead — the same shape `Refusal` already gets, even though the class stays `NotReady`
             // (RFC 017 decision 7): presentation varies with what the content needs to say wrap-wise,
             // not with the class.
-            if detail.contains("is not trusted by policy") || detail.contains("does not match trusted key")
+            if detail.contains("is not trusted by policy")
+                || detail.contains("does not match trusted key")
             {
                 return Presentation::RefusalOverlay(RefusalCard {
                     verbatim: detail.clone(),
@@ -335,12 +345,11 @@ pub fn present(error: &StikkError, op: OperationContext, prikk_minor: Option<u32
         StikkError::Internal { detail } => Presentation::FaultScreen {
             detail: detail.clone(),
         },
-        StikkError::Stale { operation } => Presentation::Stale {
+        StikkError::Stale { operation, cause } => Presentation::Stale {
             operation: operation.clone(),
-            gloss: "Another writer moved something in this repository between your preview and now. \
-                 This is not a retry: previewing again re-reads the repository's current state, which \
-                 is the only safe way forward."
-                .to_string(),
+            cause: *cause,
+            headline: stale_headline(*cause).to_string(),
+            gloss: stale_gloss(*cause).to_string(),
             // RFC 013 §5 / NFR-S04: the only correct next step re-runs the *preview* (a read), never
             // the execution — `Refresh` already means exactly that everywhere else it is used.
             next_steps: vec![NextStep {
@@ -600,6 +609,42 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
             label: "Dismiss".to_string(),
             target: NextTarget::DismissAndResolveExternally,
         }],
+    }
+}
+
+/// The stale headline, rendered after the bold operation name (RFC 030 amendment A3).
+///
+/// **The words differ by cause because the facts do** (`C-T2b`): a worktree change is not a repository
+/// change, and the old single wording — *"the repository changed … Another writer moved something in this
+/// repository"* — was not true of one.
+#[must_use]
+pub fn stale_headline(cause: stikk_model::StaleCause) -> &'static str {
+    match cause {
+        stikk_model::StaleCause::Repository => {
+            ": the repository changed since this was last previewed."
+        }
+        stikk_model::StaleCause::Worktree => {
+            ": the worktree changed since this was last previewed."
+        }
+    }
+}
+
+/// The stale gloss, stikk's own explanation (RFC 030 amendment A3). It names what the check that failed
+/// actually compares, and no writer: the change is most often the user's own.
+#[must_use]
+pub fn stale_gloss(cause: stikk_model::StaleCause) -> &'static str {
+    match cause {
+        stikk_model::StaleCause::Repository => {
+            "Something in this repository changed between your preview and now: a branch or a tag, the \
+             queue, or, on prikk 0.42 and later, prikk's current branch. This is not a retry: previewing \
+             again re-reads the repository's current state, which is the only safe way forward."
+        }
+        stikk_model::StaleCause::Worktree => {
+            "What prikk reports about the worktree no longer matches what this preview listed: a path \
+             was added or removed, a path's status or prikk's verdict on it changed, or its rename \
+             declarations changed. Nothing was committed. Previewing again shows what a commit would \
+             author now, which is the only safe way forward."
+        }
     }
 }
 

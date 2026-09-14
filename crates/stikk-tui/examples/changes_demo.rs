@@ -56,6 +56,7 @@ fn main() -> ExitCode {
             ),
             trailing_partial_wal_bytes: 0,
             active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::NotReported,
         })
         .with_worktree_status(WorktreeStatus {
             reff: "heads/main".to_string(),
@@ -90,6 +91,7 @@ fn main() -> ExitCode {
                 ),
             ],
             queued_elsewhere: None,
+            declarations: Vec::new(),
         })
         // RFC 009 F4 — the state that caused the defect, made drivable with no prikk and no
         // repository: prikk's own warning that the active WAL holds queued work for *this* ref, so an

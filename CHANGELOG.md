@@ -16,13 +16,25 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
 | `stikk-core` | `ChangeEntry` gains `authoring`; `ChangesView` gains `refused` and its `queued_elsewhere` changes type the same way |
 | `stikk-core` | `CommitPreviewOutcome` gains a variant, `WouldRefuse(Vec<RefusedPath>)` — breaking for an exhaustive `match` |
 | `stikk-tui` | `Overlay` gains a variant, `CommitWouldRefuse { paths }` — breaking for an exhaustive `match` |
+| `stikk-model` | `ChangeToken::compose` gains a fourth parameter, `current_branch: &CurrentBranch` (RFC 030) |
+| `stikk-model` | `StikkError::Stale` gains a field, `cause: StaleCause` — breaking for anyone constructing it or destructuring it without `..`; its `Display` now names the repository or the worktree (RFC 030) |
+| `stikk-prikk` | `Orientation` gains `current_branch: CurrentBranch` (RFC 030) |
+| `stikk-prikk` | `WorktreeStatus` gains `declarations: Vec<RenameDeclaration>` (RFC 030) |
+| `stikk-core` | `OrientationView` gains `current_branch`; `ChangesView` gains `declarations` (RFC 030) |
+| `stikk-core` | `Presentation::Stale` gains `cause` and `headline` (RFC 030) |
+| `stikk-core` | `CommitPreviewOutcome::Ready`'s `token` changes type from `Box<PreviewToken>` to `Box<CommitToken>` (RFC 030) |
+| `stikk-core` | `commit_confirm_and_execute` takes a `CommitToken`, and no longer takes `reff: &str` — the commit is authored onto the ref the preview was built for (RFC 030) |
+| `stikk-tui` | `Overlay::Stale` gains `cause` and `headline` (RFC 030) |
 
-All four structs are constructed with struct literals by anyone scripting a `NullBackend` or rendering a
+Every struct above is constructed with struct literals by anyone scripting a `NullBackend` or rendering a
 view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `Authoring`,
-`QueuedElsewhere` and `RefusedPath` types; `ChangeKind::label`, `queued_elsewhere_clauses` and
-`would_refuse_next_steps`; `NullBackend::with_queued_elsewhere_ref`; and their re-exports from
-`stikk-core`. No public function, trait method or re-export was removed or changed signature, and the
-`Prikk` trait is unchanged.
+`QueuedElsewhere`, `RefusedPath`, `CurrentBranch`, `StaleCause`, `RenameDeclaration` and `CommitToken`
+types; `ChangeKind::label`, `queued_elsewhere_clauses`, `would_refuse_next_steps`, `stale_headline` and
+`stale_gloss`; `NullBackend::with_queued_elsewhere_ref`, `with_worktree_status_on_reread`,
+`with_worktree_status_refusal_on_reread` and `commit_calls`; and their re-exports from `stikk-core` and
+`stikk-model`. **Two public signatures changed**, both listed above: `ChangeToken::compose` and
+`commit_confirm_and_execute`. No public function, trait method or re-export was removed, and the `Prikk`
+trait is unchanged.
 
 ### Added
 
@@ -54,6 +66,14 @@ view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `
   repository path** — a backslash in it, or bytes that are not UTF-8. prikk 0.42 began reporting those
   paths as ones `commit` would refuse, and stikk already declines to offer a commit prikk has said it
   will refuse. This is the first release in which a user sees it happen (RFC 029).
+- **On prikk ≥ 0.42, switching branches outside stikk counts as a repository change.** A terminal
+  `prikk branch switch` moves no branch, tag or queue, so stikk used not to notice it; its current branch
+  is now part of what stikk compares, and a commit or seal confirmation armed before the switch is stale
+  (RFC 030).
+- **A stale confirmation now says whether the repository or the worktree changed**, and no longer
+  attributes the change to "another writer" — most often it was you. The worktree wording names what
+  stikk compares: which paths prikk lists, their status, prikk's verdict on them, and rename
+  declarations (RFC 030).
 
 ### Fixed
 
@@ -74,6 +94,14 @@ view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `
 - **The Glossary no longer says prikk has no current-branch pointer.** That was true below prikk 0.42.
   From 0.42, `.prikk/current-branch` names a default for `--ref`, which prikk calls "a default, never an
   authority" — still not a HEAD (RFC 029).
+- **A commit confirmed after the worktree changed no longer commits the changed worktree.** Between a
+  commit's preview and its confirmation, a terminal `prikk branch switch`, a file added or removed, or a
+  `prikk mv` used to go straight into the commit, onto the ref the preview showed, with nothing on screen
+  saying so — measured at prikk 0.28 and 0.42. stikk now re-reads what prikk reports about the worktree
+  immediately before committing; if it no longer matches the preview, stikk says the worktree changed and
+  commits nothing. **What this cannot see is stated rather than implied away:** a further edit to a file
+  the preview already listed as modified, and anything that changes in the moment between that re-read
+  and prikk's own commit (RFC 030).
 
 ## 0.6.0 — 2026-09-13
 

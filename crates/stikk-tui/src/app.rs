@@ -174,18 +174,19 @@ pub struct App {
 enum PendingCommit {
     /// The message step finished; a [`RequestKind::CommitPreview`] is in flight for `reff`.
     AwaitingPreview {
-        /// The ref this commit targets.
-        reff: String,
-        /// The message the user typed (`FL-05` step 2), carried through to execution.
+        /// The message the user typed (`FL-05` step 2), carried through to execution. The ref travels in
+        /// the preview request, and from there inside the [`stikk_core::CommitToken`] (RFC 030 decision
+        /// 3), so it is not kept here a second time.
         message: String,
     },
     /// The preview succeeded; `token` is armed and `Overlay::Confirmation` is on the stack awaiting
     /// evidence.
     Confirming {
-        /// Feed this into [`stikk_core::commit_confirm_and_execute`] once evidence is supplied.
-        token: stikk_core::PreviewToken,
-        /// The ref this commit targets (must match the preview's).
-        reff: String,
+        /// Feed this into [`stikk_core::commit_confirm_and_execute`] once evidence is supplied. It owns
+        /// the previewed ref and view (RFC 030 decision 3), so no separate ref travels beside it. Boxed
+        /// because it carries the whole previewed `ChangesView`, and `clippy::large_enum_variant` is right
+        /// that this variant would otherwise dwarf `AwaitingPreview`.
+        token: Box<stikk_core::CommitToken>,
         /// The message the user typed.
         message: String,
     },
@@ -384,12 +385,12 @@ impl App {
             return;
         }
         self.overlays.pop();
-        let seq = self.dispatch(RequestKind::CommitPreview { reff: reff.clone() });
+        let seq = self.dispatch(RequestKind::CommitPreview { reff });
         self.overlays.push(Overlay::Loading {
             what: "commit preview",
             seq,
         });
-        self.pending_commit = Some(PendingCommit::AwaitingPreview { reff, message });
+        self.pending_commit = Some(PendingCommit::AwaitingPreview { message });
     }
 
     /// The confirmation step's `Enter`: dispatch confirm+execute with whatever evidence the tier needs.
@@ -397,12 +398,7 @@ impl App {
     /// whichever tier-3-typed operation lands next, matching this overlay's general contract (RFC 013
     /// §6) even though nothing at tier 3-typed drives it through `App` yet.
     fn submit_commit_confirmation(&mut self, tier: Tier, typed: &str) {
-        let Some(PendingCommit::Confirming {
-            token,
-            reff,
-            message,
-        }) = self.pending_commit.take()
-        else {
+        let Some(PendingCommit::Confirming { token, message }) = self.pending_commit.take() else {
             return; // no commit is actually pending — a stray Enter on a Confirmation this app did not open
         };
         let evidence = match tier {
@@ -415,7 +411,6 @@ impl App {
             token,
             readiness,
             evidence,
-            reff,
             message,
         });
         self.overlays.push(Overlay::Loading {
@@ -1022,7 +1017,7 @@ impl App {
                 }
             }
             Ok(CommitPreviewOutcome::Ready { preview: _, token }) => {
-                let Some(PendingCommit::AwaitingPreview { reff, message }) = pending else {
+                let Some(PendingCommit::AwaitingPreview { message }) = pending else {
                     self.overlays.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
@@ -1034,11 +1029,7 @@ impl App {
                         error: None,
                     };
                 }
-                self.pending_commit = Some(PendingCommit::Confirming {
-                    token: *token,
-                    reff,
-                    message,
-                });
+                self.pending_commit = Some(PendingCommit::Confirming { token, message });
             }
             Err(error) => {
                 self.overlays.remove(index);
@@ -1189,11 +1180,15 @@ impl App {
             // prikk's message, so it must not be recorded as one nor rendered under prikk's label.
             Presentation::Stale {
                 operation,
+                cause,
+                headline,
                 gloss,
                 next_steps,
             } => {
                 self.overlays.push(Overlay::Stale {
                     operation,
+                    cause,
+                    headline,
                     gloss,
                     next_steps,
                     cursor: 0,

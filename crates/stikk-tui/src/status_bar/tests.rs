@@ -59,6 +59,7 @@ fn shows_queue_and_maintainer_badge() {
         capability: Capability::derive(r),
         readiness: r,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
+        current_branch: stikk_model::CurrentBranch::NotReported,
     };
     let app = from_state(
         "/x/repo",
@@ -97,6 +98,7 @@ fn maintainer_unknown_never_renders_as_a_pass() {
             capability: Capability::derive(r),
             readiness: r,
             stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
+            current_branch: stikk_model::CurrentBranch::NotReported,
         }
     };
 
@@ -152,6 +154,7 @@ fn read_only_badge_appears_and_no_queue_when_zero() {
         capability: Capability::derive(r),
         readiness: r,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
+        current_branch: stikk_model::CurrentBranch::NotReported,
     };
     let app = from_state(
         "/x/repo",
@@ -184,6 +187,7 @@ fn the_in_flight_indicator_appears_while_a_request_is_pending_and_clears_once_an
         capability: Capability::derive(r),
         readiness: r,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
+        current_branch: stikk_model::CurrentBranch::NotReported,
     };
     let mut app = from_state(
         "/x/repo",

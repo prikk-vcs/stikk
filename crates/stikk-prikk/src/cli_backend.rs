@@ -303,7 +303,10 @@ impl Prikk for CliBackend {
 
     fn orientation(&self, repo: &Path) -> Result<Orientation> {
         let status = self.run(Some(repo), RequestCategory::ReadHistory, ["status"])?;
-        parse::orientation(&status)
+        // RFC 030 decision 1: only the version tells a prikk with no current-branch pointer (< 0.42)
+        // from a report that lost its `current branch:` line (≥ 0.42) — the handshake is cached.
+        let prikk_minor = Prikk::handshake(self)?.version.minor;
+        parse::orientation(&status, prikk_minor)
     }
 
     fn history(&self, repo: &Path, reff: &str, limit: usize) -> Result<History> {
@@ -453,9 +456,15 @@ impl Prikk for CliBackend {
         // the same regardless of which way prikk's unspecified behaviour goes: a tag counted once via
         // `refs()`'s leak or once via `tags()` composes identically either way.
         //
-        // The worktree marker stays excluded (handoff §2): it would cost a `worktree-status` spawn per
-        // token, and the Changes view already carries its own worktree data, so a preview built from it
-        // is self-freshening without this token's help.
+        // **prikk's current branch is in** (RFC 030 decision 2), from the `status` read this already
+        // makes — no new spawn. A terminal `prikk branch switch` at ≥ 0.42 moves no ref, tag or queue, so
+        // nothing else here would see it.
+        //
+        // **The worktree marker stays excluded from the token** (RFC 003): it would cost a
+        // `worktree-status` spawn per token, and a view built from `worktree-status` re-reads on refresh.
+        // That premise holds for views and not for confirmation, where nothing re-read — so RFC 030 moved
+        // the worktree check to **commit's confirmation** (`stikk_core::commit`), one spawn per confirmed
+        // commit rather than one per token.
         let branches = self.refs(repo)?;
         let tags = self.tags(repo)?;
         let orientation = self.orientation(repo)?;
@@ -467,6 +476,7 @@ impl Prikk for CliBackend {
             merged.map(|entry| (entry.name.as_str(), entry.id.as_str())),
             orientation.queued_patches,
             orientation.queued_target.as_deref(),
+            &orientation.current_branch,
         ))
     }
 

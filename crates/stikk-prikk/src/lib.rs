@@ -69,6 +69,11 @@ pub struct Orientation {
     /// it is about to hit using prikk's own words, computed against whatever thresholds are actually
     /// configured — including operator overrides stikk has no other way to know about.
     pub active_patch_warning: Option<String>,
+    /// prikk's current branch, from the `current branch:` line prikk ≥ 0.42 prints in `status` (RFC 030
+    /// decision 1): not reported below 0.42, prikk's unresolved text verbatim, or a validated branch.
+    /// Read from the `status` report this struct already parses — never from `.prikk/current-branch`
+    /// (`CON-1`). Nothing renders it yet; RFC 029 Handoff B does.
+    pub current_branch: stikk_model::CurrentBranch,
 }
 
 /// One patch id and its message, as `prikk log` names it (design FR-011; RFC 015 F1). Only patches
@@ -252,6 +257,25 @@ pub struct WorktreeStatus {
     /// when prikk did not report it. Below 0.39 it is prikk's sentence verbatim; at ≥ 0.39 it is prikk's
     /// queued ref (RFC 027 F6) — see [`QueuedElsewhere`].
     pub queued_elsewhere: Option<QueuedElsewhere>,
+    /// prikk's live rename declarations (RFC 030 amendment A1). Each is authored into the next `prikk
+    /// commit` as a `RenamePath`, so a declaration made after a preview changes what `commit` authors
+    /// **even when the listed entries do not move**. Read from JSON at prikk ≥ 0.39, and from the `live
+    /// rename declarations:` prose section at 0.38.
+    ///
+    /// **Below 0.38 this is empty as a version fact**, not an unreported zero: `prikk mv` does not exist
+    /// there, so nothing can be declared.
+    pub declarations: Vec<RenameDeclaration>,
+}
+
+/// One rename recorded with `prikk mv`, which prikk authors into the next commit as a `RenamePath` (RFC
+/// 030 amendment A1; prikk ≥ 0.38). Both paths are carried as prikk reports them; render them inert
+/// wherever they are ever shown, as entries' paths are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameDeclaration {
+    /// The path the declaration renames from.
+    pub old_path: String,
+    /// The path it renames to.
+    pub new_path: String,
 }
 
 /// One file-level change `prikk commit` recorded, from its per-path output lines (design `FR-050`;

@@ -64,6 +64,7 @@ fn orientation_view(
         capability: Capability::derive(readiness),
         readiness,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
+        current_branch: stikk_model::CurrentBranch::NotReported,
     }
 }
 
@@ -93,6 +94,7 @@ fn author_orientation_view() -> stikk_core::OrientationView {
         capability: Capability::derive(readiness),
         readiness,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
+        current_branch: stikk_model::CurrentBranch::NotReported,
     }
 }
 
@@ -122,6 +124,7 @@ fn maintainer_orientation_view(
         capability: Capability::derive(readiness),
         readiness,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
+        current_branch: stikk_model::CurrentBranch::NotReported,
     }
 }
 
@@ -175,6 +178,7 @@ fn dirty_changes() -> ChangesView {
             },
         ],
         queued_elsewhere: None,
+        declarations: Vec::new(),
     }
 }
 
@@ -1053,6 +1057,7 @@ fn dirty_worktree_status() -> WorktreeStatus {
         refused: None,
         entries: Vec::new(),
         queued_elsewhere: None,
+        declarations: Vec::new(),
     }
 }
 
@@ -1064,6 +1069,7 @@ fn commit_backend() -> NullBackend {
             main_ref_state: None,
             trailing_partial_wal_bytes: 0,
             active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::NotReported,
         })
         .with_worktree_status(dirty_worktree_status())
 }
@@ -1311,6 +1317,7 @@ fn seal_backend() -> NullBackend {
         main_ref_state: None,
         trailing_partial_wal_bytes: 0,
         active_patch_warning: None,
+        current_branch: stikk_model::CurrentBranch::NotReported,
     })
 }
 

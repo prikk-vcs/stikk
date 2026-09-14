@@ -161,10 +161,12 @@ status: multi-operation text diff minimization and plugins not yet implemented
 #[test]
 fn a_0_42_status_parses_exactly_as_its_older_equivalent_under_both_pointer_forms() {
     // RFC 029 Handoff A §4: **what makes "the reader ignores the new line" a fact rather than a reason.**
-    // Orientation looks its fields up by label, so 0.42's `current branch:` line — resolved or not —
-    // changes nothing it reports. A reads no current branch into any type; RFC 030 extends this test
-    // with that field's own assertions.
-    let older = orientation(STATUS_QUEUED_FIXTURE).expect("the 0.30.0 fixture parses");
+    // Orientation looks its fields up by label, so 0.42's `current branch:` line changes nothing else it
+    // reports. **Extended by RFC 030 decision 1**: the line is now read into `current_branch` — "a
+    // branch" and "unresolved" at 0.42, byte-exact to the capture, and "not reported" in the 0.30
+    // fixture — and every other field still equals the older fixture's.
+    let older = orientation(STATUS_QUEUED_FIXTURE, 30).expect("the 0.30.0 fixture parses");
+    assert_eq!(older.current_branch, CurrentBranch::NotReported);
     for (form, text, line) in [
         (
             "resolved",
@@ -181,17 +183,29 @@ fn a_0_42_status_parses_exactly_as_its_older_equivalent_under_both_pointer_forms
             text.lines().any(|l| l == line),
             "{form}: the capture carries prikk's line {line:?}"
         );
-        let parsed = orientation(text).unwrap_or_else(|e| panic!("{form}: {e:?}"));
+        let parsed = orientation(text, 42).unwrap_or_else(|e| panic!("{form}: {e:?}"));
+        let expected_branch = match form {
+            "resolved" => CurrentBranch::Branch(RefName::parse("heads/main").expect("a ref name")),
+            _ => CurrentBranch::Unresolved(
+                line.strip_prefix("current branch: ")
+                    .expect("the capture's own line")
+                    .to_string(),
+            ),
+        };
+        let expected = Orientation {
+            current_branch: expected_branch,
+            ..older.clone()
+        };
         assert_eq!(
-            parsed, older,
-            "{form}: a 0.42 status parses to exactly what the equivalent 0.30 status gives"
+            parsed, expected,
+            "{form}: a 0.42 status parses to what the equivalent 0.30 status gives, plus its current branch"
         );
     }
 }
 
 #[test]
 fn parses_a_clean_empty_status() {
-    let o = orientation(STATUS_EMPTY_FIXTURE).expect("status parses");
+    let o = orientation(STATUS_EMPTY_FIXTURE, 30).expect("status parses");
     assert_eq!(o.queued_patches, 0);
     assert_eq!(o.queued_target, None);
     assert_eq!(o.trailing_partial_wal_bytes, 0);
@@ -201,7 +215,7 @@ fn parses_a_clean_empty_status() {
 
 #[test]
 fn parses_a_clean_published_status() {
-    let o = orientation(STATUS_CLEAN_PUBLISHED_FIXTURE).expect("status parses");
+    let o = orientation(STATUS_CLEAN_PUBLISHED_FIXTURE, 30).expect("status parses");
     assert_eq!(o.queued_patches, 0);
     assert_eq!(o.queued_target, None);
     assert_eq!(
@@ -214,7 +228,7 @@ fn parses_a_clean_published_status() {
 fn parses_queued_patches_and_their_target_ref() {
     // RFC 009 F1: the shipped parser refused this shape outright — the defect that made Orientation
     // fail on any repository anyone had committed to, at every prikk version stikk claimed to support.
-    let o = orientation(STATUS_QUEUED_FIXTURE).expect("status parses");
+    let o = orientation(STATUS_QUEUED_FIXTURE, 30).expect("status parses");
     assert_eq!(o.queued_patches, 1);
     assert_eq!(o.queued_target.as_deref(), Some("heads/main"));
     assert_eq!(o.main_ref_state, None);
@@ -223,7 +237,7 @@ fn parses_queued_patches_and_their_target_ref() {
 #[test]
 fn captures_the_active_patch_warn_threshold_line_verbatim() {
     // RFC 014 F5 / C-D2a: surfaced in the preview before any refusal, in prikk's own words.
-    let o = orientation(STATUS_QUEUED_WITH_WARNING_FIXTURE).expect("status parses");
+    let o = orientation(STATUS_QUEUED_WITH_WARNING_FIXTURE, 30).expect("status parses");
     assert_eq!(o.queued_patches, 1);
     assert_eq!(o.queued_target.as_deref(), Some("heads/main"));
     let warning = o.active_patch_warning.expect("warning must be captured");
@@ -235,7 +249,7 @@ fn captures_the_active_patch_warn_threshold_line_verbatim() {
 
 #[test]
 fn captures_the_active_patch_hard_limit_line_verbatim_distinguishable_from_the_warn_wording() {
-    let o = orientation(STATUS_QUEUED_AT_HARD_LIMIT_FIXTURE).expect("status parses");
+    let o = orientation(STATUS_QUEUED_AT_HARD_LIMIT_FIXTURE, 30).expect("status parses");
     let warning = o.active_patch_warning.expect("warning must be captured");
     assert!(warning.contains("configured hard limit"));
     assert!(!warning.contains("recommended threshold"));
@@ -243,7 +257,7 @@ fn captures_the_active_patch_hard_limit_line_verbatim_distinguishable_from_the_w
 
 #[test]
 fn no_active_patch_warning_when_prikk_did_not_print_one() {
-    let o = orientation(STATUS_QUEUED_FIXTURE).expect("status parses");
+    let o = orientation(STATUS_QUEUED_FIXTURE, 30).expect("status parses");
     assert_eq!(o.active_patch_warning, None);
 }
 
@@ -251,14 +265,14 @@ fn no_active_patch_warning_when_prikk_did_not_print_one() {
 fn refuses_a_control_character_bearing_queued_target() {
     // RFC 012 F-d: the "targeting <ref>" value is validated through `RefName::parse` too.
     let text = "queued patches: 1 targeting heads/ma\x07in\ntrailing partial WAL bytes: 0\n";
-    assert_eq!(orientation(text).unwrap_err().class(), "environment");
+    assert_eq!(orientation(text, 30).unwrap_err().class(), "environment");
 }
 
 #[test]
 fn refuses_an_unrecognized_queued_tail() {
     // UD-02: a trailing shape that is neither bare nor `targeting <ref>` refuses rather than guesses.
     let text = "queued patches: 1 wat heads/main\ntrailing partial WAL bytes: 0\n";
-    assert_eq!(orientation(text).unwrap_err().class(), "environment");
+    assert_eq!(orientation(text, 30).unwrap_err().class(), "environment");
 }
 
 #[test]
@@ -269,7 +283,7 @@ fn queued_target_is_none_for_unreadable_active_ref_metadata() {
     for sentinel in ["<missing metadata>", "<malformed metadata>"] {
         let text =
             format!("queued patches: 2 targeting {sentinel}\ntrailing partial WAL bytes: 0\n");
-        let o = orientation(&text).expect("parses");
+        let o = orientation(&text, 30).expect("parses");
         assert_eq!(o.queued_patches, 2);
         assert_eq!(
             o.queued_target, None,
@@ -282,14 +296,14 @@ fn queued_target_is_none_for_unreadable_active_ref_metadata() {
 fn refuses_rather_than_guesses_on_a_missing_field() {
     // UD-02: an unrecognized shape is an environment fault, never a fabricated default.
     let text = "some unexpected prikk output with no queued patches line\n";
-    let err = orientation(text).expect_err("must refuse");
+    let err = orientation(text, 30).expect_err("must refuse");
     assert_eq!(err.class(), "environment");
 }
 
 #[test]
 fn refuses_a_non_numeric_count() {
     let text = "queued patches: lots\ntrailing partial WAL bytes: 0\n";
-    assert_eq!(orientation(text).unwrap_err().class(), "environment");
+    assert_eq!(orientation(text, 30).unwrap_err().class(), "environment");
 }
 
 #[test]
@@ -301,7 +315,7 @@ queued patches: 0
 trailing partial WAL bytes: 0
 heads/main RefState: <a-future-sentinel-stikk-does-not-know>
 ";
-    assert_eq!(orientation(text).unwrap_err().class(), "environment");
+    assert_eq!(orientation(text, 30).unwrap_err().class(), "environment");
 }
 
 // Captured verbatim from `prikk log --ref heads/main` on a repository with two sealed blocks, prikk
@@ -1633,4 +1647,100 @@ fn the_count_invariant_covers_every_worktree_status_fixture() {
             "{full} is a worktree-status fixture the count invariant does not run over"
         );
     }
+}
+
+// RFC 030 decision 1 — prikk's current branch, and the two ways reading it fails.
+
+#[test]
+fn at_0_42_a_status_without_its_current_branch_line_is_a_parse_error() {
+    // `C-T2c′`: at ≥ 0.42 prikk always prints the line, so its absence is a misread, not "not reported".
+    let without: String = STATUS_QUEUED_0_42_FIXTURE
+        .lines()
+        .filter(|line| !line.starts_with("current branch:"))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    let err = orientation(&without, 42).expect_err("a 0.42 status without its current-branch line");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("current branch:"), "{err}");
+    // The same text from a prikk below 0.42 is simply not reported.
+    assert_eq!(
+        orientation(&without, 41)
+            .expect("below 0.42 the line does not exist")
+            .current_branch,
+        CurrentBranch::NotReported
+    );
+}
+
+#[test]
+fn a_current_branch_that_is_neither_prikks_unresolved_form_nor_a_ref_name_is_a_parse_error() {
+    for value in ["<unresolved>", "", "heads/ma\u{7}in"] {
+        let text = STATUS_QUEUED_0_42_FIXTURE.replace(
+            "current branch: heads/main",
+            &format!("current branch: {value}"),
+        );
+        let err = orientation(&text, 42).expect_err("not a shape prikk prints");
+        assert_eq!(err.class(), "environment", "{value:?}: {err}");
+    }
+}
+
+// RFC 030 amendment A1 — rename declarations, from the 0.38 prose section.
+
+#[test]
+fn the_0_38_rename_fixtures_carry_their_declarations() {
+    let s = worktree_status(WORKTREE_RENAME_0_38_FIXTURE).expect("parses");
+    assert_eq!(
+        s.declarations,
+        vec![RenameDeclaration {
+            old_path: "modified draft.txt".into(),
+            new_path: "renamed.txt".into(),
+        }]
+    );
+    let bare = worktree_status(WORKTREE_RENAME_BARE_KIND_0_38_FIXTURE).expect("parses");
+    assert_eq!(
+        bare.declarations,
+        vec![RenameDeclaration {
+            old_path: "modified".into(),
+            new_path: "untracked".into(),
+        }]
+    );
+    // `live rename declarations: 0`, and no section at all below 0.38, are both an empty list.
+    for (name, text) in [
+        ("WORKTREE_CLEAN_0_38_FIXTURE", WORKTREE_CLEAN_0_38_FIXTURE),
+        (
+            "WORKTREE_SYMLINK_0_41_FIXTURE",
+            WORKTREE_SYMLINK_0_41_FIXTURE,
+        ),
+        ("WORKTREE_DIRTY_FIXTURE (0.30)", WORKTREE_DIRTY_FIXTURE),
+        (
+            "WORKTREE_SYMLINK_0_28_FIXTURE",
+            WORKTREE_SYMLINK_0_28_FIXTURE,
+        ),
+    ] {
+        let s = worktree_status(text).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        assert!(s.declarations.is_empty(), "{name}: {:?}", s.declarations);
+    }
+}
+
+#[test]
+fn a_declaration_count_that_disagrees_with_its_lines_is_a_parse_error() {
+    let text = WORKTREE_RENAME_0_38_FIXTURE
+        .replace("live rename declarations: 1", "live rename declarations: 2");
+    let err = worktree_status(&text).expect_err("prikk's own count is held to its lines");
+    assert_eq!(err.class(), "environment");
+    assert!(
+        err.to_string().contains("live rename declarations"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_declaration_line_that_cannot_be_split_unambiguously_is_a_parse_error() {
+    // prikk prints `"  {} -> {}"` unquoted: a name containing ` -> ` has no knowable split point.
+    let text = WORKTREE_RENAME_0_38_FIXTURE.replace(
+        "  modified draft.txt -> renamed.txt",
+        "  a -> b.txt -> c.txt",
+    );
+    let err = worktree_status(&text).expect_err("not guessed");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("unambiguously"), "{err}");
 }

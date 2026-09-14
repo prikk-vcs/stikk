@@ -68,6 +68,10 @@ pub struct OrientationView {
     /// [`stikk_prikk::Prikk::readiness`]. Carrying the rest here would be a view holding data it does
     /// not render, and it pushed `OrientationState` past the size at which its variants diverge.
     pub stale_seed_variables: stikk_prikk::env::StaleSeedVariables,
+    /// prikk's current branch, as `status` reports it (RFC 030 decision 1): not reported below 0.42,
+    /// prikk's unresolved text verbatim, or a validated branch. **Carried through unrendered** — RFC 029
+    /// Handoff B decides where it shows.
+    pub current_branch: stikk_model::CurrentBranch,
 }
 
 /// Produce the orientation view for the repository rooted at `repo`, driving `prikk` through the seam.
@@ -100,6 +104,7 @@ pub fn orient(prikk: &impl Prikk, repo: &Path) -> Result<OrientationView> {
         queued_target: orientation.queued_target,
         trailing_partial_wal_bytes: orientation.trailing_partial_wal_bytes,
         main_ref_state: orientation.main_ref_state,
+        current_branch: orientation.current_branch,
         capability,
         readiness,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables {

@@ -27,12 +27,12 @@ pub mod seal;
 
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{
-    Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewhere, changes_view,
-    queued_elsewhere_clauses,
+    Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewhere, RenameDeclaration,
+    changes_view, queued_elsewhere_clauses,
 };
 pub use commit::{
-    COMMIT_OPERATION, CommitPreview, CommitPreviewOutcome, RefusedPath, commit_confirm_and_execute,
-    commit_preview, would_refuse_next_steps,
+    COMMIT_OPERATION, CommitPreview, CommitPreviewOutcome, CommitToken, RefusedPath,
+    commit_confirm_and_execute, commit_preview, would_refuse_next_steps,
 };
 pub use confirm::{
     ConfirmationSummary, ConfirmedToken, Evidence, Intent, KeyClaim, Outcome, PreviewToken,
@@ -44,6 +44,7 @@ pub use orient::{OrientationView, orient};
 pub use palette::Command;
 pub use present::{
     NextStep, NextTarget, OperationContext, Presentation, RefusalCard, Target, present,
+    stale_gloss, stale_headline,
 };
 pub use refusal_history::{RefusalHistory, RefusalRecord};
 pub use seal::{

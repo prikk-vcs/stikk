@@ -30,6 +30,7 @@ fn surfaces_queue_depth_and_partial_tail() {
         main_ref_state: Some("abc".to_string()),
         trailing_partial_wal_bytes: 12,
         active_patch_warning: None,
+        current_branch: stikk_model::CurrentBranch::NotReported,
     });
     let view = orient(&backend, Path::new("/repo")).expect("orients");
     assert_eq!(view.queued_patches, 5);

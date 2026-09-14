@@ -39,6 +39,7 @@ fn main() -> ExitCode {
             ),
             trailing_partial_wal_bytes: 0,
             active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::NotReported,
         })
         // History refuses — the whole point of the demo: a real refusal to explain.
         .with_history_refusal("ref \"heads/main\" does not exist at this revision")

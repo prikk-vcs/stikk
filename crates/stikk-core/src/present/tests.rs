@@ -466,12 +466,14 @@ fn stale_becomes_its_own_presentation_naming_the_operation_with_exactly_one_re_p
     // action that re-runs the execution — this is the NFR-S04 regression test for this increment.
     let err = StikkError::Stale {
         operation: "commit".into(),
+        cause: stikk_model::StaleCause::Repository,
     };
     let (operation, gloss, next_steps) = match present(&err, OperationContext::Other, None) {
         Presentation::Stale {
             operation,
             gloss,
             next_steps,
+            ..
         } => (operation, gloss, next_steps),
         other => panic!("expected Presentation::Stale, got {other:?}"),
     };
@@ -492,6 +494,7 @@ fn stale_is_never_a_refusal_overlay_design_review_c1() {
     // said it — the fix is that it cannot even reach `RefusalOverlay`'s match arm, structurally.
     let err = StikkError::Stale {
         operation: "seal".into(),
+        cause: stikk_model::StaleCause::Repository,
     };
     match present(&err, OperationContext::Other, None) {
         Presentation::Stale { operation, .. } => assert_eq!(operation, "seal"),
@@ -769,4 +772,55 @@ fn on_windows_with_an_unknown_version_both_halves_stay() {
         "{}",
         at_28.gloss
     );
+}
+
+/// **RFC 030 amendment A3, byte-exact** (handoff v2 §5d.7): for each cause, `present()` yields exactly
+/// §5b's headline and gloss, and one next step, `Preview again`, which re-runs the preview (a read).
+#[test]
+fn stale_words_follow_their_cause_exactly() {
+    let cases = [
+        (
+            stikk_model::StaleCause::Repository,
+            ": the repository changed since this was last previewed.",
+            "Something in this repository changed between your preview and now: a branch or a tag, the \
+             queue, or, on prikk 0.42 and later, prikk's current branch. This is not a retry: previewing \
+             again re-reads the repository's current state, which is the only safe way forward.",
+        ),
+        (
+            stikk_model::StaleCause::Worktree,
+            ": the worktree changed since this was last previewed.",
+            "What prikk reports about the worktree no longer matches what this preview listed: a path \
+             was added or removed, a path's status or prikk's verdict on it changed, or its rename \
+             declarations changed. Nothing was committed. Previewing again shows what a commit would \
+             author now, which is the only safe way forward.",
+        ),
+    ];
+    for (cause, want_headline, want_gloss) in cases {
+        let err = StikkError::Stale {
+            operation: "commit".into(),
+            cause,
+        };
+        match present(&err, OperationContext::Commit, Some(42)) {
+            Presentation::Stale {
+                operation,
+                cause: presented,
+                headline,
+                gloss,
+                next_steps,
+            } => {
+                assert_eq!(operation, "commit");
+                assert_eq!(presented, cause);
+                assert_eq!(headline, want_headline, "{cause:?}");
+                assert_eq!(gloss, want_gloss, "{cause:?}");
+                assert_eq!(next_steps.len(), 1, "{cause:?}");
+                assert_eq!(next_steps[0].label, "Preview again");
+                assert_eq!(next_steps[0].target, NextTarget::Refresh);
+                assert!(
+                    !gloss.contains("Another writer"),
+                    "{cause:?}: names no writer"
+                );
+            }
+            other => panic!("{cause:?}: expected Presentation::Stale, got {other:?}"),
+        }
+    }
 }

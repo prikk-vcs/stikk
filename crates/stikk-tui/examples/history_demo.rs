@@ -62,6 +62,7 @@ fn main() -> ExitCode {
             ),
             trailing_partial_wal_bytes: 0,
             active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::NotReported,
         })
         .with_history(History {
             reff: "heads/main".to_string(),

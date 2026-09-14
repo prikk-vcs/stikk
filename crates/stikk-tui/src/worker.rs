@@ -9,8 +9,8 @@ use std::path::Path;
 use std::sync::mpsc;
 
 use stikk_core::{
-    BlockDetailView, ChangesView, CommitPreviewOutcome, Evidence, HistoryView, OrientationView,
-    Outcome, PreviewToken, SealPreviewOutcome, block_detail, changes_view,
+    BlockDetailView, ChangesView, CommitPreviewOutcome, CommitToken, Evidence, HistoryView,
+    OrientationView, Outcome, PreviewToken, SealPreviewOutcome, block_detail, changes_view,
     commit_confirm_and_execute, commit_preview, history_view, list_refs, orient,
     seal_confirm_and_execute, seal_preview,
 };
@@ -65,14 +65,14 @@ pub(crate) enum RequestKind {
     /// Confirm and execute a commit in one round trip (RFC 014 §3 step 4) — there is no user action
     /// between confirmation succeeding and execution starting, so this is one worker request, not two.
     CommitConfirmExecute {
-        /// The token [`RequestKind::CommitPreview`] minted.
-        token: PreviewToken,
+        /// The token [`RequestKind::CommitPreview`] minted. It owns the previewed ref and view (RFC 030
+        /// decision 3), so the commit is authored onto the previewed ref and no other. Boxed for the same
+        /// reason `App` boxes it: it carries the whole previewed `ChangesView`.
+        token: Box<CommitToken>,
         /// The session's signing readiness, read on the UI thread immediately before dispatch.
         readiness: Readiness,
         /// The user's confirmation evidence (an explicit yes, at commit's tier 2).
         evidence: Evidence,
-        /// The ref to commit to (must match the preview's).
-        reff: String,
         /// The commit message, typed in the message step before this request was ever built.
         message: String,
     },
@@ -178,10 +178,9 @@ pub(crate) fn run(
                 token,
                 readiness,
                 evidence,
-                reff,
                 message,
             } => ResponseKind::CommitConfirmExecute(commit_confirm_and_execute(
-                prikk, repo, token, readiness, evidence, &reff, &message,
+                prikk, repo, *token, readiness, evidence, &message,
             )),
             RequestKind::SealPreview { reff } => {
                 ResponseKind::SealPreview(seal_preview(prikk, repo, &reff))

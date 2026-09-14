@@ -15,6 +15,7 @@ fn orientation(queued_patches: u64, queued_target: Option<&str>) -> Orientation 
         main_ref_state: None,
         trailing_partial_wal_bytes: 0,
         active_patch_warning: None,
+        current_branch: stikk_model::CurrentBranch::NotReported,
     }
 }
 
@@ -33,6 +34,7 @@ fn ready_backend() -> NullBackend {
             [("heads/main", "0".repeat(64).as_str())],
             0,
             None,
+            &stikk_model::CurrentBranch::NotReported,
         ))
 }
 
@@ -158,6 +160,7 @@ fn execute_refuses_when_the_change_token_moved_between_preview_and_confirm() {
         [("heads/main", "1".repeat(64).as_str())],
         0,
         None,
+        &stikk_model::CurrentBranch::NotReported,
     ));
     let err = seal_confirm_and_execute(
         &moved,

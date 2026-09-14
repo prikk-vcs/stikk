@@ -809,3 +809,94 @@ fn a_0_42_json_report_whose_current_branch_is_null_still_reads() {
     assert_eq!(h.reff, "heads/main");
     assert_eq!(h.blocks.len(), 1);
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 030 amendment A1 — `declarations`, read and required.
+// ---------------------------------------------------------------------------------------------
+
+/// `prikk worktree-status --ref heads/main --format json` at **0.42.0**, 2026-09-15 (RFC 030 handoff v2
+/// §5a, M7): the harness's `Fixture` with `a.txt` committed and sealed, moved to the neutral `/tmp/repo`
+/// before capture; then `mv a.txt b.txt` in the shell, then `prikk mv a.txt b.txt`, which printed
+/// `declared a.txt -> b.txt (already moved on disk; no bytes touched)`. Stdout on prikk's dirty exit (1).
+/// Nothing edited after capture.
+///
+/// **The shape that made declarations part of what commit's confirmation compares**: the same two
+/// `changes` a preview taken before `prikk mv` lists, and one declaration that makes `commit` author
+/// `rename-path a.txt -> b.txt`.
+const WORKTREE_DECLARATION_JSON_0_42: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "ref": "heads/main",
+  "current_branch": "heads/main",
+  "tracked_files": 2,
+  "unchanged_files": 1,
+  "clean": false,
+  "refused_count": 0,
+  "queued_elsewhere": null,
+  "changes": [
+    {"path": "a.txt", "kind": "missing", "detail": "tracked file is absent from the worktree", "authoring": "authored", "refusal": null},
+    {"path": "b.txt", "kind": "untracked", "detail": "worktree file is not in the baseline", "authoring": "authored", "refusal": null}
+  ],
+  "declarations": [
+    {"old_path": "a.txt", "new_path": "b.txt"}
+  ]
+}
+"#;
+
+#[test]
+fn a_0_42_declaration_is_read_beside_the_entries_it_leaves_unchanged() {
+    let s = worktree_status(WORKTREE_DECLARATION_JSON_0_42).expect("captured 0.42 report");
+    assert_eq!(
+        s.declarations,
+        vec![RenameDeclaration {
+            old_path: "a.txt".into(),
+            new_path: "b.txt".into(),
+        }]
+    );
+    let entries: Vec<(&str, &str)> = s
+        .entries
+        .iter()
+        .map(|e| (e.kind.as_str(), e.path.as_str()))
+        .collect();
+    assert_eq!(entries, [("missing", "a.txt"), ("untracked", "b.txt")]);
+}
+
+#[test]
+fn the_other_json_worktree_fixtures_report_no_declarations() {
+    for (name, text) in [
+        ("WORKTREE_SYMLINK_JSON_0_41", WORKTREE_SYMLINK_JSON_0_41),
+        ("WORKTREE_QUEUED_JSON_0_41", WORKTREE_QUEUED_JSON_0_41),
+        (
+            "WORKTREE_UNSUPPORTED_JSON_0_42",
+            WORKTREE_UNSUPPORTED_JSON_0_42,
+        ),
+    ] {
+        let s = worktree_status(text).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        assert!(s.declarations.is_empty(), "{name}: {:?}", s.declarations);
+    }
+}
+
+#[test]
+fn a_missing_declarations_array_is_refused_not_read_as_none() {
+    // Its absence cannot mean "none": a declaration changes what commit authors without changing `changes`.
+    let text = variant(
+        WORKTREE_SYMLINK_JSON_0_41,
+        r#""declarations": []"#,
+        r#""declarations_moved": []"#,
+    );
+    let err = worktree_status(&text).expect_err("a report without its declarations");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("declarations"), "{err}");
+}
+
+#[test]
+fn a_declaration_without_both_paths_is_refused() {
+    let text = variant(
+        WORKTREE_DECLARATION_JSON_0_42,
+        r#""new_path": "b.txt""#,
+        r#""destination": "b.txt""#,
+    );
+    let err = worktree_status(&text).expect_err("a declaration missing new_path");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("new_path"), "{err}");
+}

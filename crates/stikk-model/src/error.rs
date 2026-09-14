@@ -91,6 +91,10 @@ pub enum StikkError {
         /// The operation whose preview or confirmation no longer matches the repository's current
         /// state — stikk's own short name for it (e.g. `"commit"`), never prikk's words.
         operation: String,
+        /// **Which check saw it** (RFC 030 amendment A3): the change-token comparison, or commit's
+        /// worktree re-read. Only the check that failed knows, and the words a user reads differ,
+        /// because a worktree change is not a repository change (`C-T2b`).
+        cause: StaleCause,
     },
     /// The confirmation evidence supplied did not satisfy the tier's requirement: a missing explicit
     /// yes, or a typed name that does not exactly match the confirmation summary's target (design
@@ -175,6 +179,18 @@ impl StikkError {
     }
 }
 
+/// Which check found a preview stale (RFC 030 amendment A3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StaleCause {
+    /// The change-token comparison, in `confirm` or `execute`: a branch or a tag, the queue, or — on
+    /// prikk ≥ 0.42 — prikk's current branch moved.
+    Repository,
+    /// Commit's worktree re-read: what prikk reports about the worktree — paths, their status, prikk's
+    /// verdict on them, or rename declarations — no longer matches what the preview listed. Refs, tags
+    /// and the queue may be exactly as they were.
+    Worktree,
+}
+
 impl fmt::Display for StikkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -187,11 +203,12 @@ impl fmt::Display for StikkError {
                 write!(f, "{}: {detail}", self.class())
             }
             Self::Environment { detail, .. } => write!(f, "environment: {detail}"),
-            Self::Stale { operation } => {
-                write!(
-                    f,
-                    "stale: {operation}'s preview no longer matches the repository"
-                )
+            Self::Stale { operation, cause } => {
+                let what = match cause {
+                    StaleCause::Repository => "the repository",
+                    StaleCause::Worktree => "the worktree",
+                };
+                write!(f, "stale: {operation}'s preview no longer matches {what}")
             }
         }
     }

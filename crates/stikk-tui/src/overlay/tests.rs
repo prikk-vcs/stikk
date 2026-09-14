@@ -348,6 +348,8 @@ fn stale_names_the_operation_and_never_claims_prikk_reported_it() {
     // label — this is the regression test for that finding.
     let overlay = Overlay::Stale {
         operation: "commit".into(),
+        cause: stikk_model::StaleCause::Repository,
+        headline: stikk_core::stale_headline(stikk_model::StaleCause::Repository).to_string(),
         gloss: "Another writer moved something in this repository between your preview and now."
             .into(),
         next_steps: vec![NextStep {
@@ -375,6 +377,8 @@ fn stale_names_the_operation_and_never_claims_prikk_reported_it() {
 fn stale_next_step_is_reachable_at_80x12() {
     let overlay = Overlay::Stale {
         operation: "commit".into(),
+        cause: stikk_model::StaleCause::Repository,
+        headline: stikk_core::stale_headline(stikk_model::StaleCause::Repository).to_string(),
         gloss: "Another writer moved something in this repository between your preview and now."
             .into(),
         next_steps: vec![NextStep {
@@ -1310,6 +1314,9 @@ fn cases() -> Vec<Case> {
             name: "Stale",
             build: Box::new(|cursor| Overlay::Stale {
                 operation: "commit".to_string(),
+                cause: stikk_model::StaleCause::Repository,
+                headline: stikk_core::stale_headline(stikk_model::StaleCause::Repository)
+                    .to_string(),
                 gloss: "a very long stale gloss ".repeat(60),
                 next_steps: (0..3)
                     .map(|i| NextStep {
@@ -1972,4 +1979,77 @@ fn the_would_refuse_card_cautions_about_a_substituted_name() {
         flattened(&screen).contains(&flattened("is not the file's real name")),
         "{screen}"
     );
+}
+
+// RFC 030 amendment A3 — the stale overlay, one capture per cause, at 80 columns (handoff v2 §5d.8).
+
+/// Build the stale overlay exactly as `App` does: `present()` on the error, then its fields.
+fn stale_overlay(cause: stikk_model::StaleCause) -> Overlay {
+    let err = stikk_model::StikkError::Stale {
+        operation: "commit".to_string(),
+        cause,
+    };
+    match stikk_core::present(&err, stikk_core::OperationContext::Commit, Some(42)) {
+        stikk_core::Presentation::Stale {
+            operation,
+            cause,
+            headline,
+            gloss,
+            next_steps,
+        } => Overlay::Stale {
+            operation,
+            cause,
+            headline,
+            gloss,
+            next_steps,
+            cursor: 0,
+        },
+        other => panic!("expected Presentation::Stale, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_stale_overlay_for_a_repository_change_at_80_columns() {
+    let screen = draw_at(&stale_overlay(stikk_model::StaleCause::Repository), 80, 24);
+    println!("{screen}");
+    let flat = flattened(&screen);
+    assert!(
+        flat.contains(&flattened(
+            "commit: the repository changed since this was last previewed."
+        )),
+        "{screen}"
+    );
+    assert!(
+        flat.contains(&flattened(stikk_core::stale_gloss(
+            stikk_model::StaleCause::Repository
+        ))),
+        "the gloss, whole:\n{screen}"
+    );
+    assert!(screen.contains("Preview again"), "{screen}");
+    assert!(!screen.contains("Another writer"), "{screen}");
+}
+
+#[test]
+fn the_stale_overlay_for_a_worktree_change_at_80_columns() {
+    let screen = draw_at(&stale_overlay(stikk_model::StaleCause::Worktree), 80, 24);
+    println!("{screen}");
+    let flat = flattened(&screen);
+    assert!(
+        flat.contains(&flattened(
+            "commit: the worktree changed since this was last previewed."
+        )),
+        "{screen}"
+    );
+    assert!(
+        flat.contains(&flattened(stikk_core::stale_gloss(
+            stikk_model::StaleCause::Worktree
+        ))),
+        "the gloss, whole:\n{screen}"
+    );
+    assert!(
+        !flat.contains(&flattened("the repository changed")),
+        "{screen}"
+    );
+    assert!(screen.contains("Preview again"), "{screen}");
+    assert!(!screen.contains("Another writer"), "{screen}");
 }

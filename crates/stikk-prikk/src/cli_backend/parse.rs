@@ -23,11 +23,12 @@
 //! seam as a whole on the path carrying all the traffic — caught in review, with the evidence sitting
 //! in that module's own test fixtures, which had been using `"a"` as an object id.
 
-use stikk_model::{ObjectId, RefName, Result, StikkError};
+use stikk_model::{CurrentBranch, ObjectId, RefName, Result, StikkError};
 
 use crate::{
     Authoring, BlockRow, CommitChange, CommitResult, History, Orientation, PatchMessage,
-    QueuedElsewhere, RefEntry, SealResult, StateFiles, WorktreeEntry, WorktreeStatus,
+    QueuedElsewhere, RefEntry, RenameDeclaration, SealResult, StateFiles, WorktreeEntry,
+    WorktreeStatus,
 };
 
 /// Parse `prikk status` output into an [`Orientation`].
@@ -49,7 +50,12 @@ use crate::{
 /// 014 F5), verbatim and un-parsed further: whichever of the two wordings prikk used (approaching the
 /// recommended threshold, or at the hard limit) is carried through unchanged, distinguished only by
 /// its own text, never by stikk re-deriving the thresholds itself.
-pub(super) fn orientation(status: &str) -> Result<Orientation> {
+///
+/// **`prikk_minor` is passed in** (RFC 030 decision 1) because only the version can tell a prikk with no
+/// current-branch pointer (below 0.42, where no `current branch:` line exists) from a 0.42 report that
+/// lost its line — and the second is a parse failure, never "not reported" (`C-T2c′`). The call site
+/// already holds the handshake, exactly as it does to choose `--format json`.
+pub(super) fn orientation(status: &str, prikk_minor: u32) -> Result<Orientation> {
     let (queued_patches, queued_target) =
         parse_queued(&required_field(status, "queued patches:")?)?;
     let trailing_partial_wal_bytes = required_u64(status, "trailing partial WAL bytes:")?;
@@ -59,13 +65,57 @@ pub(super) fn orientation(status: &str) -> Result<Orientation> {
         .map(str::trim)
         .find(|line| line.starts_with("warning: active patches"))
         .map(str::to_string);
+    let current_branch = current_branch(status, prikk_minor)?;
     Ok(Orientation {
         queued_patches,
         queued_target,
         main_ref_state,
         trailing_partial_wal_bytes,
         active_patch_warning,
+        current_branch,
     })
+}
+
+/// The first prikk minor whose `status` prints `current branch:` (prikk 0.42).
+const CURRENT_BRANCH_FROM_MINOR: u32 = 42;
+
+/// prikk's unresolved form, byte for byte as prikk 0.42.0 prints it (`main.rs:490` at that tag; captured
+/// in `STATUS_QUEUED_UNRESOLVED_0_42_FIXTURE`). Matched exactly: a different text is a shape stikk has not
+/// seen, and refusing it is how that becomes a test failure rather than a guess.
+const CURRENT_BRANCH_UNRESOLVED: &str = "<unresolved; run `prikk doctor`>";
+
+/// Read prikk's `current branch:` line by label (RFC 030 decision 1). Three outcomes and two failures:
+/// no line below 0.42 is [`CurrentBranch::NotReported`]; no line at ≥ 0.42 is a parse error; prikk's
+/// unresolved form is [`CurrentBranch::Unresolved`], verbatim; a valid ref name is
+/// [`CurrentBranch::Branch`]; anything else is a parse error.
+fn current_branch(status: &str, prikk_minor: u32) -> Result<CurrentBranch> {
+    match field(status, "current branch:") {
+        None if prikk_minor < CURRENT_BRANCH_FROM_MINOR => Ok(CurrentBranch::NotReported),
+        None => Err(StikkError::environment_msg(format!(
+            "prikk 0.{prikk_minor}'s status is missing its \"current branch:\" line, which prikk \
+             0.{CURRENT_BRANCH_FROM_MINOR} and later always print"
+        ))),
+        Some(value) if value == CURRENT_BRANCH_UNRESOLVED => {
+            Ok(CurrentBranch::Unresolved(value.to_string()))
+        }
+        // **Any other `<…>` value is refused, not read as a branch.** `RefName::parse` is deliberately
+        // light — it rejects only empty and control-bearing names, because prikk polices its own
+        // namespace — so on its own it would accept a reworded sentinel such as `<unresolved>` as a
+        // branch named exactly that. Angle brackets are prikk's sentinel convention (`<not published>`,
+        // `<missing metadata>`, the unresolved form above), and no branch prikk creates (`heads/<name>`)
+        // is spelled that way: a sentinel stikk has not seen is a parse error (`C-T2c′`).
+        Some(value) if value.starts_with('<') => Err(StikkError::environment_msg(format!(
+            "prikk field \"current branch:\" is a sentinel stikk does not know: {value:?}"
+        ))),
+        Some(value) => RefName::parse(value)
+            .map(CurrentBranch::Branch)
+            .map_err(|_| {
+                StikkError::environment_msg(format!(
+                    "prikk field \"current branch:\" is neither prikk's unresolved form nor a ref \
+                     name: {value:?}"
+                ))
+            }),
+    }
 }
 
 /// Parse the `queued patches:` field's value into a count and, when the queue targets a specific ref, a
@@ -441,7 +491,56 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         refused: None,
         entries,
         queued_elsewhere,
+        declarations: prose_declarations(text)?,
     })
+}
+
+/// The `live rename declarations: N` section of prose `worktree-status` (prikk ≥ 0.38; RFC 030
+/// amendment A1): the count, then one indented `  <old> -> <new>` line per declaration, as
+/// `WORKTREE_RENAME_0_38_FIXTURE` shows. **No section is an empty list**, which below 0.38 is a version
+/// fact: `prikk mv` does not exist there.
+///
+/// **Held to prikk's own count, and refused rather than guessed.** prikk prints each line as
+/// `"  {} -> {}"` with no quoting, so a name that itself contains ` -> ` leaves the split point
+/// unknowable from the text: such a line is a parse error, not a best guess.
+fn prose_declarations(text: &str) -> Result<Vec<RenameDeclaration>> {
+    let mut lines = text.lines();
+    let Some(count) = lines
+        .by_ref()
+        .find_map(|line| line.strip_prefix("live rename declarations:"))
+    else {
+        return Ok(Vec::new());
+    };
+    let count: u64 = count.trim().parse().map_err(|_| {
+        StikkError::environment_msg(format!(
+            "prikk field \"live rename declarations:\" is not a number: {count:?}"
+        ))
+    })?;
+    let mut declarations = Vec::new();
+    for line in lines.take_while(|line| line.starts_with(' ') || line.starts_with('\t')) {
+        let mut parts = line.trim_start().split(" -> ");
+        match (parts.next(), parts.next(), parts.next()) {
+            (Some(old), Some(new), None) if !old.is_empty() && !new.is_empty() => {
+                declarations.push(RenameDeclaration {
+                    old_path: old.to_string(),
+                    new_path: new.to_string(),
+                });
+            }
+            _ => {
+                return Err(StikkError::environment_msg(format!(
+                    "prikk's rename declaration cannot be split unambiguously into old and new \
+                     paths: {line:?}"
+                )));
+            }
+        }
+    }
+    if u64::try_from(declarations.len()).ok() != Some(count) {
+        return Err(StikkError::environment_msg(format!(
+            "prikk says \"live rename declarations: {count}\" but lists {}",
+            declarations.len()
+        )));
+    }
+    Ok(declarations)
 }
 
 /// Decode one indented entry line `  <kind> <path> — <note>`. **The kind is the first word, whatever

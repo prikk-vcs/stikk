@@ -5,8 +5,10 @@
 //! prikk. It is the seam the layers above test against (design TS-02).
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use stikk_model::{ChangeToken, Result, StikkError};
+use stikk_model::{ChangeToken, CurrentBranch, Result, StikkError};
 
 use crate::version::Version;
 use crate::{
@@ -52,8 +54,17 @@ pub struct NullBackend {
     refs: Scripted<Vec<RefEntry>>,
     tags: Scripted<Vec<RefEntry>>,
     worktree: Scripted<WorktreeStatus>,
+    /// The answer from the **second** `worktree_status` call on, when set — how a test shows commit's
+    /// confirmation re-reading a worktree that changed after its preview (RFC 030 §5d). The first call
+    /// still answers `worktree`.
+    worktree_on_reread: Option<Scripted<WorktreeStatus>>,
+    /// How many times `worktree_status` has been asked. Shared across clones.
+    worktree_calls: Arc<AtomicUsize>,
     change_token: Scripted<ChangeToken>,
     commit: ScriptedCommit,
+    /// How many times `commit` has been asked — so a test can prove a stale or refused confirmation never
+    /// ran it (RFC 030 §5d). Shared across clones.
+    commit_calls: Arc<AtomicUsize>,
     seal: ScriptedSeal,
 }
 
@@ -86,6 +97,7 @@ impl NullBackend {
                 main_ref_state: None,
                 trailing_partial_wal_bytes: 0,
                 active_patch_warning: None,
+                current_branch: CurrentBranch::NotReported,
             }),
             history: Ok(History {
                 reff: "heads/main".to_string(),
@@ -115,13 +127,17 @@ impl NullBackend {
                 refused: None,
                 entries: Vec::new(),
                 queued_elsewhere: None,
+                declarations: Vec::new(),
             }),
+            worktree_on_reread: None,
+            worktree_calls: Arc::new(AtomicUsize::new(0)),
             // Matches the default `refs`/`orientation` above, so an un-scripted backend's token is
             // internally consistent rather than an arbitrary placeholder.
             change_token: Ok(ChangeToken::compose(
                 [("heads/main", "0".repeat(64).as_str())],
                 0,
                 None,
+                &CurrentBranch::NotReported,
             )),
             commit: ScriptedCommit::Ok(CommitResult {
                 baseline_ref: "heads/main".to_string(),
@@ -140,6 +156,7 @@ impl NullBackend {
                 ref_state: "3".repeat(64),
                 notes: vec!["note: audit plugins remain later PRs".to_string()],
             }),
+            commit_calls: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -185,6 +202,29 @@ impl NullBackend {
             status.queued_elsewhere = Some(crate::QueuedElsewhere::Ref(queued_ref.into()));
         }
         self
+    }
+
+    /// Answer `status` from the **second** `worktree_status` call on (RFC 030 §5d): the first call —
+    /// commit's preview — still answers [`Self::with_worktree_status`]'s status, and every later one, such
+    /// as the confirmation's re-read, answers this.
+    #[must_use]
+    pub fn with_worktree_status_on_reread(mut self, status: WorktreeStatus) -> Self {
+        self.worktree_on_reread = Some(Ok(status));
+        self
+    }
+
+    /// Make the **second** and later `worktree_status` calls fail with a refusal carrying `message` (RFC
+    /// 030 §5d) — the re-read refused, while the preview's read succeeded.
+    #[must_use]
+    pub fn with_worktree_status_refusal_on_reread(mut self, message: impl Into<String>) -> Self {
+        self.worktree_on_reread = Some(Err(message.into()));
+        self
+    }
+
+    /// How many times `commit` has been called on this backend or any clone of it (RFC 030 §5d).
+    #[must_use]
+    pub fn commit_calls(&self) -> usize {
+        self.commit_calls.load(Ordering::SeqCst)
     }
 
     /// Make the worktree-status call fail with a refusal carrying `message`.
@@ -374,7 +414,11 @@ impl Prikk for NullBackend {
     }
 
     fn worktree_status(&self, _repo: &Path, _reff: &str) -> Result<WorktreeStatus> {
-        deliver(&self.worktree)
+        let call = self.worktree_calls.fetch_add(1, Ordering::SeqCst);
+        match &self.worktree_on_reread {
+            Some(reread) if call >= 1 => deliver(reread),
+            _ => deliver(&self.worktree),
+        }
     }
 
     fn change_token(&self, _repo: &Path) -> Result<ChangeToken> {
@@ -382,6 +426,7 @@ impl Prikk for NullBackend {
     }
 
     fn commit(&self, _repo: &Path, _reff: &str, _message: &str) -> Result<CommitResult> {
+        self.commit_calls.fetch_add(1, Ordering::SeqCst);
         match self.commit.clone() {
             ScriptedCommit::Ok(result) => Ok(result),
             ScriptedCommit::Refusal(message) => Err(StikkError::Refusal { message }),

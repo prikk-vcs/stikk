@@ -10,7 +10,12 @@ use stikk_prikk::NullBackend;
 use super::*;
 
 fn token(seed: &str) -> ChangeToken {
-    ChangeToken::compose([("heads/main", seed)], 0, None)
+    ChangeToken::compose(
+        [("heads/main", seed)],
+        0,
+        None,
+        &stikk_model::CurrentBranch::NotReported,
+    )
 }
 
 #[test]

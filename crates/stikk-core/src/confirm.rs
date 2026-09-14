@@ -291,6 +291,7 @@ pub fn confirm(
     if current != token.change_token {
         return Err(StikkError::Stale {
             operation: token.intent.operation.to_string(),
+            cause: stikk_model::StaleCause::Repository,
         });
     }
 
@@ -334,6 +335,7 @@ pub fn execute<T>(
     if current != confirmed.change_token {
         return Err(StikkError::Stale {
             operation: confirmed.intent.operation.to_string(),
+            cause: stikk_model::StaleCause::Repository,
         });
     }
     let result = run()?;

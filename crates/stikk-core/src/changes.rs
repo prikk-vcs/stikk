@@ -25,7 +25,7 @@ use stikk_prikk::{Handshake, Prikk, WorktreeStatus};
 
 /// prikk's per-entry verdict and its queued-elsewhere report, re-exported so a front-end reads the view
 /// model without reaching past this crate to the seam (RFC 027 decision 3, F6).
-pub use stikk_prikk::{Authoring, QueuedElsewhere};
+pub use stikk_prikk::{Authoring, QueuedElsewhere, RenameDeclaration};
 
 /// The lowest prikk version where `worktree-status` is reliable (RFC 008; UD-03 fixed at 0.28).
 /// `pub(crate)`: the commit preview (RFC 014 §3) is derived from the same read and needs the same
@@ -127,6 +127,12 @@ pub struct ChangesView {
     /// them" claim is suppressed and replaced by a pointer to the warning, because the two would
     /// otherwise contradict each other and prikk's fact is the true one (RFC 009 decision 3).
     pub queued_elsewhere: Option<QueuedElsewhere>,
+    /// prikk's live rename declarations, each authored into the next commit as a `RenamePath` (RFC 030
+    /// amendment A1). **Carried so that equality covers them**: commit's confirmation compares the view
+    /// it re-reads against the one it previewed, and a declaration made in between leaves every entry
+    /// unchanged. Empty below prikk 0.38 as a version fact. **Nothing renders them yet** — showing a
+    /// declaration in the preview is roadmap item 11.
+    pub declarations: Vec<RenameDeclaration>,
 }
 
 /// Produce the Changes view for `reff` (design FR-034; RFC 008).
@@ -186,6 +192,7 @@ pub(crate) fn from_status(status: WorktreeStatus) -> ChangesView {
         refused: status.refused,
         entries,
         queued_elsewhere: status.queued_elsewhere,
+        declarations: status.declarations,
     }
 }
 

@@ -40,6 +40,7 @@ fn dirty_status() -> WorktreeStatus {
             },
         ],
         queued_elsewhere: None,
+        declarations: Vec::new(),
     }
 }
 

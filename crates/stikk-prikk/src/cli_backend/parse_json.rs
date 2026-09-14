@@ -41,8 +41,8 @@ use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{
-    Authoring, BlockRow, History, PatchMessage, QueuedElsewhere, RefEntry, WorktreeEntry,
-    WorktreeStatus,
+    Authoring, BlockRow, History, PatchMessage, QueuedElsewhere, RefEntry, RenameDeclaration,
+    WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -301,8 +301,9 @@ const WORKTREE_SCHEMA: &str = "worktree-status-report-v1";
 ///
 /// **Paths are not validated as repository paths** (RFC 027 decision 2): an `unsupported-path` entry's
 /// path is by definition not one, and is carried as reported, to be rendered inert. Per-kind counts are
-/// derived from `changes`, which is the list prikk's own counters are computed from. `declarations` is
-/// not read.
+/// derived from `changes`, which is the list prikk's own counters are computed from. **`declarations`
+/// is read too** (RFC 030 amendment A1), and must be present: a declaration made after a preview changes
+/// what `commit` authors without changing `changes`, so its absence cannot be read as "none".
 ///
 /// # Errors
 /// [`StikkError::Environment`] if the text is not JSON, announces another schema, or breaks any rule
@@ -364,7 +365,23 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         refused: Some(refused_count),
         queued_elsewhere,
         entries,
+        declarations: declarations(&value)?,
     })
+}
+
+/// The report's `declarations` array: required present, each entry a string `old_path` and `new_path`
+/// (RFC 030 amendment A1). Paths are carried as reported.
+fn declarations(value: &Json) -> Result<Vec<RenameDeclaration>> {
+    value
+        .array_field("declarations")?
+        .iter()
+        .map(|declaration| {
+            Ok(RenameDeclaration {
+                old_path: declaration.str_field("old_path")?.to_string(),
+                new_path: declaration.str_field("new_path")?.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// One change's verdict: exactly one of prikk's two legal `authoring`/`refusal` pairs.

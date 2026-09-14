@@ -1648,3 +1648,539 @@ fn readiness_reports_each_band_as_prikk_does_at_both_ends() {
     );
     assert!(!absent.exists(), "nothing was written at the override path");
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 030 decision 5 — a confirmed commit authors the worktree its preview showed.
+//
+// **Written first and run red on the unchanged code** (RFC 030 handoff §6): a safeguard whose test never
+// failed has not been shown to guard. Both tests drive the real confirm path — `commit_preview`, then
+// `commit_confirm_and_execute` — which the lifecycle test above deliberately bypasses.
+// ---------------------------------------------------------------------------------------------
+
+/// Run a raw prikk command in `repo` and require it to succeed, naming prikk's stderr if it does not.
+fn prikk_ok(bin: &PrikkBin, repo: &std::path::Path, args: &[&str]) -> std::process::Output {
+    let out = std::process::Command::new(&bin.path)
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .unwrap_or_else(|e| panic!("0.{}: spawn prikk {args:?}: {e}", bin.minor));
+    assert!(
+        out.status.success(),
+        "0.{}: prikk {args:?} exited {:?}: {}",
+        bin.minor,
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr).trim()
+    );
+    out
+}
+
+/// The paths a `ChangesView`-shaped preview listed, sorted — what the user saw.
+fn previewed_paths(preview: &stikk_core::CommitPreview) -> Vec<String> {
+    let mut paths: Vec<String> = preview
+        .changes
+        .entries
+        .iter()
+        .map(|e| e.path.clone())
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// **RFC 030 at prikk 0.42: a branch switch between preview and confirmation.**
+///
+/// The race, measured by the architect at 0.42 and reproduced here against the real confirm path:
+/// preview a commit on `heads/main` whose only change is one untracked file, run a raw
+/// `prikk branch switch heads/dev` — which prikk allows, carrying the untracked file across — then
+/// confirm. The worktree now holds `heads/dev`'s files against `heads/main`'s baseline. **The confirmation
+/// must be `Stale`, and nothing may be queued.**
+///
+/// The preview holds only an untracked file on purpose: prikk refuses to switch over a modified tracked
+/// file (RFC 030 handoff §2, M5), and a refused switch tests nothing.
+///
+/// **Below 0.42 the skip is announced**: prikk has no `branch switch` there.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc030_a_branch_switch_between_preview_and_confirmation_is_stale_and_commits_nothing() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if bin.minor < 42 {
+            eprintln!(
+                "RFC 030: branch-switch race SKIPPED at 0.{} — `prikk branch switch` does not exist below \
+                 0.42, so the worktree cannot be replaced this way there. Announced rather than silent \
+                 (RFC 022 §3).",
+                bin.minor
+            );
+            continue;
+        }
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        // heads/main: readme.txt and shared.txt, sealed.
+        std::fs::write(repo.join("shared.txt"), "main\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "main baseline")
+            .unwrap_or_else(|e| panic!("0.{}: commit main: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal main: {e}", bin.minor));
+
+        // heads/dev: a file main lacks, and a shared.txt that differs. Sealed. Then back to main, clean.
+        prikk_ok(
+            &bin,
+            &repo,
+            &["branch", "create", "heads/dev", "--from", "heads/main"],
+        );
+        prikk_ok(&bin, &repo, &["branch", "switch", "heads/dev"]);
+        std::fs::write(repo.join("dev-only.txt"), "dev only\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        std::fs::write(repo.join("shared.txt"), "dev\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/dev", "dev work")
+            .unwrap_or_else(|e| panic!("0.{}: commit dev: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/dev")
+            .unwrap_or_else(|e| panic!("0.{}: seal dev: {e}", bin.minor));
+        Fixture::clear_env();
+        prikk_ok(&bin, &repo, &["branch", "switch", "heads/main"]);
+        let clean = backend
+            .worktree_status(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: worktree_status: {e}", bin.minor));
+        assert!(
+            clean.clean,
+            "0.{}: back on main, clean: {clean:?}",
+            bin.minor
+        );
+
+        // One untracked file, previewed: the only change the user sees.
+        std::fs::write(repo.join("note.txt"), "a note\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        let outcome = stikk_core::commit_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: commit_preview: {e}", bin.minor));
+        let readiness = backend
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness;
+        Fixture::clear_env();
+        let stikk_core::CommitPreviewOutcome::Ready { preview, token } = outcome else {
+            panic!("0.{}: expected a Ready preview, got {outcome:?}", bin.minor);
+        };
+        assert_eq!(
+            previewed_paths(&preview),
+            ["note.txt"],
+            "0.{}: the preview lists only the untracked file",
+            bin.minor
+        );
+
+        // The terminal switch. prikk carries the untracked file across and replaces the rest.
+        prikk_ok(&bin, &repo, &["branch", "switch", "heads/dev"]);
+
+        // **Without this, the test could pass on an unchanged tree and prove nothing.**
+        let now = backend
+            .worktree_status(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: worktree_status after switch: {e}", bin.minor));
+        let mut now_paths: Vec<String> = now.entries.iter().map(|e| e.path.clone()).collect();
+        now_paths.sort();
+        assert_ne!(
+            now_paths,
+            previewed_paths(&preview),
+            "0.{}: the switch must have changed what heads/main's worktree-status lists",
+            bin.minor
+        );
+        println!(
+            "0.{}: previewed {:?}; after `branch switch heads/dev`, heads/main lists {now_paths:?}",
+            bin.minor,
+            previewed_paths(&preview)
+        );
+
+        fixture.set_author_env();
+        let result = stikk_core::commit_confirm_and_execute(
+            &backend,
+            &repo,
+            *token,
+            readiness,
+            stikk_core::Evidence::ExplicitYes,
+            "confirmed after a branch switch",
+        );
+        Fixture::clear_env();
+        let queued = backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor))
+            .queued_patches;
+        println!(
+            "0.{}: confirmation returned {result:?}; prikk's status reports {queued} queued patch(es)",
+            bin.minor
+        );
+        // The token sees the switch first (prikk's current branch moved), so the cause is Repository.
+        assert!(
+            matches!(
+                result,
+                Err(StikkError::Stale {
+                    cause: stikk_model::StaleCause::Repository,
+                    ..
+                })
+            ),
+            "0.{}: a commit confirmed after a branch switch must be Stale {{ Repository }}; got {result:?}",
+            bin.minor
+        );
+        assert_eq!(
+            queued, 0,
+            "0.{}: nothing may be queued, by prikk's own status",
+            bin.minor
+        );
+    }
+}
+
+/// **RFC 030 at both ends: a file added between preview and confirmation.**
+///
+/// Preview a commit whose only change is one untracked file, add a second file, confirm: the result must
+/// be `Stale`, with nothing queued. **Then the positive control**: preview again and confirm at once, and
+/// the commit is recorded with both files. A safeguard that blocked every commit would pass the first
+/// half; the second half is what rules that out.
+///
+/// Versions are reported one by one rather than stopping at the first: a version whose confirmation is
+/// not `Stale` is recorded, and the test fails at the end naming every such version and what happened.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc030_a_file_added_between_preview_and_confirmation_is_stale_then_a_fresh_preview_commits() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let mut not_stale = Vec::new();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        // The fixture's own readme.txt is the one untracked change.
+        fixture.set_author_env();
+        let outcome = stikk_core::commit_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: commit_preview: {e}", bin.minor));
+        let readiness = backend
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness;
+        Fixture::clear_env();
+        let stikk_core::CommitPreviewOutcome::Ready { preview, token } = outcome else {
+            panic!("0.{}: expected a Ready preview, got {outcome:?}", bin.minor);
+        };
+        assert_eq!(previewed_paths(&preview), ["readme.txt"], "0.{}", bin.minor);
+
+        std::fs::write(repo.join("second.txt"), "added after the preview\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+
+        fixture.set_author_env();
+        let result = stikk_core::commit_confirm_and_execute(
+            &backend,
+            &repo,
+            *token,
+            readiness,
+            stikk_core::Evidence::ExplicitYes,
+            "confirmed after a file was added",
+        );
+        Fixture::clear_env();
+        let queued = backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor))
+            .queued_patches;
+        println!(
+            "0.{}: confirmation returned {result:?}; prikk's status reports {queued} queued patch(es)",
+            bin.minor
+        );
+        if !matches!(
+            result,
+            Err(StikkError::Stale {
+                cause: stikk_model::StaleCause::Worktree,
+                ..
+            })
+        ) || queued != 0
+        {
+            not_stale.push(format!(
+                "0.{}: expected Stale {{ Worktree }} with nothing queued; got {result:?} with {queued} queued",
+                bin.minor
+            ));
+            continue;
+        }
+
+        // The positive control: a fresh preview, confirmed at once, commits — both files.
+        fixture.set_author_env();
+        let fresh = stikk_core::commit_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: fresh commit_preview: {e}", bin.minor));
+        Fixture::clear_env();
+        let stikk_core::CommitPreviewOutcome::Ready { preview, token } = fresh else {
+            panic!(
+                "0.{}: expected a fresh Ready preview, got {fresh:?}",
+                bin.minor
+            );
+        };
+        assert_eq!(
+            previewed_paths(&preview),
+            ["readme.txt", "second.txt"],
+            "0.{}",
+            bin.minor
+        );
+        fixture.set_author_env();
+        let committed = stikk_core::commit_confirm_and_execute(
+            &backend,
+            &repo,
+            *token,
+            readiness,
+            stikk_core::Evidence::ExplicitYes,
+            "confirmed at once",
+        )
+        .unwrap_or_else(|e| panic!("0.{}: a fresh confirmation must commit: {e}", bin.minor));
+        Fixture::clear_env();
+        let mut recorded: Vec<String> = committed
+            .result
+            .changes
+            .iter()
+            .map(|c| c.path.clone())
+            .collect();
+        recorded.sort();
+        assert_eq!(
+            recorded,
+            ["readme.txt", "second.txt"],
+            "0.{}: prikk recorded both files",
+            bin.minor
+        );
+        let queued = backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor))
+            .queued_patches;
+        assert_eq!(queued, 1, "0.{}: prikk's status holds the patch", bin.minor);
+    }
+    assert!(
+        not_stale.is_empty(),
+        "RFC 030: a confirmation went through after the worktree changed:\n{}",
+        not_stale.join("\n")
+    );
+}
+
+/// prikk's own `declarations` array from `worktree-status --format json` (prikk ≥ 0.38), as text —
+/// read raw so this suite can show what the typed report must compare, independent of whether stikk's
+/// reader carries it.
+fn raw_declarations(bin: &PrikkBin, repo: &std::path::Path, reff: &str) -> String {
+    let out = std::process::Command::new(&bin.path)
+        .args(["worktree-status", "--ref", reff, "--format", "json"])
+        .current_dir(repo)
+        .output()
+        .unwrap_or_else(|e| panic!("0.{}: spawn worktree-status: {e}", bin.minor));
+    let text = String::from_utf8_lossy(&out.stdout);
+    let start = text
+        .find("\"declarations\"")
+        .unwrap_or_else(|| panic!("0.{}: no declarations array in: {text}", bin.minor));
+    text[start..]
+        .trim_end()
+        .trim_end_matches('}')
+        .trim()
+        .to_string()
+}
+
+/// **RFC 030 amendment A2 at prikk ≥ 0.38: a rename declared between preview and confirmation.**
+///
+/// M7, measured by the architect at 0.42: seal `a.txt`, move it to `b.txt` in the shell, preview — prikk
+/// lists `missing a.txt` and `untracked b.txt`, with no declarations. Then `prikk mv a.txt b.txt` records
+/// the declaration **without changing the listed paths**, and `commit` authors `rename-path a.txt -> b.txt`,
+/// an operation the preview never held. **The confirmation must be `Stale`, and nothing may be queued.**
+///
+/// The positive control previews again and confirms at once: the commit records the rename.
+///
+/// **Below 0.38 the skip is announced**: `prikk mv` does not exist there, so nothing can be declared.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc030_a_rename_declared_between_preview_and_confirmation_is_stale_then_a_fresh_preview_commits()
+{
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let mut not_stale = Vec::new();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if bin.minor < 38 {
+            eprintln!(
+                "RFC 030: rename-declaration race SKIPPED at 0.{} — `prikk mv` does not exist below 0.38, \
+                 so no rename can be declared there. Announced rather than silent (RFC 022 §3).",
+                bin.minor
+            );
+            continue;
+        }
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        // a.txt sealed on heads/main (beside the fixture's readme.txt).
+        std::fs::write(repo.join("a.txt"), "a body\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "baseline")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+
+        // The shell moves it. The preview sees a missing and an untracked file, and no declaration.
+        std::fs::rename(repo.join("a.txt"), repo.join("b.txt"))
+            .unwrap_or_else(|e| panic!("0.{}: shell mv: {e}", bin.minor));
+        fixture.set_author_env();
+        let outcome = stikk_core::commit_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: commit_preview: {e}", bin.minor));
+        let readiness = backend
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness;
+        Fixture::clear_env();
+        let stikk_core::CommitPreviewOutcome::Ready { preview, token } = outcome else {
+            panic!("0.{}: expected a Ready preview, got {outcome:?}", bin.minor);
+        };
+        assert_eq!(
+            previewed_paths(&preview),
+            ["a.txt", "b.txt"],
+            "0.{}",
+            bin.minor
+        );
+        let entries_of = |status: &stikk_prikk::WorktreeStatus| -> Vec<(String, String)> {
+            let mut e: Vec<(String, String)> = status
+                .entries
+                .iter()
+                .map(|x| (x.kind.clone(), x.path.clone()))
+                .collect();
+            e.sort();
+            e
+        };
+        let before = backend
+            .worktree_status(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: worktree_status before: {e}", bin.minor));
+        let declarations_before = raw_declarations(&bin, &repo, "heads/main");
+
+        // prikk records the rename. The file is already moved, so no bytes change.
+        let mv = prikk_ok(&bin, &repo, &["mv", "a.txt", "b.txt"]);
+        println!(
+            "0.{}: prikk mv printed {:?}",
+            bin.minor,
+            String::from_utf8_lossy(&mv.stdout).trim()
+        );
+
+        let after = backend
+            .worktree_status(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: worktree_status after: {e}", bin.minor));
+        let declarations_after = raw_declarations(&bin, &repo, "heads/main");
+        // **The reason declarations must be compared:** the listed entries do not move.
+        assert_eq!(
+            entries_of(&after),
+            entries_of(&before),
+            "0.{}: prikk mv over an already-moved file leaves the listed entries unchanged",
+            bin.minor
+        );
+        assert_ne!(
+            declarations_after, declarations_before,
+            "0.{}: prikk's declarations must differ after prikk mv",
+            bin.minor
+        );
+        // And stikk's reader carries them (RFC 030 amendment A1), so the confirmation can compare them.
+        assert!(before.declarations.is_empty(), "0.{}", bin.minor);
+        assert_eq!(
+            after.declarations,
+            vec![stikk_prikk::RenameDeclaration {
+                old_path: "a.txt".to_string(),
+                new_path: "b.txt".to_string(),
+            }],
+            "0.{}",
+            bin.minor
+        );
+        println!(
+            "0.{}: entries unchanged {:?}; declarations before {declarations_before}, after {declarations_after}",
+            bin.minor,
+            entries_of(&after)
+        );
+
+        fixture.set_author_env();
+        let result = stikk_core::commit_confirm_and_execute(
+            &backend,
+            &repo,
+            *token,
+            readiness,
+            stikk_core::Evidence::ExplicitYes,
+            "confirmed after a rename was declared",
+        );
+        Fixture::clear_env();
+        let queued = backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor))
+            .queued_patches;
+        println!(
+            "0.{}: confirmation returned {result:?}; prikk's status reports {queued} queued patch(es)",
+            bin.minor
+        );
+        if !matches!(
+            result,
+            Err(StikkError::Stale {
+                cause: stikk_model::StaleCause::Worktree,
+                ..
+            })
+        ) || queued != 0
+        {
+            not_stale.push(format!(
+                "0.{}: expected Stale {{ Worktree }} with nothing queued; got {result:?} with {queued} queued",
+                bin.minor
+            ));
+            continue;
+        }
+
+        // The positive control: preview again, confirm at once, and the rename is recorded.
+        fixture.set_author_env();
+        let fresh = stikk_core::commit_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: fresh commit_preview: {e}", bin.minor));
+        Fixture::clear_env();
+        let stikk_core::CommitPreviewOutcome::Ready { token, .. } = fresh else {
+            panic!(
+                "0.{}: expected a fresh Ready preview, got {fresh:?}",
+                bin.minor
+            );
+        };
+        fixture.set_author_env();
+        let committed = stikk_core::commit_confirm_and_execute(
+            &backend,
+            &repo,
+            *token,
+            readiness,
+            stikk_core::Evidence::ExplicitYes,
+            "rename confirmed at once",
+        )
+        .unwrap_or_else(|e| panic!("0.{}: a fresh confirmation must commit: {e}", bin.minor));
+        Fixture::clear_env();
+        assert!(
+            committed
+                .result
+                .changes
+                .iter()
+                .any(|c| c.operation == "rename-path"),
+            "0.{}: prikk records the declared rename: {:?}",
+            bin.minor,
+            committed.result.changes
+        );
+        let queued = backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor))
+            .queued_patches;
+        assert_eq!(queued, 1, "0.{}: prikk's status holds the patch", bin.minor);
+    }
+    assert!(
+        not_stale.is_empty(),
+        "RFC 030: a confirmation went through after a rename was declared:\n{}",
+        not_stale.join("\n")
+    );
+}

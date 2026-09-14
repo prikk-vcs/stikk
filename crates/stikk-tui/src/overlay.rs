@@ -85,6 +85,10 @@ pub enum Overlay {
     Stale {
         /// The operation whose preview no longer matches (stikk's own short name).
         operation: String,
+        /// Which check found the preview stale (RFC 030 amendment A3).
+        cause: stikk_model::StaleCause,
+        /// stikk's headline, rendered after the operation name — from `stikk-core`, never a literal here.
+        headline: String,
         /// stikk's explanation, in its own voice.
         gloss: String,
         /// Next-steps, stikk-authored — today always exactly one: re-preview.
@@ -217,10 +221,14 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
         Overlay::Refusal { card, cursor } => render_refusal(card, *cursor, palette, frame, area),
         Overlay::Stale {
             operation,
+            cause: _,
+            headline,
             gloss,
             next_steps,
             cursor,
-        } => render_stale(operation, gloss, next_steps, *cursor, palette, frame, area),
+        } => render_stale(
+            operation, headline, gloss, next_steps, *cursor, palette, frame, area,
+        ),
         Overlay::CommitWouldRefuse { paths } => {
             render_commit_would_refuse(paths, palette, frame, area);
         }
@@ -557,8 +565,10 @@ fn render_refusal(
 /// Render [`Overlay::Stale`] — deliberately its own function, not a `Stale`-flavoured
 /// [`render_refusal`]: every line here is stikk's own voice, so the label must say so, never "prikk
 /// reported" (design-review C1, RFC 013).
+#[allow(clippy::too_many_arguments)] // one more than render_refusal: the headline now comes from core
 fn render_stale(
     operation: &str,
+    headline: &str,
     gloss: &str,
     next_steps: &[NextStep],
     cursor: usize,
@@ -585,10 +595,9 @@ fn render_stale(
                 inert(operation),
                 Style::default().add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                ": the repository changed since this was last previewed.",
-                Style::default().fg(palette.fg),
-            ),
+            // RFC 030 amendment A3: the headline follows the cause and comes from `stikk-core`
+            // (`stale_headline`), so a worktree change never reads as a repository change here.
+            Span::styled(headline.to_string(), Style::default().fg(palette.fg)),
         ]),
         Line::from(""),
     ];

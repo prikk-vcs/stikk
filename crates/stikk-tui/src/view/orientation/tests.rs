@@ -24,6 +24,7 @@ fn view(readiness: Readiness, supported: bool, queued: u64, partial: u64) -> Ori
         capability: Capability::derive(readiness),
         readiness,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
+        current_branch: stikk_model::CurrentBranch::NotReported,
     }
 }
 

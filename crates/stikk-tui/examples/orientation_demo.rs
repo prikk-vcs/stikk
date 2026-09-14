@@ -96,6 +96,7 @@ fn main() -> ExitCode {
         ),
         trailing_partial_wal_bytes: 0,
         active_patch_warning: None,
+        current_branch: stikk_model::CurrentBranch::NotReported,
     }));
     match stikk_tui::run(Path::new("demo-repo"), &backend, &Config::default()) {
         Ok(()) => ExitCode::SUCCESS,

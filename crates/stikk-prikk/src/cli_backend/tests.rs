@@ -225,7 +225,12 @@ fn change_token_drives_exactly_branch_status_and_tag_no_more_no_repeats() {
     // so a per-call probe would have been a real cost rather than a one-off.
     assert_eq!(
         token,
-        stikk_model::ChangeToken::compose([("heads/main", "0".repeat(64).as_str())], 0, None)
+        stikk_model::ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            0,
+            None,
+            &stikk_model::CurrentBranch::NotReported
+        )
     );
 
     let calls = std::fs::read_to_string(&log).unwrap_or_default();

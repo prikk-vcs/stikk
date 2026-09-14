@@ -18,7 +18,7 @@
 
 use std::path::Path;
 
-use stikk_model::{Capability, RequestCategory, Result};
+use stikk_model::{Capability, RequestCategory, Result, StaleCause, StikkError, Tier};
 use stikk_prikk::{CommitResult, Prikk};
 
 use crate::changes::{self, ChangeKind, ChangesView};
@@ -64,8 +64,9 @@ pub enum CommitPreviewOutcome {
     Ready {
         /// The preview to restate to the user before they confirm.
         preview: CommitPreview,
-        /// Feed this into [`commit_confirm_and_execute`] once the user supplies evidence.
-        token: Box<PreviewToken>,
+        /// Feed this into [`commit_confirm_and_execute`] once the user supplies evidence. It carries the
+        /// previewed ref and view with it (RFC 030 decision 3).
+        token: Box<CommitToken>,
     },
 }
 
@@ -92,11 +93,52 @@ pub fn commit_preview(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<Com
     Ok(match view {
         CommitReadView::Blocked(reason) => CommitPreviewOutcome::Blocked(reason),
         CommitReadView::WouldRefuse(paths) => CommitPreviewOutcome::WouldRefuse(paths),
-        CommitReadView::Ready(preview) => CommitPreviewOutcome::Ready {
-            preview,
-            token: Box::new(token),
-        },
+        CommitReadView::Ready(preview) => {
+            let previewed = preview.changes.clone();
+            CommitPreviewOutcome::Ready {
+                preview,
+                token: Box::new(CommitToken {
+                    preview: token,
+                    reff: reff.to_string(),
+                    previewed,
+                }),
+            }
+        }
     })
+}
+
+/// A commit's armed confirmation (RFC 030 decision 3): the preview's [`PreviewToken`], **the ref the
+/// preview was built for, and the view it listed**, all private.
+///
+/// **Private because a substitute has no correct meaning.** A caller that could name a different ref would
+/// commit somewhere the preview never looked; one that could hand in a different view would make the
+/// confirmation's re-read compare against something the user never saw. The only way to get one is
+/// [`commit_preview`], and the only thing that consumes it is [`commit_confirm_and_execute`].
+#[derive(Debug)]
+pub struct CommitToken {
+    preview: PreviewToken,
+    reff: String,
+    previewed: ChangesView,
+}
+
+impl CommitToken {
+    /// The tier this commit's confirmation must satisfy.
+    #[must_use]
+    pub fn tier(&self) -> Tier {
+        self.preview.tier()
+    }
+
+    /// The fact set the confirmation surface renders, stamped at preview time.
+    #[must_use]
+    pub fn summary(&self) -> &ConfirmationSummary {
+        self.preview.summary()
+    }
+
+    /// The ref this commit will be authored onto: the previewed ref, and only that.
+    #[must_use]
+    pub fn reff(&self) -> &str {
+        &self.reff
+    }
 }
 
 /// The two shapes [`compute`] can produce — never exposed outside this module; [`commit_preview`]
@@ -273,23 +315,49 @@ fn consequence(active_patch_warning: Option<&str>) -> String {
 /// [`stikk_model::Readiness`] rather than the real process environment (`confirm/tests.rs`'s own
 /// precedent, `ready(author, maintainer, read_only)`).
 ///
+///
+/// **The commit is authored onto the ref inside `token`**, and there is no parameter naming another
+/// (RFC 030 decision 3).
+///
+/// **The worktree is re-read immediately before `prikk commit`** (RFC 030 decision 3, amendment A1):
+/// inside the closure [`confirm::execute`] runs, after its change-token check, `worktree-status` for the
+/// previewed ref is built into a view by `changes::from_status` — the preview's own construction — and
+/// compared with the view the preview listed, rename declarations included. **Any difference is
+/// `Stale { cause: Worktree }`, and `prikk commit` does not run.** What this cannot see is stated, not
+/// implied away (RFC 030 F4): a further edit to a file already listed as modified, and anything that
+/// changes in the window between this re-read and `prikk commit` itself — prikk authors what is there.
+///
 /// # Errors
 /// [`stikk_model::StikkError::NotReady`] if read-only mode or AUTHOR capability is insufficient;
-/// [`stikk_model::StikkError::Stale`] if the repository changed since the preview or since confirmation;
-/// [`stikk_model::StikkError::Declined`] if `evidence` does not satisfy tier 2 (an explicit yes); otherwise whatever
-/// [`stikk_prikk::Prikk::commit`] or a change-token read raises — including
-/// [`stikk_model::StikkError::CrossRef`] for the RFC 014 F2 race.
+/// [`stikk_model::StikkError::Stale`] with [`StaleCause::Repository`] if the repository changed since the
+/// preview or since confirmation, or [`StaleCause::Worktree`] if the worktree no longer matches the
+/// preview; [`stikk_model::StikkError::Declined`] if `evidence` does not satisfy tier 2 (an explicit yes);
+/// otherwise whatever the worktree re-read, [`stikk_prikk::Prikk::commit`] or a change-token read raises
+/// — including [`stikk_model::StikkError::CrossRef`] for the RFC 014 F2 race.
 pub fn commit_confirm_and_execute(
     prikk: &impl Prikk,
     repo: &Path,
-    token: PreviewToken,
+    token: CommitToken,
     readiness: stikk_model::Readiness,
     evidence: Evidence,
-    reff: &str,
     message: &str,
 ) -> Result<Outcome<CommitResult>> {
-    let confirmed = confirm::confirm(prikk, repo, token, readiness, evidence)?;
-    confirm::execute(prikk, repo, confirmed, || prikk.commit(repo, reff, message))
+    let CommitToken {
+        preview,
+        reff,
+        previewed,
+    } = token;
+    let confirmed = confirm::confirm(prikk, repo, preview, readiness, evidence)?;
+    confirm::execute(prikk, repo, confirmed, || {
+        let now = changes::from_status(prikk.worktree_status(repo, &reff)?);
+        if now != previewed {
+            return Err(StikkError::Stale {
+                operation: COMMIT_OPERATION.to_string(),
+                cause: StaleCause::Worktree,
+            });
+        }
+        prikk.commit(repo, &reff, message)
+    })
 }
 
 #[cfg(test)]

@@ -21,6 +21,7 @@ fn dirty_worktree() -> WorktreeStatus {
         refused: None,
         entries: Vec::new(),
         queued_elsewhere: None,
+        declarations: Vec::new(),
     }
 }
 
@@ -31,6 +32,7 @@ fn orientation(queued_patches: u64, queued_target: Option<&str>) -> Orientation 
         main_ref_state: None,
         trailing_partial_wal_bytes: 0,
         active_patch_warning: None,
+        current_branch: stikk_model::CurrentBranch::NotReported,
     }
 }
 
@@ -50,6 +52,7 @@ fn ready_backend() -> NullBackend {
             [("heads/main", "0".repeat(64).as_str())],
             0,
             None,
+            &stikk_model::CurrentBranch::NotReported,
         ))
 }
 
@@ -67,6 +70,7 @@ fn a_clean_worktree_blocks_before_arming_anything() {
         refused: None,
         entries: Vec::new(),
         queued_elsewhere: None,
+        declarations: Vec::new(),
     });
     match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
         CommitPreviewOutcome::Blocked(reason) => {
@@ -155,7 +159,6 @@ fn confirm_and_execute_carries_the_commit_result_through() {
         *token,
         author_readiness(),
         crate::confirm::Evidence::ExplicitYes,
-        "heads/main",
         "a message",
     )
     .expect("confirm+execute succeeds");
@@ -176,6 +179,7 @@ fn execute_refuses_when_the_change_token_moved_between_preview_and_confirm() {
         [("heads/main", "1".repeat(64).as_str())],
         0,
         None,
+        &stikk_model::CurrentBranch::NotReported,
     ));
     let err = commit_confirm_and_execute(
         &moved,
@@ -183,7 +187,6 @@ fn execute_refuses_when_the_change_token_moved_between_preview_and_confirm() {
         *token,
         author_readiness(),
         crate::confirm::Evidence::ExplicitYes,
-        "heads/main",
         "a message",
     )
     .expect_err("must refuse");
@@ -207,7 +210,6 @@ fn a_cross_ref_race_reaching_the_seam_propagates_as_cross_ref_not_lock_conflict(
         *token,
         author_readiness(),
         crate::confirm::Evidence::ExplicitYes,
-        "heads/main",
         "a message",
     )
     .expect_err("must refuse");
@@ -234,7 +236,6 @@ fn read_only_refuses_even_with_author_keys_present() {
         *token,
         read_only,
         crate::confirm::Evidence::ExplicitYes,
-        "heads/main",
         "a message",
     )
     .expect_err("must refuse");
@@ -256,7 +257,6 @@ fn viewer_capability_refuses() {
         *token,
         stikk_model::Readiness::none(),
         crate::confirm::Evidence::ExplicitYes,
-        "heads/main",
         "a message",
     )
     .expect_err("must refuse");
@@ -279,7 +279,6 @@ fn declined_evidence_refuses_without_touching_the_seam() {
         *token,
         author_readiness(),
         crate::confirm::Evidence::TypedName("heads/main".to_string()),
-        "heads/main",
         "a message",
     )
     .expect_err("must refuse");
@@ -462,4 +461,169 @@ fn a_substituted_name_gets_the_caution_that_it_is_not_the_real_name() {
         .expect("a caution for a name shown with U+FFFD");
     assert!(caution.contains("not the file's real name"));
     assert!(caution.contains("will not match"));
+}
+
+// RFC 030 decision 3 — commit's confirmation re-reads the worktree (handoff v2 §5d, tests 1–6).
+//
+// Every `Stale` and refusal path below also asserts `commit_calls() == 0`: the re-read exists so that
+// `prikk commit` does not run on a worktree the preview never showed, and a test that only checked the
+// error would pass on code that committed first and complained after.
+
+/// The worktree a preview lists: one modified file, authored.
+fn previewed_worktree() -> WorktreeStatus {
+    WorktreeStatus {
+        modified: 1,
+        entries: vec![entry(
+            "modified",
+            "readme.txt",
+            stikk_prikk::Authoring::Authored,
+        )],
+        ..dirty_worktree()
+    }
+}
+
+/// Preview, then confirm at once with an explicit yes — the only two steps a commit has.
+fn preview_then_confirm(backend: &NullBackend) -> Result<Outcome<CommitResult>> {
+    let repo = std::path::Path::new("/repo");
+    let CommitPreviewOutcome::Ready { token, .. } =
+        commit_preview(backend, repo, "heads/main").expect("reads")
+    else {
+        panic!("expected Ready");
+    };
+    commit_confirm_and_execute(
+        backend,
+        repo,
+        *token,
+        author_readiness(),
+        crate::confirm::Evidence::ExplicitYes,
+        "a message",
+    )
+}
+
+fn is_stale(result: &Result<Outcome<CommitResult>>, want: StaleCause) -> bool {
+    matches!(
+        result,
+        Err(StikkError::Stale { operation, cause }) if operation == COMMIT_OPERATION && *cause == want
+    )
+}
+
+#[test]
+fn an_equal_re_read_commits() {
+    let backend = ready_backend()
+        .with_worktree_status(previewed_worktree())
+        .with_worktree_status_on_reread(previewed_worktree());
+    let result = preview_then_confirm(&backend);
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(backend.commit_calls(), 1);
+}
+
+#[test]
+fn an_entry_added_before_confirmation_is_stale_worktree_and_never_commits() {
+    let mut grown = previewed_worktree();
+    grown.untracked = 1;
+    grown.entries.push(entry(
+        "untracked",
+        "notes.tmp",
+        stikk_prikk::Authoring::Authored,
+    ));
+    let backend = ready_backend()
+        .with_worktree_status(previewed_worktree())
+        .with_worktree_status_on_reread(grown);
+    let result = preview_then_confirm(&backend);
+    assert!(is_stale(&result, StaleCause::Worktree), "{result:?}");
+    assert_eq!(backend.commit_calls(), 0, "commit must not run");
+}
+
+#[test]
+fn only_a_count_differing_is_stale_worktree_and_never_commits() {
+    let mut counted = previewed_worktree();
+    counted.modified = 2;
+    let backend = ready_backend()
+        .with_worktree_status(previewed_worktree())
+        .with_worktree_status_on_reread(counted);
+    let result = preview_then_confirm(&backend);
+    assert!(is_stale(&result, StaleCause::Worktree), "{result:?}");
+    assert_eq!(backend.commit_calls(), 0, "commit must not run");
+}
+
+#[test]
+fn only_the_declarations_differing_is_stale_worktree_and_never_commits() {
+    // M7's shape: the shell moved a.txt to b.txt before the preview; `prikk mv` declared it after. The
+    // entries are identical, and only the declaration says `commit` would now author `rename-path`.
+    let moved = WorktreeStatus {
+        missing: 1,
+        modified: 0,
+        untracked: 1,
+        entries: vec![
+            entry("missing", "a.txt", stikk_prikk::Authoring::Authored),
+            entry("untracked", "b.txt", stikk_prikk::Authoring::Authored),
+        ],
+        ..dirty_worktree()
+    };
+    let declared = WorktreeStatus {
+        declarations: vec![stikk_prikk::RenameDeclaration {
+            old_path: "a.txt".to_string(),
+            new_path: "b.txt".to_string(),
+        }],
+        ..moved.clone()
+    };
+    let backend = ready_backend()
+        .with_worktree_status(moved)
+        .with_worktree_status_on_reread(declared);
+    let result = preview_then_confirm(&backend);
+    assert!(is_stale(&result, StaleCause::Worktree), "{result:?}");
+    assert_eq!(backend.commit_calls(), 0, "commit must not run");
+}
+
+#[test]
+fn a_refused_re_read_propagates_and_never_commits() {
+    let backend = ready_backend()
+        .with_worktree_status(previewed_worktree())
+        .with_worktree_status_refusal_on_reread("error: ref does not exist: heads/main");
+    let result = preview_then_confirm(&backend);
+    match &result {
+        Err(StikkError::Refusal { message }) => {
+            assert_eq!(message, "error: ref does not exist: heads/main");
+        }
+        other => panic!("expected the re-read's refusal, got {other:?}"),
+    }
+    assert_eq!(backend.commit_calls(), 0, "commit must not run");
+}
+
+#[test]
+fn a_current_branch_moved_alone_is_stale_repository_before_any_re_read() {
+    // M6: refs and queue unchanged, prikk's current branch moved, the worktree unchanged. The token
+    // catches it first — and the re-read here is scripted to refuse, so reaching it would have returned
+    // that refusal instead of `Stale { Repository }`.
+    let token_on = |branch: &str| {
+        ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            0,
+            None,
+            &stikk_model::CurrentBranch::Branch(
+                stikk_model::RefName::parse(branch).expect("a ref name"),
+            ),
+        )
+    };
+    let backend = ready_backend()
+        .with_worktree_status(previewed_worktree())
+        .with_worktree_status_refusal_on_reread("the re-read must not be reached")
+        .with_change_token(token_on("heads/main"));
+    let repo = std::path::Path::new("/repo");
+    let CommitPreviewOutcome::Ready { token, .. } =
+        commit_preview(&backend, repo, "heads/main").expect("reads")
+    else {
+        panic!("expected Ready");
+    };
+    let switched = backend.clone().with_change_token(token_on("heads/dev"));
+    let result = commit_confirm_and_execute(
+        &switched,
+        repo,
+        *token,
+        author_readiness(),
+        crate::confirm::Evidence::ExplicitYes,
+        "a message",
+    );
+    assert!(is_stale(&result, StaleCause::Repository), "{result:?}");
+    assert_eq!(switched.commit_calls(), 0, "commit must not run");
 }

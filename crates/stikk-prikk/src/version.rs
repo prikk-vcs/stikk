@@ -2,8 +2,12 @@
 //! RFC 012 F-e).
 //!
 //! stikk targets prikk `>= 0.28`, validated through `0.42.0` (**RFC 029**, the 0.42 re-baseline: the
-//! real-binary suite passed unchanged at 0.28 and 0.42 on every platform, and every fixture was
-//! re-verified against the 0.42 binary. The one prose surface stikk reads that 0.42 changed is
+//! real-binary suite passed unchanged at 0.28 and 0.42 on every platform, and the fixtures were
+//! re-verified against the 0.42 binary **except those that record a state 0.42 cannot produce**:
+//! `LOG_FIXTURE`, whose 0.30.0 history carries no patch messages, which 0.42 writes on every commit;
+//! `LOG_FIXTURE_STRADDLING`, which needs patches authored by 0.31.1 and 0.32.0 in one block; and the
+//! seven RFC 027 captures (`WORKTREE_UNSUPPORTED_*`, `WORKTREE_SYMLINK_*`, `WORKTREE_QUEUED_JSON_0_41`),
+//! which record 0.28 and 0.41 by design. The one prose surface stikk reads that 0.42 changed is
 //! `status`, which gained a `current branch:` line Orientation does not read. See
 //! `cli_backend/parse/tests.rs` for what each version changed).
 //!

@@ -47,8 +47,9 @@ view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `
   entry may be exactly that work, and nothing should be deleted on this view alone — and a test holds it
   to that sentence clause by clause. Below 0.39 prikk's sentence is still shown verbatim (RFC 027 F6).
 - **The validated prikk range is `>= 0.28`, through `0.42.0`.** The real-binary suite passed unchanged at
-  0.28 and 0.42 on Linux, macOS and Windows, and every captured fixture was re-verified against the 0.42
-  binary (RFC 029).
+  0.28 and 0.42 on Linux, macOS and Windows, and the captured fixtures were re-verified against the 0.42
+  binary, except the few that record a state 0.42 cannot produce (two pre-0.33 log histories, and RFC
+  027's captures of 0.28 and 0.41) (RFC 029).
 - **On prikk ≥ 0.42, commit is unavailable, with prikk's reason, when a file's name cannot be a
   repository path** — a backslash in it, or bytes that are not UTF-8. prikk 0.42 began reporting those
   paths as ones `commit` would refuse, and stikk already declines to offer a commit prikk has said it

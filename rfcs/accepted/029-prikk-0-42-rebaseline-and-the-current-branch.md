@@ -1,7 +1,7 @@
 # RFC 029 — The prikk 0.42 re-baseline, and prikk's current branch
 
 **Status.** **Accepted by the project owner 2026-09-13; Q1 ruled (b)** the same day, with safeguard 3 and the
-fallback folded into Handoff B. Handoff A is issued; Handoff B follows it. Proposed the same day by the architect. Measured against real prikk
+fallback folded into Handoff B. Handoff A landed (`9b0a6e4`, `0d3903e`, `7417738`); Handoff B is issued, after RFC 030 landed. Proposed the same day by the architect. Measured against real prikk
 **0.28.0** and **0.42.0** binaries built from their tags, and by running stikk's own real-binary suite at both
 ends with only the validated ceiling raised, in a scratch copy of `b1460cc`.
 **Tracks.** `ASM-2`, `NFR-R03`, `FR-055`, `FR-002`, `TU-02`, `TU-03`, the requirements' terminology table,
@@ -193,6 +193,19 @@ the two defaults part. A `branch switch` action can be its own RFC later, if it 
   prikk's current branch**, in stikk's words, as a notice rather than a block. prikk allows it, and deliberately
   committing to another branch is legitimate.
 - **Never HEAD, never an authority** (decision 4).
+
+**Recorded by the architect with Handoff B, 2026-09-15 — three readings of the ruling, and one correction:**
+
+- **"The header" is the status bar.** stikk renders its focus in the status bar (`TU-03`), not the header, so
+  prikk's current branch goes beside it there.
+- **A branch prikk names is followed even when it is unpublished.** A fresh 0.42 repository reports `current branch:
+  heads/main` beside `heads/main RefState: <not published>`, and prikk would author a first commit there. The
+  fallback governs when prikk names no branch: below 0.42, or when the pointer is unresolved.
+- **An empty ref picker offers `heads/main (not published)`.** Below 0.42 a new repository has nothing published,
+  so the fallback would otherwise leave stikk unable to make a first commit.
+- **Correction: the status bar can lag a terminal switch.** stikk reads Orientation on open, on `r`, and after a
+  commit or seal. It does not poll, and `FR-106`'s notice is not wired. *"It cannot go stale"* was too strong.
+  What protects a confirmation armed before a switch is RFC 030.
 
 **Safeguards 1 and 2 are not this RFC's.** Putting prikk's current branch in the change token, and re-checking the
 worktree when a commit is confirmed, answer F7 whichever way Q1 went, and change the confirmation primitive every

@@ -1,13 +1,50 @@
 # RFC 030 — A confirmed commit authors the worktree its preview showed
 
-**Status.** **Accepted by the project owner 2026-09-13.** Proposed the same day by the architect, from RFC 029 F7.
-**Amended 2026-09-15** by the architect after the handoff's first review (see *Amendments*): decision 3 widened to
-prikk's rename declarations, decision 5 gained a test, and decision 7 added. Scheduled **before** RFC 029's Handoff B,
-because the risk is live for anyone running stikk against prikk 0.42 today. No open question.
+**Status.** **Done 2026-09-15** — delivered on `main` (`1420e45`, `40321f7`); a **0.7.0 candidate**. Accepted by the
+project owner 2026-09-13; **amended 2026-09-15** by the architect after the handoff's first review (see *Amendments*):
+decision 3 widened to prikk's rename declarations, decision 5 gained a test, and decision 7 added. Proposed 2026-09-13
+by the architect, from RFC 029 F7, and delivered before RFC 029's Handoff B.
 **Tracks.** `OPL-02` (the change token), RFC 003 decision 3, RFC 013's confirm primitive, RFC 014, `FR-050`,
 `FR-052`, `T-T4`, RFC 029 F7 and F8.
 **Touches.** `stikk-prikk` (Orientation reads prikk's current branch), `stikk-model` (the change token), `stikk-core`
 (commit's confirmation), `stikk-real-binary`.
+
+## Delivered
+
+**One handoff, reissued as v2 after its first review** (`1420e45`, then `40321f7` for the review's two conditions).
+
+- **Orientation reads prikk's current branch** as `CurrentBranch::{NotReported, Unresolved, Branch}`, with the version
+  passed in. A missing line at ≥ 0.42 is a parse error, and so is any `<…>` sentinel stikk has not seen.
+- **The change token composes it**, hashed with a discriminant per state.
+- **`WorktreeStatus` and `ChangesView` carry prikk's rename declarations:**
+  - as JSON at ≥ 0.39, where the array must be present;
+  - as prose at 0.38, where the count is checked and a missing section or an ambiguous line is a parse error;
+  - below 0.38 the list is empty, as a version fact.
+- **Commit's confirmation owns its previewed ref and view** in a private `CommitToken`. The re-read runs after
+  `execute`'s token check and immediately before `prikk commit`.
+- **`Stale` carries its cause**, and its words live in `stikk-core`.
+
+**Red first, measured through stikk's own confirm path on the unchanged code** (`7417738`, and `3fdcf96` for the
+declaration test):
+- at 0.42, a branch switch committed `heads/dev`'s files onto `heads/main`;
+- a file added after the preview was committed, at 0.28 and at 0.42;
+- a `prikk mv` committed `rename-path`.
+
+**Green:**
+- 21 of 21 at 0.28 and 0.42 on Linux, macOS and Windows (suite `34905701292`, CI `34905702476`, supply chain
+  `34905703517` at `1420e45`);
+- re-run by the architect at both commits;
+- CI `34907596129` and Docs `34907596091` at `40321f7`.
+
+### Carried forward
+
+- **The commit preview does not show the rename a declaration authors** (roadmap item 11); its own RFC.
+- **`FR-106`'s passive notice has no caller** (roadmap item 12). Handoffs v1 and v2 wrongly said decision 2 made it
+  fire; the dev team's review found it.
+- **A prose-path parse error (prikk < 0.39) reaches the refusal classifier** (roadmap item 7). That now includes
+  0.38's missing declarations section: it fails, as it should, but reads as prikk's refusal.
+- **`checkout --patch-materialize` writes before it refuses**, and neither `status` nor `doctor` reports it. prikk's
+  behaviour; letter 012 is drafted for the owner.
 
 ## Summary
 

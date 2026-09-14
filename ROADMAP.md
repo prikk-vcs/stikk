@@ -240,28 +240,36 @@ a fabricated worktree entry was fixed.
    about 64 characters clips on an entry row, and prikk 0.39–0.41 report unsupported paths absolute. prikk 0.42 reports them relative
    (RFC 029 A), so the absolute case stays open only on that band.
 7. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
-   where the JSON path now reports stikk's own error.
+   where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
+   `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as
+   prikk's refusal.
 8. **stikk opens focused on `heads/main`, which a repository may not have.** Measured at prikk 0.28 and 0.41,
    a ref with no published history reads as an empty baseline everywhere — `worktree-status` lists every
    file untracked, `log` reports empty history, and `commit` authors onto the new name. **That is prikk's
    deliberate model, not a defect**: it is exactly how a first commit is previewed, so nothing is asked of
    prikk. stikk has no free-text ref entry, so the only way to reach it is the default focus; Orientation
    already shows `<unpublished>`, and the Changes view should say the same rather than show a whole tree as
-   untracked without comment.
+   untracked without comment. **RFC 029's Handoff B settles the default-focus half** (item 9); the Changes view's
+   words remain.
 9. **The prikk 0.42 re-baseline — [RFC 029](rfcs/accepted/029-prikk-0-42-rebaseline-and-the-current-branch.md),
    accepted; Q1 ruled (b).** Handoff A, the mechanical re-baseline, **landed on `main`** (`7417738`). Handoff B — stikk opens focused on
    prikk's current branch, names both refs on a confirmation when they differ, and falls back to the ref picker
-   when `heads/main` is not published — follows A and item 10.
-10. **A confirmed commit authors the worktree its preview showed — [RFC 030](rfcs/accepted/030-a-confirmed-commit-authors-the-worktree-it-previewed.md),
-    accepted 2026-09-13.** A worktree changed between commit's preview and its confirmation — one terminal `prikk branch switch`
-    is enough — is committed today with nothing on screen. Live against prikk 0.42, so it goes before item 9's
-    Handoff B. **Handoff v2** after its first review: prikk's rename declarations joined the comparison, and the
-    stale words now say whether the repository or the worktree changed.
+   when `heads/main` is not published — **is issued**, after item 10 landed.
+10. **A confirmed commit authors the worktree its preview showed — landed on `main`**
+    ([RFC 030](rfcs/done/030-a-confirmed-commit-authors-the-worktree-it-previewed.md); `1420e45`, `40321f7`). A worktree
+    changed between commit's preview and its confirmation — a terminal `prikk branch switch`, a file added, a
+    `prikk mv` — used to be committed with nothing on screen. stikk now re-reads what prikk reports about the
+    worktree before committing, prikk's current branch is part of the change token, and a stale confirmation
+    says whether the repository or the worktree changed. Ships in 0.7.0.
 11. **The commit preview does not show the rename a declaration authors** (prikk ≥ 0.38). Measured at 0.42 for
     RFC 030's amendment: after `prikk mv a.txt b.txt`, `worktree-status` lists `missing a.txt` and `untracked b.txt`,
     and `prikk commit` authors `rename-path a.txt -> b.txt`. stikk's preview shows the two paths and never the
     rename. RFC 030 v2 makes a declaration that changes after the preview stale; showing declarations at all is
     its own RFC.
+12. **`FR-106`'s passive notice is not wired.** `stikk_core::staleness_notice` exists and is tested, but nothing
+    calls it, so *"repository changed outside stikk — refreshed"* renders nowhere, and a change made in a terminal
+    is seen only at stikk's next Orientation read (on open, on `r`, or after a commit or seal). Found in RFC 030's
+    review. RFC 030 protects confirmations regardless.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

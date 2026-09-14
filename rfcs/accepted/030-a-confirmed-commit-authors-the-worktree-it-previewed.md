@@ -1,6 +1,8 @@
 # RFC 030 — A confirmed commit authors the worktree its preview showed
 
-**Status.** **Accepted by the project owner 2026-09-13.** Proposed the same day by the architect, from RFC 029 F7. Scheduled **before** RFC 029's Handoff B,
+**Status.** **Accepted by the project owner 2026-09-13.** Proposed the same day by the architect, from RFC 029 F7.
+**Amended 2026-09-15** by the architect after the handoff's first review (see *Amendments*): decision 3 widened to
+prikk's rename declarations, decision 5 gained a test, and decision 7 added. Scheduled **before** RFC 029's Handoff B,
 because the risk is live for anyone running stikk against prikk 0.42 today. No open question.
 **Tracks.** `OPL-02` (the change token), RFC 003 decision 3, RFC 013's confirm primitive, RFC 014, `FR-050`,
 `FR-052`, `T-T4`, RFC 029 F7 and F8.
@@ -47,7 +49,7 @@ the `status` report the token already reads**, so adding it costs no spawn.
 prikk's worktree report is path-level: kind, path, detail and authoring verdict, never a content digest.
 
 - **Detectable:** any change in which paths are listed, their kinds, or prikk's verdict — a branch switch, a
-  checkout, an added, deleted or reverted file.
+  checkout, an added, deleted or reverted file. *(Amended: and, once decision 3 compares them, prikk's rename declarations.)*
 - **Not detectable:** a further edit to a file already shown as `modified`. It stays `modified`, with the same path.
 - **And a window remains** between the re-read and `prikk commit` itself. prikk is the last authority, and it
   authors what is there.
@@ -64,7 +66,7 @@ compares **what prikk reports about the worktree**, not the pointer.
 1. **Orientation reads prikk's current branch** from the `status` report it already parses, as **three states
    kept distinct**:
    - **absent** — prikk < 0.42 prints no line;
-   - **unresolved** — prikk's `<unresolved; run prikk doctor>`, carried verbatim;
+   - **unresolved** — prikk's ``<unresolved; run `prikk doctor`>``, carried verbatim;
    - **a branch** — validated as a `RefName`.
 
    stikk never reads `.prikk/current-branch` itself. RFC 029's Handoff B builds its focus and header on this field.
@@ -87,9 +89,67 @@ compares **what prikk reports about the worktree**, not the pointer.
 6. **Breaking, inside 0.7.0**, which is unreleased and already breaking: the token's composition and Orientation's
    fields change.
 
+## Amendments — 2026-09-15, from the handoff's first review
+
+The dev team stopped at two points the handoff told them to stop at, and both were right.
+
+### A1 — decision 3 widened: prikk's rename declarations are part of what commit authors
+
+**Measured at prikk 0.42.0** by the architect, reproducing the dev team's suspicion:
+
+1. `a.txt` is sealed on `heads/main`. The shell runs `mv a.txt b.txt`.
+2. `worktree-status --format json` lists `missing a.txt` and `untracked b.txt`, with `"declarations": []`. This
+   is what a preview would show.
+3. Then `prikk mv a.txt b.txt` prints *"declared a.txt -> b.txt (already moved on disk; no bytes touched)"*.
+4. `worktree-status` lists **the identical `changes`**, and `"declarations"` now holds `a.txt -> b.txt`.
+5. `prikk commit` authors **`rename-path a.txt -> b.txt`**, one operation. The same tree committed without the
+   declaration authors two, measured separately: `delete-file a.txt` and `create-file b.txt` in prikk's output,
+   `delete-node` and `create-file` in its queue.
+
+**stikk reads no declarations** (`parse_json.rs`: *"`declarations` is not read"*), so a `ChangesView` comparison
+passes, and the commit authors an operation the preview never showed. **Decision 3 therefore compares prikk's
+rename declarations too:**
+
+- `WorktreeStatus` carries them — from the JSON `declarations` array at prikk ≥ 0.39, and from the `live rename
+  declarations:` prose section at 0.38;
+- below 0.38 the list is empty, **as a version fact**: `prikk mv` does not exist there, so none can be declared;
+- `ChangesView` carries them through, so equality covers them.
+
+**Showing declarations in the commit preview is not this RFC.** stikk's preview has never shown the rename a
+declaration makes `commit` author, race or no race. That is a separate display gap, carried to the roadmap for its
+own RFC.
+
+### A2 — decision 5 gains a test
+
+At prikk ≥ 0.38: the tree from A1's step 1 is previewed; `prikk mv` declares the rename; the test asserts
+`worktree_status`'s entries are **unchanged** and its declarations differ; confirmation → `Stale`; nothing is
+queued. **Below 0.38 the skip is announced.**
+
+### A3 — decision 7: the stale words say what changed, and name no writer
+
+The existing words — *"the repository changed since this was last previewed"* and *"Another writer moved something
+in this repository"* — are **not true of a worktree change** (`C-T2b`). Refs, tags and the queue did not move,
+and the writer is most often the user. *"Another writer"* is also doubtful for the causes decision 2 adds.
+
+**`StikkError::Stale` carries a cause**, because only the check that failed knows which it was:
+
+| Cause | Raised by | Headline, after the operation name | Gloss |
+|---|---|---|---|
+| **Repository** | the change-token comparison, in `confirm` and in `execute` | *the repository changed since this was last previewed.* | *Something in this repository changed between your preview and now: a branch or a tag, the queue, or, on prikk 0.42 and later, prikk's current branch. This is not a retry: previewing again re-reads the repository's current state, which is the only safe way forward.* |
+| **Worktree** | commit's worktree re-read (decision 3) | *the worktree changed since this was last previewed.* | *What prikk reports about the worktree no longer matches what this preview listed: a path was added or removed, a path's status or prikk's verdict on it changed, or its rename declarations changed. Nothing was committed. Previewing again shows what a commit would author now, which is the only safe way forward.* |
+
+- **The words live in `stikk-core`**, headline and gloss alike, so both frontends say the same thing. The TUI
+  renders them.
+- **A branch switch at ≥ 0.42 reads as Repository**, because the token check runs before the re-read. The
+  Repository gloss names prikk's current branch, so the words are true of it.
+- **The Display form** follows the cause: *"stale: {operation}'s preview no longer matches the repository"* or
+  *"… the worktree"*.
+- **Breaking, inside unreleased 0.7.0** (decision 6).
+
 ## Delivery
 
-**One handoff**, issued on acceptance, ahead of RFC 029's Handoff B.
+**One handoff**, issued on acceptance, ahead of RFC 029's Handoff B. **Reissued as v2** with the amendments
+above, after its first review.
 
 ## What this RFC does not do
 

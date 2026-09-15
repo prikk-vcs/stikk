@@ -353,24 +353,24 @@ fn at_80_columns_every_row_keeps_its_focus_queue_and_badges_whole() {
         assert_never_shortened(label, &text, focus, loaded);
     }
 
-    // Which steps fired for the unresolved row at 80: the hint went (1); no shortened default fits (2);
-    // so the segment went (3), and the repository name is still whole (4 did not fire).
-    let unresolved_80 = render_at(&focused_app(LONG_REPO, unresolved(), 3), 80);
-    assert!(!unresolved_80.contains(":palette"), "{unresolved_80:?}");
-    assert!(
-        !unresolved_80.contains("prikk's default"),
-        "{unresolved_80:?}"
-    );
-    assert!(unresolved_80.starts_with(LONG_REPO), "{unresolved_80:?}");
-    // The differing row sheds the same way at 80: even `prikk's default: …` needs 102 cells beside this
-    // name and a queue, so the segment goes, and the Orientation view is where `heads/dev` is shown.
+    // Which steps fired at 80 (review v2 §2): the hint went (1), the name was shortened to its narrowest (2),
+    // and prikk's default was shortened to fit (3). The segment stays (4 did not fire).
     let differing_80 = render_at(&focused_app(LONG_REPO, branch("heads/dev"), 3), 80);
-    assert!(!differing_80.contains(":palette"), "{differing_80:?}");
-    assert!(
-        !differing_80.contains("prikk's default"),
-        "{differing_80:?}"
+    assert_eq!(
+        differing_80.trim_end(),
+        "a…  ·  heads/main  ·  prikk's default: heads/…  ·  ●3 queued  ·  [AUT ?] [MNT ?]"
     );
-    assert!(differing_80.starts_with(LONG_REPO), "{differing_80:?}");
+    let unresolved_80 = render_at(&focused_app(LONG_REPO, unresolved(), 3), 80);
+    assert_eq!(
+        unresolved_80.trim_end(),
+        "a…  ·  heads/main  ·  prikk's default: <unres…  ·  ●3 queued  ·  [AUT ?] [MNT ?]"
+    );
+    // Equal has no default segment, and the name fits whole once the hint is gone (79 cells).
+    let equal_80 = render_at(&focused_app(LONG_REPO, branch("heads/main"), 3), 80);
+    assert_eq!(
+        equal_80.trim_end(),
+        "a-repository-name-that-is-long  ·  heads/main  ·  ●3 queued  ·  [AUT ?] [MNT ?]"
+    );
 }
 
 #[test]
@@ -424,61 +424,75 @@ fn at_40_columns_the_name_is_shed_to_one_character_and_what_cannot_fit_clips_at_
 
 #[test]
 fn the_line_sheds_in_order_one_step_at_a_time() {
-    // Widths for the unresolved row with a long name and a queue: name 30, focus 15, the default's label 22 and
-    // value 32, queue and badges 34, hint 27 — 160 in all.
+    // Widths for the unresolved row with a long name and a queue: name 30, focus 15, the default's label 22
+    // and value 32, queue and badges 34, hint 27 — 160 in all. The order is review v2 §2's.
     let app = focused_app(LONG_REPO, unresolved(), 3);
     let at = |width| {
         let text = render_at(&app, width);
         show(&format!("shedding, width {width}"), width, &text);
         assert_never_shortened("shedding", &text, "heads/main", true);
-        text
+        text.trim_end().to_string()
     };
 
     let nothing = at(160);
-    assert!(nothing.contains(":palette  ?:help  q:back"), "{nothing:?}");
+    assert!(nothing.ends_with(":palette  ?:help  q:back"), "{nothing:?}");
+    assert!(nothing.starts_with(LONG_REPO), "{nothing:?}");
     assert!(nothing.contains(UNRESOLVED), "{nothing:?}");
 
-    // 1. The hint goes first; prikk's text is still whole.
-    let hint_gone = at(150);
+    // 1. The hint goes first; the name and prikk's text are still whole.
+    let hint_gone = at(133);
     assert!(!hint_gone.contains(":palette"), "{hint_gone:?}");
+    assert!(hint_gone.starts_with(LONG_REPO), "{hint_gone:?}");
     assert!(
         hint_gone.contains(&format!("prikk's default: {UNRESOLVED}")),
         "{hint_gone:?}"
     );
 
-    // 2. Then prikk's default is shortened from its end, marked `…`; the name is untouched.
-    let shortened = at(120);
+    // 2. Then the repository name is shortened from its end; prikk's text is still whole.
+    let name_short = at(120);
     assert!(
-        shortened.contains("prikk's default: <unresolved"),
-        "{shortened:?}"
+        name_short.starts_with("a-repository-nam…  ·  heads/main"),
+        "{name_short:?}"
     );
-    assert!(shortened.contains("…"), "{shortened:?}");
-    assert!(!shortened.contains(UNRESOLVED), "{shortened:?}");
-    assert!(shortened.starts_with(LONG_REPO), "{shortened:?}");
-    // … down to `prikk's default: …` at exactly its narrowest.
-    let narrowest = at(102);
     assert!(
-        narrowest.contains("prikk's default: …  ·  ●3 queued"),
-        "{narrowest:?}"
+        name_short.contains(&format!("prikk's default: {UNRESOLVED}")),
+        "{name_short:?}"
     );
-
-    // 3. Then the segment goes; the name is still whole.
-    let segment_gone = at(101);
-    assert!(
-        !segment_gone.contains("prikk's default"),
-        "{segment_gone:?}"
-    );
-    assert!(segment_gone.starts_with(LONG_REPO), "{segment_gone:?}");
-
-    // 4. Last, the name is shortened from its end, down to one character.
-    let name_short = at(60);
-    assert!(!name_short.contains(LONG_REPO), "{name_short:?}");
-    assert!(name_short.starts_with("a-repo"), "{name_short:?}");
-    assert!(name_short.contains("…  ·  heads/main"), "{name_short:?}");
-    let name_shortest = at(51);
+    // … down to one character, still with prikk's text whole.
+    let name_shortest = at(105);
     assert!(
         name_shortest.starts_with("a…  ·  heads/main"),
         "{name_shortest:?}"
+    );
+    assert!(name_shortest.contains(UNRESOLVED), "{name_shortest:?}");
+
+    // 3. Then prikk's default is shortened from its end, marked `…`.
+    let default_short = at(90);
+    assert!(
+        default_short.starts_with("a…  ·  heads/main"),
+        "{default_short:?}"
+    );
+    assert!(
+        default_short.contains("prikk's default: <unresolved; run…"),
+        "{default_short:?}"
+    );
+    // … down to `prikk's default: …` at exactly its narrowest.
+    let default_narrowest = at(74);
+    assert_eq!(
+        default_narrowest,
+        "a…  ·  heads/main  ·  prikk's default: …  ·  ●3 queued  ·  [AUT ?] [MNT ?]"
+    );
+
+    // 4. Last, the segment goes.
+    let segment_gone = at(73);
+    assert_eq!(
+        segment_gone,
+        "a…  ·  heads/main  ·  ●3 queued  ·  [AUT ?] [MNT ?]"
+    );
+    let narrowest = at(51);
+    assert_eq!(
+        narrowest,
+        "a…  ·  heads/main  ·  ●3 queued  ·  [AUT ?] [MNT ?]"
     );
 }
 

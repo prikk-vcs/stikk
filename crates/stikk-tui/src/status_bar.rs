@@ -94,51 +94,48 @@ fn line(
 /// does not fit:
 ///
 /// 1. drop the key hint;
-/// 2. shorten prikk's default from its end, marked with `…`, down to `prikk's default: …`;
-/// 3. drop the `prikk's default` segment, separator included;
-/// 4. shorten the repository name from its end, marked with `…`, down to one character and `…`.
+/// 2. shorten the repository name from its end, marked with `…`, down to one character and `…` — the
+///    header already shows the name, so it is the first thing worth giving up (review v2 §2);
+/// 3. shorten prikk's default from its end, marked with `…`, down to `prikk's default: …`;
+/// 4. drop the `prikk's default` segment, separator included.
 ///
 /// **Never shortened:** the focus (or `no ref focused`), `(loading)`/`(error)`, `●n queued`, every badge,
 /// and `⟳ n` — `[MNT ?]` must never go missing (`C-T2c′`, `FR-104`). Beyond step 4 the line clips at the
 /// right edge, as it always did. Widths are cells ([`Line::width`]), not bytes or chars, because `inert` can
 /// emit wide characters; shortening cuts on a character boundary and then measures.
 fn fit(parts: &Parts, palette: &Palette, width: usize) -> Line<'static> {
-    let full = line(parts, palette, &parts.repo, parts.default.as_deref(), true);
+    let default = parts.default.as_deref();
+    let full = line(parts, palette, &parts.repo, default, true);
     if full.width() <= width {
         return full;
     }
     // 1. The key hint.
-    let without_hint = line(parts, palette, &parts.repo, parts.default.as_deref(), false);
+    let without_hint = line(parts, palette, &parts.repo, default, false);
     if without_hint.width() <= width {
         return without_hint;
     }
-    // 2. prikk's default, shortened from its end.
-    if let Some(value) = &parts.default {
+    // 2. The repository name, shortened from its end, down to one character.
+    let repo_chars: Vec<char> = parts.repo.chars().collect();
+    let mut repo = parts.repo.clone();
+    for keep in (1..repo_chars.len()).rev() {
+        repo = shortened(&repo_chars, keep);
+        let candidate = line(parts, palette, &repo, default, false);
+        if candidate.width() <= width {
+            return candidate;
+        }
+    }
+    // 3. prikk's default, shortened from its end.
+    if let Some(value) = default {
         let chars: Vec<char> = value.chars().collect();
         for keep in (0..chars.len()).rev() {
-            let short = shortened(&chars, keep);
-            let candidate = line(parts, palette, &parts.repo, Some(&short), false);
+            let candidate = line(parts, palette, &repo, Some(&shortened(&chars, keep)), false);
             if candidate.width() <= width {
                 return candidate;
             }
         }
     }
-    // 3. The whole segment.
-    let without_default = line(parts, palette, &parts.repo, None, false);
-    if without_default.width() <= width {
-        return without_default;
-    }
-    // 4. The repository name, shortened from its end, down to one character.
-    let chars: Vec<char> = parts.repo.chars().collect();
-    let mut last = without_default;
-    for keep in (1..chars.len()).rev() {
-        last = line(parts, palette, &shortened(&chars, keep), None, false);
-        if last.width() <= width {
-            return last;
-        }
-    }
-    // Past every step: clips at the right edge, as it always did.
-    last
+    // 4. The whole segment. Past this the line clips at the right edge, as it always did.
+    line(parts, palette, &repo, None, false)
 }
 
 /// The first `keep` characters of `chars`, marked as shortened.

@@ -240,7 +240,8 @@ a fabricated worktree entry was fixed.
 
 ## Next — carried into 0.8.0, in order
 
-1. **`FR-106`'s passive notice is not wired.** `stikk_core::staleness_notice` exists and is tested, but nothing
+1. **`FR-106`'s passive notice is not wired** — [RFC 031](rfcs/proposed/031-seeing-a-change-made-outside-stikk.md),
+   proposed; Q1 (when stikk looks) and Q2 (an open confirmation) are the owner's. `stikk_core::staleness_notice` exists and is tested, but nothing
    calls it, so *"repository changed outside stikk — refreshed"* renders nowhere, and a change made in a terminal
    is seen only at stikk's next Orientation read (on open, on `r`, or after a commit or seal). Found in RFC 030's
    review. RFC 030 protects confirmations regardless.
@@ -268,6 +269,15 @@ a fabricated worktree entry was fixed.
    over every shipped crate would let the sentence say *enforced by test* without a qualifier.
 8. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
+9. **The prikk 0.43.0 re-baseline — when prikk publishes it.** prikk's reply 013 to letter 012: at 0.42 a refused
+   `checkout --patch-materialize` writes files before refusing and leaves prikk's worktree-dirty marker set, and the
+   **next `prikk commit` refuses** with `integrity error: worktree materialization was interrupted …` — which stikk
+   presents as an integrity finding, though nothing is corrupt. **0.43.0 plans every write before the first**, makes
+   those refusals `precondition not met:`, and **reports the marker** in a `status` line, an additive
+   `status-report-v1` field and a `doctor` finding. So: Orientation (prose `status`) and the Queue reader
+   (`status-report-v1`) re-verify against 0.43, stikk shows a checkout that stopped part-way, and the 0.42 refusal
+   gets a gloss with the way out prikk measured (re-run the checkout, or `branch switch`, for the current branch —
+   and move the stray files aside before committing). **Measure each on the binary before relying on it.**
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

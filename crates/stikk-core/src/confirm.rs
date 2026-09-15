@@ -130,9 +130,18 @@ pub enum FrozenPatches {
 /// The line a seal confirmation shows when it cannot hold every patch row (Handoff B §3): `unshown` is
 /// exactly the rows not shown, and `total` the queue's patches. The frontend decides only how many rows
 /// fit, never what this says.
+///
+/// **A fact, and no key** (review v1 §2.1). `Esc` cancels the seal, so telling a maintainer to press it
+/// mid-ceremony would quietly send them out of a signing flow; the line says where the rest can be seen,
+/// and leaves the choice to them. When no row fits, `and {total} more` beneath nothing would read wrong, so
+/// that case has its own words.
 #[must_use]
 pub fn unshown_patches_line(unshown: usize, total: usize) -> String {
-    format!("and {unshown} more — Esc, then Q, lists all {total}")
+    if unshown >= total {
+        format!("none shown here — the Queue view lists all {total}")
+    } else {
+        format!("and {unshown} more not shown — the Queue view lists all {total}")
+    }
 }
 
 /// How firmly a confirmation may state the signing key id (RFC 026 §5).

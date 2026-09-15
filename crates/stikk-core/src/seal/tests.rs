@@ -486,10 +486,10 @@ fn missing_target_metadata_does_not_block_and_prikk_decides() {
 fn the_remainder_lines_words_are_exact() {
     assert_eq!(
         crate::confirm::unshown_patches_line(9, 12),
-        "and 9 more — Esc, then Q, lists all 12"
+        "and 9 more not shown — the Queue view lists all 12"
     );
     assert_eq!(
         crate::confirm::unshown_patches_line(12, 12),
-        "and 12 more — Esc, then Q, lists all 12"
+        "none shown here — the Queue view lists all 12"
     );
 }

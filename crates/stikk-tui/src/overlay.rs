@@ -1162,15 +1162,17 @@ fn frozen_lines(
     available: usize,
     palette: &Palette,
 ) -> Vec<Line<'static>> {
-    // A row that fits is drawn exactly as core wrote it: `wrap_indented` joins words with single spaces,
-    // which would turn core's `{short id}  {message}` into one space. Only a row too wide for the card is
-    // wrapped — and either way the rows are counted as drawn, so the fit stays exact.
+    // A row that fits is drawn exactly as core wrote it: wrapping joins words with single spaces, which
+    // would turn core's `{short id}  {message}` into one space. Only a row too wide for the card is wrapped
+    // — and either way the rows are counted as drawn, so the fit stays exact. **Widths are cells** (review
+    // v1 §2.2): a message in a wide script is two cells a character, and counting characters would call a
+    // row fitting that draws past the card, so the rows drawn would stop matching the rows counted.
     let wrap = |text: &str| {
         let text = inert(text);
-        if text.chars().count() + 4 <= PANEL_TEXT_WIDTH {
+        if Span::raw(text.as_str()).width() + 4 <= PANEL_TEXT_WIDTH {
             vec![format!("    {text}")]
         } else {
-            wrap_indented(&text, PANEL_TEXT_WIDTH, "    ")
+            wrap_cells(&text, PANEL_TEXT_WIDTH, "    ")
         }
     };
     let styled = |rows: Vec<String>, style: Style| -> Vec<Line<'static>> {
@@ -1219,6 +1221,60 @@ fn frozen_lines(
         out.extend(styled(foot_rows, Style::default().fg(palette.dim)));
     }
     out
+}
+
+/// `text` wrapped to `width` terminal **cells**, every row prefixed with `indent` (RFC 028 B review v1 §2.2).
+///
+/// `wrap_indented` counts characters, which is exact for the Latin text and box characters most of stikk
+/// renders, and wrong for a seal row whose message is in a wide script. Here words are kept whole where
+/// they fit, a word wider than a line is split between characters, and a character wider than the whole
+/// line still takes a row of its own rather than looping. Returns at least one row.
+fn wrap_cells(text: &str, width: usize, indent: &str) -> Vec<String> {
+    let cells = |s: &str| Span::raw(s).width();
+    let available = width.saturating_sub(cells(indent)).max(1);
+    let mut rows = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        let mut word = word;
+        while cells(word) > available {
+            if !current.is_empty() {
+                rows.push(format!("{indent}{current}"));
+                current.clear();
+            }
+            let mut split_at = word.len();
+            let mut head_cells = 0;
+            for (index, ch) in word.char_indices() {
+                let ch_cells = Span::raw(ch.encode_utf8(&mut [0; 4]).to_string()).width();
+                if head_cells + ch_cells > available && index > 0 {
+                    split_at = index;
+                    break;
+                }
+                head_cells += ch_cells;
+            }
+            rows.push(format!("{indent}{}", &word[..split_at]));
+            word = &word[split_at..];
+        }
+        if word.is_empty() {
+            continue;
+        }
+        let joined = if current.is_empty() {
+            cells(word)
+        } else {
+            cells(&current) + 1 + cells(word)
+        };
+        if joined > available && !current.is_empty() {
+            rows.push(format!("{indent}{current}"));
+            current.clear();
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() || rows.is_empty() {
+        rows.push(format!("{indent}{current}"));
+    }
+    rows
 }
 
 /// `FL-05` step 2: the commit message prompt, required non-empty (`UD-01`) — its own step, before any

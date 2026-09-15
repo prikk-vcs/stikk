@@ -2223,14 +2223,15 @@ fn seal_card(freezes: stikk_core::FrozenPatches, count: u64) -> Overlay {
 fn shown_and_unshown(text: &str) -> (usize, Option<usize>) {
     let shown = text
         .lines()
-        .filter(|line| line.contains("00000000000  patch "))
+        .filter(|line| line.contains("00000000000  "))
         .count();
     let unshown = text.lines().find_map(|line| {
+        if line.contains("none shown here — the Queue view lists all 12") {
+            return Some(12);
+        }
         let rest = line.split("and ").nth(1)?;
-        let (m, tail) = rest.split_once(" more — Esc, then Q, lists all ")?;
-        tail.trim_start()
-            .starts_with("12")
-            .then(|| m.parse().ok())?
+        let (m, _) = rest.split_once(" more not shown — the Queue view lists all 12")?;
+        m.parse().ok()
     });
     (shown, unshown)
 }
@@ -2293,7 +2294,7 @@ fn at_80x50_every_patch_row_shows_and_there_is_no_remainder() {
     println!("--- seal confirmation, twelve patches, 80×50\n{text}");
     assert_nothing_but_the_list_yields("80×50", &text);
     assert_eq!(shown_and_unshown(&text), (12, None), "{text}");
-    assert!(!text.contains("more — Esc"), "{text}");
+    assert!(!text.contains("the Queue view lists all"), "{text}");
 }
 
 #[test]
@@ -2363,10 +2364,74 @@ fn at_the_smallest_height_with_nothing_clipped_the_list_is_the_remainder_line_al
     assert_nothing_but_the_list_yields("smallest", &text);
     assert_eq!(shown_and_unshown(&text), (0, Some(12)), "{text}");
     assert!(
-        text.contains("and 12 more — Esc, then Q, lists all 12"),
+        text.contains("none shown here — the Queue view lists all 12"),
         "{text}"
     );
     // One row fewer, and the card has to clip prose — so this is the smallest.
     let below = draw_at(&overlay, 80, smallest - 1);
     assert!(below.contains(" — lines "), "80×{}:\n{below}", smallest - 1);
+}
+
+/// Review v1 §2.2: rows are measured in cells. Twelve patches whose messages are in a wide script — two cells
+/// a character — some long enough to wrap: the rows drawn must be the rows counted, so `{m}` stays exact.
+#[test]
+fn wide_character_rows_are_measured_in_cells_and_the_remainder_count_stays_exact() {
+    let rows: Vec<String> = (1..=12)
+        .map(|i| {
+            let short = format!("{i:x}{}", "0".repeat(11));
+            // Odd patches: 36 wide characters, 72 cells — wider than the card, so the row wraps.
+            let message = if i % 2 == 1 {
+                "封印する変更".repeat(6)
+            } else {
+                "変更".to_string()
+            };
+            format!("{short}  {message}")
+        })
+        .collect();
+    let overlay = seal_card(
+        stikk_core::FrozenPatches::Listed {
+            rows: rows.clone(),
+            foot: None,
+        },
+        12,
+    );
+    let text = draw_at(&overlay, 80, 24);
+    let (shown, unshown) = shown_and_unshown(&text);
+    println!(
+        "--- seal confirmation, twelve wide-character patches, 80×24: {shown} row(s) shown, remainder m = {unshown:?}\n{text}"
+    );
+    assert_nothing_but_the_list_yields("wide", &text);
+    assert!(shown < 12, "{text}");
+    assert_eq!(unshown, Some(12 - shown), "{text}");
+    // Every shown row is whole on screen — nothing drawn past the card, where it would be clipped. The
+    // buffer pads each wide character's second cell, so compare with all whitespace removed.
+    let screen: String = text
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '│')
+        .collect();
+    for row in rows.iter().take(shown) {
+        let row: String = row.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(screen.contains(&row), "row {row:?} is not whole:\n{text}");
+    }
+    // Every card row still ends at the card's right border: nothing ran past it.
+    let right = text
+        .lines()
+        .find(|line| line.contains("┌ Confirm"))
+        .and_then(|line| {
+            line.chars()
+                .collect::<Vec<_>>()
+                .iter()
+                .rposition(|c| *c == '┐')
+        })
+        .expect("the card's top border");
+    for line in text.lines().filter(|line| line.contains('│')) {
+        assert_eq!(
+            line.chars()
+                .collect::<Vec<_>>()
+                .iter()
+                .rposition(|c| *c == '│'),
+            Some(right),
+            "a row ran past the card:\n{text}"
+        );
+    }
 }

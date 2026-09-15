@@ -108,6 +108,9 @@ pub enum Screen {
     },
     /// A single block's detail.
     BlockDetail {
+        /// The ref this block's detail was read for. A refresh re-reads this ref, never the focused one,
+        /// which the ref picker can have moved since (RFC 031 review v1 §2.2).
+        reff: String,
         /// The loaded detail.
         view: BlockDetailView,
         /// The `seq` of an in-flight refresh, if any (RFC 031 §7). Only the tip's detail is ever
@@ -382,11 +385,12 @@ impl App {
     pub fn reload(&mut self) {
         self.banner = None;
         self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
-        // The top screen refreshes in place, its view visible while the read runs (RFC 010 §5). A
-        // History screen exists only for a focused ref, so `focused_ref` finds one whenever it matters.
+        // The top screen refreshes in place, its view visible while the read runs (RFC 010 §5). Every
+        // in-place refresh re-reads the ref its screen shows, never the focused ref: the ref picker can
+        // push another ref's History above this screen and leave focus there (RFC 031 review v1 §2.2).
         let request = match self.screens.last() {
-            Some(Screen::History { .. }) => self.focused_ref().map(|reff| RequestKind::History {
-                reff: reff.to_string(),
+            Some(Screen::History { view, .. }) => Some(RequestKind::History {
+                reff: view.reff.clone(),
             }),
             Some(Screen::Queue { .. }) => Some(RequestKind::Queue),
             // RFC 031 §7: Changes re-reads the ref it shows.
@@ -394,9 +398,9 @@ impl App {
                 reff: view.reff.clone(),
             }),
             // RFC 031 §7: only the tip's detail can change.
-            Some(Screen::BlockDetail { view, .. }) if view.is_tip => {
-                self.focused_ref().map(|reff| RequestKind::BlockState {
-                    reff: reff.to_string(),
+            Some(Screen::BlockDetail { reff, view, .. }) if view.is_tip => {
+                Some(RequestKind::BlockState {
+                    reff: reff.clone(),
                     row: view.row.clone(),
                     is_tip: true,
                 })
@@ -490,21 +494,30 @@ impl App {
     }
 
     /// RFC 031 Q2 (b): an armed confirmation open when a repository change is detected is replaced at once
-    /// by the stale overlay, cause *Repository*, built through `present()` so the words are RFC 030's. The
-    /// pending flows are cleared as [`Self::back`] clears them, so nothing stays armed. A `CommitMessage`
-    /// is not armed (no preview exists yet) and is left open.
+    /// by the stale overlay, cause *Repository*, built through `present()` so the words are RFC 030's.
+    ///
+    /// **Searched through the whole overlay stack, not just its top** (review v1 §2.1): over a tier-2 or
+    /// untyped tier-3 card, `?`, `:`, `o` and `R` open their overlays on top of it, and that card would
+    /// otherwise stay armed one Esc away. The armed overlay and **every overlay above it** are removed, since
+    /// they were opened over a flow that no longer exists. The pending flows are cleared as [`Self::back`]
+    /// clears them, so nothing stays armed. A `CommitMessage` is not armed (no preview exists yet) and is
+    /// left open.
     fn stale_armed_confirmation(&mut self) {
-        let (operation, context) = match self.overlays.last() {
-            Some(Overlay::Confirmation { .. }) if self.pending_commit.is_some() => {
-                (COMMIT_OPERATION, OperationContext::Commit)
-            }
-            Some(Overlay::Confirmation { .. }) if self.pending_seal.is_some() => {
-                (SEAL_OPERATION, OperationContext::Other)
-            }
-            Some(Overlay::SealConsent { .. }) => (SEAL_OPERATION, OperationContext::Other),
-            _ => return,
+        let (commit, seal) = (self.pending_commit.is_some(), self.pending_seal.is_some());
+        let armed = |overlay: &Overlay| match overlay {
+            Overlay::Confirmation { .. } => commit || seal,
+            Overlay::SealConsent { .. } => true,
+            _ => false,
         };
-        self.overlays.pop();
+        let Some(index) = self.overlays.iter().rposition(armed) else {
+            return;
+        };
+        let (operation, context) = if commit {
+            (COMMIT_OPERATION, OperationContext::Commit)
+        } else {
+            (SEAL_OPERATION, OperationContext::Other)
+        };
+        self.overlays.truncate(index);
         self.pending_commit = None;
         self.pending_seal = None;
         let stale = StikkError::Stale {
@@ -815,9 +828,9 @@ impl App {
         match self.screens.last() {
             Some(Screen::History { view, cursor, .. }) => {
                 let cursor = *cursor;
-                if let Some(row) = view.blocks.get(cursor).cloned()
-                    && let Some(reff) = self.focused_ref().map(str::to_string)
-                {
+                if let Some(row) = view.blocks.get(cursor).cloned() {
+                    // The ref this History shows, which the focused ref need not be (§ `reload`).
+                    let reff = view.reff.clone();
                     let is_tip = cursor == 0;
                     let seq = self.dispatch(RequestKind::BlockState { reff, row, is_tip });
                     self.screens.push(Screen::Loading {
@@ -1066,7 +1079,7 @@ impl App {
             ResponseKind::ChangeCheck(r) => r.is_ok(),
             ResponseKind::Orient(r) => r.view.is_ok(),
             ResponseKind::History(r) => r.is_ok(),
-            ResponseKind::BlockState(r) => r.is_ok(),
+            ResponseKind::BlockState { result, .. } => result.is_ok(),
             ResponseKind::Refs(r) => r.is_ok(),
             ResponseKind::Changes(r) => r.is_ok(),
             ResponseKind::Queue(r) => r.is_ok(),
@@ -1081,7 +1094,7 @@ impl App {
             ResponseKind::ChangeCheck(result) => self.apply_change_check(seq, result),
             ResponseKind::Orient(read) => self.apply_orient(seq, read),
             ResponseKind::History(result) => self.apply_history(seq, result),
-            ResponseKind::BlockState(result) => self.apply_block_state(seq, result),
+            ResponseKind::BlockState { reff, result } => self.apply_block_state(seq, reff, result),
             ResponseKind::Refs(result) => self.apply_refs(seq, result),
             ResponseKind::Changes(result) => self.apply_changes(seq, result),
             ResponseKind::Queue(result) => self.apply_queue(seq, result),
@@ -1198,7 +1211,12 @@ impl App {
         // Else: no matching slot anywhere — stale, discard.
     }
 
-    fn apply_block_state(&mut self, seq: u64, result: stikk_model::Result<BlockDetailView>) {
+    fn apply_block_state(
+        &mut self,
+        seq: u64,
+        reff: String,
+        result: stikk_model::Result<BlockDetailView>,
+    ) {
         // RFC 031 §7: an in-place refresh of the tip's detail, which stays visible on error.
         let is_top_refresh = matches!(
             self.screens.last(),
@@ -1227,6 +1245,7 @@ impl App {
                 Ok(detail) => {
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::BlockDetail {
+                            reff,
                             view: detail,
                             refreshing: None,
                         };

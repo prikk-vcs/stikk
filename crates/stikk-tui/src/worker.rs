@@ -117,8 +117,12 @@ pub(crate) enum ResponseKind {
     ChangeCheck(Result<ChangeToken>),
     /// Answers [`RequestKind::History`].
     History(Result<HistoryView>),
-    /// Answers [`RequestKind::BlockState`].
-    BlockState(Result<BlockDetailView>),
+    /// Answers [`RequestKind::BlockState`], echoing the ref it was read for, so the screen it fills names
+    /// that ref and a later refresh re-reads it (RFC 031 review v1 §2.2).
+    BlockState {
+        reff: String,
+        result: Result<BlockDetailView>,
+    },
     /// Answers [`RequestKind::Refs`].
     Refs(Result<Vec<RefEntry>>),
     /// Answers [`RequestKind::Queue`].
@@ -213,7 +217,8 @@ pub(crate) fn run(
                 ResponseKind::History(history_view(prikk, repo, &reff, HISTORY_LIMIT))
             }
             RequestKind::BlockState { reff, row, is_tip } => {
-                ResponseKind::BlockState(block_detail(prikk, repo, &reff, row, is_tip))
+                let result = block_detail(prikk, repo, &reff, row, is_tip);
+                ResponseKind::BlockState { reff, result }
             }
             RequestKind::Refs => ResponseKind::Refs(list_refs(prikk, repo)),
             RequestKind::Queue => ResponseKind::Queue(queue_view(prikk, repo)),

@@ -9,7 +9,7 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 | Crate | Change |
 |---|---|
 | `stikk-tui` | `Screen::Changes` gains a `refreshing: Option<u64>` field (RFC 031 §7). Struct-literal construction, and a pattern naming every field without `..`, no longer compile. |
-| `stikk-tui` | `Screen::BlockDetail(BlockDetailView)` becomes `Screen::BlockDetail { view, refreshing }` (RFC 031 §7). Construction and any pattern on the tuple form no longer compile. |
+| `stikk-tui` | `Screen::BlockDetail(BlockDetailView)` becomes `Screen::BlockDetail { reff, view, refreshing }` (RFC 031 §7). `reff` names the ref the detail was read for, which a refresh re-reads. Construction and any pattern on the tuple form no longer compile. |
 
 ### Added
 
@@ -26,6 +26,8 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 - **`r` refreshes the Changes view, and the tip's Block detail, in place** (RFC 031 §7). Both stay visible while
   the read runs; Changes keeps its untracked filter. An older block's detail cannot change and is not re-read.
+- **A refresh re-reads the ref its screen shows**, not the focused ref: History and Block detail opened for one ref
+  stay that ref's after the ref picker moves focus (RFC 031).
 
 ## 0.7.0 — 2026-09-15
 

@@ -418,7 +418,10 @@ fn select_from_orientation_opens_history_then_a_block() {
     };
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::BlockState(Ok(detail)),
+        kind: ResponseKind::BlockState {
+            reff: "heads/main".into(),
+            result: Ok(detail),
+        },
     });
     match app.focus() {
         Focus::BlockDetail(detail) => {
@@ -456,7 +459,10 @@ fn nav_down_then_select_opens_a_non_tip_block_without_state() {
     };
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::BlockState(Ok(detail)),
+        kind: ResponseKind::BlockState {
+            reff: "heads/main".into(),
+            result: Ok(detail),
+        },
     });
     match app.focus() {
         Focus::BlockDetail(detail) => {

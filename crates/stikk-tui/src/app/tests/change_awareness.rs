@@ -613,6 +613,7 @@ fn a_failed_changes_refresh_keeps_the_view_and_surfaces_the_error() {
 
 fn block_detail_screen(is_tip: bool) -> Screen {
     Screen::BlockDetail {
+        reff: "heads/main".into(),
         view: BlockDetailView {
             row: block("bbbb", 2),
             is_tip,
@@ -642,15 +643,18 @@ fn r_refreshes_the_tips_block_detail_in_place() {
 
     app.apply(Response {
         seq: requests[1].seq,
-        kind: ResponseKind::BlockState(Ok(BlockDetailView {
-            row: block("cccc", 3),
-            is_tip: true,
-            state: None,
-        })),
+        kind: ResponseKind::BlockState {
+            reff: "heads/main".into(),
+            result: Ok(BlockDetailView {
+                row: block("cccc", 3),
+                is_tip: true,
+                state: None,
+            }),
+        },
     });
     assert!(matches!(
         app.screens.last(),
-        Some(Screen::BlockDetail { view, refreshing: None }) if view.row.block_id == "cccc"
+        Some(Screen::BlockDetail { view, refreshing: None, .. }) if view.row.block_id == "cccc"
     ));
 }
 
@@ -668,5 +672,196 @@ fn r_leaves_an_older_blocks_detail_as_it_is() {
             refreshing: None,
             ..
         })
+    ));
+}
+
+// Review v1 §2.1: an armed confirmation beneath another overlay.
+#[test]
+fn a_change_finds_a_commit_confirmation_beneath_the_glossary_and_clears_everything_above_it() {
+    let (mut app, rx) = with_commit_confirmation(token(1));
+    app.open_glossary();
+    assert!(matches!(app.top_overlay(), Some(Overlay::Glossary { .. })));
+
+    app.focus_gained(Instant::now());
+    let seq = sent_check(&rx);
+    answer_check(&mut app, seq, Ok(token(2)));
+
+    match app.top_overlay() {
+        Some(Overlay::Stale {
+            operation, cause, ..
+        }) => {
+            assert_eq!(operation, "commit");
+            assert_eq!(*cause, StaleCause::Repository);
+        }
+        other => panic!("expected the stale overlay on top, got {other:?}"),
+    }
+    assert_eq!(
+        app.overlays.len(),
+        1,
+        "no Confirmation or Glossary beneath it"
+    );
+    assert!(app.pending_commit.is_none(), "nothing stays armed");
+    let requests = drain(&rx);
+    assert_refreshed_with_notice(&app, &requests);
+}
+
+#[test]
+fn a_change_finds_seals_consent_step_beneath_the_palette_and_clears_everything_above_it() {
+    let (mut app, rx) = stamped(maintainer_orientation_view(1, Some("heads/main")), token(1));
+    app.begin_seal();
+    let preview_req = next_request(&rx);
+    let outcome = seal_preview(&seal_backend(), Path::new("/repo"), "heads/main").unwrap();
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SealPreview(Ok(outcome)),
+    });
+    app.select(); // -> SealConsent
+    app.open_palette();
+    assert!(matches!(app.top_overlay(), Some(Overlay::Palette { .. })));
+    assert!(app.pending_seal.is_some());
+
+    app.focus_gained(Instant::now());
+    let seq = sent_check(&rx);
+    answer_check(&mut app, seq, Ok(token(2)));
+
+    match app.top_overlay() {
+        Some(Overlay::Stale {
+            operation, cause, ..
+        }) => {
+            assert_eq!(operation, "seal");
+            assert_eq!(*cause, StaleCause::Repository);
+        }
+        other => panic!("expected the stale overlay on top, got {other:?}"),
+    }
+    assert_eq!(
+        app.overlays.len(),
+        1,
+        "no SealConsent or palette beneath it"
+    );
+    assert!(app.pending_seal.is_none(), "nothing stays armed");
+    let requests = drain(&rx);
+    assert_refreshed_with_notice(&app, &requests);
+}
+
+// Review v1 §2.2: a refresh re-reads the ref its screen shows, not the focused ref.
+
+fn history_for(reff: &str, blocks: Vec<BlockRow>) -> HistoryView {
+    HistoryView {
+        reff: reff.into(),
+        queued: 0,
+        queued_target: None,
+        blocks,
+    }
+}
+
+fn tip_detail(reff: &str, id: &str, seq: u64) -> ResponseKind {
+    ResponseKind::BlockState {
+        reff: reff.into(),
+        result: Ok(BlockDetailView {
+            row: block(id, seq),
+            is_tip: true,
+            state: None,
+        }),
+    }
+}
+
+/// History for `heads/main`, then drill into its tip: Block detail on top.
+fn main_tip_detail_on_top(app: &mut App, rx: &mpsc::Receiver<Request>) {
+    app.open_history();
+    let req = next_request(rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::History(Ok(two_block_history())),
+    });
+    app.select();
+    let block_req = next_request(rx);
+    assert!(
+        matches!(&block_req.kind, RequestKind::BlockState { reff, .. } if reff == "heads/main")
+    );
+    app.apply(Response {
+        seq: block_req.seq,
+        kind: tip_detail("heads/main", "bbbb", 2),
+    });
+    assert!(matches!(app.focus(), Focus::BlockDetail(_)));
+}
+
+/// `b`, pick `heads/dev`: its History is pushed above whatever is on top, and focus moves to it.
+fn pick_dev_above(app: &mut App, rx: &mpsc::Receiver<Request>) {
+    app.open_ref_picker();
+    let refs_req = next_request(rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(vec![ref_entry("heads/dev"), ref_entry("heads/main")])),
+    });
+    app.nav_up(); // the picker opens on the focused ref, heads/main; up to heads/dev
+    app.select();
+    assert_eq!(app.focused_ref(), Some("heads/dev"));
+    let dev_req = next_request(rx);
+    assert!(matches!(&dev_req.kind, RequestKind::History { reff } if reff == "heads/dev"));
+    app.apply(Response {
+        seq: dev_req.seq,
+        kind: ResponseKind::History(Ok(history_for("heads/dev", vec![block("dddd", 7)]))),
+    });
+}
+
+#[test]
+fn a_tip_block_detail_refresh_rereads_its_own_ref_after_focus_moved() {
+    let (mut app, rx) = stamped(orientation_view(0, None, None), token(1));
+    main_tip_detail_on_top(&mut app, &rx); // 1
+    pick_dev_above(&mut app, &rx); // 2
+    app.back(); // 3: heads/main's tip detail is back on top, focus still heads/dev
+    assert!(matches!(app.focus(), Focus::BlockDetail(view) if view.row.block_id == "bbbb"));
+    assert_eq!(app.focused_ref(), Some("heads/dev"));
+
+    app.reload(); // 4
+    let requests = drain(&rx);
+    assert_eq!(requests.len(), 2);
+    match &requests[1].kind {
+        RequestKind::BlockState { reff, row, is_tip } => {
+            assert_eq!(
+                reff, "heads/main",
+                "the ref the screen shows, not the focused ref"
+            );
+            assert_eq!(row.block_id, "bbbb");
+            assert!(*is_tip);
+        }
+        other => panic!("expected a BlockState request, got {other:?}"),
+    }
+    app.apply(Response {
+        seq: requests[1].seq,
+        kind: tip_detail("heads/main", "bbbb", 2),
+    });
+    assert!(matches!(
+        app.screens.last(),
+        Some(Screen::BlockDetail { reff, view, refreshing: None })
+            if reff == "heads/main" && view.row.block_id == "bbbb"
+    ));
+}
+
+#[test]
+fn a_history_refresh_rereads_its_own_ref_after_focus_moved() {
+    let (mut app, rx) = stamped(orientation_view(0, None, None), token(1));
+    main_tip_detail_on_top(&mut app, &rx);
+    pick_dev_above(&mut app, &rx);
+    app.back(); // heads/main's Block detail
+    app.back(); // heads/main's History, focus still heads/dev
+    assert!(matches!(app.focus(), Focus::History(view, _) if view.reff == "heads/main"));
+    assert_eq!(app.focused_ref(), Some("heads/dev"));
+
+    app.reload();
+    let requests = drain(&rx);
+    assert_eq!(requests.len(), 2);
+    assert!(
+        matches!(&requests[1].kind, RequestKind::History { reff } if reff == "heads/main"),
+        "the ref the screen shows, not the focused ref: {:?}",
+        requests[1].kind
+    );
+    app.apply(Response {
+        seq: requests[1].seq,
+        kind: ResponseKind::History(Ok(history_for("heads/main", vec![block("eeee", 3)]))),
+    });
+    assert!(matches!(
+        app.focus(),
+        Focus::History(view, _) if view.reff == "heads/main" && view.blocks[0].block_id == "eeee"
     ));
 }

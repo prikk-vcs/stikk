@@ -1021,6 +1021,13 @@ fn render_confirmation(
         )));
         lines.push(Line::from(""));
     }
+    // RFC 028 decision 4: what the seal freezes goes directly under the counts line. It is spliced in last,
+    // once everything it must never displace has been laid out (Handoff B §4).
+    let frozen_at = if summary.counts.is_empty() {
+        lines.len()
+    } else {
+        lines.len() - 1
+    };
 
     lines.push(Line::from(Span::styled(
         format!("  Consumes: {}", capability_label(summary.capability)),
@@ -1118,6 +1125,17 @@ fn render_confirmation(
         }
     }
 
+    // **The list is the one part of this card that gives up height** (RFC 028 Handoff B §4). Exact, not
+    // estimated: `Panel` draws `area.height − 2 − actions` prose rows when the card does not fit, and every
+    // line above is already wrapped, so what remains for the list is a count. The consequence, its
+    // trust-refusal warning and the affordances are laid out first and never displaced.
+    if let Some(freezes) = &summary.freezes {
+        let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(actions.len());
+        let available = prose_rows.saturating_sub(lines.len());
+        let list = frozen_lines(freezes, available, palette);
+        lines.splice(frozen_at..frozen_at, list);
+    }
+
     Panel {
         title: " Confirm ",
         width: CONFIRM_WIDTH,
@@ -1126,6 +1144,81 @@ fn render_confirmation(
         style: Style::default().fg(palette.warn),
     }
     .render(frame, area);
+}
+
+/// The rows naming what a seal freezes, fitted to `available` rows (RFC 028 Handoff B §4), in core's words.
+///
+/// - **Every row fits:** every row, then the foot if any.
+/// - **Otherwise:** as many rows as fit with room kept for the remainder line, then that line — its count
+///   exactly the rows not shown — then the foot, **kept whole before any patch row is given up**, since it
+///   says what the rows cannot.
+/// - **Not even one row and the remainder fit:** the remainder line alone (`and {n} more — …`), with the foot
+///   only if both fit.
+/// - **Unlisted** (below prikk 0.39): one line, which never yields.
+///
+/// Every row is repository text, so every one is inert (`C-T2a`), and wrapped here so the count is exact.
+fn frozen_lines(
+    freezes: &stikk_core::FrozenPatches,
+    available: usize,
+    palette: &Palette,
+) -> Vec<Line<'static>> {
+    // A row that fits is drawn exactly as core wrote it: `wrap_indented` joins words with single spaces,
+    // which would turn core's `{short id}  {message}` into one space. Only a row too wide for the card is
+    // wrapped — and either way the rows are counted as drawn, so the fit stays exact.
+    let wrap = |text: &str| {
+        let text = inert(text);
+        if text.chars().count() + 4 <= PANEL_TEXT_WIDTH {
+            vec![format!("    {text}")]
+        } else {
+            wrap_indented(&text, PANEL_TEXT_WIDTH, "    ")
+        }
+    };
+    let styled = |rows: Vec<String>, style: Style| -> Vec<Line<'static>> {
+        rows.into_iter()
+            .map(|row| Line::from(Span::styled(row, style)))
+            .collect()
+    };
+    let (rows, foot) = match freezes {
+        stikk_core::FrozenPatches::Unlisted(line) => {
+            return styled(wrap(line), Style::default().fg(palette.dim));
+        }
+        stikk_core::FrozenPatches::Listed { rows, foot } => (rows, foot),
+    };
+    let wrapped: Vec<Vec<String>> = rows.iter().map(|row| wrap(row)).collect();
+    let foot_rows = foot.as_deref().map(wrap).unwrap_or_default();
+    let every_row: usize = wrapped.iter().map(Vec::len).sum();
+
+    let mut out = Vec::new();
+    if every_row + foot_rows.len() <= available {
+        for row in wrapped {
+            out.extend(styled(row, Style::default().fg(palette.fg)));
+        }
+        out.extend(styled(foot_rows, Style::default().fg(palette.dim)));
+        return out;
+    }
+
+    let total = rows.len();
+    let remainder = |unshown: usize| wrap(&stikk_core::unshown_patches_line(unshown, total));
+    let mut shown = 0;
+    let mut used = 0;
+    for row in &wrapped {
+        let with_row = used + row.len();
+        if with_row + remainder(total - shown - 1).len() + foot_rows.len() > available {
+            break;
+        }
+        used = with_row;
+        shown += 1;
+    }
+    for row in wrapped.into_iter().take(shown) {
+        out.extend(styled(row, Style::default().fg(palette.fg)));
+    }
+    let remainder_rows = remainder(total - shown);
+    let keep_foot = shown > 0 || remainder_rows.len() + foot_rows.len() <= available;
+    out.extend(styled(remainder_rows, Style::default().fg(palette.dim)));
+    if keep_foot {
+        out.extend(styled(foot_rows, Style::default().fg(palette.dim)));
+    }
+    out
 }
 
 /// `FL-05` step 2: the commit message prompt, required non-empty (`UD-01`) — its own step, before any

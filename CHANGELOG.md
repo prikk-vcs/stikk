@@ -32,6 +32,7 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
 | `stikk-prikk` | `Prikk` gains a method, `queue(&self, repo) -> Result<QueueReport>` — breaking for any implementor (RFC 028) |
 | `stikk-core` | `HistoryView` gains `queued_target: Option<String>` (RFC 028) |
 | `stikk-tui` | `Screen` gains a variant, `Queue { view, refreshing, offset }`, and `Focus` gains `Queue(&QueueView, &Cell<u16>)` — breaking for an exhaustive `match` (RFC 028) |
+| `stikk-core` | `ConfirmationSummary` gains `freezes: Option<FrozenPatches>` (RFC 028) |
 
 Every struct above is constructed with struct literals by anyone scripting a `NullBackend` or rendering a
 view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `Authoring`,
@@ -42,7 +43,9 @@ types; `ChangeKind::label`, `queued_elsewhere_clauses`, `would_refuse_next_steps
 `Command::available` and `Command::unavailable_reason`; the `RefFocus` type and `App::ref_focus`; the `QueueReport`, `Queue`, `QueueTarget`, `QueueThreshold`,
 `ThresholdStatus`, `QueuedPatch`, `QueuedMessage`, `QueuedOperation` and `QueuedPath` types,
 `NullBackend::with_queue` and `with_queue_refusal`; `queue_view`, `QueueView`, `QueuedPatchView` and
-`HistoryView::queued_tier`; `Target::Queue` (`Target` is `#[non_exhaustive]`) and `App::open_queue`; and their
+`HistoryView::queued_tier`; `Target::Queue` (`Target` is `#[non_exhaustive]`) and `App::open_queue`; `OperationContext::LoadQueue`
+(`OperationContext` is `#[non_exhaustive]`); the `FrozenPatches` type, `unshown_patches_line` and
+`SHORT_ID_CHARS`; and their
 re-exports from `stikk-core`, `stikk-model` and `stikk-tui`. **Three public signatures changed**, all listed
 above: `ChangeToken::compose`, `commit_confirm_and_execute` and `App::focused_ref`. No public function,
 trait method or re-export was removed. **The `Prikk` trait gained one method**, `queue`, listed above.
@@ -100,6 +103,10 @@ trait method or re-export was removed. **The `Prikk` trait gained one method**, 
   published**, and otherwise opens the ref picker with no ref focused. Until a ref is focused, History,
   Changes, commit and seal say why they are unavailable. An empty repository's picker offers
   `heads/main (not published)` (RFC 029).
+- **On prikk ≥ 0.39, the seal confirmation names each patch it will freeze**, by short id, with its
+  message on prikk ≥ 0.42. When they do not all fit, it shows as many as fit and says how many more there
+  are and where to see them; nothing else on the card gives up room for the list. Below 0.39 it says
+  prikk does not list queued patches (RFC 028).
 
 ### Fixed
 

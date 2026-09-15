@@ -515,6 +515,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         signing_key_claim: stikk_core::KeyClaim::None,
         signing_key_is_published_example: false,
         branch_notice: None,
+        freezes: None,
     }
 }
 
@@ -985,6 +986,7 @@ fn summary_with_key_id(
         signing_key_claim: stikk_core::KeyClaim::None,
         signing_key_is_published_example: false,
         branch_notice: None,
+        freezes: None,
     }
 }
 
@@ -1229,6 +1231,7 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         signing_key_claim: stikk_core::KeyClaim::None,
         signing_key_is_published_example: false,
         branch_notice: None,
+        freezes: None,
     }
 }
 
@@ -1683,6 +1686,7 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         signing_key_claim: claim,
         signing_key_is_published_example: false,
         branch_notice: None,
+        freezes: None,
     }
 }
 
@@ -2181,4 +2185,188 @@ fn every_disabled_palette_reason_renders_whole_at_80_columns() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 028 Handoff B §4: the seal confirmation names what it freezes, and only the list yields height.
+// ---------------------------------------------------------------------------------------------
+
+const FOOTER: &str = "Enter to confirm · Esc to cancel";
+const NOTICE: &str = "This targets heads/main. prikk's current branch is heads/dev, the ref prikk uses when \
+                      no --ref is given.";
+
+/// Twelve rows as core builds them at prikk 0.42: a 12-character short id, two spaces, the message.
+fn twelve_rows() -> Vec<String> {
+    (1..=12)
+        .map(|i| {
+            // Distinct short ids: `1…`, `2…`, … `c…`, each twelve characters.
+            let short = format!("{i:x}{}", "0".repeat(11));
+            format!("{short}  patch {i}")
+        })
+        .collect()
+}
+
+fn seal_card(freezes: stikk_core::FrozenPatches, count: u64) -> Overlay {
+    let mut summary = gate_summary(SEAL_CONSEQUENCE);
+    summary.counts = vec![("patches", count)];
+    summary.branch_notice = Some(NOTICE.to_string());
+    summary.freezes = Some(freezes);
+    Overlay::Confirmation {
+        summary,
+        tier: Tier::Three,
+        typed: String::new(),
+        error: None,
+    }
+}
+
+/// How many patch rows are on screen, and the remainder line's `{m}` if one is.
+fn shown_and_unshown(text: &str) -> (usize, Option<usize>) {
+    let shown = text
+        .lines()
+        .filter(|line| line.contains("00000000000  patch "))
+        .count();
+    let unshown = text.lines().find_map(|line| {
+        let rest = line.split("and ").nth(1)?;
+        let (m, tail) = rest.split_once(" more — Esc, then Q, lists all ")?;
+        tail.trim_start()
+            .starts_with("12")
+            .then(|| m.parse().ok())?
+    });
+    (shown, unshown)
+}
+
+/// Everything on the card that must never be clipped for the list: the consequence, the branch notice,
+/// the target, the key id, and the footer — and no clip indicator in the title.
+fn assert_nothing_but_the_list_yields(label: &str, text: &str) {
+    let screen = joined(text);
+    let consequence = SEAL_CONSEQUENCE
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let notice = NOTICE.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        screen.contains(&consequence),
+        "{label}: consequence clipped:\n{text}"
+    );
+    assert!(
+        screen.contains(&notice),
+        "{label}: branch notice clipped:\n{text}"
+    );
+    assert!(text.contains("Seal the active WAL"), "{label}:\n{text}");
+    assert!(text.contains("dev-maintainer"), "{label}: key id:\n{text}");
+    assert!(text.contains(FOOTER), "{label}: footer:\n{text}");
+    assert!(
+        !text.contains(" — lines "),
+        "{label}: the card clipped prose:\n{text}"
+    );
+}
+
+#[test]
+fn at_80x24_twelve_patches_yield_to_a_remainder_line_whose_count_is_exact() {
+    let overlay = seal_card(
+        stikk_core::FrozenPatches::Listed {
+            rows: twelve_rows(),
+            foot: None,
+        },
+        12,
+    );
+    let text = draw_at(&overlay, 80, 24);
+    let (shown, unshown) = shown_and_unshown(&text);
+    println!(
+        "--- seal confirmation, twelve patches, 80×24: {shown} row(s) shown, remainder m = {unshown:?}\n{text}"
+    );
+    assert_nothing_but_the_list_yields("80×24", &text);
+    assert!(shown < 12, "{text}");
+    assert_eq!(unshown, Some(12 - shown), "{text}");
+}
+
+#[test]
+fn at_80x50_every_patch_row_shows_and_there_is_no_remainder() {
+    let overlay = seal_card(
+        stikk_core::FrozenPatches::Listed {
+            rows: twelve_rows(),
+            foot: None,
+        },
+        12,
+    );
+    let text = draw_at(&overlay, 80, 50);
+    println!("--- seal confirmation, twelve patches, 80×50\n{text}");
+    assert_nothing_but_the_list_yields("80×50", &text);
+    assert_eq!(shown_and_unshown(&text), (12, None), "{text}");
+    assert!(!text.contains("more — Esc"), "{text}");
+}
+
+#[test]
+fn at_0_41_two_short_ids_and_the_foot_fit_at_80x24() {
+    let overlay = seal_card(
+        stikk_core::FrozenPatches::Listed {
+            rows: vec!["493e58168d77".to_string(), "71c62d0a05e5".to_string()],
+            foot: Some("prikk 0.41 does not report a queued patch's message.".to_string()),
+        },
+        2,
+    );
+    let text = draw_at(&overlay, 80, 24);
+    println!("--- seal confirmation, two patches at 0.41, 80×24\n{text}");
+    assert_nothing_but_the_list_yields("0.41", &text);
+    assert!(text.contains("    493e58168d77"), "{text}");
+    assert!(text.contains("    71c62d0a05e5"), "{text}");
+    assert!(
+        text.contains("prikk 0.41 does not report a queued patch's message."),
+        "{text}"
+    );
+    let row = |needle: &str| text.lines().position(|l| l.contains(needle)).unwrap();
+    assert!(
+        row("2 patches") < row("493e58168d77"),
+        "under the counts: {text}"
+    );
+    assert!(
+        row("does not report") < row("Consumes:"),
+        "above Consumes: {text}"
+    );
+}
+
+#[test]
+fn below_0_39_the_unlisted_line_shows_at_80x24() {
+    let overlay = seal_card(
+        stikk_core::FrozenPatches::Unlisted("prikk 0.28 does not list queued patches.".to_string()),
+        2,
+    );
+    let text = draw_at(&overlay, 80, 24);
+    println!("--- seal confirmation, below 0.39, 80×24\n{text}");
+    assert_nothing_but_the_list_yields("unlisted", &text);
+    assert!(
+        text.contains("    prikk 0.28 does not list queued patches."),
+        "{text}"
+    );
+}
+
+#[test]
+fn at_the_smallest_height_with_nothing_clipped_the_list_is_the_remainder_line_alone() {
+    let overlay = seal_card(
+        stikk_core::FrozenPatches::Listed {
+            rows: twelve_rows(),
+            foot: None,
+        },
+        12,
+    );
+    let fits = |h: u16| {
+        let text = draw_at(&overlay, 80, h);
+        (text.contains(FOOTER) && !text.contains(" — lines ")).then_some(text)
+    };
+    let smallest = (3..=60)
+        .find(|&h| fits(h).is_some())
+        .expect("some height fits");
+    let text = fits(smallest).unwrap();
+    println!(
+        "--- seal confirmation, twelve patches, smallest height with nothing clipped: 80×{smallest}\n{text}"
+    );
+    assert_nothing_but_the_list_yields("smallest", &text);
+    assert_eq!(shown_and_unshown(&text), (0, Some(12)), "{text}");
+    assert!(
+        text.contains("and 12 more — Esc, then Q, lists all 12"),
+        "{text}"
+    );
+    // One row fewer, and the card has to clip prose — so this is the smallest.
+    let below = draw_at(&overlay, 80, smallest - 1);
+    assert!(below.contains(" — lines "), "80×{}:\n{below}", smallest - 1);
 }

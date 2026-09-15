@@ -109,7 +109,11 @@ fn block_line<'a>(row: &'a BlockRow, selected: bool, is_tip: bool, palette: &Pal
 /// A short, display-only prefix of an object id (never fabricated — a plain prefix, inert).
 fn short_id(id: &str) -> String {
     let inert_id = inert(id);
-    let short: String = inert_id.chars().take(12).collect();
+    // The same form a seal confirmation names a patch by (`stikk_core::confirm::SHORT_ID_CHARS`).
+    let short: String = inert_id
+        .chars()
+        .take(stikk_core::confirm::SHORT_ID_CHARS)
+        .collect();
     short
 }
 

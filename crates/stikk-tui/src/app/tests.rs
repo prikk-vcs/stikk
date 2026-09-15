@@ -931,6 +931,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         signing_key_claim: stikk_core::KeyClaim::None,
         signing_key_is_published_example: false,
         branch_notice: None,
+        freezes: None,
     }
 }
 
@@ -1317,14 +1318,20 @@ fn back_on_the_message_prompt_clears_the_pending_commit() {
 }
 
 fn seal_backend() -> NullBackend {
-    NullBackend::supported().with_orientation(Orientation {
-        queued_patches: 1,
-        queued_target: Some("heads/main".to_string()),
-        main_ref_state: None,
-        trailing_partial_wal_bytes: 0,
-        active_patch_warning: None,
-        current_branch: stikk_model::CurrentBranch::NotReported,
-    })
+    NullBackend::supported()
+        .with_orientation(Orientation {
+            queued_patches: 1,
+            queued_target: Some("heads/main".to_string()),
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::NotReported,
+        })
+        // Seal reads the queue for its blocks and count (RFC 028 decision 4).
+        .with_queue(stikk_prikk::QueueReport::Unreported {
+            count: 1,
+            target: Some("heads/main".to_string()),
+        })
 }
 
 #[test]

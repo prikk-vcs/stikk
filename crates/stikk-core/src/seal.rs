@@ -19,9 +19,11 @@
 use std::path::Path;
 
 use stikk_model::{Capability, RequestCategory, Result};
-use stikk_prikk::{Prikk, SealResult};
+use stikk_prikk::{Prikk, QueueReport, QueueTarget, QueuedMessage, SealResult};
 
-use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
+use crate::confirm::{
+    self, ConfirmationSummary, Evidence, FrozenPatches, Intent, Outcome, PreviewToken,
+};
 
 /// stikk's own short name for this operation — used verbatim in [`stikk_model::StikkError::Stale`]/
 /// [`stikk_model::StikkError::Declined`] messages (never prikk's words) and as the palette/`Intent`
@@ -60,8 +62,9 @@ pub enum SealPreviewOutcome {
 
 /// Build the seal preview for `reff` (design `FL-06`; RFC 016 §5/§6).
 ///
-/// Reads `orientation` fresh, inside the change-token-gated `compute` step (RFC 013's ruling, the same
-/// one [`crate::commit::commit_preview`] follows) — never a `ChangesView` or count already on screen.
+/// Reads the queue fresh, inside the change-token-gated `compute` step (RFC 013's ruling, the same one
+/// [`crate::commit::commit_preview`] follows) — never a count already on screen — and names the patches it
+/// would freeze at prikk ≥ 0.39 (RFC 028 decision 4).
 /// Two conditions are checked before anything is armed (RFC 016 decision 4): the active WAL must hold
 /// at least one queued patch, and its queue must target `reff`. Neither reaches
 /// [`stikk_prikk::Prikk::seal`] itself — prevention, not classification.
@@ -97,11 +100,32 @@ fn compute(
     repo: &Path,
     reff: &str,
 ) -> Result<(SealReadView, ConfirmationSummary)> {
+    // RFC 028 decision 4: the empty-queue block, the cross-ref block, the count and the list all come from
+    // **one** queue read, so the count and the list describe the same moment. Below 0.39 the same read
+    // answers from prose `status`, so the blocks are what they always were.
+    let prikk_minor = prikk.handshake()?.version.minor;
+    let queue = prikk.queue(repo)?;
+    let (queued_patches, queued_target) = match &queue {
+        QueueReport::Listed(listed) => (
+            listed.count,
+            match &listed.target {
+                QueueTarget::Ref(target) => Some(target.as_str()),
+                // Missing or malformed metadata, or no target: not blocked here — prikk decides, as it
+                // does when prose gives a sentinel.
+                QueueTarget::MissingMetadata
+                | QueueTarget::MalformedMetadata
+                | QueueTarget::NotReported => None,
+            },
+        ),
+        QueueReport::Unreported { count, target } => (*count, target.as_deref()),
+    };
+    // Orientation is read for prikk's current branch alone (RFC 029's notice); a queue or branch that
+    // moves between these two reads changes the change token `preview()` stamped, so the confirmation is
+    // stale (RFC 030) rather than wrong.
     let orientation = prikk.orientation(repo)?;
 
-    // RFC 016 decision 4/F4: prevent an empty-queue seal before arming anything — stikk already knows
-    // the count from the same read `queued_target` below also uses.
-    if orientation.queued_patches == 0 {
+    // RFC 016 decision 4/F4: prevent an empty-queue seal before arming anything.
+    if queued_patches == 0 {
         return Ok((
             SealReadView::Blocked(
                 "nothing is queued for this ref — there is nothing to seal".to_string(),
@@ -112,7 +136,7 @@ fn compute(
     // Prevent a cross-ref seal the same way commit prevents its own (RFC 014 decision 1 / RFC 016
     // decision 4) — both ref names are stikk's own authoritative sources, never parsed from a prikk
     // refusal (`C-T2b`).
-    if let Some(target) = orientation.queued_target.as_deref()
+    if let Some(target) = queued_target
         && target != reff
     {
         let reason = format!(
@@ -134,7 +158,7 @@ fn compute(
     let summary = ConfirmationSummary {
         operation: "Seal the active WAL".to_string(),
         target_ids: vec![reff.to_string()],
-        counts: vec![("patches", orientation.queued_patches)],
+        counts: vec![("patches", queued_patches)],
         capability: Capability::Maintainer,
         consequence: consequence(report.readiness.maintainer),
         target_name: None,
@@ -151,8 +175,43 @@ fn compute(
             .is_some(),
         // Safeguard 3, from this preview's own Orientation read above.
         branch_notice: crate::confirm::branch_notice(reff, &orientation.current_branch),
+        freezes: Some(frozen_patches(&queue, prikk_minor)),
     };
     Ok((SealReadView::Ready, summary))
+}
+
+/// What the confirmation names as frozen, from the same queue read as the count (Handoff B §3).
+fn frozen_patches(queue: &QueueReport, prikk_minor: u32) -> FrozenPatches {
+    match queue {
+        QueueReport::Unreported { .. } => FrozenPatches::Unlisted(format!(
+            "prikk 0.{prikk_minor} does not list queued patches."
+        )),
+        QueueReport::Listed(listed) => FrozenPatches::Listed {
+            rows: listed
+                .patches
+                .iter()
+                .map(|patch| {
+                    let short: String = patch
+                        .patch_id
+                        .chars()
+                        .take(crate::confirm::SHORT_ID_CHARS)
+                        .collect();
+                    // The Queue view's own message line — one function, so the two never disagree.
+                    match crate::queue::message_line(&patch.message) {
+                        Some(message) => format!("{short}  {message}"),
+                        None => short,
+                    }
+                })
+                .collect(),
+            foot: listed
+                .patches
+                .iter()
+                .any(|patch| patch.message == QueuedMessage::NotReported)
+                .then(|| {
+                    format!("prikk 0.{prikk_minor} does not report a queued patch's message.")
+                }),
+        },
+    }
 }
 
 /// A [`ConfirmationSummary`] never shown — [`SealPreviewOutcome::Blocked`] discards it along with the
@@ -170,6 +229,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         signing_key_claim: crate::confirm::KeyClaim::None,
         signing_key_is_published_example: false,
         branch_notice: None,
+        freezes: None,
     }
 }
 

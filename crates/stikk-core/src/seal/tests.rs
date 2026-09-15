@@ -27,9 +27,19 @@ fn maintainer_readiness(maintainer: RoleReadiness) -> Readiness {
     }
 }
 
+/// The queue seal reads at every version (RFC 028 decision 4) — unreported, as the 0.30 `NullBackend`
+/// reports it.
+fn queue(count: u64, target: Option<&str>) -> stikk_prikk::QueueReport {
+    stikk_prikk::QueueReport::Unreported {
+        count,
+        target: target.map(str::to_string),
+    }
+}
+
 fn ready_backend() -> NullBackend {
     NullBackend::supported()
         .with_orientation(orientation(1, Some("heads/main")))
+        .with_queue(queue(1, Some("heads/main")))
         .with_change_token(ChangeToken::compose(
             [("heads/main", "0".repeat(64).as_str())],
             0,
@@ -40,7 +50,7 @@ fn ready_backend() -> NullBackend {
 
 #[test]
 fn an_empty_queue_blocks_before_arming_anything() {
-    let backend = ready_backend().with_orientation(orientation(0, None));
+    let backend = ready_backend().with_queue(queue(0, None));
     match seal_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
         SealPreviewOutcome::Blocked(reason) => {
             assert!(reason.contains("nothing to seal"));
@@ -51,7 +61,7 @@ fn an_empty_queue_blocks_before_arming_anything() {
 
 #[test]
 fn a_cross_ref_queue_blocks_before_arming_anything() {
-    let backend = ready_backend().with_orientation(orientation(2, Some("heads/other")));
+    let backend = ready_backend().with_queue(queue(2, Some("heads/other")));
     match seal_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
         SealPreviewOutcome::Blocked(reason) => {
             assert!(reason.contains("heads/other"));
@@ -341,4 +351,145 @@ fn seals_branch_notice_follows_each_row_of_safeguard_three_exactly() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 028 decision 4 (Handoff B §2–§3): seal names what it freezes, from one queue read.
+// ---------------------------------------------------------------------------------------------
+
+const PATCH_A: &str = "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a";
+const PATCH_B: &str = "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478";
+
+/// Two queued patches for `target`, with messages as prikk reports them at `minor`.
+fn listed(minor: u32, target: &str) -> stikk_prikk::QueueReport {
+    let message = |text: &str| {
+        if minor >= 42 {
+            stikk_prikk::QueuedMessage::Text(text.to_string())
+        } else {
+            stikk_prikk::QueuedMessage::NotReported
+        }
+    };
+    stikk_prikk::QueueReport::Listed(stikk_prikk::Queue {
+        count: 2,
+        target: stikk_prikk::QueueTarget::Ref(target.to_string()),
+        threshold: Some(stikk_prikk::QueueThreshold {
+            status: stikk_prikk::ThresholdStatus::None,
+            warn: 800,
+            hard_limit: 1000,
+        }),
+        patches: vec![
+            stikk_prikk::QueuedPatch {
+                patch_id: PATCH_A.to_string(),
+                message: message("add b"),
+                operations: Vec::new(),
+            },
+            stikk_prikk::QueuedPatch {
+                patch_id: PATCH_B.to_string(),
+                message: message("rename a to c"),
+                operations: Vec::new(),
+            },
+        ],
+    })
+}
+
+fn ready_summary(backend: &NullBackend) -> ConfirmationSummary {
+    match seal_preview(backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        SealPreviewOutcome::Ready { token } => token.summary().clone(),
+        SealPreviewOutcome::Blocked(reason) => panic!("expected Ready, got Blocked({reason})"),
+    }
+}
+
+#[test]
+fn at_0_42_the_summary_names_each_patch_with_its_message() {
+    let backend = ready_backend()
+        .with_version(0, 42, 0)
+        .with_queue(listed(42, "heads/main"));
+    let summary = ready_summary(&backend);
+    assert_eq!(summary.counts, vec![("patches", 2)]);
+    assert_eq!(
+        summary.freezes,
+        Some(crate::confirm::FrozenPatches::Listed {
+            rows: vec![
+                "493e58168d77  add b".to_string(),
+                "71c62d0a05e5  rename a to c".to_string(),
+            ],
+            foot: None,
+        })
+    );
+}
+
+#[test]
+fn at_0_41_the_summary_names_short_ids_and_says_messages_are_not_reported() {
+    let backend = ready_backend()
+        .with_version(0, 41, 0)
+        .with_queue(listed(41, "heads/main"));
+    assert_eq!(
+        ready_summary(&backend).freezes,
+        Some(crate::confirm::FrozenPatches::Listed {
+            rows: vec!["493e58168d77".to_string(), "71c62d0a05e5".to_string()],
+            foot: Some("prikk 0.41 does not report a queued patch's message.".to_string()),
+        })
+    );
+}
+
+#[test]
+fn below_0_39_the_summary_says_prikk_does_not_list_queued_patches() {
+    // `NullBackend::supported()` reports prikk 0.30.
+    let summary = ready_summary(&ready_backend());
+    assert_eq!(summary.counts, vec![("patches", 1)]);
+    assert_eq!(
+        summary.freezes,
+        Some(crate::confirm::FrozenPatches::Unlisted(
+            "prikk 0.30 does not list queued patches.".to_string()
+        ))
+    );
+}
+
+#[test]
+fn the_blocks_and_the_count_come_from_the_queue_read_not_orientation() {
+    // Orientation disagrees with the queue in every case below; whichever the outcome follows is the read.
+    let backend = ready_backend()
+        .with_version(0, 42, 0)
+        .with_orientation(orientation(5, Some("heads/other")))
+        .with_queue(listed(42, "heads/main"));
+    assert_eq!(ready_summary(&backend).counts, vec![("patches", 2)]);
+
+    let empty_queue = ready_backend()
+        .with_orientation(orientation(3, Some("heads/main")))
+        .with_queue(queue(0, None));
+    assert!(matches!(
+        seal_preview(&empty_queue, std::path::Path::new("/repo"), "heads/main").expect("reads"),
+        SealPreviewOutcome::Blocked(reason) if reason.contains("nothing to seal")
+    ));
+
+    let other_ref = ready_backend()
+        .with_version(0, 42, 0)
+        .with_orientation(orientation(2, Some("heads/main")))
+        .with_queue(listed(42, "heads/other"));
+    assert!(matches!(
+        seal_preview(&other_ref, std::path::Path::new("/repo"), "heads/main").expect("reads"),
+        SealPreviewOutcome::Blocked(reason) if reason.contains("heads/other")
+    ));
+}
+
+#[test]
+fn missing_target_metadata_does_not_block_and_prikk_decides() {
+    let mut report = listed(42, "heads/main");
+    if let stikk_prikk::QueueReport::Listed(queue) = &mut report {
+        queue.target = stikk_prikk::QueueTarget::MissingMetadata;
+    }
+    let backend = ready_backend().with_version(0, 42, 0).with_queue(report);
+    assert_eq!(ready_summary(&backend).counts, vec![("patches", 2)]);
+}
+
+#[test]
+fn the_remainder_lines_words_are_exact() {
+    assert_eq!(
+        crate::confirm::unshown_patches_line(9, 12),
+        "and 9 more — Esc, then Q, lists all 12"
+    );
+    assert_eq!(
+        crate::confirm::unshown_patches_line(12, 12),
+        "and 12 more — Esc, then Q, lists all 12"
+    );
 }

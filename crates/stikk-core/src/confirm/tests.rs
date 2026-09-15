@@ -41,6 +41,7 @@ fn summary(target_name: Option<&str>) -> ConfirmationSummary {
         signing_key_claim: KeyClaim::None,
         signing_key_is_published_example: false,
         branch_notice: None,
+        freezes: None,
     }
 }
 

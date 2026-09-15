@@ -36,8 +36,9 @@ pub use commit::{
     commit_confirm_and_execute, commit_preview, would_refuse_next_steps,
 };
 pub use confirm::{
-    ConfirmationSummary, ConfirmedToken, Evidence, Intent, KeyClaim, Outcome, PreviewToken,
-    branch_notice, capability_gate, confirm, execute, preview, signing_key_claim,
+    ConfirmationSummary, ConfirmedToken, Evidence, FrozenPatches, Intent, KeyClaim, Outcome,
+    PreviewToken, SHORT_ID_CHARS, branch_notice, capability_gate, confirm, execute, preview,
+    signing_key_claim, unshown_patches_line,
 };
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{BlockDetailView, HistoryView, block_detail, history_view, list_refs};

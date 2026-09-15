@@ -2606,3 +2606,141 @@ fn rfc028_history_for_another_ref_does_not_claim_the_queue() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 028 Handoff B §5: the seal confirmation names the patches that freeze.
+// ---------------------------------------------------------------------------------------------
+
+/// **RFC 028 Handoff B at both ends: the card named what froze.**
+///
+/// Two patches are queued on a sealed `heads/main`.
+/// - **At ≥ 0.39**, `seal_preview`'s summary names both: each row begins with the queue's own patch id, cut
+///   to the short form, and at ≥ 0.42 carries the message as committed. **Then the queue is sealed**, and the
+///   block's patch ids begin with those short ids — the card named the patches that froze.
+/// - **Below 0.39** the summary says prikk does not list queued patches, and its count equals Orientation's.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc028b_the_seal_confirmation_names_the_patches_that_freeze() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "base")
+            .unwrap_or_else(|e| panic!("0.{}: commit base: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal base: {e}", bin.minor));
+        fixture.set_author_env();
+        for (file, message) in [("b.txt", "add b"), ("c.txt", "add c")] {
+            std::fs::write(repo.join(file), format!("{file}\n"))
+                .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+            backend
+                .commit(&repo, "heads/main", message)
+                .unwrap_or_else(|e| panic!("0.{}: commit {message}: {e}", bin.minor));
+        }
+
+        fixture.set_maintainer_env();
+        let outcome = stikk_core::seal_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal_preview: {e}", bin.minor));
+        let stikk_core::SealPreviewOutcome::Ready { token } = outcome else {
+            panic!("0.{}: expected a Ready seal preview", bin.minor);
+        };
+        let summary = token.summary().clone();
+        let orientation = backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor));
+        assert_eq!(
+            summary.counts,
+            vec![("patches", orientation.queued_patches)],
+            "0.{}: counts",
+            bin.minor
+        );
+
+        if bin.minor < 39 {
+            println!("0.{}: the card says {:?}", bin.minor, summary.freezes);
+            assert_eq!(
+                summary.freezes,
+                Some(stikk_core::FrozenPatches::Unlisted(format!(
+                    "prikk 0.{} does not list queued patches.",
+                    bin.minor
+                ))),
+                "0.{}",
+                bin.minor
+            );
+            Fixture::clear_env();
+            continue;
+        }
+
+        let stikk_prikk::QueueReport::Listed(queue) = backend
+            .queue(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: queue: {e}", bin.minor))
+        else {
+            panic!("0.{}: expected a listed queue", bin.minor);
+        };
+        let Some(stikk_core::FrozenPatches::Listed { rows, .. }) = &summary.freezes else {
+            panic!(
+                "0.{}: expected listed rows, got {:?}",
+                bin.minor, summary.freezes
+            );
+        };
+        assert_eq!(rows.len(), 2, "0.{}: {rows:?}", bin.minor);
+        let shorts: Vec<String> = rows
+            .iter()
+            .map(|row| row.split("  ").next().unwrap_or_default().to_string())
+            .collect();
+        for ((row, short), (patch, message)) in rows
+            .iter()
+            .zip(&shorts)
+            .zip(queue.patches.iter().zip(["add b", "add c"]))
+        {
+            assert_eq!(
+                short.len(),
+                stikk_core::SHORT_ID_CHARS,
+                "0.{}: {row:?}",
+                bin.minor
+            );
+            assert!(
+                patch.patch_id.starts_with(short.as_str()),
+                "0.{}: {short} is a prefix of the queue's {}",
+                bin.minor,
+                patch.patch_id
+            );
+            if bin.minor >= 42 {
+                assert_eq!(row, &format!("{short}  {message}"), "0.{}", bin.minor);
+            }
+        }
+
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+        let history = backend
+            .history(&repo, "heads/main", 5)
+            .unwrap_or_else(|e| panic!("0.{}: history: {e}", bin.minor));
+        let sealed: Vec<&str> = history.blocks[0]
+            .messages
+            .iter()
+            .map(|m| m.patch_id.as_str())
+            .collect();
+        println!(
+            "0.{}: the card named {rows:?}; the sealed block {} holds patch ids {sealed:?}",
+            bin.minor, history.blocks[0].block_id
+        );
+        assert_eq!(sealed.len(), shorts.len(), "0.{}", bin.minor);
+        for short in &shorts {
+            assert!(
+                sealed.iter().any(|id| id.starts_with(short.as_str())),
+                "0.{}: no sealed patch id begins with {short}: {sealed:?}",
+                bin.minor
+            );
+        }
+    }
+}

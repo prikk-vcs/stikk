@@ -143,7 +143,7 @@ fn patch(patch: QueuedPatch) -> QueuedPatchView {
 
 /// The message's line: its first line, with `…` marking the rest; `(no message)` for prikk's `null`; and
 /// nothing when this prikk does not report messages — **never `(no message)` for that** (`C-T2c′`).
-fn message_line(message: &QueuedMessage) -> Option<String> {
+pub(crate) fn message_line(message: &QueuedMessage) -> Option<String> {
     match message {
         QueuedMessage::NotReported => None,
         QueuedMessage::None => Some("(no message)".to_string()),

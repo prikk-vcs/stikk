@@ -98,6 +98,41 @@ pub struct ConfirmationSummary {
     /// it. Computed from the Orientation the preview itself reads, never from a frontend's older copy.
     /// It names refs and may carry prikk's own text, so it renders through `inert` (`C-T2a`).
     pub branch_notice: Option<String>,
+    /// What a seal freezes, named (RFC 028 decision 4; Handoff B §3). `None` for commit.
+    ///
+    /// **The one part of the card allowed to give up height** (Handoff B §4): the consequence, its
+    /// trust-refusal warning and the affordances are never clipped to make room for it, and when it gives
+    /// up rows it says how many, in [`unshown_patches_line`]'s words.
+    pub freezes: Option<FrozenPatches>,
+}
+
+/// How many characters of an object id a short id shows — the form History's block rows use, shared so a
+/// seal confirmation names a patch the same way History names a block.
+pub const SHORT_ID_CHARS: usize = 12;
+
+/// What a seal confirmation names as frozen (RFC 028 decision 4; Handoff B §3). Every string is repository
+/// text or carries it — an id, a message, a version — so the frontend renders each through `inert`
+/// (`C-T2a`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FrozenPatches {
+    /// prikk ≥ 0.39: one row per queued patch, in queue order — `{short id}  {message}`, or the short id
+    /// alone where prikk does not report messages — and, at 0.39–0.41, a foot saying so.
+    Listed {
+        /// One row per patch.
+        rows: Vec<String>,
+        /// `prikk 0.{minor} does not report a queued patch's message.`, at 0.39–0.41 only.
+        foot: Option<String>,
+    },
+    /// Below prikk 0.39: `prikk 0.{minor} does not list queued patches.` One line, which never yields.
+    Unlisted(String),
+}
+
+/// The line a seal confirmation shows when it cannot hold every patch row (Handoff B §3): `unshown` is
+/// exactly the rows not shown, and `total` the queue's patches. The frontend decides only how many rows
+/// fit, never what this says.
+#[must_use]
+pub fn unshown_patches_line(unshown: usize, total: usize) -> String {
+    format!("and {unshown} more — Esc, then Q, lists all {total}")
 }
 
 /// How firmly a confirmation may state the signing key id (RFC 026 §5).

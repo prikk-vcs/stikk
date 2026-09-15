@@ -300,3 +300,45 @@ fn the_backslash_refusal_shows_gloss_and_prikks_words_at_80x24() {
         );
     }
 }
+
+/// RFC 029 Handoff B review v1 §2.3: picking the empty picker's `heads/main (not published)` opens History
+/// like any other pick, and prikk's empty history renders as one. Captured at 80×24.
+#[test]
+fn picking_the_unpublished_heads_main_opens_its_empty_history_at_80x24() {
+    let backend = NullBackend::supported()
+        .with_orientation(Orientation {
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::NotReported,
+        })
+        .with_refs(Vec::new())
+        .with_tags(Vec::new())
+        .with_history(stikk_prikk::History {
+            reff: "heads/main".into(),
+            blocks: Vec::new(),
+        });
+    let (mut app, rx) = open("/home/dev/new-repo", &Config::default());
+    // The first read resolves to no focus and opens the picker; its `Refs` read answers empty.
+    drain(&mut app, &rx, &backend);
+    assert!(
+        matches!(
+            app.top_overlay(),
+            Some(crate::overlay::Overlay::RefPicker {
+                unpublished_main: true,
+                ..
+            })
+        ),
+        "{:?}",
+        app.top_overlay()
+    );
+    app.select();
+    drain(&mut app, &rx, &backend);
+    let text = draw(&app, 80, 24);
+    println!("--- History after picking heads/main (not published), 80×24\n{text}");
+    assert!(!app.has_overlay(), "{text}");
+    assert!(text.contains("no sealed blocks on this ref yet"), "{text}");
+    assert!(text.contains("heads/main"), "{text}");
+}

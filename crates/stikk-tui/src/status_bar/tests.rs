@@ -205,16 +205,20 @@ fn the_in_flight_indicator_appears_while_a_request_is_pending_and_clears_once_an
 }
 
 // ---------------------------------------------------------------------------------------------
-// RFC 029 Handoff B §3: the focus segment at 80 columns, one capture per row of the table.
+// RFC 029 Handoff B §3, and review v1 §2.1: the focus segment, and what the line sheds when it is full.
 // ---------------------------------------------------------------------------------------------
 
-fn render_at_80(app: &App) -> String {
-    let mut terminal = Terminal::new(TestBackend::new(80, 1)).unwrap();
+const LONG_REPO: &str = "a-repository-name-that-is-long";
+const UNRESOLVED: &str = "<unresolved; run `prikk doctor`>";
+
+fn render_at(app: &App, width: u16) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
     terminal.draw(|f| render(app, f, f.area())).unwrap();
     buffer_text(terminal.backend().buffer())
 }
 
-fn view_on(current: stikk_model::CurrentBranch) -> OrientationView {
+/// A loaded 0.42 view with both badges `?` and `queued` patches for `heads/main`.
+fn view_on(current: stikk_model::CurrentBranch, queued: u64) -> OrientationView {
     let r = Readiness {
         author: RoleReadiness::Unknown,
         maintainer: RoleReadiness::Unknown,
@@ -227,8 +231,8 @@ fn view_on(current: stikk_model::CurrentBranch) -> OrientationView {
         validated_through: "0.42".to_string(),
         prikk_persists_messages: true,
         prikk_minor: 42,
-        queued_patches: 0,
-        queued_target: None,
+        queued_patches: queued,
+        queued_target: (queued > 0).then(|| "heads/main".to_string()),
         trailing_partial_wal_bytes: 0,
         main_ref_state: None,
         capability: Capability::derive(r),
@@ -242,75 +246,252 @@ fn branch(name: &str) -> stikk_model::CurrentBranch {
     stikk_model::CurrentBranch::Branch(stikk_model::RefName::parse(name).unwrap())
 }
 
+fn unresolved() -> stikk_model::CurrentBranch {
+    stikk_model::CurrentBranch::Unresolved(UNRESOLVED.to_string())
+}
+
 /// `from_state` with a loaded view focuses `heads/main`, as if its first read had resolved there.
-fn focused_on_heads_main(current: stikk_model::CurrentBranch) -> String {
-    render_at_80(&from_state(
-        "/x/repo",
-        OrientationState::Loaded(view_on(current)),
+fn focused_app(repo: &str, current: stikk_model::CurrentBranch, queued: u64) -> App {
+    from_state(
+        &format!("/x/{repo}"),
+        OrientationState::Loaded(view_on(current, queued)),
         Palette::default(),
-    ))
+    )
 }
 
-fn capture(label: &str, text: &str) {
-    println!("--- status bar, 80 columns: {label}\n{text}");
-    assert!(!text.contains("HEAD"), "{label}: {text:?}");
-}
-
-#[test]
-fn the_focus_segment_follows_each_row_of_the_table_at_80_columns() {
-    let equal = focused_on_heads_main(branch("heads/main"));
-    capture("focus equals prikk's current branch", &equal);
-    assert!(
-        equal.starts_with("repo  ·  heads/main  ·  [AUT ?]"),
-        "{equal:?}"
-    );
-    assert!(!equal.contains("prikk's default"), "{equal:?}");
-
-    let differing = focused_on_heads_main(branch("heads/dev"));
-    capture("focus differs from prikk's current branch", &differing);
-    assert!(
-        differing.starts_with("repo  ·  heads/main  ·  prikk's default: heads/dev  ·  [AUT ?]"),
-        "{differing:?}"
-    );
-
-    let unresolved = focused_on_heads_main(stikk_model::CurrentBranch::Unresolved(
-        "<unresolved; run `prikk doctor`>".to_string(),
-    ));
-    capture("prikk's current branch unresolved", &unresolved);
-    assert!(
-        unresolved.starts_with(
-            "repo  ·  heads/main  ·  prikk's default: <unresolved; run `prikk doctor`>"
-        ),
-        "{unresolved:?}"
-    );
-
-    let not_reported = focused_on_heads_main(stikk_model::CurrentBranch::NotReported);
-    capture("not reported (below prikk 0.42)", &not_reported);
-    assert!(
-        not_reported.starts_with("repo  ·  heads/main  ·  [AUT ?]"),
-        "{not_reported:?}"
-    );
-
-    // Unfocused: the first read resolved to no ref (nothing named, nothing published).
+/// The first read resolved to no ref: nothing named, nothing published. Its picker's `Refs` read is
+/// still unanswered, so `⟳ 1` shows.
+fn unfocused_app(repo: &str, queued: u64) -> App {
     let (tx, rx) = mpsc::channel();
-    let mut app = App::open("/x/repo", &Config::default(), tx);
+    let mut app = App::open(format!("/x/{repo}"), &Config::default(), tx);
     let first = rx.try_recv().expect("the first Orientation read");
     app.apply(crate::worker::Response {
         seq: first.seq,
         kind: crate::worker::ResponseKind::Orient(Ok(view_on(
             stikk_model::CurrentBranch::NotReported,
+            queued,
         ))),
     });
-    let unfocused = render_at_80(&app);
-    capture("unfocused", &unfocused);
+    app
+}
+
+fn pending_app(repo: &str) -> App {
+    let (tx, _rx) = mpsc::channel();
+    App::open(format!("/x/{repo}"), &Config::default(), tx)
+}
+
+fn show(label: &str, width: u16, text: &str) {
+    println!("--- status bar, {width} columns: {label}\n{text}");
+    assert!(!text.contains("HEAD"), "{label} at {width}: {text:?}");
+}
+
+/// What is never shortened, whole: the focus, and the queue and both badges (or the load marker).
+fn assert_never_shortened(label: &str, text: &str, focus: &str, loaded: bool) {
     assert!(
-        unfocused.starts_with("repo  ·  no ref focused  ·  [AUT ?]"),
-        "{unfocused:?}"
+        text.contains(focus),
+        "{label}: focus {focus:?} not whole in {text:?}"
+    );
+    if loaded {
+        assert!(
+            text.contains("●3 queued"),
+            "{label}: queue not whole in {text:?}"
+        );
+        assert!(
+            text.contains("[AUT ?]"),
+            "{label}: [AUT not whole in {text:?}"
+        );
+        assert!(
+            text.contains("[MNT ?]"),
+            "{label}: [MNT not whole in {text:?}"
+        );
+    } else {
+        assert!(
+            text.contains("(loading)"),
+            "{label}: (loading) not whole in {text:?}"
+        );
+    }
+}
+
+#[test]
+fn at_80_columns_every_row_keeps_its_focus_queue_and_badges_whole() {
+    let rows: [(&str, App, &str, bool); 6] = [
+        (
+            "equal",
+            focused_app(LONG_REPO, branch("heads/main"), 3),
+            "heads/main",
+            true,
+        ),
+        (
+            "differing",
+            focused_app(LONG_REPO, branch("heads/dev"), 3),
+            "heads/main",
+            true,
+        ),
+        (
+            "unresolved",
+            focused_app(LONG_REPO, unresolved(), 3),
+            "heads/main",
+            true,
+        ),
+        (
+            "not reported",
+            focused_app(LONG_REPO, stikk_model::CurrentBranch::NotReported, 3),
+            "heads/main",
+            true,
+        ),
+        (
+            "unfocused",
+            unfocused_app(LONG_REPO, 3),
+            "no ref focused",
+            true,
+        ),
+        ("pending", pending_app(LONG_REPO), "(loading)", false),
+    ];
+    for (label, app, focus, loaded) in rows {
+        let text = render_at(&app, 80);
+        show(label, 80, &text);
+        assert_never_shortened(label, &text, focus, loaded);
+    }
+
+    // Which steps fired for the unresolved row at 80: the hint went (1); no shortened default fits (2);
+    // so the segment went (3), and the repository name is still whole (4 did not fire).
+    let unresolved_80 = render_at(&focused_app(LONG_REPO, unresolved(), 3), 80);
+    assert!(!unresolved_80.contains(":palette"), "{unresolved_80:?}");
+    assert!(
+        !unresolved_80.contains("prikk's default"),
+        "{unresolved_80:?}"
+    );
+    assert!(unresolved_80.starts_with(LONG_REPO), "{unresolved_80:?}");
+    // The differing row sheds the same way at 80: even `prikk's default: …` needs 102 cells beside this
+    // name and a queue, so the segment goes, and the Orientation view is where `heads/dev` is shown.
+    let differing_80 = render_at(&focused_app(LONG_REPO, branch("heads/dev"), 3), 80);
+    assert!(!differing_80.contains(":palette"), "{differing_80:?}");
+    assert!(
+        !differing_80.contains("prikk's default"),
+        "{differing_80:?}"
+    );
+    assert!(differing_80.starts_with(LONG_REPO), "{differing_80:?}");
+}
+
+#[test]
+fn at_40_columns_the_name_is_shed_to_one_character_and_what_cannot_fit_clips_at_the_edge() {
+    // The never-shortened pieces are wider than 40 cells whenever a queue is shown: `a…` (2) + `  ·  heads/main`
+    // (15) + `  ·  ●3 queued` (14) + `  ·  [AUT ?] [MNT ?]` (20) = 51. Every step fires, and the line clips.
+    for (label, app, focus) in [
+        (
+            "equal",
+            focused_app(LONG_REPO, branch("heads/main"), 3),
+            "heads/main",
+        ),
+        (
+            "differing",
+            focused_app(LONG_REPO, branch("heads/dev"), 3),
+            "heads/main",
+        ),
+        (
+            "unresolved",
+            focused_app(LONG_REPO, unresolved(), 3),
+            "heads/main",
+        ),
+        (
+            "not reported",
+            focused_app(LONG_REPO, stikk_model::CurrentBranch::NotReported, 3),
+            "heads/main",
+        ),
+        ("unfocused", unfocused_app(LONG_REPO, 3), "no ref focused"),
+    ] {
+        let text = render_at(&app, 40);
+        show(label, 40, &text);
+        assert!(text.starts_with("a…  ·  "), "{label}: {text:?}");
+        assert!(text.contains(focus), "{label}: {text:?}");
+        assert!(!text.contains("prikk's default"), "{label}: {text:?}");
+    }
+    let pending = render_at(&pending_app(LONG_REPO), 40);
+    show("pending", 40, &pending);
+    assert_never_shortened("pending", &pending, "(loading)", false);
+
+    // Without a queue the never-shortened pieces fit 40 (2 + 15 + 20 = 37), and the badges are whole.
+    for (label, current) in [
+        ("equal, no queue", branch("heads/main")),
+        ("unresolved, no queue", unresolved()),
+    ] {
+        let text = render_at(&focused_app(LONG_REPO, current, 0), 40);
+        show(label, 40, &text);
+        assert!(text.contains("heads/main"), "{label}: {text:?}");
+        assert!(text.contains("[AUT ?] [MNT ?]"), "{label}: {text:?}");
+    }
+}
+
+#[test]
+fn the_line_sheds_in_order_one_step_at_a_time() {
+    // Widths for the unresolved row with a long name and a queue: name 30, focus 15, the default's label 22 and
+    // value 32, queue and badges 34, hint 27 — 160 in all.
+    let app = focused_app(LONG_REPO, unresolved(), 3);
+    let at = |width| {
+        let text = render_at(&app, width);
+        show(&format!("shedding, width {width}"), width, &text);
+        assert_never_shortened("shedding", &text, "heads/main", true);
+        text
+    };
+
+    let nothing = at(160);
+    assert!(nothing.contains(":palette  ?:help  q:back"), "{nothing:?}");
+    assert!(nothing.contains(UNRESOLVED), "{nothing:?}");
+
+    // 1. The hint goes first; prikk's text is still whole.
+    let hint_gone = at(150);
+    assert!(!hint_gone.contains(":palette"), "{hint_gone:?}");
+    assert!(
+        hint_gone.contains(&format!("prikk's default: {UNRESOLVED}")),
+        "{hint_gone:?}"
     );
 
-    // Pending: nothing read yet. Nothing for focus; `(loading)` stays.
-    let (tx, _rx) = mpsc::channel();
-    let pending = render_at_80(&App::open("/x/repo", &Config::default(), tx));
-    capture("pending", &pending);
-    assert!(pending.starts_with("repo  ·  (loading)"), "{pending:?}");
+    // 2. Then prikk's default is shortened from its end, marked `…`; the name is untouched.
+    let shortened = at(120);
+    assert!(
+        shortened.contains("prikk's default: <unresolved"),
+        "{shortened:?}"
+    );
+    assert!(shortened.contains("…"), "{shortened:?}");
+    assert!(!shortened.contains(UNRESOLVED), "{shortened:?}");
+    assert!(shortened.starts_with(LONG_REPO), "{shortened:?}");
+    // … down to `prikk's default: …` at exactly its narrowest.
+    let narrowest = at(102);
+    assert!(
+        narrowest.contains("prikk's default: …  ·  ●3 queued"),
+        "{narrowest:?}"
+    );
+
+    // 3. Then the segment goes; the name is still whole.
+    let segment_gone = at(101);
+    assert!(
+        !segment_gone.contains("prikk's default"),
+        "{segment_gone:?}"
+    );
+    assert!(segment_gone.starts_with(LONG_REPO), "{segment_gone:?}");
+
+    // 4. Last, the name is shortened from its end, down to one character.
+    let name_short = at(60);
+    assert!(!name_short.contains(LONG_REPO), "{name_short:?}");
+    assert!(name_short.starts_with("a-repo"), "{name_short:?}");
+    assert!(name_short.contains("…  ·  heads/main"), "{name_short:?}");
+    let name_shortest = at(51);
+    assert!(
+        name_shortest.starts_with("a…  ·  heads/main"),
+        "{name_shortest:?}"
+    );
+}
+
+#[test]
+fn shortening_is_measured_in_cells_for_wide_characters() {
+    // Each of these is two cells wide; cutting by chars or bytes would overrun the line.
+    let app = focused_app(
+        "リポジトリの名前がとても長いリポジトリです",
+        branch("heads/main"),
+        3,
+    );
+    let text = render_at(&app, 60);
+    show("a wide-character repository name", 60, &text);
+    assert_never_shortened("wide", &text, "heads/main", true);
+    assert!(text.contains("…"), "{text:?}");
 }

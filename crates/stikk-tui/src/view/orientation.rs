@@ -12,7 +12,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use stikk_core::OrientationView;
-use stikk_model::{Binding, RoleReadiness};
+use stikk_model::{Binding, CurrentBranch, RoleReadiness};
 
 use crate::text::inert;
 use crate::theme::Palette;
@@ -99,6 +99,27 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
                 ),
                 Style::default().fg(palette.warn),
             )],
+        ));
+    }
+
+    // RFC 029 Handoff B (review v1 §2.1): prikk's current branch, whole. The status bar may shorten it to
+    // fit its one line; this row never does, and wraps with the view. Below 0.42 prikk reports none.
+    let branch = match &view.current_branch {
+        CurrentBranch::Branch(branch) => Some(branch.as_str()),
+        CurrentBranch::Unresolved(text) => Some(text.as_str()),
+        CurrentBranch::NotReported => None,
+    };
+    if let Some(branch) = branch {
+        lines.push(field(
+            palette,
+            "branch",
+            vec![
+                Span::styled(inert(branch), Style::default().fg(palette.fg)),
+                Span::styled(
+                    " — prikk's current branch",
+                    Style::default().fg(palette.dim),
+                ),
+            ],
         ));
     }
 

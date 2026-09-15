@@ -21,7 +21,7 @@ use crate::present::Target;
 
 /// The reason every action that needs a focused ref gives when none is focused (RFC 029 Handoff B §2):
 /// the banner a key sets and a palette entry's disabled reason are these same words.
-pub const NO_FOCUSED_REF_REASON: &str = "No ref is focused. Press b to choose one.";
+pub const NO_FOCUSED_REF_REASON: &str = "No ref focused. Press b to pick one.";
 
 /// A palette-listable command: a view to open or an action to run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

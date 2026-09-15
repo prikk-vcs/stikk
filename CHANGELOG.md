@@ -79,8 +79,10 @@ trait is unchanged.
   attributes the change to "another writer". The worktree wording names what stikk compares: which paths
   prikk lists, their status, prikk's verdict on them, and rename declarations (RFC 030).
 - **On prikk ≥ 0.42, stikk opens focused on prikk's current branch**, and the status bar shows
-  `prikk's default: <branch>` beside stikk's focus when the two differ. Choosing another ref in stikk
-  still never moves prikk's current branch or touches the worktree (RFC 029).
+  `prikk's default: <branch>` beside stikk's focus when the two differ — shortened with `…` when the
+  line is full; the Orientation view shows it whole. When the status bar is too narrow it drops its key
+  hint first and never cuts the focus, the queue count or the signing badges. Choosing another ref in
+  stikk still never moves prikk's current branch or touches the worktree (RFC 029).
 - **Commit and seal confirmations name both refs when they differ**: the ref being targeted, and prikk's
   current branch — the ref prikk uses when no `--ref` is given. It is a notice, not a block (RFC 029).
 - **Below prikk 0.42, or with an unresolved pointer, stikk opens on `heads/main` only when it is

@@ -133,3 +133,48 @@ fn a_hostile_ref_state_is_rendered_inert() {
     let text = render_to_text(&v);
     assert!(!text.contains('\u{1b}'), "the ESC must be neutralized");
 }
+
+/// RFC 029 Handoff B review v1 §2.1: prikk's current branch, whole, in a `branch` row directly above
+/// `heads/main` — the home for what the status bar may shorten.
+#[test]
+fn prikks_current_branch_has_a_whole_row_above_heads_main() {
+    let with = |current| OrientationView {
+        current_branch: current,
+        ..view(Readiness::none(), true, 0, 0)
+    };
+    let row = |text: &str, needle: &str| {
+        text.lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} not on screen:\n{text}"))
+    };
+
+    let branch = render_to_text(&with(stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse("heads/dev").unwrap(),
+    )));
+    println!("--- Orientation, a branch\n{branch}");
+    assert!(
+        branch.contains("branch      heads/dev — prikk's current branch"),
+        "{branch}"
+    );
+    assert_eq!(
+        row(&branch, "branch      heads/dev") + 1,
+        row(&branch, "heads/main")
+    );
+
+    let unresolved = render_to_text(&with(stikk_model::CurrentBranch::Unresolved(
+        "<unresolved; run `prikk doctor`>".to_string(),
+    )));
+    println!("--- Orientation, unresolved\n{unresolved}");
+    assert!(
+        unresolved
+            .contains("branch      <unresolved; run `prikk doctor`> — prikk's current branch"),
+        "{unresolved}"
+    );
+
+    let below_0_42 = render_to_text(&with(stikk_model::CurrentBranch::NotReported));
+    assert!(
+        !below_0_42.contains("prikk's current branch"),
+        "{below_0_42}"
+    );
+    assert!(!below_0_42.contains("  branch "), "{below_0_42}");
+}

@@ -2348,3 +2348,36 @@ fn rfc029b_prikks_current_branch_is_reported_and_named_on_both_confirmations() {
         );
     }
 }
+
+/// **RFC 029 Handoff B review v1 §2.3 at both ends: an unpublished `heads/main` reads as an empty history.**
+///
+/// Picking the empty picker's `heads/main (not published)` opens History, so both readers must take a freshly
+/// initialised repository's history rather than refuse it: prose `history: <empty>` below 0.39, and JSON with
+/// an empty `blocks` array from 0.39.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc029b_an_unpublished_heads_main_reads_as_an_empty_history_at_both_ends() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let history = backend
+            .history(fixture.repo(), "heads/main", 20)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "0.{}: history of an unpublished heads/main must not refuse: {e}",
+                    bin.minor
+                )
+            });
+        println!(
+            "0.{}: history of an unpublished heads/main: ref {:?}, {} block(s)",
+            bin.minor,
+            history.reff,
+            history.blocks.len()
+        );
+        assert!(
+            history.blocks.is_empty(),
+            "0.{}: an unpublished ref has no blocks: {history:?}",
+            bin.minor
+        );
+    }
+}

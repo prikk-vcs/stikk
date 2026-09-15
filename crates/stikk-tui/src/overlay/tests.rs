@@ -2139,39 +2139,46 @@ fn an_empty_picker_offers_only_the_unpublished_heads_main() {
     assert!(!text.contains("no refs reported"), "{text}");
 }
 
+/// Review v1 §2.2: every disabled palette entry's reason renders whole at 80 columns — for a session that
+/// can commit and seal and for a viewer, with a ref focused and without.
 #[test]
-fn the_palette_without_a_focused_ref_lists_the_reason_on_each_command_that_needs_one() {
+fn every_disabled_palette_reason_renders_whole_at_80_columns() {
     let ready = stikk_model::Readiness {
         author: RoleReadiness::Unknown,
         maintainer: RoleReadiness::Unknown,
         read_only: false,
     };
-    let text = draw_at(
-        &Overlay::Palette {
-            filter: String::new(),
-            cursor: 0,
-            readiness: ready,
-            ref_focused: false,
-        },
-        80,
-        24,
-    );
-    println!("--- palette with no focused ref, 80×24\n{text}");
-    for name in [
-        "Open History",
-        "Open Changes (worktree)",
-        "Commit worktree changes",
-        "Seal the active WAL",
-    ] {
-        let line = text
-            .lines()
-            .find(|line| line.contains(name))
-            .unwrap_or_else(|| panic!("{name} not listed:\n{text}"));
-        assert!(line.contains("No ref is focused."), "{name}: {line:?}");
+    for (who, readiness) in [("ready", ready), ("viewer", stikk_model::Readiness::none())] {
+        for ref_focused in [false, true] {
+            let text = draw_at(
+                &Overlay::Palette {
+                    filter: String::new(),
+                    cursor: 0,
+                    readiness,
+                    ref_focused,
+                },
+                80,
+                24,
+            );
+            println!("--- palette, {who}, ref focused: {ref_focused}, 80×24\n{text}");
+            for command in stikk_core::palette::commands() {
+                let line = text
+                    .lines()
+                    .find(|line| line.contains(command.name))
+                    .unwrap_or_else(|| panic!("{} not listed:\n{text}", command.name));
+                match command.unavailable_reason(readiness, ref_focused) {
+                    Some(reason) => assert!(
+                        line.contains(&format!("— {reason}")),
+                        "{who}, focused {ref_focused}: {}'s reason {reason:?} is not whole in {line:?}",
+                        command.name
+                    ),
+                    None => assert!(
+                        !line.contains('—'),
+                        "{who}, focused {ref_focused}: {} is available but shows a reason: {line:?}",
+                        command.name
+                    ),
+                }
+            }
+        }
     }
-    let refs = text
-        .lines()
-        .find(|line| line.contains("Choose ref"))
-        .expect("Choose ref is listed");
-    assert!(!refs.contains("No ref is focused"), "{refs:?}");
 }

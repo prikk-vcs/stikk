@@ -1689,8 +1689,10 @@ fn answer_reload(app: &mut App, rx: &mpsc::Receiver<Request>, view: stikk_core::
     });
 }
 
+/// The status bar at 120 columns: wide enough that nothing is shed, so these tests see prikk's text
+/// whole. What the line sheds when it is full is `status_bar::tests`' subject.
 fn status_line(app: &App) -> String {
-    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 1)).unwrap();
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 1)).unwrap();
     terminal
         .draw(|f| crate::status_bar::render(app, f, f.area()))
         .unwrap();
@@ -1841,7 +1843,7 @@ fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_
         act(&mut app);
         assert_eq!(
             app.banner(),
-            Some("No ref is focused. Press b to choose one."),
+            Some("No ref focused. Press b to pick one."),
             "{label}"
         );
         assert!(rx.try_recv().is_err(), "{label} dispatched a request");
@@ -1866,7 +1868,7 @@ fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_
             command.id,
             "view.history" | "view.changes" | "op.commit" | "op.seal"
         )
-        .then_some("No ref is focused. Press b to choose one.");
+        .then_some("No ref focused. Press b to pick one.");
         assert_eq!(
             command
                 .unavailable_reason(readiness, ref_focused)
@@ -1909,10 +1911,12 @@ fn an_empty_ref_list_offers_an_unpublished_heads_main_and_picking_it_focuses_it(
     app.select();
     assert_eq!(app.focused_ref(), Some("heads/main"));
     assert!(!app.has_overlay());
-    assert!(
-        rx.try_recv().is_err(),
-        "nothing is published there, so no History is opened"
-    );
+    // Like any other pick (review v1 §2.3): prikk reports an unpublished ref's history as empty.
+    match next_request(&rx).kind {
+        RequestKind::History { reff } => assert_eq!(reff, "heads/main"),
+        other => panic!("expected a History request, got {other:?}"),
+    }
+    assert!(matches!(app.focus(), Focus::Loading("history")));
 }
 
 #[test]

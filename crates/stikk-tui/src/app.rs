@@ -540,12 +540,15 @@ impl App {
                 cursor,
                 unpublished_main,
             }) => {
-                if *unpublished_main {
-                    // RFC 029 Handoff B §4: the one row an empty picker offers. Focus only — nothing is
-                    // published there, so there is no History to open.
-                    self.overlays.pop();
-                    self.ref_focus = RefFocus::Ref(DEFAULT_REF.to_string());
-                } else if let Some(name) = refs.get(*cursor).cloned() {
+                let picked = if *unpublished_main {
+                    // RFC 029 Handoff B §4: the one row an empty picker offers. It acts like any other
+                    // pick: prikk reports an unpublished ref's history as empty (exit 0, at 0.28 and
+                    // 0.42), and the History view says there are no sealed blocks yet.
+                    Some(DEFAULT_REF.to_string())
+                } else {
+                    refs.get(*cursor).cloned()
+                };
+                if let Some(name) = picked {
                     self.overlays.pop();
                     self.ref_focus = RefFocus::Ref(name);
                     if matches!(self.screens.last(), Some(Screen::History { .. })) {

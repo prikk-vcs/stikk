@@ -278,7 +278,11 @@ a fabricated worktree entry was fixed.
    `status-report-v1` field and a `doctor` finding. So: Orientation (prose `status`) and the Queue reader
    (`status-report-v1`) re-verify against 0.43, stikk shows a checkout that stopped part-way, and the 0.42 refusal
    gets a gloss with the way out prikk measured (re-run the checkout, or `branch switch`, for the current branch —
-   and move the stray files aside before committing). **Measure each on the binary before relying on it.**
+   and move the stray files aside before committing). **prikk's reply 014 adds to 0.43.0**, per declaration in
+   `worktree-status-report-v1`: a `resolution` (`rename`, `deletion`, `deletion-ignored`, `never-tracked`, `refused`),
+   commit's own `refusal` counted in `refused_declaration_count`, and `content_changed`/`mode_changed` — so the
+   re-baseline replaces RFC 032's inference with prikk's resolution, prevents a refused declaration, and says whether a
+   renamed file's content changed. **Measure each on the binary before relying on it.**
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

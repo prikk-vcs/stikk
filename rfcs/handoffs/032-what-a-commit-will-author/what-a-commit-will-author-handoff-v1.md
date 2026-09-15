@@ -1,5 +1,10 @@
 # Handoff — what a commit will author (v1)
 
+> **Amended 2026-09-16.** RFC 032's amendments A1–A4 rule on this handoff's first review: an unpublished ref's words also
+> depend on its queue (A2), commit's clean-blocked reason carries the source-present notice (A3), and rows 1 and 3's
+> deletion is `delete-file` in `prikk commit`'s output and `delete-node` in `status-report-v1` (A4). Where this handoff
+> disagrees with them, the amendments win.
+
 **Companion to:** [RFC 032](../../accepted/032-what-a-commit-will-author.md). Accepted 2026-09-16; **Q1 ruled (a)**.
 **This handoff is all of RFC 032:**
 - declared renames marked when prikk lists both halves;

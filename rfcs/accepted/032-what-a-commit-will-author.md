@@ -3,9 +3,10 @@
 **Status.** **Accepted by the project owner 2026-09-16; Q1 ruled (a).** Proposed the same day by the architect: 0.8.0's
 second increment, taking the roadmap's items 2 and 4 together, because both are the same failure. **Revised before
 acceptance** after the owner asked about risks to user operation and data safety: F6–F8 are measured, and decisions
-1–4 were narrowed to what they found.
+1–4 were narrowed to what they found. **Amended 2026-09-16** by the architect after the handoff's first review and
+prikk's reply 014 (see *Amendments*).
 **Tracks.** `FR-034`, `FR-050`, `T-T4`, `C-T2b`, `C-T2c′`, `ER-02`, `UD-06`, `UD-08`, RFC 008, RFC 021 (F0), RFC 027
-(Q1 (b)), RFC 030 (amendment A1), RFC 031, letter 013 (drafted).
+(Q1 (b)), RFC 030 (amendment A1), RFC 031, letter 013, prikk reply 014.
 **Touches.** `stikk-core` (the Changes view-model, commit's confirmation summary); `stikk-tui` (the Changes view);
 `stikk-real-binary`; on delivery, `requirements.md`.
 
@@ -167,6 +168,72 @@ not measured here.
 **A paired rename keeps prikk's two rows, each annotated as half of one declared rename.** Every path prikk listed stays
 on screen under prikk's kind, and the header's counts still match the rows. The pairing is decision 1's: both halves
 listed, or no mark.
+
+## Amendments — 2026-09-16, from the handoff's first review and prikk's reply 014
+
+### A1 — F4 corrected: `prikk commit` can queue onto a ref never created
+
+The dev team measured, at 0.42.0: **`prikk commit --from-worktree --ref heads/other`, on a ref never created, succeeds**
+and queues a patch, with `branch list --all` still empty. So *"only `heads/main` reaches stikk unpublished"* is true of
+**stikk's reachability** — the picker offers only `refs()` plus the unpublished `heads/main` row, and prikk's current
+branch can be switched only to an existing branch — **not of prikk**. Decision 5's membership test serves any ref either
+way, so no decision changes.
+
+### A2 — decision 5 widened: an unpublished ref's queue is its baseline
+
+**Measured at 0.42.0 and 0.38.0:** after a first commit on an unpublished `heads/main`, left unsealed, `refs()` still lists
+no branch, `status` still says `<not published>` — and `worktree-status` reports the queued files as **tracked and
+unchanged**. A file added afterwards is the only untracked entry, and a second commit adds to the queue. **So "every file is
+listed as untracked, and a commit would be its first" is false one ordinary step after row D.**
+
+**The words are chosen from the queue as well as `refs()`.** Orientation's `queued_patches` and `queued_target` say whether
+patches are queued **for this ref**, and commit's `compute` already reads Orientation; the Changes operation adds that read.
+The race is the one decision 5 already accepts, over three reads.
+
+| Unpublished ref, and… | Changes headline | Commit card, under the targets |
+|---|---|---|
+| **no queued patch for it**, changes | *"{ref} has no published history — every file is listed as untracked, and a commit would be its first"* | *"{ref} has no published history: this would be its first commit"* |
+| **no queued patch for it**, clean | *"{ref} has no published history, and nothing in the worktree to commit"* | — (commit is blocked as clean) |
+| **{n} queued patch(es) for it**, changes | *"{ref} has no published history yet — its {n} queued patch(es) are the baseline here, and nothing is sealed"* | *"{ref} has no published history: this adds to its {n} queued patch(es), and nothing is sealed until the queue is sealed"* |
+| **{n} queued patch(es) for it**, clean | *"{ref} has no published history yet — nothing in the worktree beyond its {n} queued patch(es), and nothing is sealed"* | — (commit is blocked as clean) |
+| a queue **for another ref**, or a count with **no target reported** | *"{ref} has no published history"* | *"{ref} has no published history"* |
+
+**Only prikk's facts decide the row**: `refs()` membership, `queued_target == {ref}`, `queued_patches`, and `clean`. **Nothing
+is inferred from `tracked`.**
+
+### A3 — row 5 never reaches the card, so commit's blocked reason carries the notice
+
+Row 5's report is **`clean: true`** (prikk's reply 014 confirms it, with `changes: []` and `refused_count: 0`), so commit's
+`compute` blocks it as clean before arming anything, and the card's source-present sentence is unreachable there. **The
+blocked reason is incomplete** — prikk would refuse for the declaration, not only because nothing changed. **When a
+declaration's source is present again, the clean-blocked reason gains decision 2's sentence**, and the analysis runs on
+clean reports too.
+
+**A way out, only where it is measured.** prikk's reply 014 measured that, with the source back and the destination gone
+(row 5's state), **`prikk mv {new} {old}` "nets to no move, dropped"**: the declaration is gone and there is nothing to commit.
+**Where stikk measures the same at 0.42.0**, and only in that state — no `untracked` entry at `{new}` — decision 2's
+source-present sentence gains *"; in a terminal, prikk mv {new} {old} drops it"*. **With both copies present (row 2), no way
+out is offered**: prikk's measured route there is setting one copy aside by hand, and stikk does not advise moving a user's
+files.
+
+### A4 — an operation's name depends on the surface that prints it
+
+The dev team measured rows 1 and 3's deletion as **`delete-file`** in `prikk commit`'s printed output; the architect's probe
+read **`delete-node`** from `status-report-v1`'s queue. **Both are right.** A test names the surface it reads, and asserts that
+surface's word.
+
+### A5 — prikk 0.43.0 will report what commit does with each declaration (reply 014)
+
+prikk ruled, for 0.43.0 (which *"will not cut without it"*), additive fields in `worktree-status-report-v1` on each declaration:
+- **`resolution`**: `"rename"`, `"deletion"`, `"deletion-ignored"`, `"never-tracked"` or `"refused"`, from the classifier
+  `commit` itself uses;
+- **`refusal`**, byte-for-byte what `commit` prints, on a refused declaration, counted in **`refused_declaration_count`**;
+- **`content_changed`** and **`mode_changed`**, on a declaration that resolves to a rename.
+
+**So this RFC's three-state inference is the path for prikk 0.28–0.42.** At 0.43 the re-baseline (the roadmap's 0.43 item)
+replaces it with `resolution`, **prevents on `resolution: "refused"`** — prikk's own verdict, so within RFC 027's ruling — and
+replaces F3's content sentence with `content_changed`/`mode_changed`. **prikk names the fields final only when 0.43.0
+publishes**, and stikk measures them before relying on them.
 
 ## Delivery
 

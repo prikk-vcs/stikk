@@ -1,6 +1,6 @@
 # Handoff B — the prikk 0.38 re-baseline (v1)
 
-**Companion to:** [RFC 021](../../accepted/021-prikk-0-38-rebaseline.md) (Accepted 2026-09-12).
+**Companion to:** [RFC 021](../../done/021-prikk-0-38-rebaseline.md) (Accepted 2026-09-12).
 Handoff A (F0) has landed; this is everything else in the RFC.
 **Realizes:** ceiling 33 → 38; `UD-09`'s retirement; the amendments to `FR-030/033/034/051/052/103`.
 **Design items:** `ASM-2`/`NFR-R03`, `TS-03`, `TS-07`, `UD-02`, `UD-09`, `C-T2c′`, `T-T4`.

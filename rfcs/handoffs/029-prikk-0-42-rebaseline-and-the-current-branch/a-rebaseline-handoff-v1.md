@@ -1,6 +1,6 @@
 # Handoff A — the prikk 0.42 re-baseline (v1)
 
-**Companion to:** [RFC 029](../../accepted/029-prikk-0-42-rebaseline-and-the-current-branch.md) (Accepted
+**Companion to:** [RFC 029](../../done/029-prikk-0-42-rebaseline-and-the-current-branch.md) (Accepted
 2026-09-13; **Q1 still open**).
 **This handoff is decisions 1–3 and 5 of RFC 029: the mechanical re-baseline.** It does not depend on Q1, and
 landing it unblocks RFC 028's Queue view.

@@ -1,6 +1,6 @@
 # Handoff B — the readiness rebuild: `key status`, `binding`, and a model that stops guessing (v1)
 
-**Companion to:** [RFC 026](../../accepted/026-readiness-after-the-key-directory.md) (Accepted
+**Companion to:** [RFC 026](../../done/026-readiness-after-the-key-directory.md) (Accepted
 2026-09-12, **Q1 ruled (b)** — read the ruling, it decides what happens on 0.40).
 **Follows:** [Handoff A](a-rebaseline-handoff-v1.md) and its
 [addendum](a-addendum-json-validation-handoff-v1.md), both approved and pushed. The ceiling is 0.41 and

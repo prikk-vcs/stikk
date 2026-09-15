@@ -1,6 +1,6 @@
 # Handoff — the sweep rule and the supply-chain gate (v1)
 
-**Companion to:** [RFC 020](../../accepted/020-msrv-1-88-consistency-and-a-supply-chain-gate.md)
+**Companion to:** [RFC 020](../../done/020-msrv-1-88-consistency-and-a-supply-chain-gate.md)
 (Accepted 2026-09-08; **Q1 ruled by the owner** with the acceptance). Inherits its state.
 **Realizes:** F3 and F4. **F1 and F2 already shipped** in `b76ea38` — the MSRV number now reads 1.88 in
 all ten places; do not redo that.

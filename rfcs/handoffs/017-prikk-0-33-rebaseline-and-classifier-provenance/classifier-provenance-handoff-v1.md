@@ -1,6 +1,6 @@
 # Handoff — the 0.33 re-baseline and the classifier's provenance (v1)
 
-**Companion to:** [RFC 017](../../accepted/017-prikk-0-33-rebaseline-and-classifier-provenance.md)
+**Companion to:** [RFC 017](../../done/017-prikk-0-33-rebaseline-and-classifier-provenance.md)
 (Accepted 2026-09-06). Inherits its state.
 **Realizes:** the 0.4.0 increment after [RFC 015](../../done/015-prikk-0-32-rebaseline.md), and the one
 that gates [RFC 016](../../proposed/016-the-seal-ceremony.md).

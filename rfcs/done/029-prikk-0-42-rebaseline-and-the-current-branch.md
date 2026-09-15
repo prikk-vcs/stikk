@@ -1,13 +1,52 @@
 # RFC 029 — The prikk 0.42 re-baseline, and prikk's current branch
 
-**Status.** **Accepted by the project owner 2026-09-13; Q1 ruled (b)** the same day, with safeguard 3 and the
-fallback folded into Handoff B. Handoff A landed (`9b0a6e4`, `0d3903e`, `7417738`); Handoff B is issued, after RFC 030 landed. Proposed the same day by the architect. Measured against real prikk
+**Status.** **Done 2026-09-15** — Handoffs A and B delivered on `main`; a **0.7.0 candidate**. Accepted by the project
+owner 2026-09-13, **Q1 ruled (b)** the same day, with safeguard 3 and the fallback folded into Handoff B. Proposed the same day by the architect. Measured against real prikk
 **0.28.0** and **0.42.0** binaries built from their tags, and by running stikk's own real-binary suite at both
 ends with only the validated ceiling raised, in a scratch copy of `b1460cc`.
 **Tracks.** `ASM-2`, `NFR-R03`, `FR-055`, `FR-002`, `TU-02`, `TU-03`, the requirements' terminology table,
 RFC 027 decision 5, RFC 028.
 **Touches.** `stikk-prikk` (the ceiling; Orientation's reading of `status`), `stikk-tui` (where focus starts; the
 header), `stikk-real-binary`, the captured fixtures, and on acceptance `requirements.md` and `external-design.md`.
+
+## Delivered
+
+**A — the re-baseline** (`9b0a6e4` the ceiling alone, `0d3903e`, `7417738`).
+- **The ceiling is 42.** The suite passed unchanged at 0.28 and 0.42 on Linux, macOS and Windows (`34737978449`
+  at the ceiling commit, `34738492001` after).
+- **The 0.42 `status` captures** were taken in both pointer forms, and Orientation was shown to parse them exactly
+  as their older equivalents.
+- **The unsupported-path tests were split by the prikk they describe.** 0.42's refused `unsupported-path` makes
+  commit unavailable with no production change, and the `U+FFFD` caution renders.
+- **The Glossary** no longer says prikk has no current-branch pointer.
+- **Fixture claims.** The fixtures were re-verified against 0.42, except those recording a state 0.42 cannot
+  produce, which are named.
+- **Runs:** CI `34900192293` and Docs `34900192290` at `7417738`.
+
+**B — Q1 ruled (b)** (`ac0e5ad`, `c3b99f9`, `c194680`).
+- **Focus has three states,** resolved once, on the first successful Orientation read:
+  - prikk's current branch when it names one, even unpublished;
+  - otherwise `heads/main` only if published;
+  - otherwise no focus, with the ref picker open.
+- **The status bar shows `prikk's default: <branch>`** beside the focus when the two differ. When the line is
+  full it sheds in this order: the key hint, the repository name, prikk's value, then the segment. The focus,
+  queue count and signing badges are never cut. The Orientation view shows prikk's current branch whole.
+- **Commit and seal confirmations name both refs** when they differ. The words rest on a re-measurement at 0.42:
+  a raw `prikk commit` with no `--ref` queues for the current branch.
+- **An empty repository's picker offers `heads/main (not published)`.** Picking it opens History, which reads
+  prikk's empty history at both ends.
+- **Actions that need a focused ref are unavailable with a reason** until one is focused.
+- **Runs:** suite `34932894457` at `c3b99f9`; CI `34933944325` and Docs `34933944296` at `c194680`.
+
+### Carried forward, and known consequences
+
+- **`no ref focused` persists across `r`.** A later Orientation read never moves focus, which is the ruling. After
+  a terminal seal publishes `heads/main`, stikk stays unfocused until the user presses `b`, and the banner says
+  so. This is a consequence, not a defect.
+- **The status bar is as fresh as the last Orientation read** (on open, on `r`, after a commit or seal). `FR-106`'s
+  passive notice is not wired (roadmap item 12). RFC 030 protects a confirmation armed before a terminal switch.
+- **At 80 columns with a long repository name and a queue**, prikk's default is shortened. Far below 80 columns,
+  the line clips past its last shedding step.
 
 ## Summary
 

@@ -1,6 +1,6 @@
 # Handoff A — the unsupported paths stikk has never listed (v1)
 
-**Companion to:** [RFC 027](../../accepted/027-what-commit-would-refuse.md) (Accepted 2026-09-13, **Q1
+**Companion to:** [RFC 027](../../done/027-what-commit-would-refuse.md) (Accepted 2026-09-13, **Q1
 ruled (b)**) — **F0 only**.
 **Handoff B** — decisions 2–7: the JSON reader, the authoring verdict, refused entries in the Changes
 view, commit's prevention, and the 0.7.0 bump — follows once this lands, and is built on the reader you

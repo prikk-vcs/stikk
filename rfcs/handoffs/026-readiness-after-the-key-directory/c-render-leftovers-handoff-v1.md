@@ -1,6 +1,6 @@
 # Handoff C — the two render leftovers, not carried a third time (v1)
 
-**Companion to:** [RFC 026](../../accepted/026-readiness-after-the-key-directory.md), **F7**.
+**Companion to:** [RFC 026](../../done/026-readiness-after-the-key-directory.md), **F7**.
 **Follows:** [Handoff B](b-readiness-rebuild-handoff-v1.md) — **do B first**, because both touch
 `overlay.rs` and B's key-id work is the larger of the two diffs.
 **Design items:** `C-T2b`, `ER-02`, `C-T4d`, RFC 023 F1/F2, RFC 024 §5.

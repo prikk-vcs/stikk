@@ -1,6 +1,6 @@
 # Handoff A — the two display gaps, and a threat-model correction (v1)
 
-**Companion to:** [RFC 023](../../accepted/023-what-stikk-has-and-does-not-show.md) (Accepted
+**Companion to:** [RFC 023](../../done/023-what-stikk-has-and-does-not-show.md) (Accepted
 2026-09-12; **Q1 resolved by the architect** the same day, by a mechanism none of its three options
 was — read it, it changes what a later increment will build).
 **This handoff is F1, F2 and Decision 5.** F3 — the key-id module — is Handoff B and follows.

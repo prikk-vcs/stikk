@@ -1,6 +1,6 @@
 # Handoff B — the key-id module (v1)
 
-**Companion to:** [RFC 023](../../accepted/023-what-stikk-has-and-does-not-show.md) (Accepted
+**Companion to:** [RFC 023](../../done/023-what-stikk-has-and-does-not-show.md) (Accepted
 2026-09-12), **F3**. Handoff A has landed.
 **Design items:** `FL-05` step 5, `FL-06` (amended here), `FL-10`, `FR-104`, `C-I1a–e`, `SEAM-06`,
 `LC-13`, `TS-04`, `C-S2`.

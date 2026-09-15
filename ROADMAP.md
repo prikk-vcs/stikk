@@ -227,9 +227,10 @@ a fabricated worktree entry was fixed.
    unavailable, with prikk's reasons, when prikk would refuse a path; and the unsupported paths stikk had
    never listed are listed. Ships in 0.7.0.
 2. **The Queue view** (`FR-051`) — **[RFC 028](rfcs/accepted/028-the-queue-view.md), accepted. prikk 0.42.0
-   shipped what it waited for** — each queued patch's message, and `show` on a queued patch. **Handoff A** (the
-   reader, the view, History's tier) **is issued**, to follow item 9's Handoff B; Handoff B (seal names the patches)
-   follows A. Until then the seal ceremony still says how many patches it will freeze but not which.
+   shipped what it waited for** — each queued patch's message, and `show` on a queued patch. **Handoff A landed
+   on `main`** (`4be8d84`, `3ea2877`): the Queue view (`Q`) lists each queued patch, with its message on prikk ≥ 0.42,
+   and History's tier says whose queue it is. **Handoff B** (seal names the patches it freezes) **is issued**. Until
+   it lands, the seal ceremony still says how many patches it will freeze but not which.
 3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
 4. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
@@ -251,10 +252,10 @@ a fabricated worktree entry was fixed.
    already shows `<unpublished>`, and the Changes view should say the same rather than show a whole tree as
    untracked without comment. **RFC 029's Handoff B settles the default-focus half** (item 9); the Changes view's
    words remain.
-9. **The prikk 0.42 re-baseline — [RFC 029](rfcs/accepted/029-prikk-0-42-rebaseline-and-the-current-branch.md),
-   accepted; Q1 ruled (b).** Handoff A, the mechanical re-baseline, **landed on `main`** (`7417738`). Handoff B — stikk opens focused on
-   prikk's current branch, names both refs on a confirmation when they differ, and falls back to the ref picker
-   when `heads/main` is not published — **is issued**, after item 10 landed.
+9. **The prikk 0.42 re-baseline, and prikk's current branch — landed on `main`**
+   ([RFC 029](rfcs/done/029-prikk-0-42-rebaseline-and-the-current-branch.md); A `7417738`, B `c194680`). stikk opens
+   focused on prikk's current branch, names prikk's default beside its focus when they differ, names both refs on a
+   confirmation, and falls back to the ref picker when `heads/main` is not published. Ships in 0.7.0.
 10. **A confirmed commit authors the worktree its preview showed — landed on `main`**
     ([RFC 030](rfcs/done/030-a-confirmed-commit-authors-the-worktree-it-previewed.md); `1420e45`, `40321f7`). A worktree
     changed between commit's preview and its confirmation — a terminal `prikk branch switch`, a file added, a

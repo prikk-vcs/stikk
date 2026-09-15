@@ -1,6 +1,6 @@
 # Handoff — overlay sizing, and the gate that makes it stay fixed (v1)
 
-**Companion to:** [RFC 024](../../accepted/024-overlay-sizing-and-the-fix-that-did-not-travel.md)
+**Companion to:** [RFC 024](../../done/024-overlay-sizing-and-the-fix-that-did-not-travel.md)
 (Accepted 2026-09-12; **Q1 ruled (c)** the same day, with the property stated as two assertions —
 read that section first, F5 changed what this increment covers).
 **Design items:** `T-T4`, `OP-03`, `FR-120`/`FR-121`, `NFR-A03`, `TS-01`.

@@ -1,6 +1,6 @@
 # Handoff — a confirmed commit authors the worktree its preview showed (v2)
 
-**Companion to:** [RFC 030](../../accepted/030-a-confirmed-commit-authors-the-worktree-it-previewed.md) (Accepted
+**Companion to:** [RFC 030](../../done/030-a-confirmed-commit-authors-the-worktree-it-previewed.md) (Accepted
 2026-09-13; **amended 2026-09-15**, see its *Amendments*).
 **Supersedes v1.** This handoff is RFC 030's decisions 1–7, including amendments A1–A3.
 **Starting point:** `origin/main` at `7417738` (RFC 029 Handoff A landed), plus the two suite tests you wrote

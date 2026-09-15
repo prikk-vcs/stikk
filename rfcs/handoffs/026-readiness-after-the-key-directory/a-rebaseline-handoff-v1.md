@@ -1,6 +1,6 @@
 # Handoff A — the prikk 0.41 re-baseline, and a harness that must change first (v1)
 
-**Companion to:** [RFC 026](../../accepted/026-readiness-after-the-key-directory.md) (Accepted
+**Companion to:** [RFC 026](../../done/026-readiness-after-the-key-directory.md) (Accepted
 2026-09-12; **Q1 ruled (b)** by the architect after 0.41 published — read it, it decides what happens on
 0.40).
 **This handoff is the re-baseline and the three JSON parsers.** **B is the readiness rebuild**, and it

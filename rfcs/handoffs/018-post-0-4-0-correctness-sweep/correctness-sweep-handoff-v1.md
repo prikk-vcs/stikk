@@ -1,6 +1,6 @@
 # Handoff — the post-0.4.0 correctness sweep, and 0.4.1 (v1)
 
-**Companion to:** [RFC 018](../../accepted/018-post-0-4-0-correctness-sweep.md) (Accepted 2026-09-06).
+**Companion to:** [RFC 018](../../done/018-post-0-4-0-correctness-sweep.md) (Accepted 2026-09-06).
 Inherits its state.
 **Realizes:** **0.4.1** — a patch release, non-breaking, strings and docs only.
 **Design items:** `C-T4a–e`, `T-T4`, `ER-02`, `NFR-R03`, `C-E2`/`CON-1` (§2's replacement claim rests

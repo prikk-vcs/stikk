@@ -6,7 +6,7 @@ prepared under it.
 [the 0.5.0 release proposal](../../../.git-exclude/release/0-5-0-proposal.md).
 **Covers:** RFCs [019](../../done/019-the-real-binary-integration-suite.md),
 [020](../../done/020-msrv-1-88-consistency-and-a-supply-chain-gate.md),
-[021](../../accepted/021-prikk-0-38-rebaseline.md) A and B.
+[021](../../done/021-prikk-0-38-rebaseline.md) A and B.
 
 > **This release is the first whose prep depends on workflows that had never run.** `real-binary.yml`
 > and `supply-chain.yml` are dispatch-only by ruling, and until today neither had executed on GitHub.

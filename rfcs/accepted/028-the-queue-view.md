@@ -1,8 +1,8 @@
 # RFC 028 — The Queue view: what a seal will freeze, and what prikk cannot yet say about it
 
 **Status.** **Accepted by the project owner 2026-09-13, Q1 ruled (b)** — the work waited for the prikk release that
-answered letter 011. prikk 0.42.0 shipped it, and stikk re-baselined to it (RFC 029 A). **Handoff A issued
-2026-09-15**, to follow RFC 029's Handoff B. Proposed the same day by the architect, 0.7.0's second increment. Every
+answered letter 011. prikk 0.42.0 shipped it, and stikk re-baselined to it (RFC 029 A). **Handoff A delivered
+2026-09-15** (`4be8d84`, `3ea2877`); **Handoff B issued** the same day. Proposed the same day by the architect, 0.7.0's second increment. Every
 finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from their tags the
 same day.
 **Tracks.** `FR-051`, `FR-052`, `FR-010`, `FR-030`, `TU-01`, `C-T2b`, `C-T2c′`, `ER-02`, `UD-02`, `ASM-2`,

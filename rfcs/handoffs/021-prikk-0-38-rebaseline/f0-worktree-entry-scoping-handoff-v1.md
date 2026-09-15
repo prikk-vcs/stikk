@@ -1,6 +1,6 @@
 # Handoff A — F0: stop fabricating a worktree entry (v1)
 
-**Companion to:** [RFC 021](../../accepted/021-prikk-0-38-rebaseline.md) (Accepted 2026-09-12),
+**Companion to:** [RFC 021](../../done/021-prikk-0-38-rebaseline.md) (Accepted 2026-09-12),
 **Decision 0** — *fix F0 before anything else, and separately.* This handoff is only F0. The
 re-baseline proper (ceiling, fixtures, requirement amendments) is Handoff B and follows this one.
 **Design items:** `T-T4` (no confident-but-wrong picture), `UD-02` (confined parsing), `TS-03`

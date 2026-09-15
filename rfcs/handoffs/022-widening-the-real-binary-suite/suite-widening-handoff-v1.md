@@ -1,6 +1,6 @@
 # Handoff — widening the real-binary suite (v1)
 
-**Companion to:** [RFC 022](../../accepted/022-widening-the-real-binary-suite.md) (Accepted 2026-09-12;
+**Companion to:** [RFC 022](../../done/022-widening-the-real-binary-suite.md) (Accepted 2026-09-12;
 **Q1 ruled by the architect** the same day, on evidence — read that section first, it changed the
 premise). **Opens 0.6.0.**
 **Design items:** `TS-07`, `TS-03`, `UD-02`, `UD-05`, `NFR-T01`, `T-T4`, `FR-106`, `ER-02`.

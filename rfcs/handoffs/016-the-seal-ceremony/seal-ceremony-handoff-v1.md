@@ -1,6 +1,6 @@
 # Handoff — the seal ceremony (v1)
 
-**Companion to:** [RFC 016](../../accepted/016-the-seal-ceremony.md) (Accepted 2026-09-06, as amended
+**Companion to:** [RFC 016](../../done/016-the-seal-ceremony.md) (Accepted 2026-09-06, as amended
 that day on prikk's replies). Inherits its state.
 **Realizes:** the 0.4.0 increment after
 [RFC 017](../../done/017-prikk-0-33-rebaseline-and-classifier-provenance.md), whose F5 and F6 are this

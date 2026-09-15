@@ -1,6 +1,6 @@
 # Handoff B — stikk opens on prikk's current branch (v1)
 
-**Companion to:** [RFC 029](../../accepted/029-prikk-0-42-rebaseline-and-the-current-branch.md), Q1 ruled (b) with
+**Companion to:** [RFC 029](../../done/029-prikk-0-42-rebaseline-and-the-current-branch.md), Q1 ruled (b) with
 safeguard 3 and the fallback.
 **This handoff is the ruling:** where focus starts, how prikk's current branch is shown, the fallback, and
 safeguard 3.

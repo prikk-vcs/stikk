@@ -1,6 +1,6 @@
 # Handoff — the real-binary integration suite (v1)
 
-**Companion to:** [RFC 019](../../accepted/019-the-real-binary-integration-suite.md) (Accepted
+**Companion to:** [RFC 019](../../done/019-the-real-binary-integration-suite.md) (Accepted
 2026-09-06; both open questions ruled by the architect the same day). Inherits its state.
 **Realizes:** `TS-07`, deferred since RFC 009. **Opens 0.5.0.**
 **Design items:** `TS-07`, `TS-03`, `NFR-T01`, `UD-02`, `ASM-2`/`NFR-R03`, `C-I1a`/`C-I1e`.

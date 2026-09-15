@@ -1,6 +1,6 @@
 # Handoff B — the verdict, the Changes view, and commit's prevention (v1)
 
-**Companion to:** [RFC 027](../../accepted/027-what-commit-would-refuse.md) (Accepted 2026-09-13, **Q1
+**Companion to:** [RFC 027](../../done/027-what-commit-would-refuse.md) (Accepted 2026-09-13, **Q1
 ruled (b)**; **F6 ruled by the architect** the same day — read both rulings first).
 **Follows:** [Handoff A](a-unsupported-path-entries-handoff-v1.md), approved at `303668b`. B is built on
 A's reader.

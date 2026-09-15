@@ -1,6 +1,6 @@
 # Handoff — a confirmed commit authors the worktree its preview showed (v1)
 
-**Companion to:** [RFC 030](../../accepted/030-a-confirmed-commit-authors-the-worktree-it-previewed.md) (Accepted
+**Companion to:** [RFC 030](../../done/030-a-confirmed-commit-authors-the-worktree-it-previewed.md) (Accepted
 2026-09-13; no open question).
 **This handoff is all six decisions of RFC 030.**
 **Sequencing:** after [RFC 029 Handoff A](../029-prikk-0-42-rebaseline-and-the-current-branch/a-rebaseline-handoff-v1.md)

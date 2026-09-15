@@ -21,7 +21,7 @@ use std::path::Path;
 use stikk_model::{Capability, RequestCategory, Result, StaleCause, StikkError, Tier};
 use stikk_prikk::{CommitResult, Prikk};
 
-use crate::changes::{self, ChangeKind, ChangesView};
+use crate::changes::{self, ChangeKind, ChangesView, DeclarationState};
 use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
 
 /// stikk's own short name for this operation — used verbatim in [`stikk_model::StikkError::Stale`]/
@@ -62,8 +62,10 @@ pub enum CommitPreviewOutcome {
     /// boxed only to keep this enum's two variants close in size (`clippy::large_enum_variant`) — no
     /// meaning attaches to the indirection.
     Ready {
-        /// The preview to restate to the user before they confirm.
-        preview: CommitPreview,
+        /// The preview to restate to the user before they confirm. Boxed, like `token`, only to keep this
+        /// enum's variants close in size (`clippy::large_enum_variant`), since the view gained RFC 032's
+        /// declaration analysis.
+        preview: Box<CommitPreview>,
         /// Feed this into [`commit_confirm_and_execute`] once the user supplies evidence. It carries the
         /// previewed ref and view with it (RFC 030 decision 3).
         token: Box<CommitToken>,
@@ -146,7 +148,7 @@ impl CommitToken {
 enum CommitReadView {
     Blocked(String),
     WouldRefuse(Vec<RefusedPath>),
-    Ready(CommitPreview),
+    Ready(Box<CommitPreview>),
 }
 
 /// One entry prikk reports `commit` would refuse (RFC 027 decision 5).
@@ -209,18 +211,25 @@ fn compute(
         return Ok((CommitReadView::Blocked(reason), placeholder_summary()));
     }
 
-    let status = prikk.worktree_status(repo, reff)?;
-    if status.clean {
-        return Ok((
-            CommitReadView::Blocked(
-                "the worktree matches this ref's replay baseline — there is nothing to commit"
-                    .to_string(),
-            ),
-            placeholder_summary(),
-        ));
+    let view = changes::from_status(prikk.worktree_status(repo, reff)?);
+    if view.clean {
+        // RFC 032 A3: prikk reports a declaration whose source is back as `clean: true` (row 5) while
+        // `commit` refuses it, so "nothing to commit" alone is not the whole reason. The analysis runs on
+        // clean reports too, and the reason carries its notice.
+        let mut reason =
+            "the worktree matches this ref's replay baseline — there is nothing to commit"
+                .to_string();
+        for notice in view
+            .declared_renames
+            .iter()
+            .filter(|d| matches!(d.state, DeclarationState::SourcePresent { .. }))
+            .filter_map(changes::DeclaredRename::notice)
+        {
+            reason.push_str("; ");
+            reason.push_str(&notice);
+        }
+        return Ok((CommitReadView::Blocked(reason), placeholder_summary()));
     }
-
-    let view = changes::from_status(status);
 
     // RFC 027 decision 5: prevent a commit prikk has already said it would refuse. After the two
     // checks above — a clean tree has no entries, and a cross-ref commit is refused whatever the
@@ -249,15 +258,25 @@ fn compute(
         &report.author,
         stikk_prikk::key_id::author_key_id(),
     );
+    // RFC 032 decision 5, A2: after the worktree report. **Only the words go on the summary**:
+    // `CommitPreview::changes` and the view the token owns carry nothing from this read, so the re-read at
+    // Enter still builds an equal view (handoff §4, trap 1). A failed read fails the preview. The race over
+    // these reads is the one `changes::changes_view` documents.
+    let refs = prikk.refs(repo)?;
+    let history = changes::history_from(reff, &refs, &orientation);
+    let mut counts = vec![
+        ("modified", view.modified),
+        ("missing", view.missing),
+        ("untracked", view.untracked),
+        ("unsupported", view.unsupported),
+    ];
+    if view.renames > 0 {
+        counts.push(("renames", view.renames));
+    }
     let summary = ConfirmationSummary {
         operation: "Commit worktree changes".to_string(),
         target_ids: vec![reff.to_string()],
-        counts: vec![
-            ("modified", view.modified),
-            ("missing", view.missing),
-            ("untracked", view.untracked),
-            ("unsupported", view.unsupported),
-        ],
+        counts,
         capability: Capability::Author,
         consequence: consequence(orientation.active_patch_warning.as_deref()),
         target_name: None,
@@ -273,12 +292,19 @@ fn compute(
         // Safeguard 3, from this preview's own Orientation read above.
         branch_notice: crate::confirm::branch_notice(reff, &orientation.current_branch),
         freezes: None,
+        history_notice: history.card_line(reff),
+        rename_note: (view.renames > 0).then(|| crate::changes::RENAMES_ALSO_COUNTED.to_string()),
+        declaration_notices: view
+            .declared_renames
+            .iter()
+            .filter_map(changes::DeclaredRename::notice)
+            .collect(),
     };
     let preview = CommitPreview {
         changes: view,
         active_patch_notice: orientation.active_patch_warning,
     };
-    Ok((CommitReadView::Ready(preview), summary))
+    Ok((CommitReadView::Ready(Box::new(preview)), summary))
 }
 
 /// A [`ConfirmationSummary`] never shown — [`CommitPreviewOutcome::Blocked`] discards it along with the
@@ -298,6 +324,9 @@ fn placeholder_summary() -> ConfirmationSummary {
         signing_key_is_published_example: false,
         branch_notice: None,
         freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     }
 }
 

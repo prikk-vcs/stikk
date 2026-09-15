@@ -516,13 +516,16 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         signing_key_is_published_example: false,
         branch_notice: None,
         freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     }
 }
 
 #[test]
 fn confirmation_restates_operation_targets_counts_and_consequence() {
     let overlay = Overlay::Confirmation {
-        summary: summary(vec!["heads/main"], None),
+        summary: Box::new(summary(vec!["heads/main"], None)),
         tier: Tier::Two,
         typed: String::new(),
         error: None,
@@ -541,7 +544,7 @@ fn confirmation_restates_operation_targets_counts_and_consequence() {
 #[test]
 fn confirmation_tier_three_typed_shows_the_prompt_and_typed_input_so_far() {
     let overlay = Overlay::Confirmation {
-        summary: summary(vec!["heads/main"], Some("heads/main")),
+        summary: Box::new(summary(vec!["heads/main"], Some("heads/main"))),
         tier: Tier::ThreeTyped,
         typed: "heads/ma".to_string(),
         error: None,
@@ -555,7 +558,7 @@ fn confirmation_tier_three_typed_shows_the_prompt_and_typed_input_so_far() {
 #[test]
 fn confirmation_shows_an_inline_declined_error_not_a_separate_popup() {
     let overlay = Overlay::Confirmation {
-        summary: summary(vec!["heads/main"], Some("heads/main")),
+        summary: Box::new(summary(vec!["heads/main"], Some("heads/main"))),
         tier: Tier::ThreeTyped,
         typed: "wrong".to_string(),
         error: Some("test-op was not confirmed as this tier requires".to_string()),
@@ -572,7 +575,7 @@ fn confirmation_hostile_target_id_and_target_name_render_inert() {
     // repository could still shape (a ref name, say) — neither may forge chrome nor escape the pane.
     let hostile_id = "heads/\u{1b}[2Jevil";
     let overlay = Overlay::Confirmation {
-        summary: summary(vec![hostile_id], Some(hostile_id)),
+        summary: Box::new(summary(vec![hostile_id], Some(hostile_id))),
         tier: Tier::ThreeTyped,
         typed: String::new(),
         error: None,
@@ -585,7 +588,7 @@ fn confirmation_hostile_target_id_and_target_name_render_inert() {
 #[test]
 fn confirmation_hostile_typed_input_also_renders_inert() {
     let overlay = Overlay::Confirmation {
-        summary: summary(vec!["heads/main"], Some("heads/main")),
+        summary: Box::new(summary(vec!["heads/main"], Some("heads/main"))),
         tier: Tier::ThreeTyped,
         typed: "\u{1b}[2Jpasted".to_string(),
         error: None,
@@ -987,13 +990,16 @@ fn summary_with_key_id(
         signing_key_is_published_example: false,
         branch_notice: None,
         freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     }
 }
 
 fn confirmation_at_80x24(summary: ConfirmationSummary, tier: Tier) -> String {
     draw_at(
         &Overlay::Confirmation {
-            summary,
+            summary: Box::new(summary),
             tier,
             typed: String::new(),
             error: None,
@@ -1232,6 +1238,9 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         signing_key_is_published_example: false,
         branch_notice: None,
         freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     }
 }
 
@@ -1384,7 +1393,7 @@ fn cases() -> Vec<Case> {
         Case {
             name: "Confirmation",
             build: Box::new(|_| Overlay::Confirmation {
-                summary: gate_summary(SEAL_CONSEQUENCE),
+                summary: Box::new(gate_summary(SEAL_CONSEQUENCE)),
                 tier: Tier::Three,
                 typed: String::new(),
                 error: None,
@@ -1599,7 +1608,7 @@ fn f1_seals_confirmation_shows_its_confirm_affordance() {
     for height in [24, 26, 40] {
         let text = draw_at(
             &Overlay::Confirmation {
-                summary: summary.clone(),
+                summary: Box::new(summary.clone()),
                 tier: Tier::Three,
                 typed: String::new(),
                 error: None,
@@ -1687,6 +1696,9 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         signing_key_is_published_example: false,
         branch_notice: None,
         freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     }
 }
 
@@ -2094,7 +2106,7 @@ fn the_confirmation_card_names_prikks_current_branch_directly_under_the_targets(
     let mut with_notice = summary(vec!["heads/main"], None);
     with_notice.branch_notice = Some(notice.to_string());
     let overlay = Overlay::Confirmation {
-        summary: with_notice,
+        summary: Box::new(with_notice),
         tier: Tier::Two,
         typed: String::new(),
         error: None,
@@ -2115,7 +2127,7 @@ fn the_confirmation_card_names_prikks_current_branch_directly_under_the_targets(
     // Without a notice, nothing is added.
     let plain = draw_at(
         &Overlay::Confirmation {
-            summary: summary(vec!["heads/main"], None),
+            summary: Box::new(summary(vec!["heads/main"], None)),
             tier: Tier::Two,
             typed: String::new(),
             error: None,
@@ -2212,7 +2224,7 @@ fn seal_card(freezes: stikk_core::FrozenPatches, count: u64) -> Overlay {
     summary.branch_notice = Some(NOTICE.to_string());
     summary.freezes = Some(freezes);
     Overlay::Confirmation {
-        summary,
+        summary: Box::new(summary),
         tier: Tier::Three,
         typed: String::new(),
         error: None,
@@ -2434,4 +2446,63 @@ fn wide_character_rows_are_measured_in_cells_and_the_remainder_count_stays_exact
             "a row ran past the card:\n{text}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 032 — commit's card counts renames, names a declaration prikk will not author, and names a ref with no
+// published history, with the consequence and footer whole.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn rfc032_the_commit_card_counts_renames_and_names_what_it_will_not_author_at_80x24() {
+    const CONSEQUENCE: &str = "Queues this worktree capture as a new patch in the active WAL; nothing is sealed until you run Seal.";
+    const HISTORY: &str = "heads/main has no published history: this would be its first commit";
+    const ABSENT: &str = "declared rename c.txt → d.txt: d.txt is not in the worktree, so prikk will not author it as a rename";
+    let mut card = summary(vec!["heads/main"], None);
+    card.counts = vec![
+        ("modified", 0),
+        ("missing", 2),
+        ("untracked", 1),
+        ("unsupported", 0),
+        ("renames", 1),
+    ];
+    card.consequence = CONSEQUENCE.to_string();
+    card.history_notice = Some(HISTORY.to_string());
+    card.rename_note = Some(stikk_core::RENAMES_ALSO_COUNTED.to_string());
+    card.declaration_notices = vec![ABSENT.to_string()];
+    let text = confirmation_at_80x24(card, Tier::Two);
+    println!("--- RFC 032: commit card, 80×24\n{text}");
+    let flat = joined(&text);
+    for needle in [
+        HISTORY,
+        ABSENT,
+        stikk_core::RENAMES_ALSO_COUNTED,
+        CONSEQUENCE,
+    ] {
+        assert!(flat.contains(needle), "{needle:?} whole:\n{text}");
+    }
+    assert!(
+        flat.contains("0 modified, 2 missing, 1 untracked, 0 unsupported, 1 renames"),
+        "{text}"
+    );
+    assert!(text.contains("Enter to confirm · Esc to cancel"), "{text}");
+    let row = |needle: &str| {
+        text.lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} not on screen:\n{text}"))
+    };
+    assert!(
+        row("    heads/main") < row("no published history"),
+        "{text}"
+    );
+    assert!(row("no published history") < row("1 renames"), "{text}");
+    assert!(row("1 renames") < row("each rename is also"), "{text}");
+    assert!(
+        row("each rename is also") < row("declared rename c.txt"),
+        "{text}"
+    );
+    assert!(
+        row("declared rename c.txt") < row("Queues this worktree"),
+        "{text}"
+    );
 }

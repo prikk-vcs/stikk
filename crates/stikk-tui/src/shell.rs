@@ -124,8 +124,19 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         }
         Focus::History(v, cursor) => view::history::render(v, cursor, palette, frame, area),
         Focus::BlockDetail(detail) => view::block::render(detail, palette, frame, area),
-        Focus::Changes(v, hide_untracked) => {
-            view::changes::render(v, hide_untracked, palette, frame, area);
+        Focus::Changes(v, hide_untracked, history) => {
+            // RFC 032: the `renames` count is shown at prikk ≥ 0.38, where a rename can be declared.
+            let renames_reported =
+                matches!(app.state(), OrientationState::Loaded(o) if o.prikk_minor >= 38);
+            view::changes::render(
+                v,
+                history,
+                hide_untracked,
+                renames_reported,
+                palette,
+                frame,
+                area,
+            );
         }
         Focus::Queue(v, offset) => view::queue::render(v, offset, palette, frame, area),
     }

@@ -2745,3 +2745,691 @@ fn rfc028b_the_seal_confirmation_names_the_patches_that_freeze() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 032: what a commit will author — declared renames, and a ref with no published history.
+// ---------------------------------------------------------------------------------------------
+
+/// A sealed `heads/main` holding `a.txt` and `keep.txt`, beside the fixture's `readme.txt`: the base every RFC
+/// 032 rename row starts from (handoff §2).
+fn rfc032_sealed_base(bin: &PrikkBin) -> (Fixture, CliBackend, std::path::PathBuf) {
+    let fixture = Fixture::build(bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+    for (name, body) in [("a.txt", "alpha\n"), ("keep.txt", "keep\n")] {
+        std::fs::write(repo.join(name), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+    }
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: base commit: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: base seal: {e}", bin.minor));
+    Fixture::clear_env();
+    (fixture, backend, repo)
+}
+
+fn rfc032_prikk(bin: &PrikkBin, repo: &std::path::Path, args: &[&str]) -> std::process::Output {
+    std::process::Command::new(&bin.path)
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .unwrap_or_else(|e| panic!("0.{}: spawn prikk {args:?}: {e}", bin.minor))
+}
+
+fn rfc032_mv(bin: &PrikkBin, repo: &std::path::Path, from: &str, to: &str) {
+    let out = rfc032_prikk(bin, repo, &["mv", from, to]);
+    assert!(
+        out.status.success(),
+        "0.{}: prikk mv {from} {to}: {}",
+        bin.minor,
+        String::from_utf8_lossy(&out.stderr).trim()
+    );
+}
+
+fn rfc032_write(repo: &std::path::Path, name: &str, body: &str) {
+    std::fs::write(repo.join(name), body).unwrap_or_else(|e| panic!("write {name}: {e}"));
+}
+
+/// A raw `prikk commit` signed as AUTHOR: whether it succeeded, and everything it printed (stdout, then
+/// stderr). **The surface is `prikk commit`'s printed output**, whose deletion word is `delete-file` (RFC 032 A4).
+fn rfc032_raw_commit(bin: &PrikkBin, fixture: &Fixture, repo: &std::path::Path) -> (bool, String) {
+    fixture.set_author_env();
+    let out = rfc032_prikk(
+        bin,
+        repo,
+        &[
+            "commit",
+            "--from-worktree",
+            "--ref",
+            "heads/main",
+            "-m",
+            "rfc032 probe",
+        ],
+    );
+    Fixture::clear_env();
+    (
+        out.status.success(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+    )
+}
+
+fn rfc032_preview(
+    bin: &PrikkBin,
+    fixture: &Fixture,
+    backend: &CliBackend,
+    repo: &std::path::Path,
+) -> stikk_core::CommitPreviewOutcome {
+    fixture.set_author_env();
+    let outcome = stikk_core::commit_preview(backend, repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: commit_preview: {e}", bin.minor));
+    Fixture::clear_env();
+    outcome
+}
+
+fn rfc032_printed_line(printed: &str, line: &str) -> bool {
+    printed.lines().any(|l| l.trim() == line)
+}
+
+fn rfc032_skip_below_0_38(bin: &PrikkBin, what: &str) -> bool {
+    if bin.minor < 38 {
+        eprintln!(
+            "RFC 032: {what} SKIPPED at 0.{} — `prikk mv` does not exist below 0.38, so no rename can be declared \
+             there. Announced rather than silent (RFC 022 §3).",
+            bin.minor
+        );
+        return true;
+    }
+    false
+}
+
+type Rfc032Setup = fn(&PrikkBin, &std::path::Path);
+
+/// **RFC 032 at prikk ≥ 0.38: a declared rename prikk lists both halves of is marked, counted, and authored as
+/// a rename.** Rows A, B and C (handoff §2), and the four states the dev team measured beside them: an
+/// unrelated deletion, a file moved over the destination, a declaration rewritten by a second `prikk mv`, and
+/// two renames. Each asserts the Changes view's marks, the confirmation's count and line, and the operations
+/// `prikk commit`'s printed output names.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc032_a_paired_declared_rename_is_marked_counted_and_authored_as_a_rename() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let cases: [(&str, Rfc032Setup, u64, &[&str]); 7] = [
+        (
+            "row A: mv",
+            |bin, repo| rfc032_mv(bin, repo, "a.txt", "b.txt"),
+            1,
+            &["rename-path a.txt -> b.txt"],
+        ),
+        (
+            "row B: mv, keep.txt edited",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                rfc032_write(repo, "keep.txt", "keep\nmore\n");
+            },
+            1,
+            &["edit-text keep.txt", "rename-path a.txt -> b.txt"],
+        ),
+        (
+            "row C: mv, b.txt edited",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                rfc032_write(repo, "b.txt", "alpha\nmore\n");
+            },
+            1,
+            &["rename-path a.txt -> b.txt", "edit-text b.txt"],
+        ),
+        (
+            "mv, an unrelated tracked file deleted",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                std::fs::remove_file(repo.join("keep.txt")).unwrap();
+            },
+            1,
+            &["delete-file keep.txt", "rename-path a.txt -> b.txt"],
+        ),
+        (
+            "mv, the shell moves keep.txt over b.txt",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                std::fs::rename(repo.join("keep.txt"), repo.join("b.txt")).unwrap();
+            },
+            1,
+            &[
+                "delete-file keep.txt",
+                "edit-text b.txt",
+                "rename-path a.txt -> b.txt",
+            ],
+        ),
+        (
+            "prikk mv a.txt b.txt, then prikk mv b.txt c.txt",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                rfc032_mv(bin, repo, "b.txt", "c.txt");
+            },
+            1,
+            &["rename-path a.txt -> c.txt"],
+        ),
+        (
+            "two renames",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                rfc032_mv(bin, repo, "keep.txt", "k2.txt");
+            },
+            2,
+            &[
+                "rename-path a.txt -> b.txt",
+                "rename-path keep.txt -> k2.txt",
+            ],
+        ),
+    ];
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc032_skip_below_0_38(&bin, "paired declared renames") {
+            continue;
+        }
+        for (name, setup, renames, operations) in cases {
+            let ctx = format!("0.{} {name}", bin.minor);
+            let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+            setup(&bin, &repo);
+
+            let read = stikk_core::changes_view(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("{ctx}: changes_view: {e}"));
+            println!("{ctx}: {:?}", read.view.declared_renames);
+            assert_eq!(read.history, stikk_core::RefHistory::Published, "{ctx}");
+            assert_eq!(read.view.renames, renames, "{ctx}: {:?}", read.view);
+            assert!(
+                read.view
+                    .declared_renames
+                    .iter()
+                    .all(|d| d.state == stikk_core::DeclarationState::Paired),
+                "{ctx}: {:?}",
+                read.view.declared_renames
+            );
+            let marked = read
+                .view
+                .entries
+                .iter()
+                .filter(|e| e.rename.is_some())
+                .count() as u64;
+            assert_eq!(
+                marked,
+                2 * renames,
+                "{ctx}: both halves of each pair, nothing else"
+            );
+
+            let stikk_core::CommitPreviewOutcome::Ready { token, .. } =
+                rfc032_preview(&bin, &fixture, &backend, &repo)
+            else {
+                panic!("{ctx}: expected a Ready preview");
+            };
+            let summary = token.summary();
+            assert!(
+                summary.counts.contains(&("renames", renames)),
+                "{ctx}: {:?}",
+                summary.counts
+            );
+            assert_eq!(
+                summary.rename_note.as_deref(),
+                Some(stikk_core::RENAMES_ALSO_COUNTED),
+                "{ctx}"
+            );
+            assert!(summary.declaration_notices.is_empty(), "{ctx}");
+
+            let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
+            assert!(committed, "{ctx}: prikk commit:\n{printed}");
+            for operation in operations {
+                assert!(
+                    rfc032_printed_line(&printed, operation),
+                    "{ctx}: `prikk commit`'s printed output names `{operation}`:\n{printed}"
+                );
+            }
+            let authored = printed
+                .lines()
+                .filter(|l| l.trim().starts_with("rename-path "))
+                .count() as u64;
+            assert_eq!(
+                authored, renames,
+                "{ctx}: renames authored, per `prikk commit`'s output:\n{printed}"
+            );
+        }
+    }
+}
+
+/// **RFC 032 at prikk ≥ 0.38: a declaration whose destination is not listed is named, never marked or counted,
+/// and `prikk commit` authors a deletion.** Rows 1 and 3, and the destination replaced by a directory. prikk's own
+/// line for rows 1 and 3 is asserted too: it is what makes the destination-absent sentence true.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc032_a_declaration_without_its_destination_is_named_and_commit_authors_a_deletion() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    const SENTENCE: &str = "declared rename a.txt → b.txt: b.txt is not in the worktree, so prikk will not author it as a rename";
+    let cases: [(&str, Rfc032Setup, &[&str]); 3] = [
+        (
+            "row 1: mv, b.txt deleted",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                std::fs::remove_file(repo.join("b.txt")).unwrap();
+            },
+            &[
+                "delete-file a.txt",
+                "declaration a.txt -> b.txt: destination is gone; recorded as a deletion, not a rename",
+            ],
+        ),
+        (
+            "row 3: mv, the shell moves b.txt to c.txt",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                std::fs::rename(repo.join("b.txt"), repo.join("c.txt")).unwrap();
+            },
+            &[
+                "delete-file a.txt",
+                "create-file c.txt",
+                "declaration a.txt -> b.txt: destination is gone; recorded as a deletion, not a rename",
+            ],
+        ),
+        (
+            "mv, b.txt replaced by a directory",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                std::fs::remove_file(repo.join("b.txt")).unwrap();
+                std::fs::create_dir(repo.join("b.txt")).unwrap();
+                rfc032_write(repo, "b.txt/q.txt", "q\n");
+            },
+            &[
+                "delete-file a.txt",
+                "create-file b.txt/q.txt",
+                "declaration a.txt -> b.txt: destination is ignored; recorded as a deletion, not a rename",
+            ],
+        ),
+    ];
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc032_skip_below_0_38(&bin, "declarations without their destination") {
+            continue;
+        }
+        for (name, setup, printed_lines) in cases {
+            let ctx = format!("0.{} {name}", bin.minor);
+            let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+            setup(&bin, &repo);
+
+            let read = stikk_core::changes_view(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("{ctx}: changes_view: {e}"));
+            assert_eq!(read.view.renames, 0, "{ctx}");
+            assert!(
+                read.view.entries.iter().all(|e| e.rename.is_none()),
+                "{ctx}: no mark"
+            );
+            let notices: Vec<String> = read
+                .view
+                .declared_renames
+                .iter()
+                .filter_map(stikk_core::DeclaredRename::notice)
+                .collect();
+            assert_eq!(
+                notices,
+                [SENTENCE],
+                "{ctx}: {:?}",
+                read.view.declared_renames
+            );
+
+            let stikk_core::CommitPreviewOutcome::Ready { token, .. } =
+                rfc032_preview(&bin, &fixture, &backend, &repo)
+            else {
+                panic!("{ctx}: expected a Ready preview");
+            };
+            let summary = token.summary();
+            assert!(
+                summary.counts.iter().all(|(label, _)| *label != "renames"),
+                "{ctx}"
+            );
+            assert_eq!(summary.rename_note, None, "{ctx}");
+            assert_eq!(summary.declaration_notices, [SENTENCE], "{ctx}");
+
+            let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
+            assert!(committed, "{ctx}: prikk commit:\n{printed}");
+            for line in printed_lines {
+                assert!(
+                    rfc032_printed_line(&printed, line),
+                    "{ctx}: `prikk commit`'s printed output says `{line}`:\n{printed}"
+                );
+            }
+            assert!(
+                !printed
+                    .lines()
+                    .any(|l| l.trim().starts_with("rename-path ")),
+                "{ctx}: no rename authored:\n{printed}"
+            );
+        }
+    }
+}
+
+/// **RFC 032 at prikk ≥ 0.38: a declaration whose source is present again is named, and `prikk commit` refuses.**
+/// Row 2, and its variant with the source recreated with different content, which prikk lists as `modified`. A
+/// notice, never a prevention (RFC 027's ruling). **No way out is offered here**, and prikk's own refusal of the
+/// move with both copies present is recorded.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc032_a_declaration_whose_source_is_back_is_named_and_prikk_refuses_the_commit() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    const SENTENCE: &str = "declared rename a.txt → b.txt: a.txt is present again, and prikk refuses to commit until the declaration is resolved";
+    const REFUSAL: &str =
+        "precondition not met: a.txt -> b.txt: the source is present in the worktree again";
+    let cases: [(&str, Rfc032Setup); 2] = [
+        ("row 2: mv, a.txt recreated", |bin, repo| {
+            rfc032_mv(bin, repo, "a.txt", "b.txt");
+            rfc032_write(repo, "a.txt", "alpha\n");
+        }),
+        ("mv, a.txt recreated with other content", |bin, repo| {
+            rfc032_mv(bin, repo, "a.txt", "b.txt");
+            rfc032_write(repo, "a.txt", "other\n");
+        }),
+    ];
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc032_skip_below_0_38(&bin, "declarations whose source is back") {
+            continue;
+        }
+        for (name, setup) in cases {
+            let ctx = format!("0.{} {name}", bin.minor);
+            let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+            setup(&bin, &repo);
+
+            let read = stikk_core::changes_view(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("{ctx}: changes_view: {e}"));
+            assert_eq!(
+                read.view
+                    .declared_renames
+                    .iter()
+                    .map(|d| d.state.clone())
+                    .collect::<Vec<_>>(),
+                [stikk_core::DeclarationState::SourcePresent {
+                    destination_listed: true
+                }],
+                "{ctx}: {:?}",
+                read.view
+            );
+            let stikk_core::CommitPreviewOutcome::Ready { token, .. } =
+                rfc032_preview(&bin, &fixture, &backend, &repo)
+            else {
+                panic!("{ctx}: a notice, not a prevention: commit is still offered");
+            };
+            assert_eq!(token.summary().declaration_notices, [SENTENCE], "{ctx}");
+
+            let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
+            assert!(!committed, "{ctx}: prikk commit must refuse:\n{printed}");
+            assert!(
+                printed.contains(REFUSAL),
+                "{ctx}: prikk's refusal text:\n{printed}"
+            );
+
+            let moved_back = rfc032_prikk(&bin, &repo, &["mv", "b.txt", "a.txt"]);
+            assert!(
+                !moved_back.status.success(),
+                "{ctx}: with both copies present prikk refuses the move, which is why stikk offers no way out"
+            );
+        }
+    }
+}
+
+/// **RFC 032 at prikk ≥ 0.38: row 5, recorded as 0.42 does it, and the measured way out.** `prikk mv a.txt b.txt`,
+/// then the shell moves `b.txt` back. prikk reports the worktree clean with the declaration still listed, and
+/// `prikk commit` refuses (F8). commit's preview is blocked as clean, and its reason carries the notice with the
+/// way out (A3). Then `prikk mv b.txt a.txt` drops the declaration, and the preview is blocked as clean with no
+/// notice.
+///
+/// **If a later prikk clears the declaration when the destination is moved back, this test fails and says so**;
+/// it does not assert that the loop is right.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc032_row_5_is_recorded_as_prikk_reports_it_and_prikk_mv_back_drops_the_declaration() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    const CLEAN: &str =
+        "the worktree matches this ref's replay baseline — there is nothing to commit";
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc032_skip_below_0_38(&bin, "row 5 and its way out") {
+            continue;
+        }
+        let ctx = format!("0.{} row 5", bin.minor);
+        let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+        rfc032_mv(&bin, &repo, "a.txt", "b.txt");
+        std::fs::rename(repo.join("b.txt"), repo.join("a.txt")).unwrap();
+
+        let status = backend
+            .worktree_status(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: worktree_status: {e}"));
+        assert!(
+            !status.declarations.is_empty(),
+            "{ctx}: RFC 032 F8 CHANGED — prikk no longer lists the declaration once the destination is moved back \
+             to the source. Revisit decision 2, amendment A3 and this test: {status:?}"
+        );
+        assert!(status.clean, "{ctx}: prikk reports row 5 clean: {status:?}");
+
+        match rfc032_preview(&bin, &fixture, &backend, &repo) {
+            stikk_core::CommitPreviewOutcome::Blocked(reason) => assert_eq!(
+                reason,
+                format!(
+                    "{CLEAN}; declared rename a.txt → b.txt: a.txt is present again, and prikk refuses to commit until \
+                     the declaration is resolved; in a terminal, prikk mv b.txt a.txt drops it"
+                ),
+                "{ctx}"
+            ),
+            other => panic!("{ctx}: expected Blocked, got {other:?}"),
+        }
+        let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
+        assert!(!committed, "{ctx}: prikk commit refuses:\n{printed}");
+        assert!(
+            printed.contains("the source is present in the worktree again"),
+            "{ctx}: prikk's refusal:\n{printed}"
+        );
+
+        // The way out, as measured (A3).
+        let way_out = rfc032_prikk(&bin, &repo, &["mv", "b.txt", "a.txt"]);
+        let said = String::from_utf8_lossy(&way_out.stdout);
+        assert!(
+            way_out.status.success(),
+            "{ctx}: prikk mv b.txt a.txt: {}",
+            String::from_utf8_lossy(&way_out.stderr)
+        );
+        println!("{ctx}: prikk mv b.txt a.txt printed:\n{said}");
+        let after = backend
+            .worktree_status(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: worktree_status after the way out: {e}"));
+        assert!(
+            after.declarations.is_empty(),
+            "{ctx}: the declaration is dropped: {after:?}"
+        );
+        match rfc032_preview(&bin, &fixture, &backend, &repo) {
+            stikk_core::CommitPreviewOutcome::Blocked(reason) => {
+                assert_eq!(reason, CLEAN, "{ctx}: blocked as clean, with no notice");
+            }
+            other => panic!("{ctx}: expected Blocked after the way out, got {other:?}"),
+        }
+    }
+}
+
+/// **RFC 032 at both ends: a ref with no published history is named from `refs()` and the queue, and its first
+/// commit is not stale** (trap 1; amendment A2). A fresh repository's `heads/main`, then its first commit left
+/// unsealed, then a second file, then the seal. And, separately, `heads/main` while the queue belongs to a ref
+/// never created.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc032_a_ref_with_no_published_history_is_named_and_its_first_commit_is_not_stale() {
+    use stikk_core::{RefHistory, UnpublishedQueue};
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let ctx = format!("0.{}", bin.minor);
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+        let read = || {
+            stikk_core::changes_view(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("{ctx}: changes_view: {e}"))
+        };
+
+        // Row D: nothing committed.
+        let first = read();
+        assert_eq!(
+            first.history,
+            RefHistory::Unpublished(UnpublishedQueue::Empty),
+            "{ctx}"
+        );
+        assert_eq!(
+            first
+                .history
+                .changes_headline("heads/main", first.view.clean)
+                .as_deref(),
+            Some(
+                "heads/main has no published history — every file is listed as untracked, and a commit would be its first"
+            ),
+            "{ctx}: {:?}",
+            first.view
+        );
+        let stikk_core::CommitPreviewOutcome::Ready { token, .. } =
+            rfc032_preview(&bin, &fixture, &backend, &repo)
+        else {
+            panic!("{ctx}: expected a Ready preview on an unpublished heads/main");
+        };
+        assert_eq!(
+            token.summary().history_notice.as_deref(),
+            Some("heads/main has no published history: this would be its first commit"),
+            "{ctx}"
+        );
+        fixture.set_author_env();
+        let readiness = backend
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("{ctx}: readiness: {e}"))
+            .readiness;
+        let committed = stikk_core::commit_confirm_and_execute(
+            &backend,
+            &repo,
+            *token,
+            readiness,
+            stikk_core::Evidence::ExplicitYes,
+            "first",
+        );
+        Fixture::clear_env();
+        assert!(
+            committed.is_ok(),
+            "{ctx}: the first commit commits, not stale: {committed:?}"
+        );
+
+        // After the first commit, unsealed: still unpublished, and the queue is the baseline (A2).
+        let queued = read();
+        assert_eq!(
+            queued.history,
+            RefHistory::Unpublished(UnpublishedQueue::ForThisRef(1)),
+            "{ctx}"
+        );
+        assert!(queued.view.clean, "{ctx}: {:?}", queued.view);
+        assert_eq!(
+            queued
+                .history
+                .changes_headline("heads/main", true)
+                .as_deref(),
+            Some(
+                "heads/main has no published history yet — nothing in the worktree beyond its 1 queued patch(es), and nothing is sealed"
+            ),
+            "{ctx}"
+        );
+        rfc032_write(&repo, "z.txt", "z\n");
+        let more = read();
+        let paths: Vec<&str> = more.view.entries.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["z.txt"], "{ctx}: only the new file is untracked");
+        assert_eq!(
+            more.history
+                .changes_headline("heads/main", more.view.clean)
+                .as_deref(),
+            Some(
+                "heads/main has no published history yet — its 1 queued patch(es) are the baseline here, and nothing is sealed"
+            ),
+            "{ctx}"
+        );
+        let stikk_core::CommitPreviewOutcome::Ready { token, .. } =
+            rfc032_preview(&bin, &fixture, &backend, &repo)
+        else {
+            panic!("{ctx}: expected a Ready preview for a second commit");
+        };
+        assert_eq!(
+            token.summary().history_notice.as_deref(),
+            Some(
+                "heads/main has no published history: this adds to its 1 queued patch(es), and nothing is sealed until the queue is sealed"
+            ),
+            "{ctx}"
+        );
+
+        // Sealed: published.
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: seal: {e}"));
+        Fixture::clear_env();
+        let sealed = read();
+        assert_eq!(sealed.history, RefHistory::Published, "{ctx}");
+        assert_eq!(
+            sealed
+                .history
+                .changes_headline("heads/main", sealed.view.clean),
+            None,
+            "{ctx}"
+        );
+
+        // A queue for a ref never created: heads/main is named unpublished, and nothing is claimed about a queue.
+        let other = Fixture::build(&bin);
+        let other_repo = other.repo().to_path_buf();
+        other.set_author_env();
+        let out = rfc032_prikk(
+            &bin,
+            &other_repo,
+            &[
+                "commit",
+                "--from-worktree",
+                "--ref",
+                "heads/other",
+                "-m",
+                "elsewhere",
+            ],
+        );
+        Fixture::clear_env();
+        assert!(
+            out.status.success(),
+            "{ctx}: prikk commit --ref heads/other: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        rfc032_write(&other_repo, "w.txt", "w\n");
+        let elsewhere = stikk_core::changes_view(&backend, &other_repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: changes_view with a queue for heads/other: {e}"));
+        assert_eq!(
+            elsewhere.history,
+            RefHistory::Unpublished(UnpublishedQueue::NotThisRef),
+            "{ctx}"
+        );
+        assert_eq!(
+            elsewhere
+                .history
+                .changes_headline("heads/main", elsewhere.view.clean)
+                .as_deref(),
+            Some("heads/main has no published history"),
+            "{ctx}"
+        );
+    }
+}

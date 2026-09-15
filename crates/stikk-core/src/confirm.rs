@@ -104,6 +104,16 @@ pub struct ConfirmationSummary {
     /// trust-refusal warning and the affordances are never clipped to make room for it, and when it gives
     /// up rows it says how many, in [`unshown_patches_line`]'s words.
     pub freezes: Option<FrozenPatches>,
+    /// RFC 032 decision 5, A2: stikk's words when the target has no published history, chosen from
+    /// prikk's `refs()` and queue facts. `None` for a published ref, and for seal. Names a ref: render
+    /// it inert.
+    pub history_notice: Option<String>,
+    /// RFC 032 decision 4: [`crate::RENAMES_ALSO_COUNTED`] when the counts include paired renames, else
+    /// `None`.
+    pub rename_note: Option<String>,
+    /// RFC 032 decision 2: one sentence per declaration prikk will not author as a rename, from
+    /// [`crate::DeclaredRename::notice`]. Carries paths: render each inert.
+    pub declaration_notices: Vec<String>,
 }
 
 /// How many characters of an object id a short id shows — the form History's block rows use, shared so a

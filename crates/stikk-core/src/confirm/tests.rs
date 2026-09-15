@@ -42,6 +42,9 @@ fn summary(target_name: Option<&str>) -> ConfirmationSummary {
         signing_key_is_published_example: false,
         branch_notice: None,
         freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     }
 }
 

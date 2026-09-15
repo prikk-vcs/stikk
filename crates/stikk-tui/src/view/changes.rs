@@ -29,7 +29,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use stikk_core::{Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewhere};
+use stikk_core::{Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewhere, RefHistory};
 
 use crate::text::{inert, wrap_indented};
 use crate::theme::Palette;
@@ -41,9 +41,13 @@ const ENTRY_INDENT: &str = "              ";
 const REFUSED_MARKER: &str = "refused — ";
 
 /// Render the Changes view for `view` into `area`. `hide_untracked` applies the UD-08 display filter.
+/// `history` says whether the ref has published history (RFC 032 decision 5), and `renames_reported` whether
+/// this prikk can declare a rename at all (≥ 0.38), which decides whether `renames N` is shown.
 pub fn render(
     view: &ChangesView,
+    history: &RefHistory,
     hide_untracked: bool,
+    renames_reported: bool,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -56,7 +60,19 @@ pub fn render(
     // Headline: clean vs changed (text-forward — colour is never the only signal, NFR-A03). **It counts
     // what is listed** (RFC 027 §5): every entry, an unmodelled kind's included, so the number matches
     // the list below it rather than the sum of the four kinds stikk names.
-    if view.clean {
+    //
+    // RFC 032 decision 5, A2: a ref with no published history has no baseline to be "against", so core's
+    // words replace the headline — chosen from `refs()` and the queue, in warn, wrapped.
+    if let Some(headline) = history.changes_headline(&view.reff, view.clean) {
+        for row in wrap_indented(&inert(&headline), text_width, "  ") {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default()
+                    .fg(palette.warn)
+                    .add_modifier(Modifier::BOLD),
+            )));
+        }
+    } else if view.clean {
         lines.push(Line::from(Span::styled(
             "  clean against baseline",
             Style::default().fg(palette.ok),
@@ -79,7 +95,7 @@ pub fn render(
         ),
         dim,
     )));
-    let second = match view.refused {
+    let mut second = match view.refused {
         Some(refused) => format!(
             "  untracked {} · unsupported {} · refused {refused}",
             view.untracked, view.unsupported
@@ -89,6 +105,10 @@ pub fn render(
             view.untracked, view.unsupported
         ),
     };
+    // RFC 032 decision 1: paired renames only, and only where prikk can declare one.
+    if renames_reported {
+        second.push_str(&format!(" · renames {}", view.renames));
+    }
     lines.push(Line::from(Span::styled(second, dim)));
     // Below prikk 0.39 the verdict is unreported, which is not zero (`C-T2c′`). Said once, and only
     // where there are entries a verdict would be about.
@@ -155,7 +175,13 @@ pub fn render(
     // Entries, in prikk's order; untracked hidden when filtered (UD-08).
     let mut untracked_hidden = 0u64;
     for entry in &view.entries {
-        if hide_untracked && entry.kind.is_untracked() {
+        // RFC 032 decision 3: a paired destination is half of a rename the commit will author, never an
+        // ordinary untracked file, so the filter never hides it — and never counts it as hidden.
+        let paired_destination = entry
+            .rename
+            .as_ref()
+            .is_some_and(stikk_core::RenameHalf::is_destination);
+        if hide_untracked && entry.kind.is_untracked() && !paired_destination {
             untracked_hidden += 1;
             continue;
         }
@@ -166,6 +192,30 @@ pub fn render(
             "  the worktree matches the baseline",
             dim,
         )));
+    }
+
+    // RFC 032 decisions 1 and 2: under the entries, stikk's words — a declaration prikk will not author as a
+    // rename (in warn), then the content sentence once when any rename is paired.
+    let notices: Vec<String> = view
+        .declared_renames
+        .iter()
+        .filter_map(stikk_core::DeclaredRename::notice)
+        .collect();
+    if !notices.is_empty() || view.renames > 0 {
+        lines.push(Line::from(""));
+    }
+    for notice in &notices {
+        for row in wrap_indented(&inert(notice), text_width, "  ") {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.warn),
+            )));
+        }
+    }
+    if view.renames > 0 {
+        for row in wrap_indented(stikk_core::RENAME_CONTENT_NOTE, text_width, "  ") {
+            lines.push(Line::from(Span::styled(row, dim)));
+        }
     }
 
     // UD-08: the filter is display-only. Its usual claim — "a commit still captures the hidden
@@ -232,7 +282,7 @@ fn entry_lines(entry: &ChangeEntry, palette: &Palette, text_width: usize) -> Vec
         // which would paraphrase the one thing prikk said about a kind stikk does not know (`ER-02`).
         ChangeKind::Other(word) => (inert(word).to_string(), Style::default().fg(palette.warn)),
     };
-    let mut lines = vec![Line::from(vec![
+    let mut row = Line::from(vec![
         Span::styled(format!("  {tag:<11} "), tag_style),
         Span::styled(
             inert(&entry.path).to_string(),
@@ -242,7 +292,24 @@ fn entry_lines(entry: &ChangeEntry, palette: &Palette, text_width: usize) -> Vec
             format!("  — {}", inert(&entry.note)),
             Style::default().fg(palette.dim),
         ),
-    ])];
+    ]);
+    // RFC 032 Q1 (a): half of a paired declared rename, annotated after prikk's note in stikk's style —
+    // on the same row when it fits, otherwise wrapped under the path rather than clipped (RFC 024).
+    let mut annotation_rows = Vec::new();
+    if let Some(half) = &entry.rename {
+        let annotation = inert(&half.annotation()).to_string();
+        let style = Style::default().fg(palette.accent);
+        if row.width() + 1 + annotation.chars().count() <= text_width {
+            row.spans
+                .push(Span::styled(format!(" {annotation}"), style));
+        } else {
+            for wrapped in wrap_indented(&annotation, text_width, ENTRY_INDENT) {
+                annotation_rows.push(Line::from(Span::styled(wrapped, style)));
+            }
+        }
+    }
+    let mut lines = vec![row];
+    lines.extend(annotation_rows);
 
     if let Authoring::Refused(reason) = &entry.authoring {
         // Wrapped with the marker's width as indent, then the first row's indent replaced by the

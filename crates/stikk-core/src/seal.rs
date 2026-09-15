@@ -176,6 +176,9 @@ fn compute(
         // Safeguard 3, from this preview's own Orientation read above.
         branch_notice: crate::confirm::branch_notice(reff, &orientation.current_branch),
         freezes: Some(frozen_patches(&queue, prikk_minor)),
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     };
     Ok((SealReadView::Ready, summary))
 }
@@ -230,6 +233,9 @@ fn placeholder_summary() -> ConfirmationSummary {
         signing_key_is_published_example: false,
         branch_notice: None,
         freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     }
 }
 

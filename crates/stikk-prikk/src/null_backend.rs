@@ -305,6 +305,14 @@ impl NullBackend {
         self
     }
 
+    /// Make [`Prikk::refs`] refuse with `message` (RFC 032: publication is never guessed, so a failed read
+    /// fails the Changes operation and the commit preview).
+    #[must_use]
+    pub fn with_refs_refusal(mut self, message: impl Into<String>) -> Self {
+        self.refs = Err(message.into());
+        self
+    }
+
     /// Replace the tag list this backend returns from [`Prikk::tags`] (RFC 012 FR-014).
     #[must_use]
     pub fn with_tags(mut self, tags: Vec<RefEntry>) -> Self {

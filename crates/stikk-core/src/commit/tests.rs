@@ -671,3 +671,188 @@ fn commits_branch_notice_follows_each_row_of_safeguard_three_exactly() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 032: the confirmation counts renames honestly, names declarations prikk will not author, names a ref
+// with no published history, and — trap 1 — never makes an unpublished ref's commit stale.
+// ---------------------------------------------------------------------------------------------
+
+fn declared(old: &str, new: &str) -> stikk_prikk::RenameDeclaration {
+    stikk_prikk::RenameDeclaration {
+        old_path: old.into(),
+        new_path: new.into(),
+    }
+}
+
+/// A report shaped like a measured row: `entries` as `(kind, path)`, and `declarations`.
+fn row(
+    entries: &[(&str, &str)],
+    declarations: Vec<stikk_prikk::RenameDeclaration>,
+) -> WorktreeStatus {
+    let count = |kind: &str| entries.iter().filter(|(k, _)| *k == kind).count() as u64;
+    WorktreeStatus {
+        clean: entries.is_empty(),
+        tracked: 2,
+        missing: count("missing"),
+        modified: count("modified"),
+        untracked: count("untracked"),
+        refused: Some(0),
+        entries: entries
+            .iter()
+            .map(|(kind, path)| entry(kind, path, stikk_prikk::Authoring::Authored))
+            .collect(),
+        declarations,
+        ..dirty_worktree()
+    }
+}
+
+fn ready_summary(backend: &NullBackend) -> ConfirmationSummary {
+    match commit_preview(backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::Ready { token, .. } => token.summary().clone(),
+        other => panic!("expected Ready, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_paired_rename_is_counted_with_its_line_and_no_notice() {
+    let backend = ready_backend().with_worktree_status(row(
+        &[("missing", "a.txt"), ("untracked", "b.txt")],
+        vec![declared("a.txt", "b.txt")],
+    ));
+    let summary = ready_summary(&backend);
+    assert!(
+        summary.counts.contains(&("renames", 1)),
+        "{:?}",
+        summary.counts
+    );
+    assert!(summary.counts.contains(&("missing", 1)));
+    assert!(summary.counts.contains(&("untracked", 1)));
+    assert_eq!(
+        summary.rename_note.as_deref(),
+        Some("each rename is also counted above as one missing and one untracked path")
+    );
+    assert!(summary.declaration_notices.is_empty());
+    assert_eq!(summary.history_notice, None, "heads/main is published");
+}
+
+#[test]
+fn rows_1_and_2_are_named_on_the_card_and_never_counted_as_renames() {
+    let row_1 = ready_backend().with_worktree_status(row(
+        &[("missing", "a.txt")],
+        vec![declared("a.txt", "b.txt")],
+    ));
+    let summary = ready_summary(&row_1);
+    assert!(summary.counts.iter().all(|(label, _)| *label != "renames"));
+    assert_eq!(summary.rename_note, None);
+    assert_eq!(
+        summary.declaration_notices,
+        [
+            "declared rename a.txt → b.txt: b.txt is not in the worktree, so prikk will not author it as a rename"
+        ]
+    );
+
+    let row_2 = ready_backend().with_worktree_status(row(
+        &[("untracked", "b.txt")],
+        vec![declared("a.txt", "b.txt")],
+    ));
+    assert_eq!(
+        ready_summary(&row_2).declaration_notices,
+        [
+            "declared rename a.txt → b.txt: a.txt is present again, and prikk refuses to commit until the declaration is resolved"
+        ]
+    );
+}
+
+#[test]
+fn row_5_is_blocked_as_clean_with_the_source_present_notice_and_its_way_out() {
+    let backend = ready_backend().with_worktree_status(row(&[], vec![declared("a.txt", "b.txt")]));
+    match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::Blocked(reason) => assert_eq!(
+            reason,
+            "the worktree matches this ref's replay baseline — there is nothing to commit; declared rename a.txt → b.txt: a.txt is present again, and prikk refuses to commit until the declaration is resolved; in a terminal, prikk mv b.txt a.txt drops it"
+        ),
+        other => panic!("expected Blocked, got {other:?}"),
+    }
+    // A clean worktree with no declaration keeps the reason it always had.
+    let plain = ready_backend().with_worktree_status(row(&[], Vec::new()));
+    match commit_preview(&plain, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::Blocked(reason) => assert_eq!(
+            reason,
+            "the worktree matches this ref's replay baseline — there is nothing to commit"
+        ),
+        other => panic!("expected Blocked, got {other:?}"),
+    }
+}
+
+fn first_commit_worktree() -> WorktreeStatus {
+    WorktreeStatus {
+        tracked: 0,
+        ..row(
+            &[("untracked", "x.txt"), ("untracked", "y.txt")],
+            Vec::new(),
+        )
+    }
+}
+
+#[test]
+fn the_card_names_a_ref_with_no_published_history_from_refs_and_the_queue() {
+    let unpublished = |queued, target| {
+        ready_backend()
+            .with_refs(Vec::new())
+            .with_orientation(orientation(queued, target))
+            .with_worktree_status(first_commit_worktree())
+    };
+    assert_eq!(
+        ready_summary(&unpublished(0, None))
+            .history_notice
+            .as_deref(),
+        Some("heads/main has no published history: this would be its first commit")
+    );
+    assert_eq!(
+        ready_summary(&unpublished(2, Some("heads/main")))
+            .history_notice
+            .as_deref(),
+        Some(
+            "heads/main has no published history: this adds to its 2 queued patch(es), and nothing is sealed until the queue is sealed"
+        )
+    );
+    // A count with no target reported: nothing is claimed about the queue.
+    assert_eq!(
+        ready_summary(&unpublished(3, None))
+            .history_notice
+            .as_deref(),
+        Some("heads/main has no published history")
+    );
+    // The preview's view carries nothing from `refs()` (trap 1).
+    let backend = unpublished(0, None);
+    let CommitPreviewOutcome::Ready { preview, .. } =
+        commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads")
+    else {
+        panic!("expected Ready");
+    };
+    assert_eq!(
+        preview.changes,
+        crate::changes::from_status(first_commit_worktree())
+    );
+}
+
+#[test]
+fn a_failed_refs_read_fails_the_preview() {
+    let backend = ready_backend().with_refs_refusal("branch list failed");
+    assert!(commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").is_err());
+}
+
+/// **Trap 1, in core** (handoff §8 test 5): preview a commit on an unpublished ref, re-read an equal worktree,
+/// confirm — and the commit runs. Were publication state inside the view, the re-read would not carry it and
+/// every such commit would be `Stale`.
+#[test]
+fn an_unpublished_refs_commit_is_not_stale_when_the_worktree_is_unchanged() {
+    let backend = ready_backend()
+        .with_refs(Vec::new())
+        .with_worktree_status(first_commit_worktree())
+        .with_worktree_status_on_reread(first_commit_worktree());
+    let result = preview_then_confirm(&backend);
+    assert!(result.is_ok(), "{result:?}");
+    assert!(!is_stale(&result, StaleCause::Worktree));
+    assert_eq!(backend.commit_calls(), 1);
+}

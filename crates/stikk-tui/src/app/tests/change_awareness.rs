@@ -550,7 +550,10 @@ fn r_refreshes_changes_in_place_and_keeps_the_untracked_filter() {
     let req = next_request(&rx);
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Changes(Ok(dirty_changes())),
+        kind: ResponseKind::Changes(Ok(stikk_core::ChangesRead {
+            view: dirty_changes(),
+            history: stikk_core::RefHistory::Published,
+        })),
     });
     app.toggle_untracked();
 
@@ -563,7 +566,7 @@ fn r_refreshes_changes_in_place_and_keeps_the_untracked_filter() {
     };
     assert_eq!(reff, "heads/main");
     assert!(
-        matches!(app.focus(), Focus::Changes(view, true) if !view.clean),
+        matches!(app.focus(), Focus::Changes(view, true, _) if !view.clean),
         "the view stays visible while it refreshes"
     );
 
@@ -572,10 +575,13 @@ fn r_refreshes_changes_in_place_and_keeps_the_untracked_filter() {
     clean.entries.clear();
     app.apply(Response {
         seq: requests[1].seq,
-        kind: ResponseKind::Changes(Ok(clean)),
+        kind: ResponseKind::Changes(Ok(stikk_core::ChangesRead {
+            view: clean,
+            history: stikk_core::RefHistory::Published,
+        })),
     });
     match app.focus() {
-        Focus::Changes(view, hide) => {
+        Focus::Changes(view, hide, _) => {
             assert!(view.clean);
             assert!(hide, "hide_untracked is kept as the user set it");
         }
@@ -597,7 +603,10 @@ fn a_failed_changes_refresh_keeps_the_view_and_surfaces_the_error() {
     let req = next_request(&rx);
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Changes(Ok(dirty_changes())),
+        kind: ResponseKind::Changes(Ok(stikk_core::ChangesRead {
+            view: dirty_changes(),
+            history: stikk_core::RefHistory::Published,
+        })),
     });
     app.reload();
     let requests = drain(&rx);
@@ -607,7 +616,7 @@ fn a_failed_changes_refresh_keeps_the_view_and_surfaces_the_error() {
             message: "worktree-status failed".into(),
         })),
     });
-    assert!(matches!(app.focus(), Focus::Changes(view, false) if !view.clean));
+    assert!(matches!(app.focus(), Focus::Changes(view, false, _) if !view.clean));
     assert!(matches!(app.top_overlay(), Some(Overlay::Refusal { .. })));
 }
 
@@ -863,5 +872,40 @@ fn a_history_refresh_rereads_its_own_ref_after_focus_moved() {
     assert!(matches!(
         app.focus(),
         Focus::History(view, _) if view.reff == "heads/main" && view.blocks[0].block_id == "eeee"
+    ));
+}
+
+// RFC 032 handoff §4: the publication state read beside the Changes view is kept beside it on the screen, and
+// an in-place refresh updates both.
+#[test]
+fn a_changes_refresh_updates_the_publication_state_beside_the_view() {
+    use stikk_core::{ChangesRead, RefHistory, UnpublishedQueue};
+    let (mut app, rx) = stamped(orientation_view(0, None, None), token(1));
+    app.open_changes();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::Changes(Ok(ChangesRead {
+            view: dirty_changes(),
+            history: RefHistory::Unpublished(UnpublishedQueue::Empty),
+        })),
+    });
+    assert!(matches!(
+        app.focus(),
+        Focus::Changes(_, _, RefHistory::Unpublished(UnpublishedQueue::Empty))
+    ));
+
+    app.reload();
+    let requests = drain(&rx);
+    app.apply(Response {
+        seq: requests[1].seq,
+        kind: ResponseKind::Changes(Ok(ChangesRead {
+            view: dirty_changes(),
+            history: RefHistory::Published,
+        })),
+    });
+    assert!(matches!(
+        app.focus(),
+        Focus::Changes(_, _, RefHistory::Published)
     ));
 }

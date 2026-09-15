@@ -27,22 +27,27 @@ fn dirty_view() -> ChangesView {
                 path: "readme.txt".into(),
                 note: "tracked file bytes differ from the baseline".into(),
                 authoring: Authoring::Unreported,
+                rename: None,
             },
             ChangeEntry {
                 kind: ChangeKind::Missing,
                 path: "src/main.rs".into(),
                 note: "tracked file is absent from the worktree".into(),
                 authoring: Authoring::Unreported,
+                rename: None,
             },
             ChangeEntry {
                 kind: ChangeKind::Untracked,
                 path: "notes.tmp".into(),
                 note: "worktree file is not in the baseline".into(),
                 authoring: Authoring::Unreported,
+                rename: None,
             },
         ],
         queued_elsewhere: None,
         declarations: Vec::new(),
+        declared_renames: Vec::new(),
+        renames: 0,
     }
 }
 
@@ -50,7 +55,17 @@ fn draw(view: &ChangesView, hide_untracked: bool) -> String {
     let backend = TestBackend::new(100, 24);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(view, hide_untracked, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                view,
+                &stikk_core::RefHistory::Published,
+                hide_untracked,
+                false,
+                &Palette::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -84,6 +99,8 @@ fn a_clean_worktree_says_so() {
         entries: Vec::new(),
         queued_elsewhere: None,
         declarations: Vec::new(),
+        declared_renames: Vec::new(),
+        renames: 0,
     };
     let text = draw(&view, false);
     assert!(text.contains("clean against baseline"));
@@ -116,9 +133,12 @@ fn a_hostile_path_is_rendered_inert() {
             path: "evil\u{1b}[2Jfile.txt".into(),
             note: "bytes differ".into(),
             authoring: Authoring::Unreported,
+            rename: None,
         }],
         queued_elsewhere: None,
         declarations: Vec::new(),
+        declared_renames: Vec::new(),
+        renames: 0,
     };
     let text = draw(&view, false);
     assert!(!text.contains('\u{1b}'));
@@ -175,7 +195,17 @@ fn draw_80(view: &ChangesView, hide_untracked: bool) -> String {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(view, hide_untracked, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                view,
+                &stikk_core::RefHistory::Published,
+                hide_untracked,
+                false,
+                &Palette::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -201,16 +231,20 @@ fn refused_view() -> ChangesView {
                 path: "link.txt".into(),
                 note: "worktree file is not in the baseline".into(),
                 authoring: Authoring::Refused(SYMLINK_REASON.into()),
+                rename: None,
             },
             ChangeEntry {
                 kind: ChangeKind::Modified,
                 path: "readme.txt".into(),
                 note: "tracked file bytes differ from the baseline".into(),
                 authoring: Authoring::Authored,
+                rename: None,
             },
         ],
         queued_elsewhere: None,
         declarations: Vec::new(),
+        declared_renames: Vec::new(),
+        renames: 0,
     }
 }
 
@@ -294,6 +328,7 @@ fn the_headline_counts_what_is_listed_and_an_unmodelled_kind_shows_its_word() {
         path: "link.txt".into(),
         note: "a kind prikk does not print today".into(),
         authoring: Authoring::Unreported,
+        rename: None,
     });
     let text = draw_80(&view, false);
     println!("{text}");
@@ -340,6 +375,7 @@ fn a_refused_marker_costs_the_path_row_nothing_at_80_columns() {
                 path: path.into(),
                 note: "worktree file is not in the baseline".into(),
                 authoring: authoring(path),
+                rename: None,
             })
             .collect();
         view
@@ -453,4 +489,246 @@ fn prikks_whole_queued_elsewhere_sentence_is_on_screen_at_80_columns() {
             "a row of prikk's sentence lost its bar: {row:?}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 032 — captures at 80 columns: declared renames, declarations prikk will not author, and a ref with no
+// published history.
+// ---------------------------------------------------------------------------------------------
+
+fn draw_032(view: &ChangesView, history: &stikk_core::RefHistory, hide_untracked: bool) -> String {
+    let backend = TestBackend::new(80, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| {
+            render(
+                view,
+                history,
+                hide_untracked,
+                true,
+                &Palette::default(),
+                f,
+                f.area(),
+            )
+        })
+        .unwrap();
+    buffer_text(terminal.backend().buffer())
+}
+
+fn change(
+    kind: ChangeKind,
+    path: &str,
+    note: &str,
+    rename: Option<stikk_core::RenameHalf>,
+) -> ChangeEntry {
+    ChangeEntry {
+        kind,
+        path: path.into(),
+        note: note.into(),
+        authoring: Authoring::Authored,
+        rename,
+    }
+}
+
+fn declared(
+    old: &str,
+    new: &str,
+    state: stikk_core::DeclarationState,
+) -> stikk_core::DeclaredRename {
+    stikk_core::DeclaredRename {
+        old_path: old.into(),
+        new_path: new.into(),
+        state,
+    }
+}
+
+/// Row A beside an ordinary untracked file, with one declaration whose destination is gone and one whose
+/// source is back (the destination gone too, so the measured way out is offered).
+fn renamed_view() -> ChangesView {
+    use stikk_core::{DeclarationState, RenameHalf};
+    ChangesView {
+        reff: "heads/main".into(),
+        clean: false,
+        tracked: 4,
+        unchanged: 1,
+        missing: 2,
+        modified: 0,
+        untracked: 2,
+        unsupported: 0,
+        refused: Some(0),
+        entries: vec![
+            change(
+                ChangeKind::Missing,
+                "a.txt",
+                "tracked file is absent from the worktree",
+                Some(RenameHalf::Source {
+                    new_path: "b.txt".into(),
+                }),
+            ),
+            change(
+                ChangeKind::Untracked,
+                "b.txt",
+                "worktree file is not in the baseline",
+                Some(RenameHalf::Destination {
+                    old_path: "a.txt".into(),
+                }),
+            ),
+            change(
+                ChangeKind::Missing,
+                "c.txt",
+                "tracked file is absent from the worktree",
+                None,
+            ),
+            change(
+                ChangeKind::Untracked,
+                "notes.tmp",
+                "worktree file is not in the baseline",
+                None,
+            ),
+        ],
+        queued_elsewhere: None,
+        declarations: Vec::new(),
+        declared_renames: vec![
+            declared("a.txt", "b.txt", DeclarationState::Paired),
+            declared("c.txt", "d.txt", DeclarationState::DestinationAbsent),
+            declared(
+                "e.txt",
+                "f.txt",
+                DeclarationState::SourcePresent {
+                    destination_listed: false,
+                },
+            ),
+        ],
+        renames: 1,
+    }
+}
+
+fn row_of(text: &str, needle: &str) -> usize {
+    text.lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("{needle:?} not on screen:\n{text}"))
+}
+
+#[test]
+fn rfc032_paired_rows_are_annotated_counted_and_followed_by_the_content_sentence_at_80_columns() {
+    let text = draw_032(&renamed_view(), &stikk_core::RefHistory::Published, false);
+    println!("--- RFC 032: paired rename and both unmatched declarations, 80 columns\n{text}");
+    let flat = joined(&text);
+    // prikk's two rows stay, each under prikk's kind, each annotated as half of one declared rename.
+    assert!(
+        row_of(&text, "a.txt") < row_of(&text, "declared rename → b.txt"),
+        "{text}"
+    );
+    assert!(flat.contains("· declared rename → b.txt"), "{text}");
+    assert!(flat.contains("· declared rename ← a.txt"), "{text}");
+    assert!(
+        text.lines()
+            .any(|l| l.contains("missing") && l.contains("a.txt")),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|l| l.contains("untracked") && l.contains("b.txt")),
+        "{text}"
+    );
+    // An ordinary entry carries no annotation.
+    let notes = text.lines().find(|l| l.contains("notes.tmp")).unwrap();
+    assert!(!notes.contains("declared"), "{text}");
+    assert!(
+        flat.contains("untracked 2 · unsupported 0 · refused 0 · renames 1"),
+        "{text}"
+    );
+    assert!(flat.contains(stikk_core::RENAME_CONTENT_NOTE), "{text}");
+    // Under the entries, above the whole-worktree line.
+    assert!(
+        row_of(&text, "notes.tmp") < row_of(&text, "a declared rename is authored"),
+        "{text}"
+    );
+    assert!(
+        row_of(&text, "a declared rename is authored")
+            < row_of(&text, "commits are whole-worktree"),
+        "{text}"
+    );
+}
+
+#[test]
+fn rfc032_both_unmatched_declaration_sentences_are_on_screen_whole_at_80_columns() {
+    let text = draw_032(&renamed_view(), &stikk_core::RefHistory::Published, false);
+    let flat = joined(&text);
+    assert!(
+        flat.contains("declared rename c.txt → d.txt: d.txt is not in the worktree, so prikk will not author it as a rename"),
+        "{text}"
+    );
+    assert!(
+        flat.contains("declared rename e.txt → f.txt: e.txt is present again, and prikk refuses to commit until the declaration is resolved; in a terminal, prikk mv f.txt e.txt drops it"),
+        "{text}"
+    );
+    assert!(
+        row_of(&text, "d.txt is not in") < row_of(&text, "commits are whole-worktree"),
+        "{text}"
+    );
+}
+
+#[test]
+fn rfc032_the_untracked_filter_never_hides_a_paired_destination() {
+    let text = draw_032(&renamed_view(), &stikk_core::RefHistory::Published, true);
+    println!(
+        "--- RFC 032: untracked hidden, the paired destination still shown, 80 columns\n{text}"
+    );
+    assert!(text.contains("b.txt"), "the destination stays:\n{text}");
+    assert!(
+        joined(&text).contains("· declared rename ← a.txt"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("notes.tmp"),
+        "the ordinary untracked file is hidden:\n{text}"
+    );
+    // Its count says only what it hid.
+    assert!(
+        joined(&text).contains("1 untracked hidden (display only)"),
+        "{text}"
+    );
+}
+
+#[test]
+fn rfc032_a_ref_with_no_published_history_says_so_in_place_of_against_baseline() {
+    use stikk_core::{RefHistory, UnpublishedQueue};
+    let mut view = dirty_view();
+    view.entries = vec![
+        change(
+            ChangeKind::Untracked,
+            "x.txt",
+            "worktree file is not in the baseline",
+            None,
+        ),
+        change(
+            ChangeKind::Untracked,
+            "y.txt",
+            "worktree file is not in the baseline",
+            None,
+        ),
+    ];
+    let text = draw_032(
+        &view,
+        &RefHistory::Unpublished(UnpublishedQueue::Empty),
+        false,
+    );
+    println!("--- RFC 032: no published history, no queued patch, 80 columns\n{text}");
+    assert!(
+        joined(&text).contains("heads/main has no published history — every file is listed as untracked, and a commit would be its first"),
+        "{text}"
+    );
+    assert!(!text.contains("against baseline"), "{text}");
+
+    let text = draw_032(
+        &view,
+        &RefHistory::Unpublished(UnpublishedQueue::ForThisRef(1)),
+        false,
+    );
+    println!("--- RFC 032: no published history, one queued patch, 80 columns\n{text}");
+    assert!(
+        joined(&text).contains("heads/main has no published history yet — its 1 queued patch(es) are the baseline here, and nothing is sealed"),
+        "{text}"
+    );
 }

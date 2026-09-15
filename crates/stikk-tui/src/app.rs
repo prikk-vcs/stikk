@@ -24,12 +24,12 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use stikk_core::QueueView;
 use stikk_core::{
-    BlockDetailView, COMMIT_OPERATION, ChangesView, Command, CommitPreviewOutcome, HistoryView,
-    NextTarget, OperationContext, Presentation, RefusalHistory, SEAL_OPERATION, SealPreviewOutcome,
-    Target, present, staleness_notice,
+    BlockDetailView, COMMIT_OPERATION, ChangesRead, ChangesView, Command, CommitPreviewOutcome,
+    HistoryView, NextTarget, OperationContext, Presentation, RefusalHistory, SEAL_OPERATION,
+    SealPreviewOutcome, Target, present, staleness_notice,
 };
+use stikk_core::{QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 use stikk_state::Config;
 
@@ -123,6 +123,9 @@ pub enum Screen {
         view: ChangesView,
         /// Whether untracked entries are hidden (display only — a commit still captures them).
         hide_untracked: bool,
+        /// Whether the ref has published history (RFC 032 decision 5), read **beside** the view and kept
+        /// beside it here; a refresh updates both.
+        history: RefHistory,
         /// The `seq` of an in-flight refresh (`r`, or a detected change), if any — the view stays
         /// visible while it runs, as History's does (RFC 010 §5; RFC 031 §7).
         refreshing: Option<u64>,
@@ -153,8 +156,8 @@ pub enum Focus<'a> {
     History(&'a HistoryView, usize),
     /// A Block-detail screen.
     BlockDetail(&'a BlockDetailView),
-    /// The Changes view and whether untracked entries are hidden.
-    Changes(&'a ChangesView, bool),
+    /// The Changes view, whether untracked entries are hidden, and whether the ref has published history.
+    Changes(&'a ChangesView, bool, &'a RefHistory),
     /// The Queue view and its scroll offset.
     Queue(&'a QueueView, &'a std::cell::Cell<u16>),
 }
@@ -1311,7 +1314,7 @@ impl App {
         }
     }
 
-    fn apply_changes(&mut self, seq: u64, result: stikk_model::Result<ChangesView>) {
+    fn apply_changes(&mut self, seq: u64, result: stikk_model::Result<ChangesRead>) {
         // RFC 031 §7: an in-place refresh, as the Queue's; `hide_untracked` stays as the user set it, and
         // the view stays visible on error.
         let is_top_refresh = matches!(
@@ -1323,9 +1326,10 @@ impl App {
                 *refreshing = None;
             }
             match result {
-                Ok(new_view) => {
-                    if let Some(Screen::Changes { view, .. }) = self.screens.last_mut() {
-                        *view = new_view;
+                Ok(read) => {
+                    if let Some(Screen::Changes { view, history, .. }) = self.screens.last_mut() {
+                        *view = read.view;
+                        *history = read.history;
                     }
                 }
                 Err(error) => self.surface(&error, OperationContext::LoadChanges),
@@ -1338,11 +1342,12 @@ impl App {
             .position(|s| matches!(s, Screen::Loading { seq: s, .. } if *s == seq));
         if let Some(index) = index {
             match result {
-                Ok(view) => {
+                Ok(read) => {
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::Changes {
-                            view,
+                            view: read.view,
                             hide_untracked: false,
+                            history: read.history,
                             refreshing: None,
                         };
                     }
@@ -1426,7 +1431,7 @@ impl App {
                 };
                 if let Some(slot) = self.overlays.get_mut(index) {
                     *slot = Overlay::Confirmation {
-                        summary: token.summary().clone(),
+                        summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
@@ -1499,7 +1504,7 @@ impl App {
                 };
                 if let Some(slot) = self.overlays.get_mut(index) {
                     *slot = Overlay::Confirmation {
-                        summary: token.summary().clone(),
+                        summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
@@ -1786,8 +1791,9 @@ impl App {
             Some(Screen::Changes {
                 view,
                 hide_untracked,
+                history,
                 ..
-            }) => Focus::Changes(view, *hide_untracked),
+            }) => Focus::Changes(view, *hide_untracked, history),
             Some(Screen::Queue { view, offset, .. }) => Focus::Queue(view, offset),
             None => Focus::Orientation(&self.state),
         }

@@ -28,8 +28,9 @@ pub mod seal;
 
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{
-    Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewhere, RenameDeclaration,
-    changes_view, queued_elsewhere_clauses,
+    Authoring, ChangeEntry, ChangeKind, ChangesRead, ChangesView, DeclarationState, DeclaredRename,
+    QueuedElsewhere, RENAME_CONTENT_NOTE, RENAMES_ALSO_COUNTED, RefHistory, RenameDeclaration,
+    RenameHalf, UnpublishedQueue, changes_view, queued_elsewhere_clauses,
 };
 pub use commit::{
     COMMIT_OPERATION, CommitPreview, CommitPreviewOutcome, CommitToken, RefusedPath,

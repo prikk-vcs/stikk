@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::mpsc;
 
 use stikk_core::{
-    BlockDetailView, ChangesView, CommitPreviewOutcome, CommitToken, Evidence, HistoryView,
+    BlockDetailView, ChangesRead, CommitPreviewOutcome, CommitToken, Evidence, HistoryView,
     OrientationView, Outcome, PreviewToken, SealPreviewOutcome, block_detail, change_token,
     changes_view, commit_confirm_and_execute, commit_preview, history_view, list_refs, orient,
     seal_confirm_and_execute, seal_preview,
@@ -128,7 +128,7 @@ pub(crate) enum ResponseKind {
     /// Answers [`RequestKind::Queue`].
     Queue(Result<QueueView>),
     /// Answers [`RequestKind::Changes`].
-    Changes(Result<ChangesView>),
+    Changes(Result<ChangesRead>),
     /// Answers [`RequestKind::CommitPreview`].
     CommitPreview(Result<CommitPreviewOutcome>),
     /// Answers [`RequestKind::CommitConfirmExecute`].

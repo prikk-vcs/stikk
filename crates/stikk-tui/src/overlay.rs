@@ -141,8 +141,10 @@ pub enum Overlay {
     /// [`crate::app::App`]-owned [`stikk_core::PreviewToken`] it does not carry itself, since a token
     /// has no public constructor and this type derives `Clone`/`PartialEq`.
     Confirmation {
-        /// What to restate. Composed at preview time; never re-derived here (RFC 013 §3).
-        summary: ConfirmationSummary,
+        /// What to restate. Composed at preview time; never re-derived here (RFC 013 §3). Boxed only to keep
+        /// this enum's variants close in size (`clippy::large_enum_variant`), since the summary gained RFC 032's
+        /// lines.
+        summary: Box<ConfirmationSummary>,
         /// Which evidence shape this tier needs.
         tier: Tier,
         /// The user's typed input so far — meaningful only for [`Tier::ThreeTyped`].
@@ -980,7 +982,10 @@ fn render_confirmation(
         Line::from(""),
     ];
 
-    if !summary.target_ids.is_empty() || summary.branch_notice.is_some() {
+    if !summary.target_ids.is_empty()
+        || summary.branch_notice.is_some()
+        || summary.history_notice.is_some()
+    {
         if !summary.target_ids.is_empty() {
             lines.push(Line::from(Span::styled(
                 "  Targets:",
@@ -1005,6 +1010,15 @@ fn render_confirmation(
                 )));
             }
         }
+        // RFC 032 decision 5, A2: beside the branch notice, in warn — also about where the change goes.
+        if let Some(notice) = &summary.history_notice {
+            for row in wrap_indented(&inert(notice), PANEL_TEXT_WIDTH, "    ") {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.warn),
+                )));
+            }
+        }
         lines.push(Line::from(""));
     }
 
@@ -1019,6 +1033,24 @@ fn render_confirmation(
             format!("  {counts_line}"),
             Style::default().fg(palette.fg),
         )));
+        // RFC 032 decision 4: what the `renames` count means, then each declaration prikk will not author
+        // as a rename, in warn. Prose rows like the rest, so they never displace the consequence or footer.
+        if let Some(note) = &summary.rename_note {
+            for row in wrap_indented(note, PANEL_TEXT_WIDTH, "  ") {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.dim),
+                )));
+            }
+        }
+        for notice in &summary.declaration_notices {
+            for row in wrap_indented(&inert(notice), PANEL_TEXT_WIDTH, "  ") {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.warn),
+                )));
+            }
+        }
         lines.push(Line::from(""));
     }
     // RFC 028 decision 4: what the seal freezes goes directly under the counts line. It is spliced in last,

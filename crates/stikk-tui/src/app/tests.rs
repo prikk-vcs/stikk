@@ -170,16 +170,20 @@ fn dirty_changes() -> ChangesView {
                 path: "readme.txt".into(),
                 note: "bytes differ".into(),
                 authoring: stikk_core::Authoring::Unreported,
+                rename: None,
             },
             ChangeEntry {
                 kind: ChangeKind::Untracked,
                 path: "notes.tmp".into(),
                 note: "not in the baseline".into(),
                 authoring: stikk_core::Authoring::Unreported,
+                rename: None,
             },
         ],
         queued_elsewhere: None,
         declarations: Vec::new(),
+        declared_renames: Vec::new(),
+        renames: 0,
     }
 }
 
@@ -363,10 +367,13 @@ fn a_pending_screen_shows_as_loading_until_it_resolves() {
     let req = next_request(&rx);
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Changes(Ok(dirty_changes())),
+        kind: ResponseKind::Changes(Ok(stikk_core::ChangesRead {
+            view: dirty_changes(),
+            history: stikk_core::RefHistory::Published,
+        })),
     });
     match app.focus() {
-        Focus::Changes(view, hide) => {
+        Focus::Changes(view, hide, _) => {
             assert!(!view.clean);
             assert!(!hide);
         }
@@ -670,10 +677,13 @@ fn open_changes_pushes_the_view_and_toggle_hides_untracked() {
     let req = next_request(&rx);
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Changes(Ok(dirty_changes())),
+        kind: ResponseKind::Changes(Ok(stikk_core::ChangesRead {
+            view: dirty_changes(),
+            history: stikk_core::RefHistory::Published,
+        })),
     });
     match app.focus() {
-        Focus::Changes(view, hide) => {
+        Focus::Changes(view, hide, _) => {
             assert!(!view.clean);
             assert_eq!(view.entries.len(), 2);
             assert!(!hide);
@@ -682,7 +692,7 @@ fn open_changes_pushes_the_view_and_toggle_hides_untracked() {
     }
     app.toggle_untracked();
     match app.focus() {
-        Focus::Changes(_, hide) => assert!(hide),
+        Focus::Changes(_, hide, _) => assert!(hide),
         other => panic!("expected Changes, got {other:?}"),
     }
 }
@@ -938,6 +948,9 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         signing_key_is_published_example: false,
         branch_notice: None,
         freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
     }
 }
 
@@ -949,7 +962,7 @@ fn a_tier_three_typed_confirmation_wants_text_input_but_tier_two_does_not() {
         Palette::default(),
     );
     app.push_overlay(Overlay::Confirmation {
-        summary: confirmation_summary(Some("heads/main")),
+        summary: Box::new(confirmation_summary(Some("heads/main"))),
         tier: Tier::ThreeTyped,
         typed: String::new(),
         error: None,
@@ -958,7 +971,7 @@ fn a_tier_three_typed_confirmation_wants_text_input_but_tier_two_does_not() {
 
     app.close_overlay();
     app.push_overlay(Overlay::Confirmation {
-        summary: confirmation_summary(None),
+        summary: Box::new(confirmation_summary(None)),
         tier: Tier::Two,
         typed: String::new(),
         error: None,
@@ -974,7 +987,7 @@ fn typing_into_a_tier_three_typed_confirmation_builds_and_erases_the_typed_name(
         Palette::default(),
     );
     app.push_overlay(Overlay::Confirmation {
-        summary: confirmation_summary(Some("heads/main")),
+        summary: Box::new(confirmation_summary(Some("heads/main"))),
         tier: Tier::ThreeTyped,
         typed: String::new(),
         error: None,
@@ -1001,7 +1014,7 @@ fn typing_into_a_tier_two_confirmation_does_nothing() {
         Palette::default(),
     );
     app.push_overlay(Overlay::Confirmation {
-        summary: confirmation_summary(None),
+        summary: Box::new(confirmation_summary(None)),
         tier: Tier::Three,
         typed: String::new(),
         error: None,
@@ -1022,7 +1035,7 @@ fn nav_up_and_down_do_not_panic_or_move_anything_on_a_confirmation_overlay() {
         Palette::default(),
     );
     app.push_overlay(Overlay::Confirmation {
-        summary: confirmation_summary(Some("heads/main")),
+        summary: Box::new(confirmation_summary(Some("heads/main"))),
         tier: Tier::ThreeTyped,
         typed: "partial".to_string(),
         error: None,
@@ -1046,7 +1059,7 @@ fn select_on_a_confirmation_overlay_with_no_pending_commit_is_a_defensive_no_op(
         Palette::default(),
     );
     app.push_overlay(Overlay::Confirmation {
-        summary: confirmation_summary(None),
+        summary: Box::new(confirmation_summary(None)),
         tier: Tier::Two,
         typed: String::new(),
         error: None,

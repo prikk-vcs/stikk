@@ -2,6 +2,8 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
 ## 0.7.0 — 2026-09-15
 
 **stikk shows what a change will do — and no longer makes a change it did not show.** 0.6.0 made stikk

@@ -1,6 +1,6 @@
 # RFC 027 — What commit would refuse: prikk's verdict, and the unsupported paths stikk never listed
 
-**Status.** **Done 2026-09-13** — A and B landed on `main`; a **0.7.0 candidate**. Accepted by the project owner
+**Status.** **Done 2026-09-13** — A and B landed on `main`; **shipped in 0.7.0** (tag `0.7.0` at `e4e5975`). Accepted by the project owner
 the same day, **Q1 ruled (b)**; F6 ruled by the architect. Proposed the same day, the first increment of 0.7.0.
 **Delivered in two handoffs**: A — F0; B — decisions 2–7 and F6. Every finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from
 their tags the same day, not read from prikk's changelog or letters.

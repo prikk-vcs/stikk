@@ -1,6 +1,6 @@
 # RFC 028 — The Queue view: what a seal will freeze, and what prikk cannot yet say about it
 
-**Status.** **Done 2026-09-15** — Handoffs A and B delivered on `main`; a **0.7.0 candidate**. Accepted by the project owner
+**Status.** **Done 2026-09-15** — Handoffs A and B delivered on `main`; **shipped in 0.7.0** (tag `0.7.0` at `e4e5975`). Accepted by the project owner
 2026-09-13, **Q1 ruled (b)**: the work waited for the prikk release that answered letter 011. prikk 0.42.0 shipped it, and
 stikk re-baselined to it (RFC 029 A). Proposed the same day by the architect, 0.7.0's second increment. Every
 finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from their tags the

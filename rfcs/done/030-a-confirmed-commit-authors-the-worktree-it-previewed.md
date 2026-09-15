@@ -1,6 +1,6 @@
 # RFC 030 — A confirmed commit authors the worktree its preview showed
 
-**Status.** **Done 2026-09-15** — delivered on `main` (`1420e45`, `40321f7`); a **0.7.0 candidate**. Accepted by the
+**Status.** **Done 2026-09-15** — delivered on `main` (`1420e45`, `40321f7`); **shipped in 0.7.0** (tag `0.7.0` at `e4e5975`). Accepted by the
 project owner 2026-09-13; **amended 2026-09-15** by the architect after the handoff's first review (see *Amendments*):
 decision 3 widened to prikk's rename declarations, decision 5 gained a test, and decision 7 added. Proposed 2026-09-13
 by the architect, from RFC 029 F7, and delivered before RFC 029's Handoff B.

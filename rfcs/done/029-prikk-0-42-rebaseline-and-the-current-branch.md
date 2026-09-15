@@ -1,6 +1,6 @@
 # RFC 029 — The prikk 0.42 re-baseline, and prikk's current branch
 
-**Status.** **Done 2026-09-15** — Handoffs A and B delivered on `main`; a **0.7.0 candidate**. Accepted by the project
+**Status.** **Done 2026-09-15** — Handoffs A and B delivered on `main`; **shipped in 0.7.0** (tag `0.7.0` at `e4e5975`). Accepted by the project
 owner 2026-09-13, **Q1 ruled (b)** the same day, with safeguard 3 and the fallback folded into Handoff B. Proposed the same day by the architect. Measured against real prikk
 **0.28.0** and **0.42.0** binaries built from their tags, and by running stikk's own real-binary suite at both
 ends with only the validated ceiling raised, in a scratch copy of `b1460cc`.

@@ -240,11 +240,10 @@ a fabricated worktree entry was fixed.
 
 ## Next — carried into 0.8.0, in order
 
-1. **`FR-106`'s passive notice is not wired** — [RFC 031](rfcs/accepted/031-seeing-a-change-made-outside-stikk.md),
-   accepted; Q1 (b) and Q2 (b) — checks on focus and every 5 seconds while idle, and an open confirmation goes stale at once. `stikk_core::staleness_notice` exists and is tested, but nothing
-   calls it, so *"repository changed outside stikk — refreshed"* renders nowhere, and a change made in a terminal
-   is seen only at stikk's next Orientation read (on open, on `r`, or after a commit or seal). Found in RFC 030's
-   review. RFC 030 protects confirmations regardless.
+1. **stikk sees a change made outside it — landed on `main`** ([RFC 031](rfcs/done/031-seeing-a-change-made-outside-stikk.md);
+   `d5356a8`, `7f1f391`). A silent check on focus and every 5 seconds while idle; a detected change refreshes what is
+   on screen with *"repository changed outside stikk — refreshed"*, and an open confirmation goes stale at once. `r`
+   now refreshes Changes and the tip's Block detail, each re-reading its own ref. Ships in 0.8.0.
 2. **The commit preview does not show the rename a declaration authors** (prikk ≥ 0.38). Measured at 0.42 for
    RFC 030's amendment: after `prikk mv a.txt b.txt`, `worktree-status` lists `missing a.txt` and `untracked b.txt`,
    and `prikk commit` authors `rename-path a.txt -> b.txt`. stikk's preview shows the two paths and never the

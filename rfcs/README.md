@@ -31,7 +31,6 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 031 | [Seeing a change made outside stikk](./accepted/031-seeing-a-change-made-outside-stikk.md) | `FR-106`/`OP-04`: a silent change-token check on focus and every 5 seconds while idle; a detected change refreshes what is on screen and says so, and an open confirmation becomes stale at once. **Accepted 2026-09-15; Q1 (b), Q2 (b)** | [Change awareness](./handoffs/031-seeing-a-change-made-outside-stikk/change-awareness-handoff-v1.md) |
 
 ## Done (implemented)
 
@@ -41,6 +40,7 @@ _Design settled; implementer may start; work has not yet shipped._
 | 030 | [A confirmed commit authors the worktree its preview showed](./done/030-a-confirmed-commit-authors-the-worktree-it-previewed.md) | **0.7.0** | the commit preview does not show rename declarations; `FR-106`'s passive notice is not wired; the prose path's parse-failure attribution; `checkout --patch-materialize` writes before it refuses (letter 012) | [Confirm freshness](./handoffs/030-a-confirmed-commit-authors-the-worktree-it-previewed/confirm-freshness-handoff-v2.md) |
 | 029 | [The prikk 0.42 re-baseline, and prikk's current branch](./done/029-prikk-0-42-rebaseline-and-the-current-branch.md) | **0.7.0** | `no ref focused` persists across `r` (a known consequence); the status bar is as fresh as the last Orientation read | [A: re-baseline](./handoffs/029-prikk-0-42-rebaseline-and-the-current-branch/a-rebaseline-handoff-v1.md) · [B: current branch](./handoffs/029-prikk-0-42-rebaseline-and-the-current-branch/b-current-branch-handoff-v1.md) |
 | 028 | [The Queue view](./done/028-the-queue-view.md) | **0.7.0** | a queued patch's content is Patch detail's (`FR-030`); no enumeration on prikk 0.35–0.38 | [A: the Queue view](./handoffs/028-the-queue-view/a-queue-view-handoff-v1.md) · [B: seal names the patches](./handoffs/028-the-queue-view/b-seal-names-the-patches-handoff-v1.md) |
+| 031 | [Seeing a change made outside stikk](./done/031-seeing-a-change-made-outside-stikk.md) | 0.8.0 candidate (on `main`) | an edit in the worktree is not noticed by a check; focus reports verified in a pty, not at a desktop terminal or in tmux | [Change awareness](./handoffs/031-seeing-a-change-made-outside-stikk/change-awareness-handoff-v1.md) |
 | 000 | [RFC lifecycle policy](./done/000-rfc-lifecycle-policy.md) | 0.1.0 (adopted, five-folder variant) | — | — |
 | 001 | [Frontend toolkit selection](./done/001-frontend-toolkit-selection.md) | 0.1.0 | GUI toolkit undecided (own RFC when GUI work begins); TUI accessibility limitation to be documented | [TUI shell & Orientation](./handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md) |
 | 006 | [History & inspection seam](./done/006-history-and-inspection-seam.md) | 0.1.0 | Patch detail (`FR-030`), patch-id enumeration, diff-aware search — all `UD-09` | [History & Block detail](./handoffs/006-history-and-inspection-seam/history-view-handoff-v1.md) |

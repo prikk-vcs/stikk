@@ -1,6 +1,6 @@
 # Handoff — seeing a change made outside stikk (v1)
 
-**Companion to:** [RFC 031](../../accepted/031-seeing-a-change-made-outside-stikk.md). Accepted 2026-09-15; **Q1 ruled
+**Companion to:** [RFC 031](../../done/031-seeing-a-change-made-outside-stikk.md). Accepted 2026-09-15; **Q1 ruled
 (b)**, **Q2 ruled (b)**.
 **This handoff is all of RFC 031:**
 - a change token stamped with every Orientation read;

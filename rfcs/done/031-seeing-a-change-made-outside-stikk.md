@@ -1,11 +1,42 @@
 # RFC 031 — Seeing a change made outside stikk
 
-**Status.** **Accepted by the project owner 2026-09-15; Q1 ruled (b), Q2 ruled (b).** Proposed the same day by the
-architect: 0.8.0's first increment.
+**Status.** **Done 2026-09-16** — delivered on `main` (`357e8d0`, `d5356a8`, `7f1f391`); a **0.8.0 candidate**. Accepted by
+the project owner 2026-09-15, **Q1 ruled (b), Q2 ruled (b)**. Proposed the same day by the architect: 0.8.0's first increment.
 **Tracks.** `FR-106`, `OP-04`, `LC-4`, `CT-05`, `NFR-R02`, `NFR-P01`, `TU-03`, RFC 003 (the change token), RFC 010
 (the off-thread seam), RFC 030.
 **Touches.** `stikk-tui` (the UI loop, `App`, the terminal guard); possibly `stikk-core` (stamping a token with an
 Orientation read); on delivery, `requirements.md` and `external-design.md`.
+
+## Delivered
+
+**One handoff** (`357e8d0` opens 0.8.0; `d5356a8`; `7f1f391` for the review's two conditions).
+
+- **A change token is stamped with every Orientation read**, read **before** Orientation in the same worker request, so a
+  change landing between the two is caught by the next check rather than absorbed.
+- **A silent check.** It is built without `dispatch`, so it never enters the Operations list or `⟳`. At most one is in
+  flight, and it is sent only when a token is stamped, no check is pending, no request is running, and no Orientation
+  read is pending. **That last pair, not anything commit- or seal-specific, is why stikk never takes its own commit
+  for an outside change**, and a test drives the check already pending at Enter.
+- **When: on focus** (`EnableFocusChange`, best-effort; disabled first on restore, the panic path included) **and every
+  5 seconds while idle** (`CHANGE_CHECK_INTERVAL`, not a setting). Time is passed into `App`, so no test sleeps.
+- **A detected change** re-stamps; makes an armed confirmation stale (cause *Repository*), **found anywhere in the
+  overlay stack** and removed with everything above it; refreshes what is on screen through `reload`; and shows
+  `OP-04`'s words.
+- **`r` refreshes Changes and the tip's Block detail in place**, and **every refresh re-reads the ref its screen
+  shows**, not the focused ref (`Screen::BlockDetail` carries its own `reff`).
+
+**Measured by hand** in a pty with the real focus-in bytes: the notice **0.05 s** after a focus report, and **4.2 s**
+after a raw commit with none. Idle CPU was identical to 0.7.0. Focus reporting was off before the terminal left the
+alternate screen, on quit and after a forced panic.
+
+**Runs:** suite `34979292754` (full matrix), CI `34979292439` and supply chain `34979296854` at `d5356a8`; CI
+`35021853312` and Docs `35021853334` at `7f1f391` on `main`.
+
+### Carried forward
+
+- **An edit in the worktree is not noticed by a check**, because a check does not run `worktree-status`. It is caught by
+  `r`, by opening Changes, or by RFC 030's re-read at Enter.
+- **Focus reports were verified in a pty, not at a desktop terminal or in tmux.** The owner may see it at a keyboard.
 
 ## Summary
 

@@ -1,9 +1,9 @@
 # RFC 032 — What a commit will author: declared renames, and a ref with no published history
 
-**Status.** **Proposed 2026-09-16** by the architect: 0.8.0's second increment, taking the roadmap's items 2 and 4
-together, because both are the same failure. **Revised the same day** after the owner asked about risks to user
-operation and data safety: F6–F8 are measured, decisions 1–4 narrowed to what they found. **One open question** (Q1),
-yours; the owner has signalled agreement with its lean.
+**Status.** **Accepted by the project owner 2026-09-16; Q1 ruled (a).** Proposed the same day by the architect: 0.8.0's
+second increment, taking the roadmap's items 2 and 4 together, because both are the same failure. **Revised before
+acceptance** after the owner asked about risks to user operation and data safety: F6–F8 are measured, and decisions
+1–4 were narrowed to what they found.
 **Tracks.** `FR-034`, `FR-050`, `T-T4`, `C-T2b`, `C-T2c′`, `ER-02`, `UD-06`, `UD-08`, RFC 008, RFC 021 (F0), RFC 027
 (Q1 (b)), RFC 030 (amendment A1), RFC 031, letter 013 (drafted).
 **Touches.** `stikk-core` (the Changes view-model, commit's confirmation summary); `stikk-tui` (the Changes view);
@@ -162,9 +162,15 @@ followed. **stikk must not repeat advice it measured to loop.** Letter 013 repor
 while two annotated rows still show exactly what prikk listed if a declaration and the worktree ever disagree in a way
 not measured here.
 
+### RULED by the project owner, 2026-09-16: (a)
+
+**A paired rename keeps prikk's two rows, each annotated as half of one declared rename.** Every path prikk listed stays
+on screen under prikk's kind, and the header's counts still match the rows. The pairing is decision 1's: both halves
+listed, or no mark.
+
 ## Delivery
 
-**One handoff**, after Q1 is ruled.
+**One handoff**, issued on the ruling.
 
 ## What this RFC does not do
 

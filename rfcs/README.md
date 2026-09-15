@@ -25,13 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 032 | [What a commit will author](./proposed/032-what-a-commit-will-author.md) | a `prikk mv` shown as a delete and an add though prikk authors one rename, and a ref's first commit shown as untracked files against a baseline that does not exist; Q1: annotate prikk's two entries, or fold them into one row |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
+| 032 | [What a commit will author](./accepted/032-what-a-commit-will-author.md) | a paired `prikk mv` shown as one rename (both halves listed, or no mark), declarations prikk will not author named and never counted, and a ref with no published history named as one, on the Changes view and commit's confirmation. **Accepted 2026-09-16; Q1 (a)** | [What a commit will author](./handoffs/032-what-a-commit-will-author/what-a-commit-will-author-handoff-v1.md) |
 
 ## Done (implemented)
 

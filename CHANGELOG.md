@@ -29,6 +29,9 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
 | `stikk-core` | `Command` gains `needs_focused_ref: bool` (RFC 029) |
 | `stikk-tui` | `App::focused_ref` returns `Option<&str>` instead of `&str` — `None` until a ref is focused, and `App::open` no longer focuses `heads/main` before the first Orientation read (RFC 029) |
 | `stikk-tui` | `Overlay::RefPicker` gains `unpublished_main`, and `Overlay::Palette` gains `ref_focused` (RFC 029) |
+| `stikk-prikk` | `Prikk` gains a method, `queue(&self, repo) -> Result<QueueReport>` — breaking for any implementor (RFC 028) |
+| `stikk-core` | `HistoryView` gains `queued_target: Option<String>` (RFC 028) |
+| `stikk-tui` | `Screen` gains a variant, `Queue { view, refreshing }`, and `Focus` gains `Queue(&QueueView)` — breaking for an exhaustive `match` (RFC 028) |
 
 Every struct above is constructed with struct literals by anyone scripting a `NullBackend` or rendering a
 view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `Authoring`,
@@ -36,10 +39,13 @@ view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `
 types; `ChangeKind::label`, `queued_elsewhere_clauses`, `would_refuse_next_steps`, `stale_headline` and
 `stale_gloss`; `NullBackend::with_queued_elsewhere_ref`, `with_worktree_status_on_reread`,
 `with_worktree_status_refusal_on_reread` and `commit_calls`; `branch_notice`, `NO_FOCUSED_REF_REASON`,
-`Command::available` and `Command::unavailable_reason`; the `RefFocus` type and `App::ref_focus`; and their
+`Command::available` and `Command::unavailable_reason`; the `RefFocus` type and `App::ref_focus`; the `QueueReport`, `Queue`, `QueueTarget`, `QueueThreshold`,
+`ThresholdStatus`, `QueuedPatch`, `QueuedMessage`, `QueuedOperation` and `QueuedPath` types,
+`NullBackend::with_queue` and `with_queue_refusal`; `queue_view`, `QueueView`, `QueuedPatchView` and
+`HistoryView::queued_tier`; `Target::Queue` (`Target` is `#[non_exhaustive]`) and `App::open_queue`; and their
 re-exports from `stikk-core`, `stikk-model` and `stikk-tui`. **Three public signatures changed**, all listed
-above: `ChangeToken::compose`, `commit_confirm_and_execute` and `App::focused_ref`. No public function, trait method or re-export was removed, and the `Prikk`
-trait is unchanged.
+above: `ChangeToken::compose`, `commit_confirm_and_execute` and `App::focused_ref`. No public function,
+trait method or re-export was removed. **The `Prikk` trait gained one method**, `queue`, listed above.
 
 ### Added
 
@@ -52,6 +58,11 @@ trait is unchanged.
   will refuse. It lists each refused path with prikk's reason, and says what to do: remove or replace the
   path, or list it in `.prikkignore` — which is then part of that commit. Below 0.39 commit is offered as
   before, and prikk's refusal comes back verbatim (RFC 027).
+- **The Queue view** (`Q`, or the palette) lists each queued patch: its id, its operations — a rename as
+  *from → to* with the key that asserted it, and a node no longer in the baseline named as one — and, on
+  prikk ≥ 0.42, its message. It shows the queue's target ref and thresholds, and needs no focused ref. On
+  prikk 0.39–0.41 it says once that prikk does not report a queued patch's message; below 0.39 it shows
+  the count and target and says prikk does not list queued patches, never an empty list (RFC 028).
 
 ### Changed
 
@@ -118,6 +129,10 @@ trait is unchanged.
   changed and commits nothing. **What this cannot see is stated rather than implied away:** a further
   edit to a file the preview already listed as modified, and anything that changes in the moment between
   that re-read and prikk's own commit (RFC 030).
+- **History no longer shows another ref's queued patches as this ref's "not yet sealed" tier.** The queue
+  belongs to one ref, and History put its count on every ref's lineage. The tier now says whose queue it
+  is — this ref's, another ref's by name, or one prikk reports no target for — and shows no line when
+  nothing is queued (RFC 028 F5).
 
 ## 0.6.0 — 2026-09-13
 

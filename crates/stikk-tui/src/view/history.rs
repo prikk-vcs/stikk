@@ -21,26 +21,20 @@ use crate::theme::Palette;
 pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut Frame, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
 
-    // The "not yet history" tier: the active WAL's unsealed patches (FR-010).
-    let queue_style = if view.queued == 0 {
-        Style::default().fg(palette.dim)
-    } else {
-        Style::default().fg(palette.warn)
-    };
-    lines.push(Line::from(vec![
-        Span::styled("  queued   ", Style::default().fg(palette.dim)),
-        Span::styled(
-            format!(
-                "{} patch(es) in the active WAL — not yet sealed",
-                view.queued
-            ),
-            queue_style,
-        ),
-    ]));
+    // The "not yet history" tier (FR-010), in core's words: whose queue it is, and no line at all when
+    // nothing is queued (RFC 028 decision 5). The line names a ref, so it is inert (`C-T2a`).
+    if let Some(tier) = view.queued_tier() {
+        lines.push(Line::from(vec![
+            Span::styled("  queued   ", Style::default().fg(palette.dim)),
+            Span::styled(inert(&tier), Style::default().fg(palette.warn)),
+        ]));
+    }
     lines.push(Line::from(Span::styled(
         "  ─────────",
         Style::default().fg(palette.dim),
     )));
+    // Block rows start below the tier (when there is one) and the rule.
+    let header_rows = u16::try_from(lines.len()).unwrap_or(u16::MAX);
 
     if view.blocks.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -59,9 +53,9 @@ pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut 
         .title(title)
         .style(Style::default().fg(palette.fg));
 
-    // Keep the selected row visible: rows start two lines below the top (queue tier + rule).
+    // Keep the selected row visible: rows start `header_rows` lines below the top.
     let inner_height = area.height.saturating_sub(2); // borders
-    let selected_line = cursor as u16 + 2; // offset past the queue tier and rule
+    let selected_line = (cursor as u16).saturating_add(header_rows);
     let scroll = selected_line.saturating_sub(inner_height.saturating_sub(1));
 
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);

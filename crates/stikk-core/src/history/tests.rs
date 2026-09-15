@@ -147,3 +147,61 @@ fn a_tags_refusal_propagates() {
     assert_eq!(err.class(), "refusal");
     assert!(err.to_string().contains("prikk refused to list tags"));
 }
+
+// RFC 028 decision 5 (Handoff A §5): the tier says whose queue it is.
+
+fn view_with_queue(reff: &str, queued: u64, queued_target: Option<&str>) -> HistoryView {
+    HistoryView {
+        reff: reff.to_string(),
+        queued,
+        queued_target: queued_target.map(str::to_string),
+        blocks: Vec::new(),
+    }
+}
+
+#[test]
+fn the_queued_tier_follows_each_row_of_the_table_exactly() {
+    assert_eq!(view_with_queue("heads/main", 0, None).queued_tier(), None);
+    assert_eq!(
+        view_with_queue("heads/main", 2, Some("heads/main"))
+            .queued_tier()
+            .as_deref(),
+        Some("2 patch(es) in the active WAL — not yet sealed · Q: Queue")
+    );
+    assert_eq!(
+        view_with_queue("heads/other", 2, Some("heads/main"))
+            .queued_tier()
+            .as_deref(),
+        Some("the active WAL holds 2 patch(es) for heads/main — not this ref's history · Q: Queue")
+    );
+    assert_eq!(
+        view_with_queue("heads/main", 1, None)
+            .queued_tier()
+            .as_deref(),
+        Some("the active WAL holds 1 patch(es); prikk reports no target ref · Q: Queue")
+    );
+}
+
+#[test]
+fn history_view_takes_the_count_and_the_target_from_one_orientation_read() {
+    let backend = NullBackend::supported()
+        .with_history(History {
+            reff: "heads/other".into(),
+            blocks: Vec::new(),
+        })
+        .with_orientation(Orientation {
+            queued_patches: 2,
+            queued_target: Some("heads/main".into()),
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::NotReported,
+        });
+    let view = history_view(&backend, Path::new("/repo"), "heads/other", 20).expect("history");
+    assert_eq!(view.queued, 2);
+    assert_eq!(view.queued_target.as_deref(), Some("heads/main"));
+    assert_eq!(
+        view.queued_tier().as_deref(),
+        Some("the active WAL holds 2 patch(es) for heads/main — not this ref's history · Q: Queue")
+    );
+}

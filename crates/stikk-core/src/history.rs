@@ -17,8 +17,36 @@ pub struct HistoryView {
     pub reff: String,
     /// Patches queued in the active WAL, not yet sealed — the "not yet history" tier (FR-010).
     pub queued: u64,
+    /// The ref the active queue targets, from the same Orientation read as `queued` (RFC 028 decision 5).
+    /// `None` for an empty queue, and when prikk reports the target's metadata as missing or malformed.
+    pub queued_target: Option<String>,
     /// Sealed blocks, newest-first.
     pub blocks: Vec<BlockRow>,
+}
+
+impl HistoryView {
+    /// The queued tier's line, exactly (RFC 028 decision 5; Handoff A §5), or `None` when nothing is
+    /// queued.
+    ///
+    /// **The queue is repository-wide, and the tier says whose it is.** It used to put the whole queue's
+    /// count on any ref's lineage (RFC 028 F5), which is true of the WAL and wrong about the ref it sat on.
+    /// The target is repository text, so the frontend renders the line through `inert` (`C-T2a`).
+    #[must_use]
+    pub fn queued_tier(&self) -> Option<String> {
+        let n = self.queued;
+        match self.queued_target.as_deref() {
+            _ if n == 0 => None,
+            Some(target) if target == self.reff => Some(format!(
+                "{n} patch(es) in the active WAL — not yet sealed · Q: Queue"
+            )),
+            Some(target) => Some(format!(
+                "the active WAL holds {n} patch(es) for {target} — not this ref's history · Q: Queue"
+            )),
+            None => Some(format!(
+                "the active WAL holds {n} patch(es); prikk reports no target ref · Q: Queue"
+            )),
+        }
+    }
 }
 
 /// A single block's detail (design FR-031/032 at block granularity).
@@ -44,10 +72,13 @@ pub fn history_view(
     limit: usize,
 ) -> Result<HistoryView> {
     let history = prikk.history(repo, reff, limit)?;
-    let queued = prikk.orientation(repo)?.queued_patches;
+    // RFC 028 decision 5: the count and the target from one Orientation read, so the tier cannot pair
+    // one moment's count with another's target.
+    let orientation = prikk.orientation(repo)?;
     Ok(HistoryView {
         reff: history.reff,
-        queued,
+        queued: orientation.queued_patches,
+        queued_target: orientation.queued_target,
         blocks: history.blocks,
     })
 }

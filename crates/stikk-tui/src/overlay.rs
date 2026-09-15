@@ -371,6 +371,7 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
         key_line(palette, "b", "choose which ref to view"),
         key_line(palette, "w", "changes — worktree vs baseline"),
         key_line(palette, "u", "toggle untracked (in Changes)"),
+        key_line(palette, "Q", "queue — patches waiting to be sealed"),
         key_line(palette, "C", "commit worktree changes"),
         key_line(palette, "S", "seal the active WAL"),
         key_line(palette, ":", "command palette"),

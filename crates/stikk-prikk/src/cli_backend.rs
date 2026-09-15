@@ -422,6 +422,31 @@ impl Prikk for CliBackend {
         }
     }
 
+    fn queue(&self, repo: &Path) -> Result<crate::QueueReport> {
+        // RFC 028 decision 1: the enumeration at ≥ 0.39, the JSON band stikk already reads and the suite's
+        // ceiling exercises. `status-report-v1` exists from 0.35, but 0.35–0.38 is a band nobody runs.
+        if self.reads_json()? {
+            let out = self.run(
+                Some(repo),
+                RequestCategory::ReadHistory,
+                ["status", "--format", "json"],
+            )?;
+            // The message rule is version-banded; the handshake is cached.
+            let prikk_minor = Prikk::handshake(self)?.version.minor;
+            return Ok(crate::QueueReport::Listed(parse_json::queue(
+                &out,
+                prikk_minor,
+            )?));
+        }
+        // Below 0.39 there is no enumeration to ask for: the same prose `status` read Orientation makes,
+        // and nothing else. The list is unreported, never empty.
+        let orientation = self.orientation(repo)?;
+        Ok(crate::QueueReport::Unreported {
+            count: orientation.queued_patches,
+            target: orientation.queued_target,
+        })
+    }
+
     fn commit(&self, repo: &Path, reff: &str, message: &str) -> Result<CommitResult> {
         // OPL-04's seam-side half (handoff §7). **It now catches what it was written for.** Until
         // RFC 026 this re-check read environment presence, which cannot change underneath a running

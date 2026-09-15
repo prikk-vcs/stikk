@@ -23,6 +23,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
+use stikk_core::QueueView;
 use stikk_core::{
     BlockDetailView, ChangesView, Command, CommitPreviewOutcome, HistoryView, NextTarget,
     OperationContext, Presentation, RefusalHistory, SEAL_OPERATION, SealPreviewOutcome, Target,
@@ -106,6 +107,14 @@ pub enum Screen {
         /// Whether untracked entries are hidden (display only — a commit still captures them).
         hide_untracked: bool,
     },
+    /// The Queue view (RFC 028): the active queue, repository-wide.
+    Queue {
+        /// The loaded queue.
+        view: QueueView,
+        /// The `seq` of an in-flight refresh (`r`), if any — the view stays visible while it runs, as
+        /// History's does (RFC 010 §5).
+        refreshing: Option<u64>,
+    },
 }
 
 /// What the shell should render in the body region — the top screen, or the Orientation root.
@@ -121,6 +130,8 @@ pub enum Focus<'a> {
     BlockDetail(&'a BlockDetailView),
     /// The Changes view and whether untracked entries are hidden.
     Changes(&'a ChangesView, bool),
+    /// The Queue view.
+    Queue(&'a QueueView),
 }
 
 /// One background operation the worker has answered or is still working on — display-only bookkeeping
@@ -337,6 +348,13 @@ impl App {
     pub fn reload(&mut self) {
         self.banner = None;
         self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
+        // RFC 028: the Queue screen refreshes in place, its view visible while the read runs.
+        if matches!(self.screens.last(), Some(Screen::Queue { .. })) {
+            let seq = self.dispatch(RequestKind::Queue);
+            if let Some(Screen::Queue { refreshing, .. }) = self.screens.last_mut() {
+                *refreshing = Some(seq);
+            }
+        }
         // A History screen exists only for a focused ref, so this finds one whenever it matters.
         if matches!(self.screens.last(), Some(Screen::History { .. }))
             && let Some(reff) = self.focused_ref().map(str::to_string)
@@ -375,6 +393,14 @@ impl App {
             what: "changes",
             seq,
         });
+    }
+
+    /// Open the Queue view (the `Q` key, or the palette; RFC 028 Handoff A §6). **Needs no focused ref**:
+    /// the queue is repository-wide.
+    pub fn open_queue(&mut self) {
+        self.banner = None;
+        let seq = self.dispatch(RequestKind::Queue);
+        self.screens.push(Screen::Loading { what: "queue", seq });
     }
 
     /// Toggle the display-only untracked filter on a focused Changes screen (the `u` key; UD-08).
@@ -657,6 +683,8 @@ impl App {
             // Enter on a Changes row would open a per-file content diff — deferred (UD-09); the view
             // states so. No drill-in.
             Some(Screen::Changes { .. }) => {}
+            // No drill-in: a queued patch's content is Patch detail's own increment (RFC 028).
+            Some(Screen::Queue { .. }) => {}
             None => self.open_history(),
         }
     }
@@ -887,6 +915,7 @@ impl App {
             ResponseKind::BlockState(r) => r.is_ok(),
             ResponseKind::Refs(r) => r.is_ok(),
             ResponseKind::Changes(r) => r.is_ok(),
+            ResponseKind::Queue(r) => r.is_ok(),
             ResponseKind::CommitPreview(r) => r.is_ok(),
             ResponseKind::CommitConfirmExecute(r) => r.is_ok(),
             ResponseKind::SealPreview(r) => r.is_ok(),
@@ -899,6 +928,7 @@ impl App {
             ResponseKind::BlockState(result) => self.apply_block_state(seq, result),
             ResponseKind::Refs(result) => self.apply_refs(seq, result),
             ResponseKind::Changes(result) => self.apply_changes(seq, result),
+            ResponseKind::Queue(result) => self.apply_queue(seq, result),
             ResponseKind::CommitPreview(result) => self.apply_commit_preview(seq, result),
             ResponseKind::CommitConfirmExecute(result) => {
                 self.apply_commit_confirm_execute(seq, result);
@@ -1021,6 +1051,53 @@ impl App {
                 Err(error) => {
                     self.screens.remove(index);
                     self.surface(&error, OperationContext::LoadBlockState);
+                }
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::Queue`] (RFC 028). The same two cases as [`Self::apply_history`]: an
+    /// in-place refresh of the top Queue screen, which stays visible on error, or a pushed
+    /// `Screen::Loading` placeholder.
+    fn apply_queue(&mut self, seq: u64, result: stikk_model::Result<QueueView>) {
+        let is_top_refresh = matches!(
+            self.screens.last(),
+            Some(Screen::Queue { refreshing: Some(s), .. }) if *s == seq
+        );
+        if is_top_refresh {
+            match result {
+                Ok(new_view) => {
+                    if let Some(Screen::Queue { view, refreshing }) = self.screens.last_mut() {
+                        *view = new_view;
+                        *refreshing = None;
+                    }
+                }
+                Err(error) => {
+                    if let Some(Screen::Queue { refreshing, .. }) = self.screens.last_mut() {
+                        *refreshing = None;
+                    }
+                    self.surface(&error, OperationContext::Other);
+                }
+            }
+            return;
+        }
+        let index = self
+            .screens
+            .iter()
+            .position(|s| matches!(s, Screen::Loading { seq: s, .. } if *s == seq));
+        if let Some(index) = index {
+            match result {
+                Ok(view) => {
+                    if let Some(slot) = self.screens.get_mut(index) {
+                        *slot = Screen::Queue {
+                            view,
+                            refreshing: None,
+                        };
+                    }
+                }
+                Err(error) => {
+                    self.screens.remove(index);
+                    self.surface(&error, OperationContext::Other);
                 }
             }
         }
@@ -1341,6 +1418,7 @@ impl App {
             Target::History => self.open_history(),
             Target::RefPicker => self.open_ref_picker(),
             Target::Changes => self.open_changes(),
+            Target::Queue => self.open_queue(),
             Target::Glossary => self.overlays.push(Overlay::Glossary {
                 offset: std::cell::Cell::new(0),
             }),
@@ -1480,6 +1558,7 @@ impl App {
                 view,
                 hide_untracked,
             }) => Focus::Changes(view, *hide_untracked),
+            Some(Screen::Queue { view, .. }) => Focus::Queue(view),
             None => Focus::Orientation(&self.state),
         }
     }

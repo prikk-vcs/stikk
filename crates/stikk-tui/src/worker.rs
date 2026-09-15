@@ -14,6 +14,7 @@ use stikk_core::{
     commit_confirm_and_execute, commit_preview, history_view, list_refs, orient,
     seal_confirm_and_execute, seal_preview,
 };
+use stikk_core::{QueueView, queue_view};
 use stikk_model::{Readiness, Result};
 use stikk_prikk::{BlockRow, CommitResult, Prikk, RefEntry, SealResult};
 
@@ -52,6 +53,8 @@ pub(crate) enum RequestKind {
     },
     /// List every ref pointer, for the ref picker.
     Refs,
+    /// Read the active queue, for the Queue view (RFC 028).
+    Queue,
     /// Read worktree-vs-baseline status for a ref.
     Changes {
         /// The ref to compare the worktree against.
@@ -113,6 +116,8 @@ pub(crate) enum ResponseKind {
     BlockState(Result<BlockDetailView>),
     /// Answers [`RequestKind::Refs`].
     Refs(Result<Vec<RefEntry>>),
+    /// Answers [`RequestKind::Queue`].
+    Queue(Result<QueueView>),
     /// Answers [`RequestKind::Changes`].
     Changes(Result<ChangesView>),
     /// Answers [`RequestKind::CommitPreview`].
@@ -135,6 +140,7 @@ impl RequestKind {
             Self::History { .. } => "history",
             Self::BlockState { .. } => "block detail",
             Self::Refs => "refs",
+            Self::Queue => "queue",
             Self::Changes { .. } => "changes",
             Self::CommitPreview { .. } => "commit preview",
             Self::CommitConfirmExecute { .. } => "commit",
@@ -168,6 +174,7 @@ pub(crate) fn run(
                 ResponseKind::BlockState(block_detail(prikk, repo, &reff, row, is_tip))
             }
             RequestKind::Refs => ResponseKind::Refs(list_refs(prikk, repo)),
+            RequestKind::Queue => ResponseKind::Queue(queue_view(prikk, repo)),
             RequestKind::Changes { reff } => {
                 ResponseKind::Changes(changes_view(prikk, repo, &reff))
             }

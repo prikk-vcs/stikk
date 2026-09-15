@@ -76,6 +76,118 @@ pub struct Orientation {
     pub current_branch: stikk_model::CurrentBranch,
 }
 
+/// The active queue, as [`Prikk::queue`] reads it (design `FR-051`; RFC 028 decision 1).
+///
+/// **Two variants, because below prikk 0.39 the list is not reported, not empty** (`C-T2c′`). An
+/// [`QueueReport::Unreported`] queue with patches in it must never render as an empty list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueueReport {
+    /// prikk ≥ 0.39: `status --format json`'s `queue`, every patch listed.
+    Listed(Queue),
+    /// prikk < 0.39: no enumeration exists. The count and target come from the prose `status` line
+    /// Orientation already reads; `target` is `None` for an empty queue, and for prikk's
+    /// `<missing metadata>`/`<malformed metadata>` sentinels, which the prose form does not tell apart.
+    Unreported {
+        /// Patches queued in the active WAL.
+        count: u64,
+        /// The ref the queue targets, when prikk names one.
+        target: Option<String>,
+    },
+}
+
+/// An enumerated queue (`status-report-v1`'s `queue`, prikk ≥ 0.39).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Queue {
+    /// `count`, held equal to `patches.len()` by the reader.
+    pub count: u64,
+    /// The ref the queue targets, or why prikk cannot name one.
+    pub target: QueueTarget,
+    /// The active-patch thresholds. `None` exactly when the queue is empty.
+    pub threshold: Option<QueueThreshold>,
+    /// Each queued patch, in prikk's order.
+    pub patches: Vec<QueuedPatch>,
+}
+
+/// `target_ref` with `target_ref_status`, as one state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueueTarget {
+    /// `target_ref` names a validated ref, and `target_ref_status` is `null`.
+    Ref(String),
+    /// `target_ref_status: "missing-metadata"` — prikk has no ref-name for the active session.
+    MissingMetadata,
+    /// `target_ref_status: "malformed-metadata"` — the active session's ref-name is not a valid ref.
+    MalformedMetadata,
+    /// Both `null`. prikk 0.42.0 emits this for an empty queue; it is held rather than refused, since
+    /// the schema allows it for any queue.
+    NotReported,
+}
+
+/// The active-patch thresholds prikk reports for a non-empty queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueueThreshold {
+    /// Where the queue stands.
+    pub status: ThresholdStatus,
+    /// `warn_threshold`.
+    pub warn: u64,
+    /// `hard_limit`.
+    pub hard_limit: u64,
+}
+
+/// `threshold_status`, held to prikk's vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThresholdStatus {
+    /// `none` — below the warning threshold.
+    None,
+    /// `warn` — at or above the warning threshold.
+    Warn,
+    /// `hard-limit` — at or above the hard limit.
+    HardLimit,
+}
+
+/// One queued patch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedPatch {
+    /// The patch id, validated as an object id.
+    pub patch_id: String,
+    /// The patch's message, in three states that never collapse into each other.
+    pub message: QueuedMessage,
+    /// The patch's operations, in prikk's order.
+    pub operations: Vec<QueuedOperation>,
+}
+
+/// A queued patch's message (RFC 028, decision 2 as revised at prikk 0.42.0).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueuedMessage {
+    /// The field is absent: this prikk (0.39–0.41) does not report a queued patch's message. **Never
+    /// "no message"** (`C-T2c′`).
+    NotReported,
+    /// `null`: the patch carries no message (a patch committed by an older prikk).
+    None,
+    /// The message, verbatim.
+    Text(String),
+}
+
+/// One operation of a queued patch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedOperation {
+    /// prikk's operation kind, verbatim — a kind stikk does not know still renders (RFC 027 A).
+    pub kind: String,
+    /// The paths it touches, as reported.
+    pub paths: Vec<QueuedPath>,
+    /// The asserting author's key id. Always present on `rename-path`; carried on any other kind if
+    /// prikk reports it.
+    pub author_key_id: Option<String>,
+}
+
+/// A path as a queued operation reports it — exactly one of the two.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueuedPath {
+    /// `{"path": …}`.
+    Path(String),
+    /// `{"unresolved_node_id": …}` — a node no longer live in the baseline.
+    UnresolvedNode(String),
+}
+
 /// One patch id and its message, as `prikk log` names it (design FR-011; RFC 015 F1). Only patches
 /// authored by prikk ≥ 0.32 carry a line at all: `-m` has always been mandatory, but the message was
 /// validated and discarded below that version (`UD-01`, retired at 0.32) — an older patch contributes
@@ -458,6 +570,17 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError`]: an unrecognized report shape is an environment fault (UD-02); a
     /// genuine failure (bad ref, not a repository) classifies as for [`Prikk::orientation`].
     fn worktree_status(&self, repo: &Path, reff: &str) -> Result<WorktreeStatus>;
+
+    /// Read the active queue (design `FR-051`; category `read-history`; RFC 028 decision 1).
+    ///
+    /// **Version-banded behind this one method.** At prikk ≥ 0.39 it reads `status --format json` and
+    /// lists every queued patch. Below 0.39 it spawns nothing new: it answers from the prose `status` read
+    /// Orientation makes, as [`QueueReport::Unreported`] — never as an empty list.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: a JSON report that breaks the queue's rules is stikk's environment
+    /// error (RFC 027 B, C1); a genuine failure classifies as for [`Prikk::orientation`].
+    fn queue(&self, repo: &Path) -> Result<QueueReport>;
 
     /// Compose a cheap "has anything changed?" signal from the ref pointers (branches **and** tags,
     /// merged and deduplicated by name — never `Prikk::refs` alone, since its tag coverage is

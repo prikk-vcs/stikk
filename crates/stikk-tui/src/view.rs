@@ -6,3 +6,4 @@ pub mod block;
 pub mod changes;
 pub mod history;
 pub mod orientation;
+pub mod queue;

@@ -71,3 +71,12 @@ fn text_entry_routes_printables_to_input() {
 fn unbound_key_is_none() {
     assert_eq!(dispatch(key(KeyCode::Char('z')), false), Action::None);
 }
+
+#[test]
+fn capital_q_opens_the_queue_and_lowercase_q_still_goes_back() {
+    // RFC 028 Handoff A §6: `Q` opens the Queue view; `q` is still Back.
+    assert_eq!(dispatch(key(KeyCode::Char('Q')), false), Action::OpenQueue);
+    assert_eq!(dispatch(key(KeyCode::Char('q')), false), Action::Back);
+    // In a text-entry overlay it types, like every other letter.
+    assert_eq!(dispatch(key(KeyCode::Char('Q')), true), Action::Input('Q'));
+}

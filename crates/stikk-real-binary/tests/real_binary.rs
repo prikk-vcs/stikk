@@ -2381,3 +2381,228 @@ fn rfc029b_an_unpublished_heads_main_reads_as_an_empty_history_at_both_ends() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 028 Handoff A §7: the queue, read from real prikk at both ends.
+// ---------------------------------------------------------------------------------------------
+
+/// **RFC 028 at both ends: a queued patch is the patch that seals.**
+///
+/// Two patches are queued on a sealed `heads/main`: one ordinary (`add b`), and — at prikk ≥ 0.38 — one
+/// `prikk mv` rename, each committed with a message.
+///
+/// - **At ≥ 0.39** the queue is listed. Its count equals Orientation's; the rename carries both paths and
+///   the fixture's own author key id; at ≥ 0.42 each message equals what was committed, and below 0.42 it
+///   is not reported. **Then the queue is sealed, and the queued ids must equal the ids `log` reports for
+///   that block** — asserted, not assumed.
+/// - **Below 0.39** the list is unreported, and its count and target equal Orientation's.
+/// - **Below 0.38** there is no `prikk mv`, and the rename is an announced skip.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc028_queued_patch_ids_are_the_ids_that_seal_and_the_rename_carries_both_paths() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        // heads/main: readme.txt, sealed.
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "base")
+            .unwrap_or_else(|e| panic!("0.{}: commit base: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal base: {e}", bin.minor));
+
+        // Queued: `add b`, then (≥ 0.38) a rename.
+        fixture.set_author_env();
+        std::fs::write(repo.join("b.txt"), "b\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        backend
+            .commit(&repo, "heads/main", "add b")
+            .unwrap_or_else(|e| panic!("0.{}: commit add b: {e}", bin.minor));
+        let renamed = bin.minor >= 38;
+        if renamed {
+            prikk_ok(&bin, &repo, &["mv", "readme.txt", "renamed.txt"]);
+            backend
+                .commit(&repo, "heads/main", "rename readme")
+                .unwrap_or_else(|e| panic!("0.{}: commit rename: {e}", bin.minor));
+        } else {
+            eprintln!(
+                "RFC 028: the rename case SKIPPED at 0.{} — `prikk mv` does not exist below 0.38. \
+                 Announced rather than silent (RFC 022 §3).",
+                bin.minor
+            );
+        }
+        let expected_count: u64 = if renamed { 2 } else { 1 };
+
+        let orientation = backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor));
+        let report = backend
+            .queue(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: queue: {e}", bin.minor));
+        assert_eq!(
+            orientation.queued_patches, expected_count,
+            "0.{}",
+            bin.minor
+        );
+
+        let queue = match report {
+            stikk_prikk::QueueReport::Unreported { count, target } => {
+                assert!(bin.minor < 39, "0.{}: unreported at ≥ 0.39", bin.minor);
+                assert_eq!(count, orientation.queued_patches, "0.{}: count", bin.minor);
+                assert_eq!(target, orientation.queued_target, "0.{}: target", bin.minor);
+                println!(
+                    "0.{}: the queue is unreported: {count} patch(es) for {target:?}, as Orientation says",
+                    bin.minor
+                );
+                Fixture::clear_env();
+                continue;
+            }
+            stikk_prikk::QueueReport::Listed(queue) => queue,
+        };
+        assert!(bin.minor >= 39, "0.{}: listed below 0.39", bin.minor);
+        assert_eq!(
+            queue.count, orientation.queued_patches,
+            "0.{}: count",
+            bin.minor
+        );
+        assert_eq!(
+            queue.target,
+            stikk_prikk::QueueTarget::Ref("heads/main".to_string()),
+            "0.{}",
+            bin.minor
+        );
+
+        let expected_messages = ["add b", "rename readme"];
+        for (patch, expected) in queue.patches.iter().zip(expected_messages) {
+            let want = if bin.minor >= 42 {
+                stikk_prikk::QueuedMessage::Text(expected.to_string())
+            } else {
+                stikk_prikk::QueuedMessage::NotReported
+            };
+            assert_eq!(patch.message, want, "0.{}: {}", bin.minor, patch.patch_id);
+        }
+        let rename = &queue.patches[1].operations;
+        assert_eq!(
+            rename,
+            &vec![stikk_prikk::QueuedOperation {
+                kind: "rename-path".to_string(),
+                paths: vec![
+                    stikk_prikk::QueuedPath::Path("readme.txt".to_string()),
+                    stikk_prikk::QueuedPath::Path("renamed.txt".to_string()),
+                ],
+                author_key_id: Some(fixture.author_key_id().to_string()),
+            }],
+            "0.{}: the rename carries both paths and its key id",
+            bin.minor
+        );
+
+        // Seal, and compare the ids `log` reports for that block.
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal the queue: {e}", bin.minor));
+        Fixture::clear_env();
+        let history = backend
+            .history(&repo, "heads/main", 5)
+            .unwrap_or_else(|e| panic!("0.{}: history: {e}", bin.minor));
+        let mut queued_ids: Vec<&str> = queue.patches.iter().map(|p| p.patch_id.as_str()).collect();
+        let mut sealed_ids: Vec<&str> = history.blocks[0]
+            .messages
+            .iter()
+            .map(|m| m.patch_id.as_str())
+            .collect();
+        println!(
+            "0.{}: queued ids {queued_ids:?}; after sealing, `log` reports block {} with patch ids {sealed_ids:?} \
+             and messages {:?}",
+            bin.minor,
+            history.blocks[0].block_id,
+            history.blocks[0]
+                .messages
+                .iter()
+                .map(|m| m.message.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(history.blocks[0].patches, queue.count, "0.{}", bin.minor);
+        queued_ids.sort_unstable();
+        sealed_ids.sort_unstable();
+        assert_eq!(
+            queued_ids, sealed_ids,
+            "0.{}: a queued patch is the patch that seals",
+            bin.minor
+        );
+    }
+}
+
+/// **RFC 028 F5 at both ends: History for another ref does not claim the queue.**
+///
+/// One patch is queued for `heads/main`; `heads/other` is published from it. History for `heads/other`
+/// must say the active WAL's patch is `heads/main`'s, not put it on `heads/other`'s lineage — and History for
+/// `heads/main` still claims it.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc028_history_for_another_ref_does_not_claim_the_queue() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "base")
+            .unwrap_or_else(|e| panic!("0.{}: commit base: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal base: {e}", bin.minor));
+        // `branch create` signs as MAINTAINER, so the environment stays set through it.
+        prikk_ok(
+            &bin,
+            &repo,
+            &["branch", "create", "heads/other", "--from", "heads/main"],
+        );
+        fixture.set_author_env();
+        std::fs::write(repo.join("queued.txt"), "queued\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        backend
+            .commit(&repo, "heads/main", "queued for main")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        Fixture::clear_env();
+
+        let other = stikk_core::history_view(&backend, &repo, "heads/other", 20)
+            .unwrap_or_else(|e| panic!("0.{}: history heads/other: {e}", bin.minor));
+        let main = stikk_core::history_view(&backend, &repo, "heads/main", 20)
+            .unwrap_or_else(|e| panic!("0.{}: history heads/main: {e}", bin.minor));
+        println!(
+            "0.{}: heads/other's tier: {:?}; heads/main's tier: {:?}",
+            bin.minor,
+            other.queued_tier(),
+            main.queued_tier()
+        );
+        assert_eq!(
+            other.queued_tier().as_deref(),
+            Some(
+                "the active WAL holds 1 patch(es) for heads/main — not this ref's history · Q: Queue"
+            ),
+            "0.{}: another ref's tier",
+            bin.minor
+        );
+        assert_eq!(
+            main.queued_tier().as_deref(),
+            Some("1 patch(es) in the active WAL — not yet sealed · Q: Queue"),
+            "0.{}: this ref's tier",
+            bin.minor
+        );
+    }
+}

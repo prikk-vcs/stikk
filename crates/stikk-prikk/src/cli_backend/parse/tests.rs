@@ -1095,8 +1095,10 @@ fn a_clean_0_38_worktree_reports_no_entries_despite_the_rename_section() {
 // write `doc.txt`, commit, seal; then edit `doc.txt` and commit; then delete `doc.txt` and commit —
 // leaving **two unsealed patches** where the first edits a node the second removes.
 //
-// `status --format json` is a 0.35+ surface and **stikk parses nothing here yet** — no seam method is
-// added by RFC 021 (Decision 5: the Queue view is its own increment). This fixture exists so that
+// `status --format json` is a 0.35+ surface. **stikk reads it only at ≥ 0.39** (RFC 028 decision 1), so
+// this 0.38 capture stays a pinned shape rather than a reader test; RFC 028 Handoff A re-captured the same
+// case at 0.42, with messages (`STATUS_QUEUE_UNRESOLVED_NODE_0_42` in `parse_json/tests.rs`). This fixture
+// was committed so that
 // increment starts from a real capture of the awkward case rather than re-deriving the sequence: the
 // edit patch's operation carries **`unresolved_node_id` in place of a `path`**, because the node it
 // edited no longer resolves to one by the time the queue is read (RFC 021 F6). The delete patch, in
@@ -1129,8 +1131,8 @@ const STATUS_JSON_UNRESOLVED_NODE_0_38_FIXTURE: &str = r#"{
 
 #[test]
 fn the_queued_unresolved_node_id_shape_is_pinned_for_the_queue_views_increment() {
-    // No parser to exercise — this pins the captured *shape* so that if it drifts before the Queue
-    // view is built, it drifts here rather than inside that increment's first hour. Asserted as facts
+    // No reader serves 0.38 (RFC 028 decision 1) — this pins the captured *shape*, as it has since before
+    // the Queue view was built; the reader's own tests use the 0.42 capture. Asserted as facts
     // about the text, which is all stikk can honestly claim about a surface it does not yet read.
     let f = STATUS_JSON_UNRESOLVED_NODE_0_38_FIXTURE;
     assert!(f.contains(r#""schema_version": "status-report-v1""#));
@@ -1789,4 +1791,26 @@ fn a_missing_declarations_section_at_0_38_is_a_parse_error() {
     );
     let below = worktree_status(&text, 37).expect("below 0.38 there is no section to lose");
     assert!(below.declarations.is_empty());
+}
+
+// Captured verbatim from a real prikk 0.42.0 binary on 2026-09-15T05:50Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §5):
+// one patch committed, then **constructed state** — `.prikk/active/default/ref-name` emptied in a scratch
+// repository, since prikk's CLI cannot produce it. prikk's output is verbatim. Capture file: `status-queue-missing-metadata-0.42.prose.txt`.
+//
+// This is the state History's third tier row covers: a count with no target ref. prikk prints its sentinel,
+// and `parse_queued` maps it to no target rather than a fabricated ref name.
+const STATUS_QUEUED_MISSING_METADATA_0_42_FIXTURE: &str = "prikk repository: /tmp/repo/.prikk
+active WAL records: 1
+trailing partial WAL bytes: 0
+heads/main RefState: <not published>
+current branch: heads/main
+queued patches: 1 targeting <missing metadata>
+status: multi-operation text diff minimization and plugins not yet implemented
+";
+
+#[test]
+fn a_queue_with_missing_target_metadata_reads_as_a_count_with_no_target() {
+    let o = orientation(STATUS_QUEUED_MISSING_METADATA_0_42_FIXTURE, 42).expect("parses");
+    assert_eq!(o.queued_patches, 1);
+    assert_eq!(o.queued_target, None);
 }

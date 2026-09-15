@@ -900,3 +900,520 @@ fn a_declaration_without_both_paths_is_refused() {
     assert_eq!(err.class(), "environment");
     assert!(err.to_string().contains("new_path"), "{err}");
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 028 Handoff A: `status --format json`'s queue (`status-report-v1`), prikk >= 0.39.
+// ---------------------------------------------------------------------------------------------
+
+// Captured verbatim from a real prikk 0.42.0 binary on 2026-09-15T05:46Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §2):
+// two patches committed onto a sealed `heads/main`: `add b`, then `prikk mv a.txt c.txt` and `rename a to c`.
+// Capture file: `status-queue-two-patch-0.42.json`.
+const STATUS_QUEUE_TWO_PATCH_0_42: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 2,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "20444fe9438c81bffa57c9b1ddf7b59f6a1bb57ea18f2d0833d019f7e0a9fb29",
+  "current_branch": "heads/main",
+  "queue": {
+    "count": 2,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a", "message": "add b", "operations": [
+        {"kind": "create-file", "paths": [{"path": "b.txt"}]}
+      ]},
+      {"patch_id": "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478", "message": "rename a to c", "operations": [
+        {"kind": "rename-path", "paths": [{"path": "a.txt"},{"path": "c.txt"}], "author_key_id": "author"}
+      ]}
+    ]
+  }
+}
+"#;
+
+// Captured verbatim from a real prikk 0.42.0 binary on 2026-09-15T05:46Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §2):
+// `doc.txt` committed and sealed; then edited and committed (`edit doc`); then deleted and committed (`delete doc`) — `STATUS_JSON_UNRESOLVED_NODE_0_38_FIXTURE`'s recipe, now with messages.
+// Capture file: `status-queue-unresolved-node-0.42.json`.
+const STATUS_QUEUE_UNRESOLVED_NODE_0_42: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 2,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "983f0990e322a10333897533deca9d3911d70da14597f240a5335cd85c73d594",
+  "current_branch": "heads/main",
+  "queue": {
+    "count": 2,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "af0fb3f2d7c2b509c7383a23a1c387a2134fdad26f825f3ad446c0c5a7c59029", "message": "edit doc", "operations": [
+        {"kind": "edit-text", "paths": [{"unresolved_node_id": "751ae57a14ec0a61402a5118108c41dedd8e5d409c716faaa79a584c2edea6e1"}]}
+      ]},
+      {"patch_id": "1cab8c21fe1639c54e2f8521ecbfcd53f057bfce9567e0a3991b4a40f222048e", "message": "delete doc", "operations": [
+        {"kind": "delete-node", "paths": [{"path": "doc.txt"}]}
+      ]}
+    ]
+  }
+}
+"#;
+
+// Captured verbatim from a real prikk 0.41.0 binary on 2026-09-15T05:46Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §2):
+// the same two-patch recipe as `STATUS_QUEUE_TWO_PATCH_0_42`, on prikk 0.41.0: no `message` field, and no `current_branch`.
+// Capture file: `status-queue-two-patch-0.41.json`.
+const STATUS_QUEUE_TWO_PATCH_0_41: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 2,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "309e32e147c9c34528917a1a50cedbdce114ac6936d047f6c7cbee5a69b80dbf",
+  "queue": {
+    "count": 2,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "49d234ae86c48f9126a84acc26d847836b361d8a923081b16188bcc16293e15f", "operations": [
+        {"kind": "create-file", "paths": [{"path": "b.txt"}]}
+      ]},
+      {"patch_id": "80ed9246a501996bfc41b1d9ff0d3f6a7e36d636e47e3d8be08a7c6e73e0ae14", "operations": [
+        {"kind": "rename-path", "paths": [{"path": "a.txt"},{"path": "c.txt"}], "author_key_id": "author"}
+      ]}
+    ]
+  }
+}
+"#;
+
+// Captured verbatim from a real prikk 0.42.0 binary on 2026-09-15T05:46Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §2):
+// one patch committed on a fresh repository, read with `PRIKK_ACTIVE_PATCH_WARN=1` (RFC 028 F3's recipe).
+// Capture file: `status-queue-warn-0.42.json`.
+const STATUS_QUEUE_WARN_0_42: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 1,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": null,
+  "current_branch": "heads/main",
+  "queue": {
+    "count": 1,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "warn",
+    "warn_threshold": 1,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "3829ccfb080c07011497119384f429bbcf32395695bfc6030dc3fe20da56f321", "message": "one patch", "operations": [
+        {"kind": "create-file", "paths": [{"path": "w.txt"}]}
+      ]}
+    ]
+  }
+}
+"#;
+
+// Captured verbatim from a real prikk 0.42.0 binary on 2026-09-15T05:46Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §2):
+// a freshly initialised repository with nothing queued.
+// Capture file: `status-queue-empty-0.42.json`.
+const STATUS_QUEUE_EMPTY_0_42: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 0,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": null,
+  "current_branch": "heads/main",
+  "queue": {
+    "count": 0,
+    "target_ref": null,
+    "target_ref_status": null,
+    "threshold_status": null,
+    "warn_threshold": null,
+    "hard_limit": null,
+    "patches": []
+  }
+}
+"#;
+
+// Captured verbatim from a real prikk 0.42.0 binary on 2026-09-15T05:46Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §2):
+// the two-patch recipe committed by prikk 0.41.0, then read by prikk 0.42.0. **Both messages are present**: 0.41 already stored them, so this is not a route to a `null` message.
+// Capture file: `status-queue-written-0.41-read-0.42.json`.
+const STATUS_QUEUE_WRITTEN_0_41_READ_0_42: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 2,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "2d84fce3caa5c24f8e6dadb0988b21a3364ed4934139a740d7b0c51aa6ae3544",
+  "current_branch": "heads/main",
+  "queue": {
+    "count": 2,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "465da48a7dfdb54b26ce003ba2a18f4d8113bc618eb8a9b54f0b479554197714", "message": "add b", "operations": [
+        {"kind": "create-file", "paths": [{"path": "b.txt"}]}
+      ]},
+      {"patch_id": "e212f78fa7622fc41ddf2421e83d45c5eeab41a1395a12479d4fd2b63b9a431c", "message": "rename a to c", "operations": [
+        {"kind": "rename-path", "paths": [{"path": "a.txt"},{"path": "c.txt"}], "author_key_id": "author"}
+      ]}
+    ]
+  }
+}
+"#;
+
+// Captured verbatim from a real prikk 0.42.0 binary on 2026-09-15T05:50Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §2):
+// one patch committed, then **constructed state**: `.prikk/active/default/ref-name` emptied in a scratch repository, since prikk's CLI cannot produce it. prikk's output is verbatim.
+// Capture file: `status-queue-missing-metadata-0.42.json`.
+const STATUS_QUEUE_MISSING_METADATA_0_42: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 1,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": null,
+  "current_branch": "heads/main",
+  "queue": {
+    "count": 1,
+    "target_ref": null,
+    "target_ref_status": "missing-metadata",
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "a1fe84d365fd2bdbf237253fccbef77dd850463dd14c60f4d38e516037ce29bf", "message": "queued", "operations": [
+        {"kind": "create-file", "paths": [{"path": "q.txt"}]}
+      ]}
+    ]
+  }
+}
+"#;
+
+// Captured verbatim from a real prikk 0.42.0 binary on 2026-09-15T05:50Z, from a neutral `/tmp/repo` (RFC 028 Handoff A §2):
+// one patch committed, then **constructed state**: `.prikk/active/default/ref-name` set to `not a ref` in a scratch repository. prikk's output is verbatim.
+// Capture file: `status-queue-malformed-metadata-0.42.json`.
+const STATUS_QUEUE_MALFORMED_METADATA_0_42: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 1,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": null,
+  "current_branch": "heads/main",
+  "queue": {
+    "count": 1,
+    "target_ref": null,
+    "target_ref_status": "malformed-metadata",
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "a1fe84d365fd2bdbf237253fccbef77dd850463dd14c60f4d38e516037ce29bf", "message": "queued", "operations": [
+        {"kind": "create-file", "paths": [{"path": "q.txt"}]}
+      ]}
+    ]
+  }
+}
+"#;
+
+/// **Constructed, not captured.** No honest capture produced a `null` message: prikk 0.42 requires `-m`,
+/// and a queue committed by 0.41 carries its messages when 0.42 reads it
+/// (`STATUS_QUEUE_WRITTEN_0_41_READ_0_42`). prikk's emitter writes `null` for a patch with no message
+/// (`output/status.rs` at the 0.42.0 tag), so this is `STATUS_QUEUE_WARN_0_42` with that one value
+/// replaced — the only case in this section tested against a literal stikk wrote.
+fn constructed_null_message_0_42() -> String {
+    STATUS_QUEUE_WARN_0_42.replace(r#""message": "one patch""#, r#""message": null"#)
+}
+
+fn queue_at(text: &str, minor: u32) -> Queue {
+    queue(text, minor).unwrap_or_else(|e| panic!("0.{minor}: {e}"))
+}
+
+fn queue_rule_error(text: &str, minor: u32) -> String {
+    let err = queue(text, minor).expect_err("a broken rule must refuse");
+    assert_eq!(err.class(), "environment", "{err}");
+    err.to_string()
+}
+
+#[test]
+fn the_captured_two_patch_queue_parses_to_what_it_shows_at_0_42() {
+    let q = queue_at(STATUS_QUEUE_TWO_PATCH_0_42, 42);
+    assert_eq!(q.count, 2);
+    assert_eq!(q.target, QueueTarget::Ref("heads/main".into()));
+    assert_eq!(
+        q.threshold,
+        Some(QueueThreshold {
+            status: ThresholdStatus::None,
+            warn: 800,
+            hard_limit: 1000
+        })
+    );
+    assert_eq!(
+        q.patches,
+        vec![
+            QueuedPatch {
+                patch_id: "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a".into(),
+                message: QueuedMessage::Text("add b".into()),
+                operations: vec![QueuedOperation {
+                    kind: "create-file".into(),
+                    paths: vec![QueuedPath::Path("b.txt".into())],
+                    author_key_id: None,
+                }],
+            },
+            QueuedPatch {
+                patch_id: "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478".into(),
+                message: QueuedMessage::Text("rename a to c".into()),
+                operations: vec![QueuedOperation {
+                    kind: "rename-path".into(),
+                    paths: vec![
+                        QueuedPath::Path("a.txt".into()),
+                        QueuedPath::Path("c.txt".into())
+                    ],
+                    author_key_id: Some("author".into()),
+                }],
+            },
+        ]
+    );
+}
+
+#[test]
+fn the_captured_unresolved_node_queue_keeps_the_node_apart_from_a_path() {
+    let q = queue_at(STATUS_QUEUE_UNRESOLVED_NODE_0_42, 42);
+    assert_eq!(q.count, 2);
+    assert_eq!(q.patches[0].message, QueuedMessage::Text("edit doc".into()));
+    assert_eq!(
+        q.patches[0].operations,
+        vec![QueuedOperation {
+            kind: "edit-text".into(),
+            paths: vec![QueuedPath::UnresolvedNode(
+                "751ae57a14ec0a61402a5118108c41dedd8e5d409c716faaa79a584c2edea6e1".into()
+            )],
+            author_key_id: None,
+        }]
+    );
+    assert_eq!(
+        q.patches[1].message,
+        QueuedMessage::Text("delete doc".into())
+    );
+    assert_eq!(
+        q.patches[1].operations[0].paths,
+        vec![QueuedPath::Path("doc.txt".into())]
+    );
+}
+
+#[test]
+fn at_0_41_the_message_is_not_reported_never_none() {
+    let q = queue_at(STATUS_QUEUE_TWO_PATCH_0_41, 41);
+    assert_eq!(q.count, 2);
+    for patch in &q.patches {
+        assert_eq!(patch.message, QueuedMessage::NotReported, "{patch:?}");
+    }
+    assert_eq!(q.patches[1].operations[0].kind, "rename-path");
+    assert_eq!(
+        q.patches[1].operations[0].author_key_id.as_deref(),
+        Some("author")
+    );
+}
+
+#[test]
+fn the_three_message_states_stay_distinct() {
+    let text = queue_at(STATUS_QUEUE_WARN_0_42, 42).patches[0]
+        .message
+        .clone();
+    let none = queue_at(&constructed_null_message_0_42(), 42).patches[0]
+        .message
+        .clone();
+    let not_reported = queue_at(STATUS_QUEUE_TWO_PATCH_0_41, 41).patches[0]
+        .message
+        .clone();
+    assert_eq!(text, QueuedMessage::Text("one patch".into()));
+    assert_eq!(none, QueuedMessage::None);
+    assert_eq!(not_reported, QueuedMessage::NotReported);
+    // A queue written by 0.41 and read by 0.42 is not a route to `null`: both messages survive.
+    let mixed = queue_at(STATUS_QUEUE_WRITTEN_0_41_READ_0_42, 42);
+    assert_eq!(
+        mixed.patches[0].message,
+        QueuedMessage::Text("add b".into())
+    );
+    assert_eq!(
+        mixed.patches[1].message,
+        QueuedMessage::Text("rename a to c".into())
+    );
+}
+
+#[test]
+fn a_warn_threshold_is_carried_with_prikks_numbers() {
+    let q = queue_at(STATUS_QUEUE_WARN_0_42, 42);
+    assert_eq!(
+        q.threshold,
+        Some(QueueThreshold {
+            status: ThresholdStatus::Warn,
+            warn: 1,
+            hard_limit: 1000
+        })
+    );
+}
+
+#[test]
+fn an_empty_queue_has_no_target_no_threshold_and_no_patches() {
+    let q = queue_at(STATUS_QUEUE_EMPTY_0_42, 42);
+    assert_eq!(q.count, 0);
+    assert_eq!(q.target, QueueTarget::NotReported);
+    assert_eq!(q.threshold, None);
+    assert!(q.patches.is_empty());
+}
+
+#[test]
+fn missing_and_malformed_metadata_are_held_apart_from_a_ref_and_from_nothing() {
+    let missing = queue_at(STATUS_QUEUE_MISSING_METADATA_0_42, 42);
+    assert_eq!(missing.count, 1);
+    assert_eq!(missing.target, QueueTarget::MissingMetadata);
+    let malformed = queue_at(STATUS_QUEUE_MALFORMED_METADATA_0_42, 42);
+    assert_eq!(malformed.target, QueueTarget::MalformedMetadata);
+}
+
+// Each §3 rule, broken once. Every one is stikk's environment error, never prikk's refusal.
+
+#[test]
+fn an_unknown_status_schema_is_refused() {
+    let text = STATUS_QUEUE_TWO_PATCH_0_42.replace("status-report-v1", "status-report-v2");
+    let err = queue_rule_error(&text, 42);
+    assert!(
+        err.contains("status-report-v2") && err.contains("status-report-v1"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_report_without_a_queue_is_refused() {
+    let err = queue_rule_error(
+        r#"{"schema_version": "status-report-v1", "active_wal_records": 0}"#,
+        42,
+    );
+    assert!(err.contains("`queue`"), "{err}");
+}
+
+#[test]
+fn a_count_that_disagrees_with_the_patches_listed_is_refused() {
+    let text = STATUS_QUEUE_TWO_PATCH_0_42.replace(r#""count": 2"#, r#""count": 3"#);
+    let err = queue_rule_error(&text, 42);
+    assert!(
+        err.contains("`count` is 3 but 2 patch(es) are listed"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_target_ref_that_is_not_a_ref_name_is_refused() {
+    let text = STATUS_QUEUE_TWO_PATCH_0_42.replace(
+        r#""target_ref": "heads/main""#,
+        "\"target_ref\": \"heads/\\u001b[2Jmain\"",
+    );
+    let err = queue_rule_error(&text, 42);
+    assert!(err.contains("target_ref"), "{err}");
+}
+
+#[test]
+fn a_target_ref_status_outside_its_vocabulary_is_refused() {
+    let text = STATUS_QUEUE_MISSING_METADATA_0_42.replace("missing-metadata", "lost-metadata");
+    let err = queue_rule_error(&text, 42);
+    assert!(err.contains("lost-metadata"), "{err}");
+}
+
+#[test]
+fn a_target_ref_beside_a_metadata_status_is_refused() {
+    let text = STATUS_QUEUE_MISSING_METADATA_0_42
+        .replace(r#""target_ref": null"#, r#""target_ref": "heads/main""#);
+    let err = queue_rule_error(&text, 42);
+    assert!(err.contains("beside"), "{err}");
+}
+
+#[test]
+fn a_threshold_status_outside_its_vocabulary_is_refused() {
+    let text = STATUS_QUEUE_WARN_0_42.replace(
+        r#""threshold_status": "warn""#,
+        r#""threshold_status": "high""#,
+    );
+    let err = queue_rule_error(&text, 42);
+    assert!(err.contains("\"high\""), "{err}");
+}
+
+#[test]
+fn a_null_threshold_on_a_non_empty_queue_is_refused() {
+    let text = STATUS_QUEUE_WARN_0_42.replace(
+        r#""threshold_status": "warn""#,
+        r#""threshold_status": null"#,
+    );
+    let err = queue_rule_error(&text, 42);
+    assert!(
+        err.contains("null exactly when the queue is empty"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_threshold_on_an_empty_queue_is_refused() {
+    let text =
+        STATUS_QUEUE_EMPTY_0_42.replace(r#""warn_threshold": null"#, r#""warn_threshold": 800"#);
+    let err = queue_rule_error(&text, 42);
+    assert!(
+        err.contains("null exactly when the queue is empty"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_patch_id_that_is_not_an_object_id_is_refused() {
+    let text = STATUS_QUEUE_WARN_0_42.replace(
+        "3829ccfb080c07011497119384f429bbcf32395695bfc6030dc3fe20da56f321",
+        "3829ccfb",
+    );
+    let err = queue_rule_error(&text, 42);
+    assert!(err.contains("patch_id"), "{err}");
+}
+
+#[test]
+fn a_path_object_must_carry_exactly_one_of_path_and_unresolved_node_id() {
+    let both = STATUS_QUEUE_WARN_0_42.replace(
+        r#"{"path": "w.txt"}"#,
+        r#"{"path": "w.txt", "unresolved_node_id": "3829ccfb080c07011497119384f429bbcf32395695bfc6030dc3fe20da56f321"}"#,
+    );
+    let neither = STATUS_QUEUE_WARN_0_42.replace(r#"{"path": "w.txt"}"#, "{}");
+    for text in [both, neither] {
+        let err = queue_rule_error(&text, 42);
+        assert!(
+            err.contains("exactly one of `path` and `unresolved_node_id`"),
+            "{err}"
+        );
+    }
+}
+
+#[test]
+fn a_rename_without_its_author_key_id_is_refused() {
+    let text = STATUS_QUEUE_TWO_PATCH_0_42.replace(r#", "author_key_id": "author""#, "");
+    let err = queue_rule_error(&text, 42);
+    assert!(err.contains("author_key_id"), "{err}");
+}
+
+#[test]
+fn at_0_42_a_patch_without_a_message_field_is_refused() {
+    let err = queue_rule_error(STATUS_QUEUE_TWO_PATCH_0_41, 42);
+    assert!(err.contains("no `message` field"), "{err}");
+}
+
+#[test]
+fn below_0_42_a_patch_with_a_message_field_is_refused() {
+    let err = queue_rule_error(STATUS_QUEUE_TWO_PATCH_0_42, 41);
+    assert!(err.contains("carries a `message` field"), "{err}");
+}
+
+#[test]
+fn at_0_42_a_message_of_the_wrong_type_is_refused() {
+    let text = STATUS_QUEUE_WARN_0_42.replace(r#""message": "one patch""#, r#""message": 7"#);
+    let err = queue_rule_error(&text, 42);
+    assert!(err.contains("string or null"), "{err}");
+}

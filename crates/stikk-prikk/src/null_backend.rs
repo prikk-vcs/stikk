@@ -12,8 +12,8 @@ use stikk_model::{ChangeToken, CurrentBranch, Result, StikkError};
 
 use crate::version::Version;
 use crate::{
-    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, SealResult, StateFiles,
-    WorktreeStatus,
+    CommitResult, Handshake, History, Orientation, Prikk, QueueReport, RefEntry, SealResult,
+    StateFiles, WorktreeStatus,
 };
 
 type Scripted<T> = std::result::Result<T, String>;
@@ -66,6 +66,10 @@ pub struct NullBackend {
     /// ran it (RFC 030 §5d). Shared across clones.
     commit_calls: Arc<AtomicUsize>,
     seal: ScriptedSeal,
+    /// Scripted queue (RFC 028). Defaults to an empty, **unreported** queue — this backend reports prikk
+    /// 0.30, below the 0.39 enumeration band, so an unscripted backend never claims a list it could not
+    /// have read.
+    queue: Scripted<QueueReport>,
 }
 
 impl NullBackend {
@@ -157,7 +161,25 @@ impl NullBackend {
                 notes: vec!["note: audit plugins remain later PRs".to_string()],
             }),
             commit_calls: Arc::new(AtomicUsize::new(0)),
+            queue: Ok(QueueReport::Unreported {
+                count: 0,
+                target: None,
+            }),
         }
+    }
+
+    /// Replace the queue this backend returns (RFC 028).
+    #[must_use]
+    pub fn with_queue(mut self, queue: QueueReport) -> Self {
+        self.queue = Ok(queue);
+        self
+    }
+
+    /// Make the queue call fail with a refusal carrying `message`.
+    #[must_use]
+    pub fn with_queue_refusal(mut self, message: impl Into<String>) -> Self {
+        self.queue = Err(message.into());
+        self
     }
 
     /// Set the reported prikk version (for testing the version floor/ceiling — e.g. Changes needs
@@ -399,6 +421,10 @@ impl Prikk for NullBackend {
 
     fn history(&self, _repo: &Path, _reff: &str, _limit: usize) -> Result<History> {
         deliver(&self.history)
+    }
+
+    fn queue(&self, _repo: &Path) -> Result<QueueReport> {
+        deliver(&self.queue)
     }
 
     fn block_state(&self, _repo: &Path, _reff: &str) -> Result<StateFiles> {

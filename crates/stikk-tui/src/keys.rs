@@ -31,6 +31,8 @@ pub enum Action {
     OpenRefPicker,
     /// Open the Changes (worktree-vs-baseline) view.
     OpenChanges,
+    /// Open the Queue view (RFC 028).
+    OpenQueue,
     /// Toggle the display-only untracked filter (Changes view).
     ToggleUntracked,
     /// Begin the commit flow (`FL-05` step 1; RFC 014).
@@ -82,6 +84,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Down | KeyCode::Char('j') => Action::Down,
         KeyCode::Char('b') => Action::OpenRefPicker,
         KeyCode::Char('w') => Action::OpenChanges,
+        KeyCode::Char('Q') => Action::OpenQueue,
         KeyCode::Char('u') => Action::ToggleUntracked,
         KeyCode::Char('C') => Action::Commit,
         KeyCode::Char('S') => Action::Seal,

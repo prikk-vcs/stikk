@@ -669,3 +669,65 @@ fn a_worktree_status_with_no_json_on_stdout_still_classifies_exactly_as_before()
     assert_eq!(err.class(), expected.class());
     assert_eq!(err.to_string(), expected.to_string());
 }
+
+#[cfg(unix)]
+#[test]
+fn below_0_39_the_queue_is_unreported_and_asks_prikk_for_nothing_new() {
+    // RFC 028 Handoff A §3: below 0.39 `queue` answers from the prose `status` read Orientation makes,
+    // as an unreported list — never an empty one — and never asks for `status --format json`. A fake
+    // `prikk` logs each call's first two arguments, so a `--format` flag cannot slip in unseen.
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-queue-unreported-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir); // see the handshake test above for why
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let log = dir.join("calls");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo \"$1 $2\" >> \"{log}\"\n\
+             case \"$1\" in\n\
+             --version)\n\
+             echo 'prikk 0.38.0'\n\
+             ;;\n\
+             status)\n\
+             printf 'prikk repository: /tmp/x/.prikk\\n\
+             active WAL records: 2\\n\
+             trailing partial WAL bytes: 0\\n\
+             heads/main RefState: <not published>\\n\
+             queued patches: 2 targeting heads/main\\n\
+             status: multi-operation text diff minimization and plugins not yet implemented\\n'\n\
+             ;;\n\
+             esac\n",
+            log = log.display(),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+
+    let backend = CliBackend::with_program(&script);
+    let queue = retrying_transient_exec_busy(|| backend.queue(&dir)).expect("queue succeeds");
+    let calls = std::fs::read_to_string(&log).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        queue,
+        crate::QueueReport::Unreported {
+            count: 2,
+            target: Some("heads/main".to_string()),
+        }
+    );
+    let mut lines: Vec<&str> = calls.lines().map(str::trim).collect();
+    lines.sort_unstable();
+    assert_eq!(
+        lines,
+        vec!["--version", "status"],
+        "below 0.39 the queue must be read from prose `status` alone, never `--format json`"
+    );
+}

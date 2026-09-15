@@ -41,8 +41,9 @@ use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{
-    Authoring, BlockRow, History, PatchMessage, QueuedElsewhere, RefEntry, RenameDeclaration,
-    WorktreeEntry, WorktreeStatus,
+    Authoring, BlockRow, History, PatchMessage, Queue, QueueTarget, QueueThreshold,
+    QueuedElsewhere, QueuedMessage, QueuedOperation, QueuedPatch, QueuedPath, RefEntry,
+    RenameDeclaration, ThresholdStatus, WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -51,6 +52,10 @@ type Result<T> = std::result::Result<T, StikkError>;
 const LOG_SCHEMA: &str = "log-report-v1";
 const BRANCH_SCHEMA: &str = "branch-list-v1";
 const TAG_SCHEMA: &str = "tag-list-v1";
+const STATUS_SCHEMA: &str = "status-report-v1";
+
+/// The first prikk minor whose queued patches carry `message` (prikk 0.42; RFC 028 as revised).
+const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
 
 /// A required ref-name field, validated at this boundary (`INV-9`; RFC 012 F-d).
 ///
@@ -394,5 +399,203 @@ fn authoring(change: &Json) -> Result<Authoring> {
             "prikk's JSON report has an entry with `authoring` {verdict:?} and `refusal` {refusal:?}; \
              stikk reads only \"authored\" with null, or \"refused\" with a reason"
         ))),
+    }
+}
+
+/// A queue rule broken: stikk's environment error, naming the rule (RFC 027 B, C1).
+fn queue_rule(detail: impl std::fmt::Display) -> StikkError {
+    StikkError::environment_msg(format!(
+        "prikk's status report breaks a queue rule: {detail}"
+    ))
+}
+
+/// A field that must be present, as a string or `null`. Unlike `Json::opt_str_field`, **absence is an
+/// error**: `status-report-v1` writes every queue field, `null` included, so a missing one is a shape
+/// change.
+fn nullable_str<'a>(value: &'a Json, key: &str) -> Result<Option<&'a str>> {
+    match value.get(key) {
+        None => Err(queue_rule(format!("missing field `{key}`"))),
+        Some(Json::Null) => Ok(None),
+        Some(Json::String(s)) => Ok(Some(s)),
+        Some(_) => Err(queue_rule(format!("`{key}` should be a string or null"))),
+    }
+}
+
+/// As [`nullable_str`], for an integer.
+fn nullable_u64(value: &Json, key: &str) -> Result<Option<u64>> {
+    match value.get(key) {
+        None => Err(queue_rule(format!("missing field `{key}`"))),
+        Some(Json::Null) => Ok(None),
+        Some(Json::Number(n)) => Ok(Some(*n)),
+        Some(_) => Err(queue_rule(format!("`{key}` should be a number or null"))),
+    }
+}
+
+/// `prikk status --format json`'s `queue` (`status-report-v1`), prikk ≥ 0.39 (RFC 028 decision 1).
+///
+/// **Every rule here is stikk's, and breaking one is an environment error, never prikk's refusal**:
+/// - the schema is checked first;
+/// - `count` equals the patches listed;
+/// - `target_ref` parses as a ref name when present, and `target_ref_status` is `null` beside it; without
+///   one, the status is `null`, `missing-metadata` or `malformed-metadata`;
+/// - `threshold_status` is `null` exactly when the queue is empty, and `warn_threshold`/`hard_limit` with
+///   it; otherwise the status is `none`, `warn` or `hard-limit`;
+/// - `patch_id` parses as an object id;
+/// - each path object carries exactly one of `path` and `unresolved_node_id`;
+/// - `rename-path` carries `author_key_id`;
+/// - **the message, by version**: at ≥ 0.42 the field is present, as `null` or a string; below 0.42 it is
+///   absent. A message present below 0.42 is a shape stikk has not seen there, and refuses too.
+///
+/// `prikk_minor` is passed in for the message rule, as `parse::orientation` takes it for `current branch:`.
+///
+/// # Errors
+/// [`StikkError::Environment`] naming the broken rule or missing field.
+pub(super) fn queue(text: &str, prikk_minor: u32) -> Result<Queue> {
+    let value = report(text, STATUS_SCHEMA)?;
+    let queue = match value.get("queue") {
+        Some(queue @ Json::Object(_)) => queue,
+        Some(_) => return Err(queue_rule("`queue` should be an object")),
+        None => return Err(queue_rule("missing field `queue`")),
+    };
+    let count = queue.u64_field("count")?;
+    let listed = queue.array_field("patches")?;
+    if u64::try_from(listed.len()).ok() != Some(count) {
+        return Err(queue_rule(format!(
+            "`count` is {count} but {} patch(es) are listed",
+            listed.len()
+        )));
+    }
+    let target = queue_target(queue)?;
+    let threshold = queue_threshold(queue, count)?;
+    let patches = listed
+        .iter()
+        .map(|patch| queued_patch(patch, prikk_minor))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Queue {
+        count,
+        target,
+        threshold,
+        patches,
+    })
+}
+
+fn queue_target(queue: &Json) -> Result<QueueTarget> {
+    let target = nullable_str(queue, "target_ref")?;
+    let status = nullable_str(queue, "target_ref_status")?;
+    match (target, status) {
+        (Some(_), None) => Ok(QueueTarget::Ref(
+            ref_name_field(queue, "target_ref")?.to_string(),
+        )),
+        (None, Some("missing-metadata")) => Ok(QueueTarget::MissingMetadata),
+        (None, Some("malformed-metadata")) => Ok(QueueTarget::MalformedMetadata),
+        (None, None) => Ok(QueueTarget::NotReported),
+        (_, Some(other @ ("missing-metadata" | "malformed-metadata"))) => Err(queue_rule(format!(
+            "`target_ref` names a ref beside `target_ref_status: {other:?}`"
+        ))),
+        (_, Some(other)) => Err(queue_rule(format!(
+            "`target_ref_status` is {other:?}, which is not null, \"missing-metadata\" or \
+             \"malformed-metadata\""
+        ))),
+    }
+}
+
+fn queue_threshold(queue: &Json, count: u64) -> Result<Option<QueueThreshold>> {
+    let status = nullable_str(queue, "threshold_status")?;
+    let warn = nullable_u64(queue, "warn_threshold")?;
+    let hard_limit = nullable_u64(queue, "hard_limit")?;
+    match (count, status, warn, hard_limit) {
+        (0, None, None, None) => Ok(None),
+        (1.., Some(status), Some(warn), Some(hard_limit)) => {
+            let status = match status {
+                "none" => ThresholdStatus::None,
+                "warn" => ThresholdStatus::Warn,
+                "hard-limit" => ThresholdStatus::HardLimit,
+                other => {
+                    return Err(queue_rule(format!(
+                        "`threshold_status` is {other:?}, which is not \"none\", \"warn\" or \
+                         \"hard-limit\""
+                    )));
+                }
+            };
+            Ok(Some(QueueThreshold {
+                status,
+                warn,
+                hard_limit,
+            }))
+        }
+        _ => Err(queue_rule(format!(
+            "`threshold_status`, `warn_threshold` and `hard_limit` must all be null exactly when the \
+             queue is empty, but `count` is {count} and they are {status:?}, {warn:?}, {hard_limit:?}"
+        ))),
+    }
+}
+
+fn queued_patch(patch: &Json, prikk_minor: u32) -> Result<QueuedPatch> {
+    let patch_id = object_id_field(patch, "patch_id")?.to_string();
+    let reports_messages = prikk_minor >= QUEUED_MESSAGE_FROM_MINOR;
+    let message = match (patch.get("message"), reports_messages) {
+        (None, false) => QueuedMessage::NotReported,
+        (Some(Json::Null), true) => QueuedMessage::None,
+        (Some(Json::String(text)), true) => QueuedMessage::Text(text.clone()),
+        (None, true) => {
+            return Err(queue_rule(format!(
+                "patch {patch_id} has no `message` field, which prikk \
+                 0.{QUEUED_MESSAGE_FROM_MINOR} and later always write (this is 0.{prikk_minor})"
+            )));
+        }
+        (Some(_), false) => {
+            return Err(queue_rule(format!(
+                "patch {patch_id} carries a `message` field, which prikk 0.{prikk_minor} does not \
+                 write — a shape stikk has not seen at this version"
+            )));
+        }
+        (Some(_), true) => {
+            return Err(queue_rule(format!(
+                "patch {patch_id}'s `message` should be a string or null"
+            )));
+        }
+    };
+    let operations = patch
+        .array_field("operations")?
+        .iter()
+        .map(queued_operation)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(QueuedPatch {
+        patch_id,
+        message,
+        operations,
+    })
+}
+
+fn queued_operation(operation: &Json) -> Result<QueuedOperation> {
+    let kind = operation.str_field("kind")?.to_string();
+    let paths = operation
+        .array_field("paths")?
+        .iter()
+        .map(queued_path)
+        .collect::<Result<Vec<_>>>()?;
+    let author_key_id = operation
+        .opt_str_field("author_key_id")?
+        .map(str::to_string);
+    // prikk cannot construct a rename without its asserting author (RFC 028 F1).
+    if kind == "rename-path" && author_key_id.is_none() {
+        return Err(queue_rule(
+            "a `rename-path` operation carries no `author_key_id`",
+        ));
+    }
+    Ok(QueuedOperation {
+        kind,
+        paths,
+        author_key_id,
+    })
+}
+
+fn queued_path(path: &Json) -> Result<QueuedPath> {
+    match (path.get("path"), path.get("unresolved_node_id")) {
+        (Some(Json::String(path)), None) => Ok(QueuedPath::Path(path.clone())),
+        (None, Some(Json::String(node))) => Ok(QueuedPath::UnresolvedNode(node.clone())),
+        _ => Err(queue_rule(
+            "a path object must carry exactly one of `path` and `unresolved_node_id`, as a string",
+        )),
     }
 }

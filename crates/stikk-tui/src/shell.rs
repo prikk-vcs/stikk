@@ -127,6 +127,7 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         Focus::Changes(v, hide_untracked) => {
             view::changes::render(v, hide_untracked, palette, frame, area);
         }
+        Focus::Queue(v) => view::queue::render(v, palette, frame, area),
     }
 }
 

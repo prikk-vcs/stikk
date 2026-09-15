@@ -148,6 +148,7 @@ fn two_block_history() -> HistoryView {
     HistoryView {
         reff: "heads/main".into(),
         queued: 0,
+        queued_target: None,
         blocks: vec![block("bbbb", 2), block("aaaa", 1)],
     }
 }
@@ -267,6 +268,7 @@ fn back_closes_overlay_then_pops_screen_then_quits() {
         view: HistoryView {
             reff: "heads/main".into(),
             queued: 0,
+            queued_target: None,
             blocks: vec![block("bbbb", 1)],
         },
         cursor: 0,
@@ -773,6 +775,7 @@ fn reload_keeps_the_stale_history_view_visible_while_refreshing() {
     let refreshed = HistoryView {
         reff: "heads/main".into(),
         queued: 0,
+        queued_target: None,
         blocks: vec![block("cccc", 3)],
     };
     app.apply(Response {
@@ -814,6 +817,7 @@ fn a_stale_history_refresh_response_leaves_the_view_untouched() {
         kind: ResponseKind::History(Ok(HistoryView {
             reff: "heads/main".into(),
             queued: 0,
+            queued_target: None,
             blocks: vec![block("stale", 9)],
         })),
     });
@@ -828,6 +832,7 @@ fn a_stale_history_refresh_response_leaves_the_view_untouched() {
         kind: ResponseKind::History(Ok(HistoryView {
             reff: "heads/main".into(),
             queued: 0,
+            queued_target: None,
             blocks: vec![block("fresh", 4)],
         })),
     });
@@ -1943,4 +1948,81 @@ fn a_non_empty_ref_list_offers_no_unpublished_row() {
     assert!(text.contains("heads/dev"), "{text}");
     assert!(!text.contains("not published"), "{text}");
     assert!(!text.contains("no published refs"), "{text}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 028 Handoff A §6: the Queue screen.
+// ---------------------------------------------------------------------------------------------
+
+fn queue_view_with(heading: &str) -> stikk_core::QueueView {
+    stikk_core::QueueView {
+        heading: heading.to_string(),
+        thresholds: Vec::new(),
+        patches: Vec::new(),
+        foot: None,
+    }
+}
+
+#[test]
+fn the_queue_opens_without_a_focused_ref() {
+    // Unfocused: the first read named no branch and nothing is published.
+    let (mut app, rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, false)));
+    assert!(matches!(next_request(&rx).kind, RequestKind::Refs));
+    app.back();
+    assert_eq!(app.focused_ref(), None);
+
+    app.open_queue();
+    assert_eq!(app.banner(), None, "the queue needs no focused ref");
+    let req = next_request(&rx);
+    assert!(matches!(req.kind, RequestKind::Queue));
+    assert!(matches!(app.focus(), Focus::Loading("queue")));
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::Queue(Ok(queue_view_with("Nothing is queued."))),
+    });
+    match app.focus() {
+        Focus::Queue(view) => assert_eq!(view.heading, "Nothing is queued."),
+        other => panic!("expected the Queue view, got {other:?}"),
+    }
+
+    // The palette lists it available with no focused ref.
+    let queue = stikk_core::palette::commands()
+        .iter()
+        .find(|c| c.id == "view.queue")
+        .expect("view.queue is registered");
+    assert_eq!(queue.binding, "Q");
+    assert_eq!(queue.unavailable_reason(Readiness::none(), false), None);
+}
+
+#[test]
+fn refreshing_the_queue_keeps_its_view_visible_until_the_new_one_arrives() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_queue();
+    let first = next_request(&rx);
+    app.apply(Response {
+        seq: first.seq,
+        kind: ResponseKind::Queue(Ok(queue_view_with("1 patch(es) queued for heads/main"))),
+    });
+
+    app.reload();
+    let mut requests = vec![next_request(&rx), next_request(&rx)];
+    requests.sort_by_key(|r| matches!(r.kind, RequestKind::Queue));
+    let refresh = requests.pop().unwrap();
+    assert!(matches!(refresh.kind, RequestKind::Queue));
+    match app.focus() {
+        Focus::Queue(view) => assert_eq!(view.heading, "1 patch(es) queued for heads/main"),
+        other => panic!("the old view stays while refreshing, got {other:?}"),
+    }
+    app.apply(Response {
+        seq: refresh.seq,
+        kind: ResponseKind::Queue(Ok(queue_view_with("2 patch(es) queued for heads/main"))),
+    });
+    match app.focus() {
+        Focus::Queue(view) => assert_eq!(view.heading, "2 patch(es) queued for heads/main"),
+        other => panic!("expected the refreshed Queue view, got {other:?}"),
+    }
 }

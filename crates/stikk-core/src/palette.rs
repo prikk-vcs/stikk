@@ -132,6 +132,16 @@ static COMMANDS: &[Command] = &[
         needs_focused_ref: true,
     },
     Command {
+        id: "view.queue",
+        name: "Open Queue",
+        binding: "Q",
+        operation: "queue",
+        tier: Tier::One,
+        opens: Some(Target::Queue),
+        // The queue is repository-wide, so it needs no focused ref (RFC 028 Handoff A §6).
+        needs_focused_ref: false,
+    },
+    Command {
         id: "op.commit",
         name: "Commit worktree changes",
         binding: "C",

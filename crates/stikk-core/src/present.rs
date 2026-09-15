@@ -48,6 +48,8 @@ pub enum Target {
     RefPicker,
     /// The Changes (worktree-vs-baseline) view.
     Changes,
+    /// The Queue view (`FR-051`; RFC 028) — the patches the next seal would freeze.
+    Queue,
     /// The glossary / help browser.
     Glossary,
     /// The lock inspector (FR-102) — renderer lands with recovery.

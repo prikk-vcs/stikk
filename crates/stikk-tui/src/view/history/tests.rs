@@ -41,6 +41,7 @@ fn renders_queue_tier_and_blocks_newest_first() {
     let view = HistoryView {
         reff: "heads/main".into(),
         queued: 2,
+        queued_target: None,
         blocks: vec![row("bbbb0000", 2, "Normal"), row("aaaa0000", 1, "Root")],
     };
     let text = draw(&view, 0);
@@ -56,6 +57,7 @@ fn empty_ref_says_so() {
     let view = HistoryView {
         reff: "heads/topic".into(),
         queued: 0,
+        queued_target: None,
         blocks: Vec::new(),
     };
     let text = draw(&view, 0);
@@ -68,6 +70,7 @@ fn hostile_ref_name_and_kind_are_rendered_inert() {
     let view = HistoryView {
         reff: "heads/\u{1b}[31mmain".into(),
         queued: 0,
+        queued_target: None,
         blocks: vec![row("cccc0000", 1, "R\u{7}oot")],
     };
     let text = draw(&view, 0);

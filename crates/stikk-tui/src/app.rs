@@ -114,6 +114,11 @@ pub enum Screen {
         /// The `seq` of an in-flight refresh (`r`), if any — the view stays visible while it runs, as
         /// History's does (RFC 010 §5).
         refreshing: Option<u64>,
+        /// First content row drawn, counting from zero after wrapping (RFC 028 A review v1 §2.1). The
+        /// Queue view has no selection, so the offset is the position. `↑`/`↓` move it unclamped; the
+        /// renderer, which alone knows the wrapped height, clamps it and writes the value back — the
+        /// Glossary's idiom. A refresh keeps it, and the next render clamps it to the new content.
+        offset: std::cell::Cell<u16>,
     },
 }
 
@@ -130,8 +135,8 @@ pub enum Focus<'a> {
     BlockDetail(&'a BlockDetailView),
     /// The Changes view and whether untracked entries are hidden.
     Changes(&'a ChangesView, bool),
-    /// The Queue view.
-    Queue(&'a QueueView),
+    /// The Queue view and its scroll offset.
+    Queue(&'a QueueView, &'a std::cell::Cell<u16>),
 }
 
 /// One background operation the worker has answered or is still working on — display-only bookkeeping
@@ -813,11 +818,12 @@ impl App {
                 | Overlay::SealConsent { .. }
                 | Overlay::SealResult { .. },
             ) => {}
-            None => {
-                if let Some(Screen::History { cursor, .. }) = self.screens.last_mut() {
-                    *cursor = cursor.saturating_sub(1);
-                }
-            }
+            None => match self.screens.last_mut() {
+                Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
+                // No selection: the Queue scrolls, the Glossary's idiom (RFC 028 A review v1 §2.1).
+                Some(Screen::Queue { offset, .. }) => offset.set(offset.get().saturating_sub(1)),
+                _ => {}
+            },
         }
     }
 
@@ -858,11 +864,15 @@ impl App {
                 | Overlay::SealConsent { .. }
                 | Overlay::SealResult { .. },
             ) => {}
-            None => {
-                if let Some(Screen::History { view, cursor, .. }) = self.screens.last_mut() {
+            None => match self.screens.last_mut() {
+                Some(Screen::History { view, cursor, .. }) => {
                     *cursor = next_index(*cursor, view.blocks.len());
                 }
-            }
+                // Deliberately unclamped here: only the renderer knows the wrapped height, so it clamps
+                // and writes the clamped value back, as the Glossary does.
+                Some(Screen::Queue { offset, .. }) => offset.set(offset.get().saturating_add(1)),
+                _ => {}
+            },
         }
     }
 
@@ -1067,7 +1077,11 @@ impl App {
         if is_top_refresh {
             match result {
                 Ok(new_view) => {
-                    if let Some(Screen::Queue { view, refreshing }) = self.screens.last_mut() {
+                    // The offset stays: the next render clamps it to the new content.
+                    if let Some(Screen::Queue {
+                        view, refreshing, ..
+                    }) = self.screens.last_mut()
+                    {
                         *view = new_view;
                         *refreshing = None;
                     }
@@ -1076,7 +1090,7 @@ impl App {
                     if let Some(Screen::Queue { refreshing, .. }) = self.screens.last_mut() {
                         *refreshing = None;
                     }
-                    self.surface(&error, OperationContext::Other);
+                    self.surface(&error, OperationContext::LoadQueue);
                 }
             }
             return;
@@ -1092,12 +1106,13 @@ impl App {
                         *slot = Screen::Queue {
                             view,
                             refreshing: None,
+                            offset: std::cell::Cell::new(0),
                         };
                     }
                 }
                 Err(error) => {
                     self.screens.remove(index);
-                    self.surface(&error, OperationContext::Other);
+                    self.surface(&error, OperationContext::LoadQueue);
                 }
             }
         }
@@ -1558,7 +1573,7 @@ impl App {
                 view,
                 hide_untracked,
             }) => Focus::Changes(view, *hide_untracked),
-            Some(Screen::Queue { view, .. }) => Focus::Queue(view),
+            Some(Screen::Queue { view, offset, .. }) => Focus::Queue(view, offset),
             None => Focus::Orientation(&self.state),
         }
     }

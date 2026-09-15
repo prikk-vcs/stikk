@@ -29,7 +29,15 @@ fn view_at(minor: u32, report: QueueReport) -> QueueView {
 fn draw(view: &QueueView) -> String {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     terminal
-        .draw(|f| render(view, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                view,
+                &std::cell::Cell::new(0),
+                &Palette::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -260,4 +268,119 @@ fn a_hostile_message_is_rendered_inert() {
     };
     let text = draw(&view);
     assert!(!text.contains('\u{1b}'), "{text:?}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Review v1 §2.1: a tall queue scrolls, in the Glossary's idiom.
+// ---------------------------------------------------------------------------------------------
+
+/// Twelve one-operation patches at 0.42: 3 heading rows, 4 rows per patch, and a blank row and a two-row
+/// foot — 54 rows against a 22-row viewport at 80×24.
+fn tall_queue() -> QueueView {
+    let patches = (1..=12)
+        .map(|i| QueuedPatch {
+            patch_id: format!("{i:064x}"),
+            message: QueuedMessage::Text(format!("patch {i}")),
+            operations: vec![op("create-file", vec![path(&format!("p{i}.txt"))], None)],
+        })
+        .collect();
+    view_at(
+        42,
+        QueueReport::Listed(Queue {
+            count: 12,
+            target: QueueTarget::Ref("heads/main".to_string()),
+            threshold: threshold(ThresholdStatus::None, 800),
+            patches,
+        }),
+    )
+}
+
+fn draw_scrolled(view: &QueueView, offset: &std::cell::Cell<u16>) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal
+        .draw(|f| render(view, offset, &Palette::default(), f, f.area()))
+        .unwrap();
+    buffer_text(terminal.backend().buffer())
+}
+
+#[test]
+fn a_tall_queue_scrolls_from_the_top_to_the_end_and_says_where_it_is() {
+    let view = tall_queue();
+    let offset = std::cell::Cell::new(0);
+
+    let top = draw_scrolled(&view, &offset);
+    println!("--- Queue, twelve patches, offset 0, 80×24\n{top}");
+    assert!(
+        top.contains(" Queue — ↑/↓ to scroll · lines 1–22 of 54 "),
+        "{top}"
+    );
+    assert!(top.contains("12 patch(es) queued for heads/main"), "{top}");
+    assert!(
+        !top.contains("Patch detail"),
+        "the foot is below the fold: {top}"
+    );
+    assert_eq!(offset.get(), 0);
+
+    // Scrolled far past the end: clamped to the last full page, and written back.
+    offset.set(u16::MAX);
+    let end = draw_scrolled(&view, &offset);
+    println!("--- Queue, twelve patches, scrolled to the end, 80×24\n{end}");
+    assert_eq!(
+        offset.get(),
+        54 - 22,
+        "the offset cannot scroll past the end"
+    );
+    assert!(
+        end.contains(" Queue — ↑/↓ to scroll · lines 33–54 of 54 "),
+        "{end}"
+    );
+    assert!(end.contains("patch 12"), "{end}");
+    assert!(end.contains("create-file p12.txt"), "{end}");
+    assert!(joined(&end).contains(
+        "A queued patch's content is not shown here; stikk's Patch detail view is not built yet."
+    ), "{end}");
+    assert!(
+        !end.contains("12 patch(es) queued"),
+        "the heading scrolled away: {end}"
+    );
+}
+
+#[test]
+fn a_refresh_that_shrinks_the_queue_clamps_the_offset() {
+    let offset = std::cell::Cell::new(0);
+    offset.set(u16::MAX);
+    draw_scrolled(&tall_queue(), &offset);
+    assert_eq!(offset.get(), 32);
+
+    // The refreshed queue fits: the kept offset clamps to zero, and the title is plain.
+    let small = view_at(
+        28,
+        QueueReport::Unreported {
+            count: 1,
+            target: Some("heads/main".to_string()),
+        },
+    );
+    let text = draw_scrolled(&small, &offset);
+    assert_eq!(offset.get(), 0, "{text}");
+    assert!(text.contains("1 patch(es) queued for heads/main"), "{text}");
+}
+
+#[test]
+fn a_queue_that_fits_shows_the_plain_title_and_does_not_scroll() {
+    let view = view_at(
+        42,
+        two_patch(
+            [
+                "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a",
+                "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478",
+            ],
+            |m| QueuedMessage::Text(m.to_string()),
+        ),
+    );
+    let offset = std::cell::Cell::new(5);
+    let text = draw_scrolled(&view, &offset);
+    assert_eq!(offset.get(), 0, "nothing to scroll to");
+    assert!(text.contains("┌ Queue ─"), "{text}");
+    assert!(!text.contains("to scroll"), "{text}");
+    assert!(text.contains("2 patch(es) queued for heads/main"), "{text}");
 }

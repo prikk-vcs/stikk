@@ -7,6 +7,12 @@
 //!
 //! **Long lines wrap, never clip** (RFC 024): a message or a path wider than the view continues on the
 //! next row at the same indent, so nothing prikk reported is cut off at the right edge.
+//!
+//! **And a tall queue scrolls** (RFC 028 A review v1 §2.1), in the Glossary's idiom: the lines are wrapped
+//! here first, so their count is exact; the offset is clamped to `rows − viewport` and written back; and the
+//! title says where you are whenever there is more than fits.
+
+use std::cell::Cell;
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -24,10 +30,46 @@ const TOP: &str = "  ";
 const MESSAGE: &str = "    ";
 const OPERATION: &str = "      ";
 
-/// Render the Queue view for `view` into `area`.
-pub fn render(view: &QueueView, palette: &Palette, frame: &mut Frame, area: Rect) {
+/// Render the Queue view for `view` into `area`, scrolled to `offset` (clamped here and written back).
+pub fn render(
+    view: &QueueView,
+    offset: &Cell<u16>,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
     // Inside the border, less a one-column gutter so wrapped text does not sit against the edge.
     let width = usize::from(area.width.saturating_sub(3));
+    let lines = queue_lines(view, palette, width);
+
+    let viewport = area.height.saturating_sub(2);
+    let max_offset = u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_sub(viewport);
+    let scroll = offset.get().min(max_offset);
+    offset.set(scroll);
+
+    // `NFR-A03`: "there is more" is said, never left to guess — only when there is somewhere to go.
+    let title = if max_offset == 0 {
+        " Queue ".to_string()
+    } else {
+        let first = usize::from(scroll) + 1;
+        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
+        format!(
+            " Queue — ↑/↓ to scroll · lines {first}–{last} of {} ",
+            lines.len()
+        )
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .style(Style::default().fg(palette.fg));
+    frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
+}
+
+/// Every row of the view, already wrapped to `width`, so the scroll clamp is exact.
+fn queue_lines<'a>(view: &QueueView, palette: &Palette, width: usize) -> Vec<Line<'a>> {
     let mut lines: Vec<Line> = Vec::new();
     let mut push = |text: &str, indent: &str, style: Style| {
         for row in wrap_indented(&inert(text), width, indent) {
@@ -57,12 +99,7 @@ pub fn render(view: &QueueView, palette: &Palette, frame: &mut Frame, area: Rect
         push("", TOP, Style::default());
         push(foot, TOP, Style::default().fg(palette.dim));
     }
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Queue ")
-        .style(Style::default().fg(palette.fg));
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    lines
 }
 
 #[cfg(test)]

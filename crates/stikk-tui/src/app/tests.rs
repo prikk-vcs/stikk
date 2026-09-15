@@ -1981,7 +1981,7 @@ fn the_queue_opens_without_a_focused_ref() {
         kind: ResponseKind::Queue(Ok(queue_view_with("Nothing is queued."))),
     });
     match app.focus() {
-        Focus::Queue(view) => assert_eq!(view.heading, "Nothing is queued."),
+        Focus::Queue(view, _) => assert_eq!(view.heading, "Nothing is queued."),
         other => panic!("expected the Queue view, got {other:?}"),
     }
 
@@ -2014,7 +2014,7 @@ fn refreshing_the_queue_keeps_its_view_visible_until_the_new_one_arrives() {
     let refresh = requests.pop().unwrap();
     assert!(matches!(refresh.kind, RequestKind::Queue));
     match app.focus() {
-        Focus::Queue(view) => assert_eq!(view.heading, "1 patch(es) queued for heads/main"),
+        Focus::Queue(view, _) => assert_eq!(view.heading, "1 patch(es) queued for heads/main"),
         other => panic!("the old view stays while refreshing, got {other:?}"),
     }
     app.apply(Response {
@@ -2022,7 +2022,46 @@ fn refreshing_the_queue_keeps_its_view_visible_until_the_new_one_arrives() {
         kind: ResponseKind::Queue(Ok(queue_view_with("2 patch(es) queued for heads/main"))),
     });
     match app.focus() {
-        Focus::Queue(view) => assert_eq!(view.heading, "2 patch(es) queued for heads/main"),
+        Focus::Queue(view, _) => assert_eq!(view.heading, "2 patch(es) queued for heads/main"),
         other => panic!("expected the refreshed Queue view, got {other:?}"),
     }
+}
+
+#[test]
+fn up_and_down_scroll_the_queue_screen_and_a_refresh_keeps_the_offset() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_queue();
+    let first = next_request(&rx);
+    app.apply(Response {
+        seq: first.seq,
+        kind: ResponseKind::Queue(Ok(queue_view_with("12 patch(es) queued for heads/main"))),
+    });
+    let offset = |app: &App| match app.focus() {
+        Focus::Queue(_, offset) => offset.get(),
+        other => panic!("expected the Queue view, got {other:?}"),
+    };
+    assert_eq!(offset(&app), 0);
+    app.nav_down();
+    app.nav_down();
+    app.nav_down();
+    app.nav_up();
+    assert_eq!(offset(&app), 2, "unclamped here; the renderer clamps");
+
+    app.reload();
+    let mut requests = vec![next_request(&rx), next_request(&rx)];
+    requests.sort_by_key(|r| matches!(r.kind, RequestKind::Queue));
+    let refresh = requests.pop().unwrap();
+    app.apply(Response {
+        seq: refresh.seq,
+        kind: ResponseKind::Queue(Ok(queue_view_with("13 patch(es) queued for heads/main"))),
+    });
+    assert_eq!(
+        offset(&app),
+        2,
+        "a refresh keeps the offset; the next render clamps it"
+    );
 }

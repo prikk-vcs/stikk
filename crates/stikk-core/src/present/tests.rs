@@ -824,3 +824,31 @@ fn stale_words_follow_their_cause_exactly() {
         }
     }
 }
+
+#[test]
+fn a_refused_queue_read_explains_itself_and_offers_refresh() {
+    // RFC 028 A review v1 §2.2: the Queue read has its own context, in `ListRefs`'s form.
+    let err = StikkError::Refusal {
+        message: "error: not a prikk repository".into(),
+    };
+    match present(&err, OperationContext::LoadQueue, None) {
+        Presentation::RefusalOverlay(card) => {
+            assert_eq!(card.verbatim, "error: not a prikk repository");
+            assert_eq!(
+                card.gloss.as_deref(),
+                Some(
+                    "prikk declined to report the queue for this repository. stikk shows prikk's \
+                     reason above."
+                )
+            );
+            assert_eq!(
+                card.next_steps,
+                vec![NextStep {
+                    label: "Refresh".to_string(),
+                    target: NextTarget::Refresh,
+                }]
+            );
+        }
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    }
+}

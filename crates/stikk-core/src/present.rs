@@ -28,6 +28,8 @@ pub enum OperationContext {
     LoadChanges,
     /// Listing refs (the ref picker).
     ListRefs,
+    /// Reading the active queue (the Queue view; RFC 028).
+    LoadQueue,
     /// Committing worktree changes (RFC 014). Prevention handles the common cases (F2/F6)
     /// client-side; a refusal reaching here is the race, or something neither prevention check saw.
     Commit,
@@ -541,6 +543,9 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
         OperationContext::ListRefs => {
             "prikk declined to list refs for this repository. stikk shows prikk's reason above."
         }
+        OperationContext::LoadQueue => {
+            "prikk declined to report the queue for this repository. stikk shows prikk's reason above."
+        }
         OperationContext::LoadBlockState => {
             "prikk declined to replay this ref's state. stikk shows prikk's reason above."
         }
@@ -593,10 +598,12 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
                 target: NextTarget::DismissAndResolveExternally,
             },
         ],
-        OperationContext::ListRefs | OperationContext::Orient => vec![NextStep {
-            label: "Refresh".to_string(),
-            target: NextTarget::Refresh,
-        }],
+        OperationContext::ListRefs | OperationContext::LoadQueue | OperationContext::Orient => {
+            vec![NextStep {
+                label: "Refresh".to_string(),
+                target: NextTarget::Refresh,
+            }]
+        }
         OperationContext::Commit => vec![
             NextStep {
                 label: "Back to Changes".to_string(),

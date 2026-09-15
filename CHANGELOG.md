@@ -31,7 +31,7 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
 | `stikk-tui` | `Overlay::RefPicker` gains `unpublished_main`, and `Overlay::Palette` gains `ref_focused` (RFC 029) |
 | `stikk-prikk` | `Prikk` gains a method, `queue(&self, repo) -> Result<QueueReport>` — breaking for any implementor (RFC 028) |
 | `stikk-core` | `HistoryView` gains `queued_target: Option<String>` (RFC 028) |
-| `stikk-tui` | `Screen` gains a variant, `Queue { view, refreshing }`, and `Focus` gains `Queue(&QueueView)` — breaking for an exhaustive `match` (RFC 028) |
+| `stikk-tui` | `Screen` gains a variant, `Queue { view, refreshing, offset }`, and `Focus` gains `Queue(&QueueView, &Cell<u16>)` — breaking for an exhaustive `match` (RFC 028) |
 
 Every struct above is constructed with struct literals by anyone scripting a `NullBackend` or rendering a
 view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `Authoring`,

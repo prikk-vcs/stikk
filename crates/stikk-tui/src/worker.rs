@@ -10,12 +10,12 @@ use std::sync::mpsc;
 
 use stikk_core::{
     BlockDetailView, ChangesView, CommitPreviewOutcome, CommitToken, Evidence, HistoryView,
-    OrientationView, Outcome, PreviewToken, SealPreviewOutcome, block_detail, changes_view,
-    commit_confirm_and_execute, commit_preview, history_view, list_refs, orient,
+    OrientationView, Outcome, PreviewToken, SealPreviewOutcome, block_detail, change_token,
+    changes_view, commit_confirm_and_execute, commit_preview, history_view, list_refs, orient,
     seal_confirm_and_execute, seal_preview,
 };
 use stikk_core::{QueueView, queue_view};
-use stikk_model::{Readiness, Result};
+use stikk_model::{ChangeToken, Readiness, Result};
 use stikk_prikk::{BlockRow, CommitResult, Prikk, RefEntry, SealResult};
 
 /// How many blocks the History view requests at a time (design FR-011 caps the listing).
@@ -35,8 +35,11 @@ pub(crate) struct Request {
 /// not the full `CT-03` set (only the reads this frontend currently issues have a variant).
 #[derive(Debug)]
 pub(crate) enum RequestKind {
-    /// Read the repository orientation.
+    /// Read the change token, then the repository orientation (RFC 031 §3), answered together.
     Orient,
+    /// Read the change token alone: the silent check (RFC 031 §4). `App` sends it without recording an
+    /// operation, so it never appears in the Operations list or `⟳ n`.
+    ChangeCheck,
     /// Read a ref's block lineage.
     History {
         /// The ref to list.
@@ -109,7 +112,9 @@ pub(crate) struct Response {
 #[derive(Debug)]
 pub(crate) enum ResponseKind {
     /// Answers [`RequestKind::Orient`].
-    Orient(Result<OrientationView>),
+    Orient(OrientRead),
+    /// Answers [`RequestKind::ChangeCheck`].
+    ChangeCheck(Result<ChangeToken>),
     /// Answers [`RequestKind::History`].
     History(Result<HistoryView>),
     /// Answers [`RequestKind::BlockState`].
@@ -130,6 +135,35 @@ pub(crate) enum ResponseKind {
     SealConfirmExecute(Result<Outcome<SealResult>>),
 }
 
+/// What one [`RequestKind::Orient`] read found (RFC 031 §3): the change token, **read first**, and the
+/// Orientation it is stamped with. The two results are independent: a failed token read leaves the
+/// previous stamp in place whatever Orientation's own result was, and the other way round.
+///
+/// **Why the token comes first:** a change landing between the two reads is then in Orientation but not
+/// in the token, so the next check differs and refreshes, which is harmless. Read the other way round,
+/// the change would be in the token and not on screen, and no check would ever notice it.
+#[derive(Debug)]
+pub(crate) struct OrientRead {
+    pub(crate) token: Result<ChangeToken>,
+    pub(crate) view: Result<OrientationView>,
+}
+
+#[cfg(test)]
+impl OrientRead {
+    /// A read whose token is `NullBackend::supported()`'s default, for tests about something else.
+    pub(crate) fn stamped(view: Result<OrientationView>) -> Self {
+        Self {
+            token: Ok(ChangeToken::compose(
+                [("heads/main", "0".repeat(64).as_str())],
+                0,
+                None,
+                &stikk_model::CurrentBranch::NotReported,
+            )),
+            view,
+        }
+    }
+}
+
 /// A short, display-only label for the kind of work a [`RequestKind`] represents — used for the
 /// pending-screen/overlay note and the Background Operations listing (TU-01/TU-03). Never repository
 /// content; purely stikk's own naming of its own request.
@@ -137,6 +171,7 @@ impl RequestKind {
     pub(crate) fn label(&self) -> &'static str {
         match self {
             Self::Orient => "orientation",
+            Self::ChangeCheck => "change check",
             Self::History { .. } => "history",
             Self::BlockState { .. } => "block detail",
             Self::Refs => "refs",
@@ -166,7 +201,14 @@ pub(crate) fn run(
 ) {
     while let Ok(Request { seq, kind }) = req_rx.recv() {
         let kind = match kind {
-            RequestKind::Orient => ResponseKind::Orient(orient(prikk, repo)),
+            RequestKind::Orient => {
+                let token = change_token(prikk, repo);
+                ResponseKind::Orient(OrientRead {
+                    token,
+                    view: orient(prikk, repo),
+                })
+            }
+            RequestKind::ChangeCheck => ResponseKind::ChangeCheck(change_token(prikk, repo)),
             RequestKind::History { reff } => {
                 ResponseKind::History(history_view(prikk, repo, &reff, HISTORY_LIMIT))
             }

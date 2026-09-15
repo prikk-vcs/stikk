@@ -7,6 +7,7 @@
 
 use std::io::{self, IsTerminal};
 
+use ratatui::crossterm::event::{DisableFocusChange, EnableFocusChange};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -41,6 +42,9 @@ impl TerminalGuard {
             let _ = disable_raw_mode();
             return Err(env("could not enter the alternate screen", error));
         }
+        // RFC 031 §5: focus reports let stikk check for an outside change the moment the user comes back.
+        // Best-effort: where it fails, the check interval still serves, so startup must not fail.
+        let _ = execute!(io::stdout(), EnableFocusChange);
         install_panic_hook();
         Ok(Self { _private: () })
     }
@@ -52,8 +56,10 @@ impl Drop for TerminalGuard {
     }
 }
 
-/// Restore cooked mode and the main screen. Idempotent: safe to call more than once.
+/// Turn focus reporting off, restore cooked mode and the main screen. Idempotent: safe to call more than
+/// once. Focus reporting goes off first, so a shell after stikk never receives a stray focus report.
 fn restore() -> io::Result<()> {
+    let _ = execute!(io::stdout(), DisableFocusChange);
     let _ = execute!(io::stdout(), LeaveAlternateScreen);
     disable_raw_mode()
 }

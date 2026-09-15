@@ -267,10 +267,10 @@ fn unfocused_app(repo: &str, queued: u64) -> App {
     let first = rx.try_recv().expect("the first Orientation read");
     app.apply(crate::worker::Response {
         seq: first.seq,
-        kind: crate::worker::ResponseKind::Orient(Ok(view_on(
+        kind: crate::worker::ResponseKind::Orient(crate::worker::OrientRead::stamped(Ok(view_on(
             stikk_model::CurrentBranch::NotReported,
             queued,
-        ))),
+        )))),
     });
     app
 }

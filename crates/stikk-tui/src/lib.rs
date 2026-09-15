@@ -43,7 +43,7 @@ pub use theme::Palette;
 
 use std::path::Path;
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -113,6 +113,10 @@ fn ui_loop(
 
         if event::poll(POLL).map_err(|e| StikkError::environment("input poll failed", e))? {
             let ev = event::read().map_err(|e| StikkError::environment("input read failed", e))?;
+            // RFC 031 §5: focus returning checks for an outside change at once. `FocusLost` is ignored.
+            if let Event::FocusGained = ev {
+                app.focus_gained(Instant::now());
+            }
             // Only key *presses* — on Windows, crossterm also emits release events.
             if let Event::Key(key) = ev
                 && key.kind == KeyEventKind::Press
@@ -141,6 +145,9 @@ fn ui_loop(
                 }
             }
         }
+
+        // Sends a silent change check once the interval has passed (RFC 031 §5); no I/O otherwise.
+        app.tick(Instant::now());
 
         if worker_alive {
             loop {

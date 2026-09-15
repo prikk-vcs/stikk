@@ -22,19 +22,20 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use stikk_core::QueueView;
 use stikk_core::{
-    BlockDetailView, ChangesView, Command, CommitPreviewOutcome, HistoryView, NextTarget,
-    OperationContext, Presentation, RefusalHistory, SEAL_OPERATION, SealPreviewOutcome, Target,
-    present,
+    BlockDetailView, COMMIT_OPERATION, ChangesView, Command, CommitPreviewOutcome, HistoryView,
+    NextTarget, OperationContext, Presentation, RefusalHistory, SEAL_OPERATION, SealPreviewOutcome,
+    Target, present, staleness_notice,
 };
-use stikk_model::{CurrentBranch, Tier};
+use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 use stikk_state::Config;
 
 use crate::overlay::Overlay;
 use crate::theme::Palette;
-use crate::worker::{Request, RequestKind, Response, ResponseKind};
+use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
 /// The fallback ref (RFC 029 Handoff B §2, §4): focused on open **only** when prikk names no current
 /// branch (below 0.42, or an unresolved pointer) and `heads/main` is published, and the one row an empty
@@ -45,6 +46,13 @@ const DEFAULT_REF: &str = "heads/main";
 /// The most background operations `App` remembers, for the Background Operations overlay (TU-01).
 /// Display-only bookkeeping; bounded so a long session's list does not grow forever.
 const OPERATIONS_CAP: usize = 20;
+
+/// How long stikk waits, while idle, between silent change checks (RFC 031 Q1, ruled (b)). A check is one
+/// change-token read, three prikk spawns measured at 1.0 ms (20 files) to 3.0 ms (301 files, 20 blocks)
+/// at prikk 0.42.0 (RFC 031 F3), so every 5 seconds is well under a tenth of a percent of one core. It
+/// covers terminals that report no focus; where focus is reported, [`App::focus_gained`] checks at once.
+/// **A constant, not a setting.**
+const CHANGE_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 /// The Orientation view's load state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,13 +107,22 @@ pub enum Screen {
         refreshing: Option<u64>,
     },
     /// A single block's detail.
-    BlockDetail(BlockDetailView),
+    BlockDetail {
+        /// The loaded detail.
+        view: BlockDetailView,
+        /// The `seq` of an in-flight refresh, if any (RFC 031 §7). Only the tip's detail is ever
+        /// refreshed: an older block's detail cannot change.
+        refreshing: Option<u64>,
+    },
     /// The worktree-vs-baseline Changes view, with the UD-08 display-only untracked filter.
     Changes {
         /// The loaded status.
         view: ChangesView,
         /// Whether untracked entries are hidden (display only — a commit still captures them).
         hide_untracked: bool,
+        /// The `seq` of an in-flight refresh (`r`, or a detected change), if any — the view stays
+        /// visible while it runs, as History's does (RFC 010 §5; RFC 031 §7).
+        refreshing: Option<u64>,
     },
     /// The Queue view (RFC 028): the active queue, repository-wide.
     Queue {
@@ -201,6 +218,15 @@ pub struct App {
     /// exists, across the **three** round trips seal's own extra consent step needs (preview, then the
     /// consent act, then confirm+execute).
     pending_seal: Option<PendingSeal>,
+    /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
+    /// check compares against it; `None` until the first stamp, and no check is sent before it.
+    stamp: Option<ChangeToken>,
+    /// The `seq` of the one silent change check in flight, if any (RFC 031 §4).
+    check_pending: Option<u64>,
+    /// When [`CHANGE_CHECK_INTERVAL`] started counting: the last check sent, or the first
+    /// [`App::tick`] after a stamp. A stamp clears it, since `apply` is not handed the time; ticks come
+    /// every `POLL`, so the clock starts at most that late.
+    interval_from: Option<Instant>,
 }
 
 /// See [`App::pending_commit`].
@@ -315,6 +341,9 @@ impl App {
             operations: Vec::new(),
             pending_commit: None,
             pending_seal: None,
+            stamp: None,
+            check_pending: None,
+            interval_from: None,
         }
     }
 
@@ -346,29 +375,143 @@ impl App {
         }
     }
 
-    /// Re-source the visible screens from prikk (design FR-106; the `r` key): always re-requests
-    /// Orientation, and — if the top screen is History — re-requests that too, in place. The current
-    /// view stays visible while either refresh is in flight (RFC 010 §5); only the `⟳ n` indicator
-    /// shows anything is happening.
+    /// Re-source the visible screens from prikk (design FR-106; the `r` key, and a detected change, RFC
+    /// 031 §6): always re-requests Orientation, and the top screen too, in place, when it is History, the
+    /// Queue, Changes, or the tip's Block detail. The current view stays visible while either refresh is
+    /// in flight (RFC 010 §5); only the `⟳ n` indicator shows anything is happening.
     pub fn reload(&mut self) {
         self.banner = None;
         self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
-        // RFC 028: the Queue screen refreshes in place, its view visible while the read runs.
-        if matches!(self.screens.last(), Some(Screen::Queue { .. })) {
-            let seq = self.dispatch(RequestKind::Queue);
-            if let Some(Screen::Queue { refreshing, .. }) = self.screens.last_mut() {
-                *refreshing = Some(seq);
+        // The top screen refreshes in place, its view visible while the read runs (RFC 010 §5). A
+        // History screen exists only for a focused ref, so `focused_ref` finds one whenever it matters.
+        let request = match self.screens.last() {
+            Some(Screen::History { .. }) => self.focused_ref().map(|reff| RequestKind::History {
+                reff: reff.to_string(),
+            }),
+            Some(Screen::Queue { .. }) => Some(RequestKind::Queue),
+            // RFC 031 §7: Changes re-reads the ref it shows.
+            Some(Screen::Changes { view, .. }) => Some(RequestKind::Changes {
+                reff: view.reff.clone(),
+            }),
+            // RFC 031 §7: only the tip's detail can change.
+            Some(Screen::BlockDetail { view, .. }) if view.is_tip => {
+                self.focused_ref().map(|reff| RequestKind::BlockState {
+                    reff: reff.to_string(),
+                    row: view.row.clone(),
+                    is_tip: true,
+                })
             }
-        }
-        // A History screen exists only for a focused ref, so this finds one whenever it matters.
-        if matches!(self.screens.last(), Some(Screen::History { .. }))
-            && let Some(reff) = self.focused_ref().map(str::to_string)
+            Some(Screen::BlockDetail { .. } | Screen::Loading { .. }) | None => None,
+        };
+        let Some(kind) = request else {
+            return;
+        };
+        let seq = self.dispatch(kind);
+        if let Some(
+            Screen::History { refreshing, .. }
+            | Screen::Queue { refreshing, .. }
+            | Screen::Changes { refreshing, .. }
+            | Screen::BlockDetail { refreshing, .. },
+        ) = self.screens.last_mut()
         {
-            let seq = self.dispatch(RequestKind::History { reff });
-            if let Some(Screen::History { refreshing, .. }) = self.screens.last_mut() {
-                *refreshing = Some(seq);
-            }
+            *refreshing = Some(seq);
         }
+    }
+
+    /// Called once per UI-loop iteration with the current time (RFC 031 §5). Sends a silent change check
+    /// when 5 seconds have passed since the last check was sent or the last token was stamped, and the
+    /// check's conditions hold: a token stamped, no check pending, no request running, no Orientation
+    /// read pending. Does no I/O otherwise.
+    pub fn tick(&mut self, now: Instant) {
+        let Some(from) = self.interval_from else {
+            if self.stamp.is_some() {
+                self.interval_from = Some(now);
+            }
+            return;
+        };
+        if now.saturating_duration_since(from) >= CHANGE_CHECK_INTERVAL {
+            self.send_check(now);
+        }
+    }
+
+    /// The terminal reported focus returning (RFC 031 §5): check at once, when the check's conditions
+    /// hold. Counts as a check sent for the interval.
+    pub fn focus_gained(&mut self, now: Instant) {
+        self.send_check(now);
+    }
+
+    /// Send the silent change check (RFC 031 §4) **only** when a token has been stamped, no check is
+    /// pending, no request the user caused is running, and no Orientation read is pending. The last two
+    /// are what keep stikk from ever taking its own commit or seal for an outside change: Enter
+    /// dispatches confirm-and-execute, and its success dispatches Orientation, which stamps a token taken
+    /// after the write. **Nothing else suppresses it** — an open confirmation especially, since §6 needs
+    /// to check while one waits on the user.
+    ///
+    /// Sent without [`Self::dispatch`], so it adds no [`Operation`]: a check is never in the Operations
+    /// list or `⟳ n`.
+    fn send_check(&mut self, now: Instant) {
+        if self.stamp.is_none()
+            || self.check_pending.is_some()
+            || self.in_flight_count() != 0
+            || self.orientation_pending.is_some()
+        {
+            return;
+        }
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        let _ = self.req_tx.send(Request {
+            seq,
+            kind: RequestKind::ChangeCheck,
+        });
+        self.check_pending = Some(seq);
+        self.interval_from = Some(now);
+    }
+
+    /// Answers [`RequestKind::ChangeCheck`] (RFC 031 §4, §6). A failure is silent. An equal token does
+    /// nothing. A differing one re-stamps, makes an armed confirmation stale, refreshes what is on screen
+    /// through [`Self::reload`], and then — since `reload` clears the banner — says so in `OP-04`'s words.
+    fn apply_change_check(&mut self, seq: u64, result: stikk_model::Result<ChangeToken>) {
+        if self.check_pending != Some(seq) {
+            return;
+        }
+        self.check_pending = None;
+        let (Ok(current), Some(previous)) = (result, self.stamp) else {
+            return;
+        };
+        let Some(Presentation::Banner { message, .. }) = staleness_notice(&previous, &current)
+        else {
+            return;
+        };
+        self.stamp = Some(current);
+        self.interval_from = None;
+        self.stale_armed_confirmation();
+        self.reload();
+        self.banner = Some(message);
+    }
+
+    /// RFC 031 Q2 (b): an armed confirmation open when a repository change is detected is replaced at once
+    /// by the stale overlay, cause *Repository*, built through `present()` so the words are RFC 030's. The
+    /// pending flows are cleared as [`Self::back`] clears them, so nothing stays armed. A `CommitMessage`
+    /// is not armed (no preview exists yet) and is left open.
+    fn stale_armed_confirmation(&mut self) {
+        let (operation, context) = match self.overlays.last() {
+            Some(Overlay::Confirmation { .. }) if self.pending_commit.is_some() => {
+                (COMMIT_OPERATION, OperationContext::Commit)
+            }
+            Some(Overlay::Confirmation { .. }) if self.pending_seal.is_some() => {
+                (SEAL_OPERATION, OperationContext::Other)
+            }
+            Some(Overlay::SealConsent { .. }) => (SEAL_OPERATION, OperationContext::Other),
+            _ => return,
+        };
+        self.overlays.pop();
+        self.pending_commit = None;
+        self.pending_seal = None;
+        let stale = StikkError::Stale {
+            operation: operation.to_string(),
+            cause: StaleCause::Repository,
+        };
+        self.surface(&stale, context);
     }
 
     /// Open the History view for the focused ref, pushing a pending placeholder above the current
@@ -684,7 +827,7 @@ impl App {
                 }
             }
             // Nothing to drill into further, and nothing to do while a load is pending.
-            Some(Screen::BlockDetail(_) | Screen::Loading { .. }) => {}
+            Some(Screen::BlockDetail { .. } | Screen::Loading { .. }) => {}
             // Enter on a Changes row would open a per-file content diff — deferred (UD-09); the view
             // states so. No drill-in.
             Some(Screen::Changes { .. }) => {}
@@ -920,7 +1063,8 @@ impl App {
     pub(crate) fn apply(&mut self, response: Response) {
         let Response { seq, kind } = response;
         let ok = match &kind {
-            ResponseKind::Orient(r) => r.is_ok(),
+            ResponseKind::ChangeCheck(r) => r.is_ok(),
+            ResponseKind::Orient(r) => r.view.is_ok(),
             ResponseKind::History(r) => r.is_ok(),
             ResponseKind::BlockState(r) => r.is_ok(),
             ResponseKind::Refs(r) => r.is_ok(),
@@ -931,9 +1075,11 @@ impl App {
             ResponseKind::SealPreview(r) => r.is_ok(),
             ResponseKind::SealConfirmExecute(r) => r.is_ok(),
         };
+        // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
         match kind {
-            ResponseKind::Orient(result) => self.apply_orient(seq, result),
+            ResponseKind::ChangeCheck(result) => self.apply_change_check(seq, result),
+            ResponseKind::Orient(read) => self.apply_orient(seq, read),
             ResponseKind::History(result) => self.apply_history(seq, result),
             ResponseKind::BlockState(result) => self.apply_block_state(seq, result),
             ResponseKind::Refs(result) => self.apply_refs(seq, result),
@@ -950,12 +1096,18 @@ impl App {
         }
     }
 
-    fn apply_orient(&mut self, seq: u64, result: stikk_model::Result<stikk_core::OrientationView>) {
+    fn apply_orient(&mut self, seq: u64, read: OrientRead) {
         if self.orientation_pending != Some(seq) {
             return; // stale: a newer orientation request has since superseded this one
         }
         self.orientation_pending = None;
-        self.state = match result {
+        // RFC 031 §3: stamped whenever the token read succeeded, whatever Orientation's own result; a
+        // failed token read keeps the previous stamp. Stamping says nothing, the first time or any other.
+        if let Ok(token) = read.token {
+            self.stamp = Some(token);
+            self.interval_from = None;
+        }
+        self.state = match read.view {
             Ok(view) => {
                 // Once, and only while nothing is focused yet: a later read — `r`, the read after a
                 // commit or seal — never moves focus, and a pick made while pending has already won.
@@ -1047,6 +1199,25 @@ impl App {
     }
 
     fn apply_block_state(&mut self, seq: u64, result: stikk_model::Result<BlockDetailView>) {
+        // RFC 031 §7: an in-place refresh of the tip's detail, which stays visible on error.
+        let is_top_refresh = matches!(
+            self.screens.last(),
+            Some(Screen::BlockDetail { refreshing: Some(s), .. }) if *s == seq
+        );
+        if is_top_refresh {
+            if let Some(Screen::BlockDetail { refreshing, .. }) = self.screens.last_mut() {
+                *refreshing = None;
+            }
+            match result {
+                Ok(detail) => {
+                    if let Some(Screen::BlockDetail { view, .. }) = self.screens.last_mut() {
+                        *view = detail;
+                    }
+                }
+                Err(error) => self.surface(&error, OperationContext::LoadBlockState),
+            }
+            return;
+        }
         let index = self
             .screens
             .iter()
@@ -1055,7 +1226,10 @@ impl App {
             match result {
                 Ok(detail) => {
                     if let Some(slot) = self.screens.get_mut(index) {
-                        *slot = Screen::BlockDetail(detail);
+                        *slot = Screen::BlockDetail {
+                            view: detail,
+                            refreshing: None,
+                        };
                     }
                 }
                 Err(error) => {
@@ -1119,6 +1293,26 @@ impl App {
     }
 
     fn apply_changes(&mut self, seq: u64, result: stikk_model::Result<ChangesView>) {
+        // RFC 031 §7: an in-place refresh, as the Queue's; `hide_untracked` stays as the user set it, and
+        // the view stays visible on error.
+        let is_top_refresh = matches!(
+            self.screens.last(),
+            Some(Screen::Changes { refreshing: Some(s), .. }) if *s == seq
+        );
+        if is_top_refresh {
+            if let Some(Screen::Changes { refreshing, .. }) = self.screens.last_mut() {
+                *refreshing = None;
+            }
+            match result {
+                Ok(new_view) => {
+                    if let Some(Screen::Changes { view, .. }) = self.screens.last_mut() {
+                        *view = new_view;
+                    }
+                }
+                Err(error) => self.surface(&error, OperationContext::LoadChanges),
+            }
+            return;
+        }
         let index = self
             .screens
             .iter()
@@ -1130,6 +1324,7 @@ impl App {
                         *slot = Screen::Changes {
                             view,
                             hide_untracked: false,
+                            refreshing: None,
                         };
                     }
                 }
@@ -1568,10 +1763,11 @@ impl App {
         match self.screens.last() {
             Some(Screen::Loading { what, .. }) => Focus::Loading(what),
             Some(Screen::History { view, cursor, .. }) => Focus::History(view, *cursor),
-            Some(Screen::BlockDetail(detail)) => Focus::BlockDetail(detail),
+            Some(Screen::BlockDetail { view, .. }) => Focus::BlockDetail(view),
             Some(Screen::Changes {
                 view,
                 hide_untracked,
+                ..
             }) => Focus::Changes(view, *hide_untracked),
             Some(Screen::Queue { view, offset, .. }) => Focus::Queue(view, offset),
             None => Focus::Orientation(&self.state),

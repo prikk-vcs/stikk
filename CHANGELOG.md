@@ -4,6 +4,29 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+| Crate | Change |
+|---|---|
+| `stikk-tui` | `Screen::Changes` gains a `refreshing: Option<u64>` field (RFC 031 §7). Struct-literal construction, and a pattern naming every field without `..`, no longer compile. |
+| `stikk-tui` | `Screen::BlockDetail(BlockDetailView)` becomes `Screen::BlockDetail { view, refreshing }` (RFC 031 §7). Construction and any pattern on the tuple form no longer compile. |
+
+### Added
+
+- **stikk notices a change made outside it** — a commit, seal or branch switch in another terminal — when the
+  terminal regains focus, or within 5 seconds. It refreshes what is on screen and says *"repository changed
+  outside stikk — refreshed"*. A commit or seal confirmation that is open when that happens becomes stale at
+  once, and the one next step is to preview again. The check is silent: it is not counted in `⟳ n`, never
+  appears in the Background Operations list, and says nothing when it fails (RFC 031).
+  **Limit:** an edit to a file in the worktree is not noticed this way. It is caught at Enter (RFC 030), or by
+  `r`.
+- `App::tick` and `App::focus_gained`, which take the current `Instant` (RFC 031 §5).
+
+### Changed
+
+- **`r` refreshes the Changes view, and the tip's Block detail, in place** (RFC 031 §7). Both stay visible while
+  the read runs; Changes keeps its untracked filter. An older block's detail cannot change and is not re-read.
+
 ## 0.7.0 — 2026-09-15
 
 **stikk shows what a change will do — and no longer makes a change it did not show.** 0.6.0 made stikk

@@ -22,7 +22,7 @@ use stikk_state::Config;
 
 use super::*;
 use crate::overlay::Overlay;
-use crate::worker::{Request, RequestKind, Response, ResponseKind};
+use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
 fn open(repo: &str, config: &Config) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
@@ -191,7 +191,7 @@ fn open_sends_an_orientation_request_and_apply_loads_it() {
     let view = orientation_view(2, Some("heads/main"), Some("abc"));
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Orient(Ok(view)),
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(view))),
     });
     match app.state() {
         OrientationState::Loaded(view) => {
@@ -211,7 +211,7 @@ fn an_orientation_refusal_becomes_a_failed_state_with_verbatim_message() {
     };
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Orient(Err(err)),
+        kind: ResponseKind::Orient(OrientRead::stamped(Err(err))),
     });
     match app.state() {
         OrientationState::Failed(msg) => assert!(msg.contains("retired format 3")),
@@ -231,14 +231,14 @@ fn a_stale_orientation_response_is_discarded_when_superseded_by_reload() {
     // The stale first response arrives first and must be discarded — still Loading, not Loaded.
     app.apply(Response {
         seq: first.seq,
-        kind: ResponseKind::Orient(Ok(orientation_view(1, None, None))),
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(orientation_view(1, None, None)))),
     });
     assert!(matches!(app.state(), OrientationState::Loading));
 
     // The current (second) response resolves it.
     app.apply(Response {
         seq: second.seq,
-        kind: ResponseKind::Orient(Ok(orientation_view(2, None, None))),
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(orientation_view(2, None, None)))),
     });
     match app.state() {
         OrientationState::Loaded(view) => assert_eq!(view.queued_patches, 2),
@@ -735,7 +735,7 @@ fn reload_requests_a_fresh_orientation_and_apply_updates_it() {
     assert!(matches!(req.kind, RequestKind::Orient));
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Orient(Ok(orientation_view(5, None, None))),
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(orientation_view(5, None, None)))),
     });
     match app.state() {
         OrientationState::Loaded(view) => assert_eq!(view.queued_patches, 5),
@@ -1686,7 +1686,7 @@ fn open_with_first_read(
     assert!(matches!(req.kind, RequestKind::Orient));
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Orient(result),
+        kind: ResponseKind::Orient(OrientRead::stamped(result)),
     });
     (app, rx)
 }
@@ -1697,7 +1697,7 @@ fn answer_reload(app: &mut App, rx: &mpsc::Receiver<Request>, view: stikk_core::
     assert!(matches!(req.kind, RequestKind::Orient));
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::Orient(Ok(view)),
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(view))),
     });
 }
 
@@ -1817,7 +1817,7 @@ fn a_pick_made_while_pending_survives_the_first_read() {
 
     app.apply(Response {
         seq: orient_req.seq,
-        kind: ResponseKind::Orient(Ok(view_on(branch("heads/dev"), true))),
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(view_on(branch("heads/dev"), true)))),
     });
     assert_eq!(
         app.focused_ref(),
@@ -2072,3 +2072,5 @@ fn up_and_down_scroll_the_queue_screen_and_a_refresh_keeps_the_offset() {
         "a refresh keeps the offset; the next render clamps it"
     );
 }
+
+mod change_awareness;

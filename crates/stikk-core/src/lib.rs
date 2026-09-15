@@ -36,12 +36,12 @@ pub use commit::{
 };
 pub use confirm::{
     ConfirmationSummary, ConfirmedToken, Evidence, Intent, KeyClaim, Outcome, PreviewToken,
-    capability_gate, confirm, execute, preview, signing_key_claim,
+    branch_notice, capability_gate, confirm, execute, preview, signing_key_claim,
 };
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{BlockDetailView, HistoryView, block_detail, history_view, list_refs};
 pub use orient::{OrientationView, orient};
-pub use palette::Command;
+pub use palette::{Command, NO_FOCUSED_REF_REASON};
 pub use present::{
     NextStep, NextTarget, OperationContext, Presentation, RefusalCard, Target, present,
     stale_gloss, stale_headline,

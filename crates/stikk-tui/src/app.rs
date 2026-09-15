@@ -28,16 +28,17 @@ use stikk_core::{
     OperationContext, Presentation, RefusalHistory, SEAL_OPERATION, SealPreviewOutcome, Target,
     present,
 };
-use stikk_model::Tier;
+use stikk_model::{CurrentBranch, Tier};
 use stikk_state::Config;
 
 use crate::overlay::Overlay;
 use crate::theme::Palette;
 use crate::worker::{Request, RequestKind, Response, ResponseKind};
 
-/// The default focused ref — prikk has no HEAD, and below 0.42 no current-branch pointer either (from 0.42
-/// a default for `--ref`, which prikk calls never an authority; RFC 029), so stikk focuses a named ref
-/// explicitly (FR-055).
+/// The fallback ref (RFC 029 Handoff B §2, §4): focused on open **only** when prikk names no current
+/// branch (below 0.42, or an unresolved pointer) and `heads/main` is published, and the one row an empty
+/// ref picker offers. When prikk names a branch, stikk opens on that instead. prikk has no HEAD; its
+/// current branch is "a default, never an authority", and stikk's focus stays its own (FR-055).
 const DEFAULT_REF: &str = "heads/main";
 
 /// The most background operations `App` remembers, for the Background Operations overlay (TU-01).
@@ -54,6 +55,20 @@ pub enum OrientationState {
     Loaded(stikk_core::OrientationView),
     /// A load failure, carrying prikk's verbatim message (design NFR-I03).
     Failed(String),
+}
+
+/// stikk's focused ref (FR-055), in the three states RFC 029 Handoff B §2 names. Client-side only:
+/// changing it never runs `prikk branch switch` and never touches the worktree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RefFocus {
+    /// Nothing is focused yet, and no Orientation read has succeeded. The first successful one resolves
+    /// focus, unless the user picks a ref first.
+    Pending,
+    /// The first read arrived and no ref qualified: prikk names no current branch and `heads/main` is
+    /// not published. The ref picker was opened.
+    Unfocused,
+    /// A ref name, which the user can change with the picker at any time.
+    Ref(String),
 }
 
 /// A screen pushed above the Orientation root.
@@ -142,7 +157,9 @@ pub struct App {
     /// against both the initial load and any later refresh (`reload`), which share this one slot since
     /// there is only ever one "current" orientation.
     orientation_pending: Option<u64>,
-    focused_ref: String,
+    /// Resolved once, by [`App::resolve_focus`] on the first successful Orientation read; the user's
+    /// from then on. A later read never moves it (RFC 029 Handoff B §2).
+    ref_focus: RefFocus,
     screens: Vec<Screen>,
     overlays: Vec<Overlay>,
     refusals: RefusalHistory,
@@ -240,6 +257,10 @@ impl App {
     /// Construct an app in an explicit state, without sending any request — used by tests so they can
     /// drive [`App::apply`] directly without a real load (handoff §8: "do not write a test that
     /// sleeps").
+    ///
+    /// **A `Loaded` state starts focused on `heads/main`**, as if its first read had resolved there, so a
+    /// test about something else needs no resolution step. Any other state starts `Pending`, and a test
+    /// about resolution (RFC 029 Handoff B) starts there and drives `apply`.
     #[cfg(test)]
     #[must_use]
     pub(crate) fn from_state(
@@ -248,7 +269,11 @@ impl App {
         palette: Palette,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
-        Self::new(repo, state, palette, req_tx)
+        let mut app = Self::new(repo, state, palette, req_tx);
+        if matches!(app.state, OrientationState::Loaded(_)) {
+            app.ref_focus = RefFocus::Ref(DEFAULT_REF.to_string());
+        }
+        app
     }
 
     fn new(
@@ -261,7 +286,7 @@ impl App {
             repo: repo.into(),
             state,
             orientation_pending: None,
-            focused_ref: DEFAULT_REF.to_string(),
+            ref_focus: RefFocus::Pending,
             screens: Vec::new(),
             overlays: Vec::new(),
             refusals: RefusalHistory::new(),
@@ -312,8 +337,10 @@ impl App {
     pub fn reload(&mut self) {
         self.banner = None;
         self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
-        if matches!(self.screens.last(), Some(Screen::History { .. })) {
-            let reff = self.focused_ref.clone();
+        // A History screen exists only for a focused ref, so this finds one whenever it matters.
+        if matches!(self.screens.last(), Some(Screen::History { .. }))
+            && let Some(reff) = self.focused_ref().map(str::to_string)
+        {
             let seq = self.dispatch(RequestKind::History { reff });
             if let Some(Screen::History { refreshing, .. }) = self.screens.last_mut() {
                 *refreshing = Some(seq);
@@ -325,7 +352,9 @@ impl App {
     /// screen until the response arrives.
     pub fn open_history(&mut self) {
         self.banner = None;
-        let reff = self.focused_ref.clone();
+        let Some(reff) = self.require_focus() else {
+            return;
+        };
         let seq = self.dispatch(RequestKind::History { reff });
         self.screens.push(Screen::Loading {
             what: "history",
@@ -338,7 +367,9 @@ impl App {
     /// still arrives as an error response and is surfaced the same way as any other.
     pub fn open_changes(&mut self) {
         self.banner = None;
-        let reff = self.focused_ref.clone();
+        let Some(reff) = self.require_focus() else {
+            return;
+        };
         let seq = self.dispatch(RequestKind::Changes { reff });
         self.screens.push(Screen::Loading {
             what: "changes",
@@ -363,8 +394,13 @@ impl App {
         let readiness = self.readiness();
         match stikk_core::capability_gate(stikk_core::COMMIT_OPERATION, Tier::Two, readiness) {
             Ok(()) => {
+                // After the capability check, as the palette orders its reasons (`Command::
+                // unavailable_reason`): the two must agree.
+                let Some(reff) = self.require_focus() else {
+                    return;
+                };
                 self.overlays.push(Overlay::CommitMessage {
-                    reff: self.focused_ref.clone(),
+                    reff,
                     typed: String::new(),
                     messages_persist: self.messages_persist(),
                 });
@@ -427,7 +463,9 @@ impl App {
         let readiness = self.readiness();
         match stikk_core::capability_gate(SEAL_OPERATION, Tier::Three, readiness) {
             Ok(()) => {
-                let reff = self.focused_ref.clone();
+                let Some(reff) = self.require_focus() else {
+                    return;
+                };
                 let seq = self.dispatch(RequestKind::SealPreview { reff: reff.clone() });
                 self.overlays.push(Overlay::Loading {
                     what: "seal preview",
@@ -497,10 +535,19 @@ impl App {
     /// The context-sensitive select/drill-in action (the `Enter` key). Overlays take priority.
     pub fn select(&mut self) {
         match self.overlays.last() {
-            Some(Overlay::RefPicker { refs, cursor }) => {
-                if let Some(name) = refs.get(*cursor).cloned() {
+            Some(Overlay::RefPicker {
+                refs,
+                cursor,
+                unpublished_main,
+            }) => {
+                if *unpublished_main {
+                    // RFC 029 Handoff B §4: the one row an empty picker offers. Focus only — nothing is
+                    // published there, so there is no History to open.
                     self.overlays.pop();
-                    self.focused_ref = name;
+                    self.ref_focus = RefFocus::Ref(DEFAULT_REF.to_string());
+                } else if let Some(name) = refs.get(*cursor).cloned() {
+                    self.overlays.pop();
+                    self.ref_focus = RefFocus::Ref(name);
                     if matches!(self.screens.last(), Some(Screen::History { .. })) {
                         self.screens.pop();
                     }
@@ -527,7 +574,7 @@ impl App {
                 let hits = stikk_core::palette::matching(filter);
                 if let Some(cmd) = hits.get(*cursor).copied() {
                     let readiness = self.readiness();
-                    if cmd.available_to(readiness) {
+                    if cmd.available(readiness, self.focused_ref().is_some()) {
                         self.overlays.pop();
                         self.run_command(cmd);
                     }
@@ -591,9 +638,10 @@ impl App {
         match self.screens.last() {
             Some(Screen::History { view, cursor, .. }) => {
                 let cursor = *cursor;
-                if let Some(row) = view.blocks.get(cursor).cloned() {
+                if let Some(row) = view.blocks.get(cursor).cloned()
+                    && let Some(reff) = self.focused_ref().map(str::to_string)
+                {
                     let is_tip = cursor == 0;
-                    let reff = self.focused_ref.clone();
                     let seq = self.dispatch(RequestKind::BlockState { reff, row, is_tip });
                     self.screens.push(Screen::Loading {
                         what: "block detail",
@@ -631,10 +679,12 @@ impl App {
     /// Open the command palette (the `:` key).
     pub fn open_palette(&mut self) {
         let readiness = self.readiness();
+        let ref_focused = self.focused_ref().is_some();
         self.overlays.push(Overlay::Palette {
             filter: String::new(),
             cursor: 0,
             readiness,
+            ref_focused,
         });
     }
 
@@ -743,7 +793,14 @@ impl App {
     /// Move the selection down, clamped to the active list length.
     pub fn nav_down(&mut self) {
         match self.overlays.last_mut() {
-            Some(Overlay::RefPicker { refs, cursor }) => *cursor = next_index(*cursor, refs.len()),
+            Some(Overlay::RefPicker {
+                refs,
+                cursor,
+                unpublished_main,
+            }) => {
+                let len = if *unpublished_main { 1 } else { refs.len() };
+                *cursor = next_index(*cursor, len);
+            }
             Some(Overlay::Refusal { card, cursor }) => {
                 *cursor = next_index(*cursor, card.next_steps.len());
             }
@@ -856,9 +913,39 @@ impl App {
         }
         self.orientation_pending = None;
         self.state = match result {
-            Ok(view) => OrientationState::Loaded(view),
+            Ok(view) => {
+                // Once, and only while nothing is focused yet: a later read — `r`, the read after a
+                // commit or seal — never moves focus, and a pick made while pending has already won.
+                if self.ref_focus == RefFocus::Pending {
+                    self.resolve_focus(&view);
+                }
+                OrientationState::Loaded(view)
+            }
+            // A failed read leaves focus pending, so the first *successful* read still resolves it.
             Err(error) => OrientationState::Failed(error.to_string()),
         };
+    }
+
+    /// Where stikk opens (RFC 029 Q1, ruled (b); Handoff B §2). **stikk follows where prikk would start,
+    /// and never moves prikk**: it reads the current branch from the `status` report Orientation already
+    /// makes, and never `.prikk/current-branch` itself.
+    ///
+    /// A branch prikk names is followed even when it is unpublished — a fresh 0.42 repository names
+    /// `heads/main` before anything is sealed there, and prikk would author a first commit on it. The
+    /// fallback governs only when prikk names no branch.
+    fn resolve_focus(&mut self, view: &stikk_core::OrientationView) {
+        match (&view.current_branch, &view.main_ref_state) {
+            (CurrentBranch::Branch(branch), _) => {
+                self.ref_focus = RefFocus::Ref(branch.as_str().to_string());
+            }
+            (CurrentBranch::NotReported | CurrentBranch::Unresolved(_), Some(_)) => {
+                self.ref_focus = RefFocus::Ref(DEFAULT_REF.to_string());
+            }
+            (CurrentBranch::NotReported | CurrentBranch::Unresolved(_), None) => {
+                self.ref_focus = RefFocus::Unfocused;
+                self.open_ref_picker();
+            }
+        }
     }
 
     fn apply_history(&mut self, seq: u64, result: stikk_model::Result<HistoryView>) {
@@ -970,10 +1057,17 @@ impl App {
                     let refs: Vec<String> = entries.into_iter().map(|entry| entry.name).collect();
                     let cursor = refs
                         .iter()
-                        .position(|name| name == &self.focused_ref)
+                        .position(|name| Some(name.as_str()) == self.focused_ref())
                         .unwrap_or(0);
+                    // RFC 029 Handoff B §4: only an empty list offers the unpublished `heads/main`. A
+                    // repository with other refs does not, because that is roadmap item 8's confusion.
+                    let unpublished_main = refs.is_empty();
                     if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::RefPicker { refs, cursor };
+                        *slot = Overlay::RefPicker {
+                            refs,
+                            cursor,
+                            unpublished_main,
+                        };
                     }
                 }
                 Err(error) => {
@@ -1305,10 +1399,30 @@ impl App {
         &self.repo
     }
 
-    /// The ref the session is focused on (never a HEAD — prikk has none, design FR-055).
+    /// The ref the session is focused on, or `None` while focus is pending or unfocused (RFC 029 Handoff
+    /// B §2). Never a HEAD (FR-055).
     #[must_use]
-    pub fn focused_ref(&self) -> &str {
-        &self.focused_ref
+    pub fn focused_ref(&self) -> Option<&str> {
+        match &self.ref_focus {
+            RefFocus::Ref(name) => Some(name),
+            RefFocus::Pending | RefFocus::Unfocused => None,
+        }
+    }
+
+    /// Which of focus's three states the session is in (RFC 029 Handoff B §2), for the status bar.
+    #[must_use]
+    pub fn ref_focus(&self) -> &RefFocus {
+        &self.ref_focus
+    }
+
+    /// The focused ref for an action that needs one, or — with none — `C-T4d`'s reason in the banner
+    /// and `None`, so the caller dispatches nothing (RFC 029 Handoff B §2).
+    fn require_focus(&mut self) -> Option<String> {
+        let focused = self.focused_ref().map(str::to_string);
+        if focused.is_none() {
+            self.banner = Some(stikk_core::NO_FOCUSED_REF_REASON.to_string());
+        }
+        focused
     }
 
     /// The current orientation load state (the root screen's data).

@@ -91,6 +91,7 @@ fn the_capability_gate_disables_below_the_minimum() {
         operation: "seal",
         tier: Tier::Three,
         opens: None,
+        needs_focused_ref: false,
     };
     assert!(!seal.available_to(readiness(false, false, false)));
     assert!(!seal.available_to(readiness(true, false, false)));

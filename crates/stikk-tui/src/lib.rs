@@ -36,7 +36,7 @@ mod worker;
 #[cfg(test)]
 pub(crate) mod test_util;
 
-pub use app::{App, Focus, Operation, OperationStatus, OrientationState, Screen};
+pub use app::{App, Focus, Operation, OperationStatus, OrientationState, RefFocus, Screen};
 pub use overlay::Overlay;
 pub use terminal::stdout_is_tty;
 pub use theme::Palette;

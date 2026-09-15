@@ -71,6 +71,10 @@ pub enum Overlay {
         refs: Vec<String>,
         /// The highlighted entry.
         cursor: usize,
+        /// Set only when prikk reported no refs at all (RFC 029 Handoff B §4): the picker then offers
+        /// one row, `heads/main (not published)`, so a brand-new repository below prikk 0.42 can still
+        /// be focused and make its first commit.
+        unpublished_main: bool,
     },
     /// A refusal explanation (TU-08): verbatim message + gloss + next-steps + glossary links.
     Refusal {
@@ -119,6 +123,8 @@ pub enum Overlay {
         /// bare `Capability` cannot see read-only, so it stopped being enough the moment a mutating
         /// command (`op.commit`) entered the registry.
         readiness: stikk_model::Readiness,
+        /// Whether a ref is focused, for the commands that need one (RFC 029 Handoff B §2).
+        ref_focused: bool,
     },
     /// The session refusal history (FR-112): the remembered refusals and the highlighted one.
     Refusals {
@@ -215,9 +221,11 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
         Overlay::Glossary { offset } => render_glossary(offset, palette, frame, area),
         Overlay::Loading { what, .. } => render_loading(what, palette, frame, area),
         Overlay::Operations { operations } => render_operations(operations, palette, frame, area),
-        Overlay::RefPicker { refs, cursor } => {
-            render_ref_picker(refs, *cursor, palette, frame, area)
-        }
+        Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+        } => render_ref_picker(refs, *cursor, *unpublished_main, palette, frame, area),
         Overlay::Refusal { card, cursor } => render_refusal(card, *cursor, palette, frame, area),
         Overlay::Stale {
             operation,
@@ -236,7 +244,16 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
             filter,
             cursor,
             readiness,
-        } => render_palette(filter, *cursor, *readiness, palette, frame, area),
+            ref_focused,
+        } => render_palette(
+            filter,
+            *cursor,
+            *readiness,
+            *ref_focused,
+            palette,
+            frame,
+            area,
+        ),
         Overlay::Refusals { records, cursor } => {
             render_refusals(records, *cursor, palette, frame, area);
         }
@@ -431,10 +448,32 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
 fn render_ref_picker(
     refs: &[String],
     cursor: usize,
+    unpublished_main: bool,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
 ) {
+    // RFC 029 Handoff B §4. The row states a fact — nothing named `heads/main` is published — and makes
+    // no claim about what prikk would do there.
+    if unpublished_main {
+        ListPanel {
+            title: " Choose ref ",
+            width: 52,
+            header: vec![Line::from(Span::styled(
+                "  no published refs",
+                Style::default().fg(palette.dim),
+            ))],
+            items: vec![selectable(
+                palette,
+                true,
+                "heads/main (not published)".to_string(),
+            )],
+            cursor: Some(0),
+            style: Style::default().fg(palette.fg),
+        }
+        .render(frame, area);
+        return;
+    }
     let (items, selection) = if refs.is_empty() {
         (
             vec![Line::from(Span::styled(
@@ -725,6 +764,7 @@ fn render_palette(
     filter: &str,
     cursor: usize,
     readiness: stikk_model::Readiness,
+    ref_focused: bool,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -762,7 +802,7 @@ fn render_palette(
     }
     for (i, cmd) in hits.iter().enumerate() {
         let selected = i == cursor;
-        let reason = cmd.unmet_reason(readiness);
+        let reason = cmd.unavailable_reason(readiness, ref_focused);
         let disabled = reason.is_some();
         let name_style = match (selected, disabled) {
             (_, true) => Style::default().fg(palette.dim),
@@ -939,16 +979,30 @@ fn render_confirmation(
         Line::from(""),
     ];
 
-    if !summary.target_ids.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "  Targets:",
-            Style::default().fg(palette.dim),
-        )));
+    if !summary.target_ids.is_empty() || summary.branch_notice.is_some() {
+        if !summary.target_ids.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "  Targets:",
+                Style::default().fg(palette.dim),
+            )));
+        }
         for id in &summary.target_ids {
             lines.push(Line::from(Span::styled(
                 format!("    {}", inert(id)),
                 Style::default().fg(palette.accent),
             )));
+        }
+        // Safeguard 3 (RFC 029 Handoff B §5): directly under the targets and in warn, because it is about
+        // where the change goes — above the counts and `C-S2`'s line. The words carry it in a monochrome
+        // terminal (`NFR-A03`); the colour only adds. Inert, since it names refs and may carry prikk's
+        // own text (`C-T2a`).
+        if let Some(notice) = &summary.branch_notice {
+            for row in wrap_indented(&inert(notice), PANEL_TEXT_WIDTH, "    ") {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.warn),
+                )));
+            }
         }
         lines.push(Line::from(""));
     }

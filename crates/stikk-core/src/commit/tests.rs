@@ -627,3 +627,47 @@ fn a_current_branch_moved_alone_is_stale_repository_before_any_re_read() {
     assert!(is_stale(&result, StaleCause::Repository), "{result:?}");
     assert_eq!(switched.commit_calls(), 0, "commit must not run");
 }
+
+/// RFC 029 Handoff B §5, safeguard 3: commit's notice in each row of the table, byte-exact, computed
+/// from the preview's own Orientation read.
+#[test]
+fn commits_branch_notice_follows_each_row_of_safeguard_three_exactly() {
+    use stikk_model::{CurrentBranch, RefName};
+    let rows = [
+        (
+            CurrentBranch::Branch(RefName::parse("heads/dev").unwrap()),
+            Some(
+                "This targets heads/main. prikk's current branch is heads/dev, the ref prikk uses \
+                 when no --ref is given.",
+            ),
+        ),
+        (
+            CurrentBranch::Branch(RefName::parse("heads/main").unwrap()),
+            None,
+        ),
+        (
+            CurrentBranch::Unresolved("<unresolved; run `prikk doctor`>".to_string()),
+            Some(
+                "This targets heads/main. prikk reports its current branch as <unresolved; run `prikk doctor`>.",
+            ),
+        ),
+        (CurrentBranch::NotReported, None),
+    ];
+    for (current, expected) in rows {
+        let backend = ready_backend().with_orientation(Orientation {
+            current_branch: current.clone(),
+            ..orientation(0, None)
+        });
+        match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads")
+        {
+            CommitPreviewOutcome::Ready { token, .. } => {
+                assert_eq!(
+                    token.summary().branch_notice.as_deref(),
+                    expected,
+                    "{current:?}"
+                );
+            }
+            other => panic!("expected Ready for {current:?}, got {other:?}"),
+        }
+    }
+}

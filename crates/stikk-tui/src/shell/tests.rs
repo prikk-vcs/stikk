@@ -27,6 +27,22 @@ fn draw(app: &App, w: u16, h: u16) -> String {
     buffer_text(terminal.backend().buffer())
 }
 
+/// An Orientation whose current branch is `heads/main`, so the first read focuses it (RFC 029 Handoff B
+/// §2). `NullBackend::supported()` reports no current branch and no published `heads/main`, which now
+/// resolves to no focus — and a test about rendering History needs one.
+fn orientation_naming_heads_main() -> Orientation {
+    Orientation {
+        queued_patches: 0,
+        queued_target: None,
+        main_ref_state: None,
+        trailing_partial_wal_bytes: 0,
+        active_patch_warning: None,
+        current_branch: stikk_model::CurrentBranch::Branch(
+            stikk_model::RefName::parse("heads/main").expect("a valid ref name"),
+        ),
+    }
+}
+
 fn open(repo: &str, config: &Config) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
     (App::open(repo, config, tx), rx)
@@ -130,7 +146,7 @@ fn a_tiny_terminal_shows_the_too_small_notice() {
 fn a_pending_history_load_renders_as_loading() {
     // RFC 010 §5: a load that used to be instantaneous (and so unobservable) is now a real gap the
     // shell must render something for — proof that the `Screen::Loading` path actually reaches pixels.
-    let backend = NullBackend::supported();
+    let backend = NullBackend::supported().with_orientation(orientation_naming_heads_main());
     let (mut app, rx) = open("/repo", &Config::default());
     drain(&mut app, &rx, &backend);
     app.open_history();
@@ -209,6 +225,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
 fn block_detail_screen_shows_tip_state_and_the_ud09_note() {
     use stikk_prikk::{BlockRow, History, StateFiles};
     let backend = NullBackend::supported()
+        .with_orientation(orientation_naming_heads_main())
         .with_history(History {
             reff: "heads/main".into(),
             blocks: vec![BlockRow {

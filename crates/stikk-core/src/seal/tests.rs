@@ -297,3 +297,48 @@ fn declined_evidence_refuses_without_touching_the_seam() {
     .expect_err("must refuse");
     assert_eq!(err.class(), "declined");
 }
+
+/// RFC 029 Handoff B §5, safeguard 3: seal's notice in each row of the table, byte-exact — the same
+/// words as commit's, from the same function.
+#[test]
+fn seals_branch_notice_follows_each_row_of_safeguard_three_exactly() {
+    use stikk_model::{CurrentBranch, RefName};
+    let rows = [
+        (
+            CurrentBranch::Branch(RefName::parse("heads/dev").unwrap()),
+            Some(
+                "This targets heads/main. prikk's current branch is heads/dev, the ref prikk uses \
+                 when no --ref is given.",
+            ),
+        ),
+        (
+            CurrentBranch::Branch(RefName::parse("heads/main").unwrap()),
+            None,
+        ),
+        (
+            CurrentBranch::Unresolved("<unresolved; run `prikk doctor`>".to_string()),
+            Some(
+                "This targets heads/main. prikk reports its current branch as <unresolved; run `prikk doctor`>.",
+            ),
+        ),
+        (CurrentBranch::NotReported, None),
+    ];
+    for (current, expected) in rows {
+        let backend = ready_backend().with_orientation(Orientation {
+            current_branch: current.clone(),
+            ..orientation(1, Some("heads/main"))
+        });
+        match seal_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+            SealPreviewOutcome::Ready { token } => {
+                assert_eq!(
+                    token.summary().branch_notice.as_deref(),
+                    expected,
+                    "{current:?}"
+                );
+            }
+            SealPreviewOutcome::Blocked(reason) => {
+                panic!("expected Ready for {current:?}, got Blocked({reason})")
+            }
+        }
+    }
+}

@@ -25,15 +25,20 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position; these
 | `stikk-core` | `CommitPreviewOutcome::Ready`'s `token` changes type from `Box<PreviewToken>` to `Box<CommitToken>` (RFC 030) |
 | `stikk-core` | `commit_confirm_and_execute` takes a `CommitToken`, and no longer takes `reff: &str` — the commit is authored onto the ref the preview was built for (RFC 030) |
 | `stikk-tui` | `Overlay::Stale` gains `cause` and `headline` (RFC 030) |
+| `stikk-core` | `ConfirmationSummary` gains `branch_notice: Option<String>` (RFC 029) |
+| `stikk-core` | `Command` gains `needs_focused_ref: bool` (RFC 029) |
+| `stikk-tui` | `App::focused_ref` returns `Option<&str>` instead of `&str` — `None` until a ref is focused, and `App::open` no longer focuses `heads/main` before the first Orientation read (RFC 029) |
+| `stikk-tui` | `Overlay::RefPicker` gains `unpublished_main`, and `Overlay::Palette` gains `ref_focused` (RFC 029) |
 
 Every struct above is constructed with struct literals by anyone scripting a `NullBackend` or rendering a
 view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `Authoring`,
 `QueuedElsewhere`, `RefusedPath`, `CurrentBranch`, `StaleCause`, `RenameDeclaration` and `CommitToken`
 types; `ChangeKind::label`, `queued_elsewhere_clauses`, `would_refuse_next_steps`, `stale_headline` and
 `stale_gloss`; `NullBackend::with_queued_elsewhere_ref`, `with_worktree_status_on_reread`,
-`with_worktree_status_refusal_on_reread` and `commit_calls`; and their re-exports from `stikk-core` and
-`stikk-model`. **Two public signatures changed**, both listed above: `ChangeToken::compose` and
-`commit_confirm_and_execute`. No public function, trait method or re-export was removed, and the `Prikk`
+`with_worktree_status_refusal_on_reread` and `commit_calls`; `branch_notice`, `NO_FOCUSED_REF_REASON`,
+`Command::available` and `Command::unavailable_reason`; the `RefFocus` type and `App::ref_focus`; and their
+re-exports from `stikk-core`, `stikk-model` and `stikk-tui`. **Three public signatures changed**, all listed
+above: `ChangeToken::compose`, `commit_confirm_and_execute` and `App::focused_ref`. No public function, trait method or re-export was removed, and the `Prikk`
 trait is unchanged.
 
 ### Added
@@ -73,6 +78,15 @@ trait is unchanged.
 - **A stale confirmation now says whether the repository or the worktree changed**, and no longer
   attributes the change to "another writer". The worktree wording names what stikk compares: which paths
   prikk lists, their status, prikk's verdict on them, and rename declarations (RFC 030).
+- **On prikk ≥ 0.42, stikk opens focused on prikk's current branch**, and the status bar shows
+  `prikk's default: <branch>` beside stikk's focus when the two differ. Choosing another ref in stikk
+  still never moves prikk's current branch or touches the worktree (RFC 029).
+- **Commit and seal confirmations name both refs when they differ**: the ref being targeted, and prikk's
+  current branch — the ref prikk uses when no `--ref` is given. It is a notice, not a block (RFC 029).
+- **Below prikk 0.42, or with an unresolved pointer, stikk opens on `heads/main` only when it is
+  published**, and otherwise opens the ref picker with no ref focused. Until a ref is focused, History,
+  Changes, commit and seal say why they are unavailable. An empty repository's picker offers
+  `heads/main (not published)` (RFC 029).
 
 ### Fixed
 

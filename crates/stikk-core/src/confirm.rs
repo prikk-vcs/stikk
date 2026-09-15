@@ -90,6 +90,14 @@ pub struct ConfirmationSummary {
     /// one — which is what `FR-104`'s "persistently" asks for, and what makes it a control rather than
     /// a toast.
     pub signing_key_is_published_example: bool,
+    /// Safeguard 3 (RFC 029 Handoff B §5): stikk's words when the target differs from prikk's current
+    /// branch, or prikk reports that branch unresolved. `None` when there is nothing to say — the target
+    /// is prikk's current branch, or prikk reports none (below 0.42).
+    ///
+    /// **A notice, not a block.** Committing or sealing another branch is legitimate, and prikk allows
+    /// it. Computed from the Orientation the preview itself reads, never from a frontend's older copy.
+    /// It names refs and may carry prikk's own text, so it renders through `inert` (`C-T2a`).
+    pub branch_notice: Option<String>,
 }
 
 /// How firmly a confirmation may state the signing key id (RFC 026 §5).
@@ -108,6 +116,31 @@ pub enum KeyClaim {
     /// whether prikk will use it — which is exactly what RFC 026 F4 found stikk claiming without
     /// warrant, so it is said rather than implied.
     Unchecked,
+}
+
+/// Safeguard 3 (RFC 029 Handoff B §5): what a commit's or seal's confirmation says about prikk's current
+/// branch, in stikk's words, or `None` when there is nothing to say.
+///
+/// **One function, both ceremonies**, for the same reason as [`signing_key_claim`]. `target` is the
+/// previewed ref; `current` is what the preview's own Orientation read reported. The words rest on a
+/// measurement, not on prikk's help text (`C-T2b`): at prikk 0.42 a raw `prikk commit` with no `--ref`
+/// queues for the ref `.prikk/current-branch` names (re-measured for this handoff).
+///
+/// Below 0.42 prikk reports no current branch and this says nothing; stikk infers none.
+#[must_use]
+pub fn branch_notice(target: &str, current: &stikk_model::CurrentBranch) -> Option<String> {
+    match current {
+        stikk_model::CurrentBranch::NotReported => None,
+        stikk_model::CurrentBranch::Branch(branch) if branch.as_str() == target => None,
+        stikk_model::CurrentBranch::Branch(branch) => Some(format!(
+            "This targets {target}. prikk's current branch is {}, the ref prikk uses when no --ref \
+             is given.",
+            branch.as_str()
+        )),
+        stikk_model::CurrentBranch::Unresolved(text) => Some(format!(
+            "This targets {target}. prikk reports its current branch as {text}."
+        )),
+    }
 }
 
 /// The id to show and how firmly to claim it, for one role (RFC 026 §5).

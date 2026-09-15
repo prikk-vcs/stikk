@@ -1,7 +1,8 @@
 //! The status bar (design TU-03; handoff §2 `status_bar.rs`; RFC 010).
 //!
-//! One line: repository, focused ref (never "HEAD" — it does not exist; this increment shows the
-//! literal `heads/main`), queue depth, worktree marker, the `⟳ n` background-operation indicator
+//! One line: repository, focused ref (never "HEAD" — it does not exist), with prikk's current branch
+//! beside it as `prikk's default: <branch>` when the two differ, or `no ref focused` (RFC 029 Handoff B
+//! §3), queue depth, worktree marker, the `⟳ n` background-operation indicator
 //! (TU-03; RFC 010 — the count of requests the worker has not yet answered), and the
 //! capability/readiness badges. Every badge has a text form so a monochrome terminal loses nothing
 //! (design NFR-A03).
@@ -12,9 +13,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use stikk_model::{Binding, Readiness, RoleReadiness};
+use stikk_model::{Binding, CurrentBranch, Readiness, RoleReadiness};
 
-use crate::app::{App, OrientationState};
+use crate::app::{App, OrientationState, RefFocus};
 use crate::text::inert;
 use crate::theme::Palette;
 
@@ -32,18 +33,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         _ => (Readiness::none(), 0, false),
     };
 
-    let mut spans = vec![
-        Span::styled(
-            repo,
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        ),
-        sep(palette),
-        // The focused ref — a client-side pointer, not a HEAD (design FR-055).
-        Span::styled(
-            inert(app.focused_ref()),
-            Style::default().fg(palette.accent),
-        ),
-    ];
+    let mut spans = vec![Span::styled(
+        repo,
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )];
+    spans.append(&mut focus_segment(app, palette));
 
     if !loaded {
         spans.push(sep(palette));
@@ -80,6 +74,50 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         Style::default().fg(palette.dim),
     ));
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// The focus segment, each piece led by its separator (RFC 029 Handoff B §3's table).
+///
+/// **Computed from the loaded Orientation on every render**, so it follows every Orientation read — and
+/// only those: stikk reads on open, on `r`, and after a commit or seal. Between reads a terminal
+/// `prikk branch switch` is not seen here, so nothing in this segment claims to be live.
+///
+/// The label is exactly `prikk's default: `, never `HEAD` or anything that reads as an authority
+/// (RFC 029 decision 4). Every ref name, and prikk's unresolved text, goes through `inert` (`C-T2a`).
+fn focus_segment(app: &App, palette: &Palette) -> Vec<Span<'static>> {
+    let focused = match app.ref_focus() {
+        // Nothing for focus; the `(loading)` or `(error)` marker below says why.
+        RefFocus::Pending => return Vec::new(),
+        RefFocus::Unfocused => {
+            return vec![
+                sep(palette),
+                Span::styled("no ref focused", Style::default().fg(palette.warn)),
+            ];
+        }
+        RefFocus::Ref(name) => name,
+    };
+    // The focused ref — a client-side pointer, not a HEAD (design FR-055).
+    let mut spans = vec![
+        sep(palette),
+        Span::styled(inert(focused), Style::default().fg(palette.accent)),
+    ];
+    let prikks = match app.state() {
+        OrientationState::Loaded(view) => match &view.current_branch {
+            CurrentBranch::Branch(branch) if branch.as_str() != focused => Some(branch.as_str()),
+            CurrentBranch::Unresolved(text) => Some(text.as_str()),
+            CurrentBranch::Branch(_) | CurrentBranch::NotReported => None,
+        },
+        OrientationState::Loading | OrientationState::Failed(_) => None,
+    };
+    if let Some(prikks) = prikks {
+        spans.push(sep(palette));
+        spans.push(Span::styled(
+            "prikk's default: ",
+            Style::default().fg(palette.dim),
+        ));
+        spans.push(Span::styled(inert(prikks), Style::default().fg(palette.fg)));
+    }
+    spans
 }
 
 fn sep(palette: &Palette) -> Span<'static> {

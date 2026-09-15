@@ -170,6 +170,7 @@ fn ref_picker_marks_the_highlighted_ref_and_neutralizes_hostile_names() {
     let overlay = Overlay::RefPicker {
         refs: vec!["heads/main".into(), "heads/\u{1b}[2Jevil".into()],
         cursor: 0,
+        unpublished_main: false,
     };
     let text = draw(&overlay);
     assert!(text.contains("heads/main"));
@@ -423,6 +424,7 @@ fn palette_lists_every_tier_one_command_enabled_for_a_viewer() {
     let overlay = Overlay::Palette {
         filter: String::new(),
         cursor: 0,
+        ref_focused: true,
         readiness: viewer_readiness(),
     };
     let text = draw(&overlay);
@@ -448,6 +450,7 @@ fn palette_disables_commit_for_a_viewer_with_the_capability_gate_reason() {
     let overlay = Overlay::Palette {
         filter: "commit".into(),
         cursor: 0,
+        ref_focused: true,
         readiness: viewer_readiness(),
     };
     let text = draw(&overlay);
@@ -460,6 +463,7 @@ fn palette_disables_commit_under_read_only_even_with_author_keys_present() {
     let overlay = Overlay::Palette {
         filter: "commit".into(),
         cursor: 0,
+        ref_focused: true,
         readiness: stikk_model::Readiness {
             author: RoleReadiness::Unknown,
             maintainer: stikk_model::RoleReadiness::NotReady,
@@ -475,6 +479,7 @@ fn palette_filter_narrows_the_list() {
     let overlay = Overlay::Palette {
         filter: "history".into(),
         cursor: 0,
+        ref_focused: true,
         readiness: viewer_readiness(),
     };
     let text = draw(&overlay);
@@ -509,6 +514,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         signing_key_id: None,
         signing_key_claim: stikk_core::KeyClaim::None,
         signing_key_is_published_example: false,
+        branch_notice: None,
     }
 }
 
@@ -978,6 +984,7 @@ fn summary_with_key_id(
         signing_key_id: key_id.map(str::to_string),
         signing_key_claim: stikk_core::KeyClaim::None,
         signing_key_is_published_example: false,
+        branch_notice: None,
     }
 }
 
@@ -1221,6 +1228,7 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         signing_key_id: Some("dev-maintainer".to_string()),
         signing_key_claim: stikk_core::KeyClaim::None,
         signing_key_is_published_example: false,
+        branch_notice: None,
     }
 }
 
@@ -1287,6 +1295,7 @@ fn cases() -> Vec<Case> {
             build: Box::new(|cursor| Overlay::RefPicker {
                 refs: long_refs(40),
                 cursor,
+                unpublished_main: false,
             }),
             last_row: "heads/branch-039".to_string(),
             entry: Some(Box::new(|i| format!("heads/branch-{i:03}"))),
@@ -1334,6 +1343,7 @@ fn cases() -> Vec<Case> {
             build: Box::new(|cursor| Overlay::Palette {
                 filter: String::new(),
                 cursor,
+                ref_focused: true,
                 readiness: stikk_model::Readiness {
                     author: RoleReadiness::Unknown,
                     maintainer: stikk_model::RoleReadiness::Unknown,
@@ -1636,6 +1646,7 @@ fn f5_ref_picker_shows_the_last_of_forty_refs_when_selected() {
         &Overlay::RefPicker {
             refs: refs.clone(),
             cursor: 39,
+            unpublished_main: false,
         },
         80,
         24,
@@ -1671,6 +1682,7 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         signing_key_id: id.map(str::to_string),
         signing_key_claim: claim,
         signing_key_is_published_example: false,
+        branch_notice: None,
     }
 }
 
@@ -2052,4 +2064,114 @@ fn the_stale_overlay_for_a_worktree_change_at_80_columns() {
     );
     assert!(screen.contains("Preview again"), "{screen}");
     assert!(!screen.contains("Another writer"), "{screen}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 029 Handoff B: the confirmation card's branch notice, the empty picker, and the palette with no
+// focused ref — each captured at 80 columns.
+// ---------------------------------------------------------------------------------------------
+
+/// The screen's text with the panel borders and all runs of whitespace collapsed, so a sentence wrapped
+/// across rows can be matched whole.
+fn joined(text: &str) -> String {
+    text.lines()
+        .map(|line| line.trim_matches(|c: char| c == '│' || c.is_whitespace()))
+        .collect::<Vec<_>>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn the_confirmation_card_names_prikks_current_branch_directly_under_the_targets() {
+    let notice = "This targets heads/main. prikk's current branch is heads/dev, the ref prikk uses when \
+                  no --ref is given.";
+    let mut with_notice = summary(vec!["heads/main"], None);
+    with_notice.branch_notice = Some(notice.to_string());
+    let overlay = Overlay::Confirmation {
+        summary: with_notice,
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("--- confirmation card with the branch notice, 80×24\n{text}");
+    assert!(joined(&text).contains(notice), "{text}");
+    assert!(!text.contains("HEAD"), "{text}");
+    let row = |needle: &str| {
+        text.lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} not on screen:\n{text}"))
+    };
+    // Under the target ids, above the counts.
+    assert!(row("    heads/main") < row("This targets"), "{text}");
+    assert!(row("This targets") < row("3 patches"), "{text}");
+
+    // Without a notice, nothing is added.
+    let plain = draw_at(
+        &Overlay::Confirmation {
+            summary: summary(vec!["heads/main"], None),
+            tier: Tier::Two,
+            typed: String::new(),
+            error: None,
+        },
+        80,
+        24,
+    );
+    assert!(!plain.contains("This targets"), "{plain}");
+}
+
+#[test]
+fn an_empty_picker_offers_only_the_unpublished_heads_main() {
+    let text = draw_at(
+        &Overlay::RefPicker {
+            refs: Vec::new(),
+            cursor: 0,
+            unpublished_main: true,
+        },
+        80,
+        24,
+    );
+    println!("--- empty ref picker, 80×24\n{text}");
+    assert!(text.contains("no published refs"), "{text}");
+    assert!(text.contains("▶ heads/main (not published)"), "{text}");
+    assert!(!text.contains("no refs reported"), "{text}");
+}
+
+#[test]
+fn the_palette_without_a_focused_ref_lists_the_reason_on_each_command_that_needs_one() {
+    let ready = stikk_model::Readiness {
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::Unknown,
+        read_only: false,
+    };
+    let text = draw_at(
+        &Overlay::Palette {
+            filter: String::new(),
+            cursor: 0,
+            readiness: ready,
+            ref_focused: false,
+        },
+        80,
+        24,
+    );
+    println!("--- palette with no focused ref, 80×24\n{text}");
+    for name in [
+        "Open History",
+        "Open Changes (worktree)",
+        "Commit worktree changes",
+        "Seal the active WAL",
+    ] {
+        let line = text
+            .lines()
+            .find(|line| line.contains(name))
+            .unwrap_or_else(|| panic!("{name} not listed:\n{text}"));
+        assert!(line.contains("No ref is focused."), "{name}: {line:?}");
+    }
+    let refs = text
+        .lines()
+        .find(|line| line.contains("Choose ref"))
+        .expect("Choose ref is listed");
+    assert!(!refs.contains("No ref is focused"), "{refs:?}");
 }

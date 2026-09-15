@@ -19,6 +19,10 @@ use stikk_model::{Readiness, StikkError, Tier};
 use crate::confirm::capability_gate;
 use crate::present::Target;
 
+/// The reason every action that needs a focused ref gives when none is focused (RFC 029 Handoff B §2):
+/// the banner a key sets and a palette entry's disabled reason are these same words.
+pub const NO_FOCUSED_REF_REASON: &str = "No ref is focused. Press b to choose one.";
+
 /// A palette-listable command: a view to open or an action to run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Command {
@@ -41,6 +45,10 @@ pub struct Command {
     pub tier: Tier,
     /// The view/overlay the command opens, if it is a navigation command.
     pub opens: Option<Target>,
+    /// Whether the command acts on the focused ref (RFC 029 Handoff B §2): History, Changes, commit and
+    /// seal. With no ref focused it stays visible but disabled, with [`NO_FOCUSED_REF_REASON`]
+    /// (`C-T4d`).
+    pub needs_focused_ref: bool,
 }
 
 impl Command {
@@ -64,6 +72,25 @@ impl Command {
             Err(other) => Some(other.to_string()),
         }
     }
+
+    /// Whether this command may run now: [`Self::available_to`], and a focused ref when it needs one
+    /// (RFC 029 Handoff B §2). The palette's `Enter` checks this, so it never runs what it lists as
+    /// disabled.
+    #[must_use]
+    pub fn available(&self, readiness: Readiness, ref_focused: bool) -> bool {
+        self.unavailable_reason(readiness, ref_focused).is_none()
+    }
+
+    /// Why this command cannot run now, or `None` when it can.
+    ///
+    /// **Capability first.** A session that cannot commit at all is told that, rather than to choose a
+    /// ref it still could not commit to. Then the focused ref, in [`NO_FOCUSED_REF_REASON`]'s words.
+    #[must_use]
+    pub fn unavailable_reason(&self, readiness: Readiness, ref_focused: bool) -> Option<String> {
+        self.unmet_reason(readiness).or_else(|| {
+            (self.needs_focused_ref && !ref_focused).then(|| NO_FOCUSED_REF_REASON.to_string())
+        })
+    }
 }
 
 /// Every registered command. Future operations add entries here.
@@ -75,6 +102,7 @@ static COMMANDS: &[Command] = &[
         operation: "orientation",
         tier: Tier::One,
         opens: Some(Target::Orientation),
+        needs_focused_ref: false,
     },
     Command {
         id: "view.history",
@@ -83,6 +111,7 @@ static COMMANDS: &[Command] = &[
         operation: "history",
         tier: Tier::One,
         opens: Some(Target::History),
+        needs_focused_ref: true,
     },
     Command {
         id: "ref.pick",
@@ -91,6 +120,7 @@ static COMMANDS: &[Command] = &[
         operation: "ref-pick",
         tier: Tier::One,
         opens: Some(Target::RefPicker),
+        needs_focused_ref: false,
     },
     Command {
         id: "view.changes",
@@ -99,6 +129,7 @@ static COMMANDS: &[Command] = &[
         operation: "changes",
         tier: Tier::One,
         opens: Some(Target::Changes),
+        needs_focused_ref: true,
     },
     Command {
         id: "op.commit",
@@ -113,6 +144,7 @@ static COMMANDS: &[Command] = &[
         // is wrong, not the code — there is no shared source of truth to enforce it mechanically today.
         tier: Tier::Two,
         opens: None,
+        needs_focused_ref: true,
     },
     Command {
         id: "op.seal",
@@ -126,6 +158,7 @@ static COMMANDS: &[Command] = &[
         // `op.commit`'s own comment above.
         tier: Tier::Three,
         opens: None,
+        needs_focused_ref: true,
     },
     Command {
         id: "view.glossary",
@@ -134,6 +167,7 @@ static COMMANDS: &[Command] = &[
         operation: "glossary",
         tier: Tier::One,
         opens: Some(Target::Glossary),
+        needs_focused_ref: false,
     },
     Command {
         id: "session.refusals",
@@ -142,6 +176,7 @@ static COMMANDS: &[Command] = &[
         operation: "refusals",
         tier: Tier::One,
         opens: None,
+        needs_focused_ref: false,
     },
     Command {
         id: "view.refresh",
@@ -150,6 +185,7 @@ static COMMANDS: &[Command] = &[
         operation: "refresh",
         tier: Tier::One,
         opens: None,
+        needs_focused_ref: false,
     },
     Command {
         id: "app.quit",
@@ -158,6 +194,7 @@ static COMMANDS: &[Command] = &[
         operation: "quit",
         tier: Tier::One,
         opens: None,
+        needs_focused_ref: false,
     },
 ];
 

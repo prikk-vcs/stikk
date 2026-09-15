@@ -43,7 +43,7 @@ static TERMS: &[TermMapping] = &[
     TermMapping {
         git: "HEAD",
         prikk: "(none — there is no HEAD)",
-        note: "Below prikk 0.42 there is no current-branch pointer; from 0.42, .prikk/current-branch names a default for --ref, \"a default, never an authority\" in prikk's words. stikk focuses a named ref client-side.",
+        note: "Below prikk 0.42 there is no current-branch pointer; from 0.42, .prikk/current-branch names a default for --ref, \"a default, never an authority\" in prikk's words. stikk focuses a named ref client-side. From prikk 0.42 stikk opens focused on prikk's current branch, and choosing another ref in stikk never moves prikk's.",
     },
     TermMapping {
         git: "checkout / switch branch",

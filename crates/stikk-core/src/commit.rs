@@ -270,6 +270,8 @@ fn compute(
             .as_deref()
             .and_then(stikk_model::published_example)
             .is_some(),
+        // Safeguard 3, from this preview's own Orientation read above.
+        branch_notice: crate::confirm::branch_notice(reff, &orientation.current_branch),
     };
     let preview = CommitPreview {
         changes: view,
@@ -293,6 +295,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         signing_key_id: None,
         signing_key_claim: crate::confirm::KeyClaim::None,
         signing_key_is_published_example: false,
+        branch_notice: None,
     }
 }
 

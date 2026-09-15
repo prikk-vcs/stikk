@@ -521,7 +521,7 @@ fn ref_picker_selects_a_ref_and_reopens_history() {
     app.nav_down(); // highlight tags/v1
     app.select(); // pick it
     assert!(!app.has_overlay());
-    assert_eq!(app.focused_ref(), "tags/v1");
+    assert_eq!(app.focused_ref(), Some("tags/v1"));
 
     let history_req = next_request(&rx);
     match &history_req.kind {
@@ -925,6 +925,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         signing_key_id: None,
         signing_key_claim: stikk_core::KeyClaim::None,
         signing_key_is_published_example: false,
+        branch_notice: None,
     }
 }
 
@@ -1637,4 +1638,305 @@ fn a_would_refuse_commit_preview_opens_an_overlay_not_a_banner() {
     // Nothing to confirm: dismissing it leaves no pending commit and no overlay.
     app.back();
     assert!(!app.has_overlay());
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 029 Handoff B §2 and §4: where focus starts, and what happens without one.
+// ---------------------------------------------------------------------------------------------
+
+use stikk_model::{CurrentBranch, RefName};
+
+/// One of `App`'s user-facing actions, as a key or the palette reaches it.
+type AppAction = fn(&mut App);
+
+fn branch(name: &str) -> CurrentBranch {
+    CurrentBranch::Branch(RefName::parse(name).expect("a valid ref name"))
+}
+
+/// An author- and maintainer-ready view (so the capability check passes and only focus is under test),
+/// with prikk's current branch and whether `heads/main` is published.
+fn view_on(current: CurrentBranch, main_published: bool) -> stikk_core::OrientationView {
+    let mut view = maintainer_orientation_view(0, None);
+    view.current_branch = current;
+    if !main_published {
+        view.main_ref_state = None;
+    }
+    view
+}
+
+/// Open an app and answer its first Orientation read with `result`.
+fn open_with_first_read(
+    result: stikk_model::Result<stikk_core::OrientationView>,
+) -> (App, mpsc::Receiver<Request>) {
+    let (mut app, rx) = open("/repo", &Config::default());
+    assert_eq!(app.ref_focus(), &RefFocus::Pending);
+    let req = next_request(&rx);
+    assert!(matches!(req.kind, RequestKind::Orient));
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::Orient(result),
+    });
+    (app, rx)
+}
+
+fn answer_reload(app: &mut App, rx: &mpsc::Receiver<Request>, view: stikk_core::OrientationView) {
+    app.reload();
+    let req = next_request(rx);
+    assert!(matches!(req.kind, RequestKind::Orient));
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::Orient(Ok(view)),
+    });
+}
+
+fn status_line(app: &App) -> String {
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 1)).unwrap();
+    terminal
+        .draw(|f| crate::status_bar::render(app, f, f.area()))
+        .unwrap();
+    crate::test_util::buffer_text(terminal.backend().buffer())
+}
+
+fn top_overlay_text(app: &App) -> String {
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+    terminal
+        .draw(|f| crate::overlay::render(app.top_overlay().unwrap(), app.palette(), f, f.area()))
+        .unwrap();
+    crate::test_util::buffer_text(terminal.backend().buffer())
+}
+
+fn ref_entry(name: &str) -> stikk_prikk::RefEntry {
+    stikk_prikk::RefEntry {
+        name: name.into(),
+        id: "x".into(),
+        closed: false,
+        received: false,
+    }
+}
+
+#[test]
+fn the_first_read_focuses_the_branch_prikk_names() {
+    let (app, rx) = open_with_first_read(Ok(view_on(branch("heads/dev"), true)));
+    assert_eq!(app.focused_ref(), Some("heads/dev"));
+    assert!(
+        rx.try_recv().is_err(),
+        "a branch prikk names opens no picker"
+    );
+    assert!(!app.has_overlay());
+}
+
+#[test]
+fn a_branch_prikk_names_is_followed_even_when_unpublished() {
+    // A fresh 0.42 repository: `current branch: heads/main` beside `heads/main RefState: <not published>`.
+    let (app, rx) = open_with_first_read(Ok(view_on(branch("heads/main"), false)));
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+    assert!(
+        rx.try_recv().is_err(),
+        "no fallback when prikk names a branch"
+    );
+}
+
+#[test]
+fn a_later_read_never_moves_focus_and_the_status_bar_names_prikks_default() {
+    let (mut app, rx) = open_with_first_read(Ok(view_on(branch("heads/dev"), true)));
+    answer_reload(&mut app, &rx, view_on(branch("heads/x"), true));
+    assert_eq!(
+        app.focused_ref(),
+        Some("heads/dev"),
+        "`r` never moves focus"
+    );
+    let line = status_line(&app);
+    assert!(line.contains("heads/dev"), "{line:?}");
+    assert!(line.contains("prikk's default: heads/x"), "{line:?}");
+    assert!(!line.contains("HEAD"), "{line:?}");
+}
+
+#[test]
+fn not_reported_focuses_heads_main_only_when_published_and_otherwise_opens_the_picker() {
+    let (app, rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, true)));
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+    assert!(rx.try_recv().is_err());
+
+    let (app, rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, false)));
+    assert_eq!(app.ref_focus(), &RefFocus::Unfocused);
+    assert!(matches!(next_request(&rx).kind, RequestKind::Refs));
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::Loading { what: "refs", .. })
+    ));
+}
+
+#[test]
+fn unresolved_takes_the_same_fallback_and_shows_prikks_text_verbatim() {
+    let unresolved = || CurrentBranch::Unresolved("<unresolved; run `prikk doctor`>".to_string());
+    let (app, rx) = open_with_first_read(Ok(view_on(unresolved(), true)));
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+    assert!(rx.try_recv().is_err());
+    let line = status_line(&app);
+    assert!(
+        line.contains("heads/main  ·  prikk's default: <unresolved; run `prikk doctor`>"),
+        "{line:?}"
+    );
+    assert!(!line.contains("HEAD"), "{line:?}");
+
+    let (app, rx) = open_with_first_read(Ok(view_on(unresolved(), false)));
+    assert_eq!(app.ref_focus(), &RefFocus::Unfocused);
+    assert!(matches!(next_request(&rx).kind, RequestKind::Refs));
+}
+
+#[test]
+fn a_pick_made_while_pending_survives_the_first_read() {
+    let (mut app, rx) = open("/repo", &Config::default());
+    let orient_req = next_request(&rx);
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(vec![ref_entry("tags/v1")])),
+    });
+    app.select();
+    assert_eq!(app.focused_ref(), Some("tags/v1"));
+    assert!(matches!(
+        next_request(&rx).kind,
+        RequestKind::History { .. }
+    ));
+
+    app.apply(Response {
+        seq: orient_req.seq,
+        kind: ResponseKind::Orient(Ok(view_on(branch("heads/dev"), true))),
+    });
+    assert_eq!(
+        app.focused_ref(),
+        Some("tags/v1"),
+        "the first read resolves nothing"
+    );
+}
+
+#[test]
+fn a_failed_first_read_leaves_focus_pending_and_a_later_success_resolves_it() {
+    let (mut app, rx) = open_with_first_read(Err(StikkError::Refusal {
+        message: "repository is locked".into(),
+    }));
+    assert_eq!(app.ref_focus(), &RefFocus::Pending);
+    assert!(rx.try_recv().is_err());
+    answer_reload(&mut app, &rx, view_on(branch("heads/dev"), true));
+    assert_eq!(app.focused_ref(), Some("heads/dev"));
+}
+
+#[test]
+fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_why() {
+    let (mut app, rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, false)));
+    assert!(matches!(next_request(&rx).kind, RequestKind::Refs));
+    app.back(); // the picker's loading placeholder: escaping it leaves focus unfocused
+    assert_eq!(app.ref_focus(), &RefFocus::Unfocused);
+
+    let actions: [(&str, AppAction); 5] = [
+        ("History (the Enter at the root)", App::select),
+        ("History (the palette's target)", App::open_history),
+        ("Changes (w)", App::open_changes),
+        ("commit (C)", App::begin_commit),
+        ("seal (S)", App::begin_seal),
+    ];
+    for (label, act) in actions {
+        act(&mut app);
+        assert_eq!(
+            app.banner(),
+            Some("No ref is focused. Press b to choose one."),
+            "{label}"
+        );
+        assert!(rx.try_recv().is_err(), "{label} dispatched a request");
+        assert!(!app.has_overlay(), "{label} opened an overlay");
+        assert!(matches!(app.focus(), Focus::Orientation(_)), "{label}");
+        app.back(); // dismiss the banner
+    }
+
+    app.open_palette();
+    let Some(Overlay::Palette {
+        readiness,
+        ref_focused,
+        ..
+    }) = app.top_overlay()
+    else {
+        panic!("expected the palette");
+    };
+    let (readiness, ref_focused) = (*readiness, *ref_focused);
+    assert!(!ref_focused);
+    for command in stikk_core::palette::commands() {
+        let expected = matches!(
+            command.id,
+            "view.history" | "view.changes" | "op.commit" | "op.seal"
+        )
+        .then_some("No ref is focused. Press b to choose one.");
+        assert_eq!(
+            command
+                .unavailable_reason(readiness, ref_focused)
+                .as_deref(),
+            expected,
+            "{}",
+            command.id
+        );
+    }
+    // And the palette's Enter runs nothing it lists as disabled.
+    for ch in "his".chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    assert!(rx.try_recv().is_err(), "the palette ran a disabled command");
+    assert!(matches!(app.top_overlay(), Some(Overlay::Palette { .. })));
+}
+
+#[test]
+fn an_empty_ref_list_offers_an_unpublished_heads_main_and_picking_it_focuses_it() {
+    let (mut app, rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, false)));
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(Vec::new())),
+    });
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::RefPicker {
+            unpublished_main: true,
+            ..
+        })
+    ));
+    let text = top_overlay_text(&app);
+    println!("--- empty ref picker, 80×24\n{text}");
+    assert!(text.contains("no published refs"), "{text}");
+    assert!(text.contains("▶ heads/main (not published)"), "{text}");
+
+    app.nav_down(); // one row: stays on it
+    app.select();
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+    assert!(!app.has_overlay());
+    assert!(
+        rx.try_recv().is_err(),
+        "nothing is published there, so no History is opened"
+    );
+}
+
+#[test]
+fn a_non_empty_ref_list_offers_no_unpublished_row() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(vec![ref_entry("heads/dev")])),
+    });
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::RefPicker {
+            unpublished_main: false,
+            ..
+        })
+    ));
+    let text = top_overlay_text(&app);
+    assert!(text.contains("heads/dev"), "{text}");
+    assert!(!text.contains("not published"), "{text}");
+    assert!(!text.contains("no published refs"), "{text}");
 }

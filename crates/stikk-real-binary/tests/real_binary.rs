@@ -2184,3 +2184,167 @@ fn rfc030_a_rename_declared_between_preview_and_confirmation_is_stale_then_a_fre
         not_stale.join("\n")
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 029 Handoff B: stikk follows prikk's current branch, and names it on both confirmations.
+// ---------------------------------------------------------------------------------------------
+
+/// **RFC 029 Handoff B at both ends: prikk's current branch, as the confirmations see it.**
+///
+/// **At 0.42.** Seal `heads/main`, create `heads/dev` from it, and run a raw `prikk branch switch
+/// heads/dev`. `orient()` reports the branch. A commit previewed for `heads/main` is `Ready` and carries
+/// §5's first-row notice byte for byte; confirming it is legitimate and succeeds. A seal previewed for
+/// `heads/main` then carries the same notice. **And the notice's own claim is re-measured**: after that
+/// seal, a raw `prikk commit` with no `--ref` queues for `heads/dev` (`C-T2b`).
+///
+/// **At 0.28.** prikk reports no current branch, and neither preview carries a notice.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc029b_prikks_current_branch_is_reported_and_named_on_both_confirmations() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+        let at_42 = bin.minor >= 42;
+
+        // heads/main: readme.txt, sealed.
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "main baseline")
+            .unwrap_or_else(|e| panic!("0.{}: commit main: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal main: {e}", bin.minor));
+        if at_42 {
+            // `branch create` signs as MAINTAINER, so the environment stays set through it.
+            prikk_ok(
+                &bin,
+                &repo,
+                &["branch", "create", "heads/dev", "--from", "heads/main"],
+            );
+            prikk_ok(&bin, &repo, &["branch", "switch", "heads/dev"]);
+        }
+        Fixture::clear_env();
+
+        let view = stikk_core::orient(&backend, &repo)
+            .unwrap_or_else(|e| panic!("0.{}: orient: {e}", bin.minor));
+        let expected_branch = if at_42 {
+            stikk_model::CurrentBranch::Branch(
+                stikk_model::RefName::parse("heads/dev").expect("a valid ref name"),
+            )
+        } else {
+            stikk_model::CurrentBranch::NotReported
+        };
+        assert_eq!(
+            view.current_branch, expected_branch,
+            "0.{}: orient()'s current branch",
+            bin.minor
+        );
+        let expected_notice = at_42.then_some(
+            "This targets heads/main. prikk's current branch is heads/dev, the ref prikk uses when \
+             no --ref is given.",
+        );
+
+        // Commit, previewed for heads/main.
+        std::fs::write(repo.join("note.txt"), "a note\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        let outcome = stikk_core::commit_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: commit_preview: {e}", bin.minor));
+        let readiness = backend
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness;
+        let stikk_core::CommitPreviewOutcome::Ready { token, .. } = outcome else {
+            panic!(
+                "0.{}: expected a Ready commit preview, got {outcome:?}",
+                bin.minor
+            );
+        };
+        println!(
+            "0.{}: commit preview for heads/main, notice: {:?}",
+            bin.minor,
+            token.summary().branch_notice
+        );
+        assert_eq!(
+            token.summary().branch_notice.as_deref(),
+            expected_notice,
+            "0.{}: commit's notice",
+            bin.minor
+        );
+        // Legitimate: committing to a ref other than prikk's current branch is allowed.
+        stikk_core::commit_confirm_and_execute(
+            &backend,
+            &repo,
+            *token,
+            readiness,
+            stikk_core::Evidence::ExplicitYes,
+            "committed to heads/main while prikk's current branch is elsewhere",
+        )
+        .unwrap_or_else(|e| panic!("0.{}: the confirmed commit: {e}", bin.minor));
+        Fixture::clear_env();
+
+        // Seal, previewed for heads/main.
+        fixture.set_maintainer_env();
+        let outcome = stikk_core::seal_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal_preview: {e}", bin.minor));
+        let stikk_core::SealPreviewOutcome::Ready { token } = outcome else {
+            panic!("0.{}: expected a Ready seal preview", bin.minor);
+        };
+        println!(
+            "0.{}: seal preview for heads/main, notice: {:?}",
+            bin.minor,
+            token.summary().branch_notice
+        );
+        assert_eq!(
+            token.summary().branch_notice.as_deref(),
+            expected_notice,
+            "0.{}: seal's notice",
+            bin.minor
+        );
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+
+        if !at_42 {
+            eprintln!(
+                "RFC 029 B: the `--ref` default re-measurement SKIPPED at 0.{} — there is no current \
+                 branch below 0.42, so a raw commit without `--ref` has nothing to default to. \
+                 Announced rather than silent (RFC 022 §3).",
+                bin.minor
+            );
+            continue;
+        }
+
+        // The notice says prikk uses its current branch when no --ref is given. Measure it.
+        std::fs::write(repo.join("second.txt"), "second\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        let raw = prikk_ok(&bin, &repo, &["commit", "-m", "no --ref given"]);
+        Fixture::clear_env();
+        let queued = backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor));
+        println!(
+            "0.{}: raw `prikk commit -m` with no --ref printed {:?}; status reports {} queued for {:?}",
+            bin.minor,
+            String::from_utf8_lossy(&raw.stdout)
+                .lines()
+                .find(|line| line.starts_with("baseline ref:")),
+            queued.queued_patches,
+            queued.queued_target
+        );
+        assert_eq!(
+            queued.queued_target.as_deref(),
+            Some("heads/dev"),
+            "0.{}: a raw commit with no --ref must queue for prikk's current branch",
+            bin.minor
+        );
+    }
+}

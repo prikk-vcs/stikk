@@ -244,13 +244,15 @@ a fabricated worktree entry was fixed.
    `d5356a8`, `7f1f391`). A silent check on focus and every 5 seconds while idle; a detected change refreshes what is
    on screen with *"repository changed outside stikk — refreshed"*, and an open confirmation goes stale at once. `r`
    now refreshes Changes and the tip's Block detail, each re-reading its own ref. Ships in 0.8.0.
-2. **The commit preview does not show the rename a declaration authors** (prikk ≥ 0.38). Measured at 0.42 for
+2. **The commit preview does not show the rename a declaration authors** (prikk ≥ 0.38) — with item 4, in
+   [RFC 032](rfcs/proposed/032-what-a-commit-will-author.md), proposed; Q1 is the owner's. Measured at 0.42 for
    RFC 030's amendment: after `prikk mv a.txt b.txt`, `worktree-status` lists `missing a.txt` and `untracked b.txt`,
    and `prikk commit` authors `rename-path a.txt -> b.txt`. stikk's preview shows the two paths and never the
    rename. RFC 030 v2 makes a declaration that changes after the preview stale; showing declarations at all is
    its own RFC.
 3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
-4. **The Changes view says nothing when its baseline is unpublished.** Measured at prikk 0.28 and 0.41, a ref with
+4. **The Changes view says nothing when its baseline is unpublished** — with item 2, in
+   [RFC 032](rfcs/proposed/032-what-a-commit-will-author.md). Measured at prikk 0.28 and 0.41, a ref with
    no published history reads as an empty baseline everywhere — `worktree-status` lists every file untracked, `log`
    reports empty history, and `commit` authors onto the new name. **That is prikk's deliberate model, not a defect**:
    it is exactly how a first commit is previewed, so nothing is asked of prikk. Orientation already shows

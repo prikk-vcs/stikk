@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 032 | [What a commit will author](./proposed/032-what-a-commit-will-author.md) | a `prikk mv` shown as a delete and an add though prikk authors one rename, and a ref's first commit shown as untracked files against a baseline that does not exist; Q1: annotate prikk's two entries, or fold them into one row |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

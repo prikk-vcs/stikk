@@ -41,10 +41,14 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.4.0 is where stikk writes.** Orientation, ref history, block detail, worktree changes, and the
-refusal-explanation / glossary surfaces, plus two mutations: **commit** (author a worktree capture into
-the active queue) and **seal** (freeze that queue into permanent, MAINTAINER-signed history) — both
-always preview-first, with tiered confirmation a compile error can't let you skip.
+**v0.7.x shows what a change will do — and makes no change it did not show.** It reads orientation,
+ref history, block detail, worktree changes and the **Queue view** (each queued patch, with its message
+on prikk ≥ 0.42), with refusal explanations and a glossary. It performs two mutations: **commit** (author
+a worktree capture into the active queue) and **seal** (freeze that queue into permanent,
+MAINTAINER-signed history, naming the patches it freezes) — both always preview-first, with tiered
+confirmation a compile error can't let you skip. **A confirmed commit authors only the worktree its
+preview showed**: if anything changes between preview and Enter, stikk says so and commits nothing.
+Patch detail, Compare, merge, sync, and tag or branch creation are not built yet.
 
 ## Links
 

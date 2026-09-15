@@ -6,8 +6,8 @@
 [Report a vulnerability](SECURITY.md)
 
 **stikk is a history browser and workbench for the [prikk](https://github.com/nabbisen/prikk)
-version control system** — a terminal (TUI) and graphical (GUI) front-end over one shared operation
-layer.
+version control system** — a terminal (TUI) front-end, with a graphical (GUI) one planned, over one shared
+operation layer.
 
 ## Overview
 
@@ -53,11 +53,14 @@ stikk says its output shapes have not been checked against it, rather than assum
 Opening a repository on a terminal launches the interactive **TUI** — an Orientation view showing
 prikk version and support, queue depth, signing readiness, and your derived capability, inside a shell
 with a status bar and a Help overlay (`?`). Run it piped or in CI and you get the same orientation as a
-one-shot print instead. The TUI is built on `ratatui` (RFC 001); more views (History, Patch detail)
-follow. Try it with no repository: `cargo run -p stikk-tui --example orientation_demo`.
+one-shot print instead. The TUI is built on `ratatui` (RFC 001), and from there you can open History and
+Block detail, worktree Changes and the Queue view, and commit or seal behind preview-first confirmation;
+Patch detail and Compare are not built yet. Try it with no repository: `cargo run -p stikk-tui --example
+orientation_demo`.
 
-stikk reads `PRIKK_*_SEED` **presence only, never their values**; set `STIKK_READ_ONLY=1` to force a
-read-only session.
+stikk never reads a seed's value. On prikk ≥ 0.41 it asks prikk for signing readiness (`prikk key
+status`); below that it checks only whether `PRIKK_*_KEY_ID` and `PRIKK_*_SEED` are set. Set
+`STIKK_READ_ONLY=1` to force a read-only session.
 
 ## Design notes
 
@@ -69,8 +72,9 @@ read-only session.
   against prikk on use; cutting all of stikk's state leaves every repository byte-identical. stikk's
   files live in user scope and a path resolver refuses any repository-internal target before every
   write — the *primary* control, since prikk has no foreign-file backstop.
-- **No key material ever enters stikk.** It reads signing-key *presence* only; prikk reads seeds
-  itself. This is enforced by test, not just convention.
+- **No key material ever enters stikk.** It asks prikk for signing readiness on prikk ≥ 0.41 and reads
+  signing-key *presence* only below that; prikk reads seeds itself. This is enforced by test, not just
+  convention.
 - **One operation layer, two frontends.** The TUI and GUI drive the same operations, so parity is
   mechanical, not maintained by hand.
 
@@ -83,7 +87,7 @@ read-only session.
 | [`stikk`](https://crates.io/crates/stikk) | A user-facing history browser and workbench for the prikk version control system (the launcher binary). | [![crates.io](https://img.shields.io/crates/v/stikk.svg?label=%20)](https://crates.io/crates/stikk) | [![documentation](https://img.shields.io/badge/docs-github_pages-brightgreen)](https://prikk-vcs.github.io/stikk/) | [![Dependency Status](https://deps.rs/crate/stikk/latest/status.svg)](https://deps.rs/crate/stikk) |
 | [`stikk-core`](https://crates.io/crates/stikk-core) | The operation layer: one shared operation set both frontends drive. Owns no I/O and no widgets; orchestrates the seam, state, and view-models. | [![crates.io](https://img.shields.io/crates/v/stikk-core.svg?label=%20)](https://crates.io/crates/stikk-core) | [![docs.rs](https://img.shields.io/docsrs/stikk-core?version=latest&label=%20)](https://docs.rs/stikk-core) | [![Dependency Status](https://deps.rs/crate/stikk-core/latest/status.svg)](https://deps.rs/crate/stikk-core) |
 | [`stikk-model`](https://crates.io/crates/stikk-model) | Shared kernel for stikk: error taxonomy, object/ref identity, request categories, and capabilities. No I/O. | [![crates.io](https://img.shields.io/crates/v/stikk-model.svg?label=%20)](https://crates.io/crates/stikk-model) | [![docs.rs](https://img.shields.io/docsrs/stikk-model?version=latest&label=%20)](https://docs.rs/stikk-model) | [![Dependency Status](https://deps.rs/crate/stikk-model/latest/status.svg)](https://deps.rs/crate/stikk-model) |
-| [`stikk-prikk`](https://crates.io/crates/stikk-prikk) | The prikk seam: the only code in stikk that talks to prikk. CLI backend, version handshake, and presence-only key readiness. | [![crates.io](https://img.shields.io/crates/v/stikk-prikk.svg?label=%20)](https://crates.io/crates/stikk-prikk) | [![docs.rs](https://img.shields.io/docsrs/stikk-prikk?version=latest&label=%20)](https://docs.rs/stikk-prikk) | [![Dependency Status](https://deps.rs/crate/stikk-prikk/latest/status.svg)](https://deps.rs/crate/stikk-prikk) |
+| [`stikk-prikk`](https://crates.io/crates/stikk-prikk) | The prikk seam: the only code in stikk that talks to prikk. CLI backend, version handshake, and signing readiness — from prikk itself where it reports it, and presence only otherwise. | [![crates.io](https://img.shields.io/crates/v/stikk-prikk.svg?label=%20)](https://crates.io/crates/stikk-prikk) | [![docs.rs](https://img.shields.io/docsrs/stikk-prikk?version=latest&label=%20)](https://docs.rs/stikk-prikk) | [![Dependency Status](https://deps.rs/crate/stikk-prikk/latest/status.svg)](https://deps.rs/crate/stikk-prikk) |
 | [`stikk-state`](https://crates.io/crates/stikk-state) | stikk's own durable data: config, sessions, recents. Lives in user scope, never inside a repository, and is never authority. | [![crates.io](https://img.shields.io/crates/v/stikk-state.svg?label=%20)](https://crates.io/crates/stikk-state) | [![docs.rs](https://img.shields.io/docsrs/stikk-state?version=latest&label=%20)](https://docs.rs/stikk-state) | [![Dependency Status](https://deps.rs/crate/stikk-state/latest/status.svg)](https://deps.rs/crate/stikk-state) |
 | [`stikk-tui`](https://crates.io/crates/stikk-tui) | The terminal (TUI) frontend for stikk. Renders the operation layer's view-models; computes nothing about the repository. | [![crates.io](https://img.shields.io/crates/v/stikk-tui.svg?label=%20)](https://crates.io/crates/stikk-tui) | [![docs.rs](https://img.shields.io/docsrs/stikk-tui?version=latest&label=%20)](https://docs.rs/stikk-tui) | [![Dependency Status](https://deps.rs/crate/stikk-tui/latest/status.svg)](https://deps.rs/crate/stikk-tui) |
 

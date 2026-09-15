@@ -2,53 +2,63 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.7.0 — 2026-09-15
+
+**stikk shows what a change will do — and no longer makes a change it did not show.** 0.6.0 made stikk
+say what it knows; 0.7.0 is about the moment you decide. **A confirmed commit authors the worktree its
+preview showed**: if the repository or the worktree changes between preview and Enter, stikk says which,
+and commits nothing (RFC 030). **Commit is unavailable, with prikk's reasons, when prikk says it would
+refuse**, and the unsupported paths stikk has counted and never listed since 0.1.0 are listed (RFC 027).
+**The Queue view** (`Q`) lists each queued patch, **the seal confirmation names the patches it freezes**,
+and History no longer puts another ref's queue on this ref's lineage (RFC 028). **The validated prikk
+range moves to 0.42**, and stikk opens on prikk's current branch, shows prikk's default beside its own
+focus when the two differ, and names both refs on a confirmation (RFC 029). The real-binary suite drives
+all twelve seam methods, at prikk 0.28 and 0.42 on Linux, macOS and Windows.
 
 ### Breaking
 
-Per RFC 011, for a `0.x` crate the minor version is the breaking position; these land in 0.7.0:
+Per RFC 011, for a `0.x` crate the minor version is the breaking position; these land in 0.7.0, grouped by
+crate in dependency order:
 
 | Crate | Change |
 |---|---|
+| `stikk-model` | `ChangeToken::compose` gains a fourth parameter, `current_branch: &CurrentBranch` |
+| `stikk-model` | `StikkError::Stale` gains a field, `cause: StaleCause` — breaking for anyone constructing it or destructuring it without `..`; its `Display` now names the repository or the worktree |
+| `stikk-prikk` | the `Prikk` trait gains `queue(&self, repo) -> Result<QueueReport>` — every implementor must add it |
 | `stikk-prikk` | `WorktreeEntry` gains `authoring: Authoring` — prikk's per-entry commit verdict: authored, refused with prikk's reason, or unreported below prikk 0.39 |
-| `stikk-prikk` | `WorktreeStatus` gains `refused: Option<u64>` — `None` below prikk 0.39, never `Some(0)` |
-| `stikk-prikk` | `WorktreeStatus::queued_elsewhere` changes type from `Option<String>` to `Option<QueuedElsewhere>` — prikk's sentence (`Note`) below 0.39, or prikk's queued ref (`Ref`) at ≥ 0.39 |
-| `stikk-core` | `ChangeEntry` gains `authoring`; `ChangesView` gains `refused` and its `queued_elsewhere` changes type the same way |
-| `stikk-core` | `CommitPreviewOutcome` gains a variant, `WouldRefuse(Vec<RefusedPath>)` — breaking for an exhaustive `match` |
-| `stikk-tui` | `Overlay` gains a variant, `CommitWouldRefuse { paths }` — breaking for an exhaustive `match` |
-| `stikk-model` | `ChangeToken::compose` gains a fourth parameter, `current_branch: &CurrentBranch` (RFC 030) |
-| `stikk-model` | `StikkError::Stale` gains a field, `cause: StaleCause` — breaking for anyone constructing it or destructuring it without `..`; its `Display` now names the repository or the worktree (RFC 030) |
-| `stikk-prikk` | `Orientation` gains `current_branch: CurrentBranch` (RFC 030) |
-| `stikk-prikk` | `WorktreeStatus` gains `declarations: Vec<RenameDeclaration>` (RFC 030) |
-| `stikk-core` | `OrientationView` gains `current_branch`; `ChangesView` gains `declarations` (RFC 030) |
-| `stikk-core` | `Presentation::Stale` gains `cause` and `headline` (RFC 030) |
-| `stikk-core` | `CommitPreviewOutcome::Ready`'s `token` changes type from `Box<PreviewToken>` to `Box<CommitToken>` (RFC 030) |
-| `stikk-core` | `commit_confirm_and_execute` takes a `CommitToken`, and no longer takes `reff: &str` — the commit is authored onto the ref the preview was built for (RFC 030) |
-| `stikk-tui` | `Overlay::Stale` gains `cause` and `headline` (RFC 030) |
-| `stikk-core` | `ConfirmationSummary` gains `branch_notice: Option<String>` (RFC 029) |
-| `stikk-core` | `Command` gains `needs_focused_ref: bool` (RFC 029) |
-| `stikk-tui` | `App::focused_ref` returns `Option<&str>` instead of `&str` — `None` until a ref is focused, and `App::open` no longer focuses `heads/main` before the first Orientation read (RFC 029) |
-| `stikk-tui` | `Overlay::RefPicker` gains `unpublished_main`, and `Overlay::Palette` gains `ref_focused` (RFC 029) |
-| `stikk-prikk` | `Prikk` gains a method, `queue(&self, repo) -> Result<QueueReport>` — breaking for any implementor (RFC 028) |
-| `stikk-core` | `HistoryView` gains `queued_target: Option<String>` (RFC 028) |
-| `stikk-tui` | `Screen` gains a variant, `Queue { view, refreshing, offset }`, and `Focus` gains `Queue(&QueueView, &Cell<u16>)` — breaking for an exhaustive `match` (RFC 028) |
-| `stikk-core` | `ConfirmationSummary` gains `freezes: Option<FrozenPatches>` (RFC 028) |
+| `stikk-prikk` | `WorktreeStatus` gains `refused: Option<u64>` (`None` below prikk 0.39, never `Some(0)`) and `declarations: Vec<RenameDeclaration>`, and its `queued_elsewhere` changes type from `Option<String>` to `Option<QueuedElsewhere>` — prikk's sentence (`Note`) below 0.39, or prikk's queued ref (`Ref`) at ≥ 0.39 |
+| `stikk-prikk` | `Orientation` gains `current_branch: CurrentBranch` |
+| `stikk-core` | `commit_confirm_and_execute` takes a `CommitToken` instead of a `PreviewToken`, and no longer takes `reff: &str` — the commit is authored onto the ref the preview was built for |
+| `stikk-core` | `CommitPreviewOutcome` gains a variant, `WouldRefuse(Vec<RefusedPath>)` — breaking for an exhaustive `match` — and its `Ready` variant's `token` changes type from `Box<PreviewToken>` to `Box<CommitToken>` |
+| `stikk-core` | `ChangeEntry` gains `authoring`; `ChangesView` gains `refused` and `declarations`, and its `queued_elsewhere` changes type as `WorktreeStatus`'s does |
+| `stikk-core` | `ConfirmationSummary` gains `branch_notice: Option<String>` and `freezes: Option<FrozenPatches>` |
+| `stikk-core` | `OrientationView` gains `current_branch`, and `HistoryView` gains `queued_target: Option<String>` |
+| `stikk-core` | `Presentation::Stale` gains `cause` and `headline` |
+| `stikk-core` | `Command` gains `needs_focused_ref: bool` |
+| `stikk-tui` | `App::focused_ref` returns `Option<&str>` instead of `&str` — `None` until a ref is focused, and `App::open` no longer focuses `heads/main` before the first Orientation read |
+| `stikk-tui` | `Overlay` gains a variant, `CommitWouldRefuse { paths }` — breaking for an exhaustive `match` — and `Overlay::Stale` gains `cause` and `headline`, `Overlay::RefPicker` gains `unpublished_main`, and `Overlay::Palette` gains `ref_focused` |
+| `stikk-tui` | `Screen` gains a variant, `Queue { view, refreshing, offset }`, and `Focus` gains `Queue(&QueueView, &Cell<u16>)` — breaking for an exhaustive `match` |
 
 Every struct above is constructed with struct literals by anyone scripting a `NullBackend` or rendering a
-view; none is `#[non_exhaustive]`. **Additive**, and not listed above: the new `Authoring`,
-`QueuedElsewhere`, `RefusedPath`, `CurrentBranch`, `StaleCause`, `RenameDeclaration` and `CommitToken`
-types; `ChangeKind::label`, `queued_elsewhere_clauses`, `would_refuse_next_steps`, `stale_headline` and
-`stale_gloss`; `NullBackend::with_queued_elsewhere_ref`, `with_worktree_status_on_reread`,
-`with_worktree_status_refusal_on_reread` and `commit_calls`; `branch_notice`, `NO_FOCUSED_REF_REASON`,
-`Command::available` and `Command::unavailable_reason`; the `RefFocus` type and `App::ref_focus`; the `QueueReport`, `Queue`, `QueueTarget`, `QueueThreshold`,
-`ThresholdStatus`, `QueuedPatch`, `QueuedMessage`, `QueuedOperation` and `QueuedPath` types,
-`NullBackend::with_queue` and `with_queue_refusal`; `queue_view`, `QueueView`, `QueuedPatchView` and
-`HistoryView::queued_tier`; `Target::Queue` (`Target` is `#[non_exhaustive]`) and `App::open_queue`; `OperationContext::LoadQueue`
-(`OperationContext` is `#[non_exhaustive]`); the `FrozenPatches` type, `unshown_patches_line` and
-`SHORT_ID_CHARS`; and their
-re-exports from `stikk-core`, `stikk-model` and `stikk-tui`. **Three public signatures changed**, all listed
-above: `ChangeToken::compose`, `commit_confirm_and_execute` and `App::focused_ref`. No public function,
-trait method or re-export was removed. **The `Prikk` trait gained one method**, `queue`, listed above.
+view; none is `#[non_exhaustive]`. **Three public signatures changed** — `ChangeToken::compose`,
+`commit_confirm_and_execute` and `App::focused_ref` — and **the `Prikk` trait gained one method**, `queue`.
+No public function, trait method or re-export was removed. The MSRV is unchanged at 1.88.
+
+**Additive**, and not listed above:
+
+- **`stikk-model`:** the `CurrentBranch` and `StaleCause` types.
+- **`stikk-prikk`:** the `Authoring`, `QueuedElsewhere` and `RenameDeclaration` types; the queue's
+  `QueueReport`, `Queue`, `QueueTarget`, `QueueThreshold`, `ThresholdStatus`, `QueuedPatch`,
+  `QueuedMessage`, `QueuedOperation` and `QueuedPath`; and `NullBackend::with_queued_elsewhere_ref`,
+  `with_worktree_status_on_reread`, `with_worktree_status_refusal_on_reread`, `commit_calls`, `with_queue`
+  and `with_queue_refusal`.
+- **`stikk-core`:** the `RefusedPath`, `CommitToken`, `FrozenPatches`, `QueueView` and `QueuedPatchView`
+  types; `queue_view`, `queued_elsewhere_clauses`, `would_refuse_next_steps`, `stale_headline`,
+  `stale_gloss`, `branch_notice` and `unshown_patches_line`; `ChangeKind::label`, `HistoryView::queued_tier`,
+  `Command::available` and `Command::unavailable_reason`; `NO_FOCUSED_REF_REASON` and `SHORT_ID_CHARS`;
+  `Target::Queue` and `OperationContext::LoadQueue`, each on a `#[non_exhaustive]` enum; and re-exports of
+  `Authoring`, `QueuedElsewhere` and `RenameDeclaration`.
+- **`stikk-tui`:** the `RefFocus` type, `App::ref_focus` and `App::open_queue`.
 
 ### Added
 
@@ -63,9 +73,10 @@ trait method or re-export was removed. **The `Prikk` trait gained one method**, 
   before, and prikk's refusal comes back verbatim (RFC 027).
 - **The Queue view** (`Q`, or the palette) lists each queued patch: its id, its operations — a rename as
   *from → to* with the key that asserted it, and a node no longer in the baseline named as one — and, on
-  prikk ≥ 0.42, its message. It shows the queue's target ref and thresholds, and needs no focused ref. On
-  prikk 0.39–0.41 it says once that prikk does not report a queued patch's message; below 0.39 it shows
-  the count and target and says prikk does not list queued patches, never an empty list (RFC 028).
+  prikk ≥ 0.42, its message. It shows the queue's target ref and thresholds, scrolls when the queue is
+  taller than the screen, and needs no focused ref. On prikk 0.39–0.41 it says once that prikk does not
+  report a queued patch's message; below 0.39 it shows the count and target and says prikk does not list
+  queued patches, never an empty list (RFC 028).
 
 ### Changed
 
@@ -85,6 +96,17 @@ trait method or re-export was removed. **The `Prikk` trait gained one method**, 
   repository path** — a backslash in it, or bytes that are not UTF-8. prikk 0.42 began reporting those
   paths as ones `commit` would refuse, and stikk already declines to offer a commit prikk has said it
   will refuse. This is the first release in which a user sees it happen (RFC 029).
+- **Where stikk opens.** On prikk ≥ 0.42, stikk opens focused on prikk's current branch. Below 0.42, or
+  when prikk reports its pointer unresolved, it opens on `heads/main` only when that is published, and
+  otherwise opens the ref picker with no ref focused; until a ref is focused, History, Changes, commit and
+  seal say why they are unavailable, and an empty repository's picker offers `heads/main (not published)`.
+  Choosing another ref in stikk still never moves prikk's current branch or touches the worktree (RFC 029).
+- **The status bar shows `prikk's default: <branch>` beside stikk's focus when the two differ**, and the
+  Orientation view shows prikk's current branch whole. When the status bar is too narrow it gives up, in
+  order, its key hint, then the repository name (shortened with `…`), then prikk's default (shortened with
+  `…`), then that segment — and never cuts the focus, the queue count or the signing badges (RFC 029).
+- **Commit and seal confirmations name both refs when they differ**: the ref being targeted, and prikk's
+  current branch — the ref prikk uses when no `--ref` is given. It is a notice, not a block (RFC 029).
 - **On prikk ≥ 0.42, switching branches outside stikk counts as a repository change.** A terminal
   `prikk branch switch` moves no branch, tag or queue, so stikk used not to notice it; its current branch
   is now part of what stikk compares, and a commit or seal confirmation armed before the switch is stale
@@ -92,21 +114,10 @@ trait method or re-export was removed. **The `Prikk` trait gained one method**, 
 - **A stale confirmation now says whether the repository or the worktree changed**, and no longer
   attributes the change to "another writer". The worktree wording names what stikk compares: which paths
   prikk lists, their status, prikk's verdict on them, and rename declarations (RFC 030).
-- **On prikk ≥ 0.42, stikk opens focused on prikk's current branch**, and the status bar shows
-  `prikk's default: <branch>` beside stikk's focus when the two differ — shortened with `…` when the
-  line is full; the Orientation view shows it whole. When the status bar is too narrow it drops its key
-  hint first and never cuts the focus, the queue count or the signing badges. Choosing another ref in
-  stikk still never moves prikk's current branch or touches the worktree (RFC 029).
-- **Commit and seal confirmations name both refs when they differ**: the ref being targeted, and prikk's
-  current branch — the ref prikk uses when no `--ref` is given. It is a notice, not a block (RFC 029).
-- **Below prikk 0.42, or with an unresolved pointer, stikk opens on `heads/main` only when it is
-  published**, and otherwise opens the ref picker with no ref focused. Until a ref is focused, History,
-  Changes, commit and seal say why they are unavailable. An empty repository's picker offers
-  `heads/main (not published)` (RFC 029).
 - **On prikk ≥ 0.39, the seal confirmation names each patch it will freeze**, by short id, with its
-  message on prikk ≥ 0.42. When they do not all fit, it shows as many as fit and says how many more there
-  are and where to see them; nothing else on the card gives up room for the list. Below 0.39 it says
-  prikk does not list queued patches (RFC 028).
+  message on prikk ≥ 0.42. When they do not all fit, it shows as many as fit and says how many more are
+  not shown, and that the Queue view lists them all; nothing else on the card gives up room for the list.
+  Below 0.39 it says prikk does not list queued patches (RFC 028).
 
 ### Fixed
 
@@ -124,22 +135,28 @@ trait method or re-export was removed. **The `Prikk` trait gained one method**, 
   prikk's sentence verbatim, and it was one unwrapped row: at 80 columns it stopped after the first
   clause, so "real, committed work" and "do not delete" were never on screen. It now wraps, prikk's
   words unchanged, with the quote bar on every row (RFC 027).
-- **The Glossary no longer says prikk has no current-branch pointer.** That was true below prikk 0.42.
-  From 0.42, `.prikk/current-branch` names a default for `--ref`, which prikk calls "a default, never an
-  authority" — still not a HEAD (RFC 029).
-- **A commit confirmed after the worktree changed no longer commits the changed worktree.** Between a
-  commit's preview and its confirmation, a terminal `prikk branch switch`, a file added or removed, or a
-  `prikk mv` used to go straight into the commit, onto the ref the preview showed, with nothing on screen
-  saying so. A file added was measured at prikk 0.28 and 0.42; a branch switch and a `prikk mv`, which
-  need prikk 0.42 and 0.38, were measured at 0.42. stikk now re-reads what prikk reports about the
-  worktree immediately before committing; if it no longer matches the preview, stikk says the worktree
-  changed and commits nothing. **What this cannot see is stated rather than implied away:** a further
-  edit to a file the preview already listed as modified, and anything that changes in the moment between
-  that re-read and prikk's own commit (RFC 030).
 - **History no longer shows another ref's queued patches as this ref's "not yet sealed" tier.** The queue
   belongs to one ref, and History put its count on every ref's lineage. The tier now says whose queue it
   is — this ref's, another ref's by name, or one prikk reports no target for — and shows no line when
   nothing is queued (RFC 028 F5).
+- **The Glossary no longer says prikk has no current-branch pointer.** That was true below prikk 0.42.
+  From 0.42, `.prikk/current-branch` names a default for `--ref`, which prikk calls "a default, never an
+  authority" — still not a HEAD (RFC 029).
+
+### Security
+
+- **A confirmed commit no longer authors content its preview did not show.** Before 0.7.0, a commit
+  could be authored — and signed with your AUTHOR key — holding content the preview never showed, which
+  is threat model `T-T4` exactly. Between a commit's preview and its confirmation, a terminal
+  `prikk branch switch`, a file added or removed, or a `prikk mv` went straight into the commit, onto the
+  ref the preview showed, with nothing on screen saying so. A file added was measured at prikk 0.28 and
+  0.42; a branch switch and a `prikk mv`, which need prikk 0.42 and 0.38, were measured at 0.42. stikk now
+  re-reads what prikk reports about the worktree immediately before committing; if it no longer matches
+  the preview, stikk says the worktree changed and commits nothing. **A change made outside stikk between
+  preview and Enter — an editor's autosave, a build writing a file that is not ignored — now makes the
+  confirmation stale, and you preview again.** **What this cannot see is stated rather than implied
+  away:** a further edit to a file the preview already listed as modified, and anything that changes in
+  the moment between that re-read and prikk's own commit (RFC 030).
 
 ## 0.6.0 — 2026-09-13
 

@@ -84,13 +84,14 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.6.x release is (and is not)
+## What a v0.7.x release is (and is not)
 
-v0.6.x reads orientation, history, block detail, worktree changes, and the refusal/glossary surfaces,
-and performs two mutations — **commit** (author a worktree capture) and **seal** (freeze the queue into
-signed history) — both preview-first with tiered confirmation, naming the key that will sign. Signing
-readiness is read from prikk itself on prikk ≥ 0.41. Merge, sync, tag create, and branch create/close
-remain unbuilt: the `Prikk` seam has no method for any of them. It drives the external `prikk` binary
+v0.7.x reads orientation, history, block detail, worktree changes, the Queue view, and the
+refusal/glossary surfaces, and performs two mutations — **commit** (author a worktree capture) and **seal**
+(freeze the queue into signed history) — both preview-first with tiered confirmation, naming the key that
+will sign. A confirmed commit authors only the worktree its preview showed, and the seal confirmation
+names the patches it freezes. Signing readiness is read from prikk itself on prikk ≥ 0.41. Merge, sync,
+tag create, and branch create/close remain unbuilt: the `Prikk` seam has no method for any of them. It drives the external `prikk` binary
 at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.42.0** — so the release
 notes must state which prikk version it was validated against and how to install it — a
 `cargo install stikk` with no `prikk` on `PATH` will open and then explain that prikk is missing, by

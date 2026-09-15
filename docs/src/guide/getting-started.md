@@ -44,9 +44,16 @@ gives you — inside a shell with a status bar and a Help overlay. Run it inside
 argument and stikk discovers the repository root by walking upward for a `.prikk` directory, the same
 way prikk does.
 
+**Where stikk opens.** On prikk ≥ 0.42, stikk opens focused on prikk's current branch, and when you
+choose another ref the status bar shows prikk's default beside it. Below 0.42, or when prikk reports its
+current branch unresolved, stikk opens on `heads/main` if that is published, and otherwise with no ref
+focused and the ref picker open. Choosing a ref in stikk never moves prikk's current branch and never
+touches the worktree.
+
 Key reference: `Enter` opens History and drills into a block; `b` chooses which ref to view; `w` opens
-Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; `:` opens the command
-palette; `R` shows the session's recent refusals; `o` lists background operations still in flight or
+Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; `Q` opens the Queue view,
+the patches waiting to be sealed; `C` commits worktree changes and `S` seals the queue, each after a
+preview and a confirmation; `:` opens the command palette; `R` shows the session's recent refusals; `o` lists background operations still in flight or
 recently finished (a listing only — there is no cancel action); `?` opens the glossary and full key
 reference; `r` refreshes the current view from prikk; `Esc`/`q` steps back, and quits at the root.
 
@@ -55,9 +62,8 @@ To see the TUI with no repository at all: `cargo run -p stikk-tui --example orie
 `history_demo`, `explanation_demo`, and `changes_demo` for the other views, all scripted — no prikk
 binary or repository needed).
 
-**Patch detail** is deferred behind `UD-09` (prikk exposes no per-patch content yet); **Compare** is
-deferred behind the same ceiling, with a recorded future route (RFC 008). Both are named gaps, not
-upcoming work.
+**Patch detail** and **Compare** are not built yet. prikk ≥ 0.36 can render a patch's content with
+`prikk show`, so Patch detail waits on stikk's own work, and both are on the roadmap.
 
 ## Capability and signing
 

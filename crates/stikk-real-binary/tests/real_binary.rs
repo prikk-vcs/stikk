@@ -1,10 +1,11 @@
 //! The real-binary integration suite's actual test functions (`TS-07`; RFC 019). See
 //! `stikk_real_binary`'s crate-level doc for the boundary this holds and why it lives in its own crate.
 //!
-//! **Coverage: all ten `Prikk` seam methods, at both ends of the supported range** (RFC 022 §2).
+//! **Coverage: all twelve `Prikk` seam methods, at both ends of the supported range** (RFC 022 §2).
 //! `handshake` is driven by the version guard every test runs through [`PrikkBin::resolve`];
 //! `orientation`, `history`, `commit` and `seal` since RFC 019; `worktree_status`, `block_state`,
-//! `refs`, `tags` and `change_token` since RFC 022. (0.5.0's changelog said "four of the nine
+//! `refs`, `tags` and `change_token` since RFC 022; `readiness` since 0.6.0's preparation; and `queue`
+//! since RFC 028. (0.5.0's changelog said "four of the nine
 //! surfaces" — it undercounted `handshake` and there were always ten, not nine; the correction is in
 //! `## Unreleased`.) Two failure-classifier arms are provoked here as well rather than only cited: a
 //! genuinely held lock, and the full-queue precondition prikk 0.35 reclassified — see
@@ -29,7 +30,7 @@
 //! (**derived, not written** — the same form `.github/workflows/real-binary.yml` uses, and for the
 //! reason the previous version of this comment proved: it hardcoded `0.28.0`/`0.33.0`, warned in the
 //! next line that those "drift the moment RFC 019 §6 does its job", and then drifted at the very next
-//! ceiling raise. RFC 021's sweep caught it. Today the numbers are 28 and 38) — then:
+//! ceiling raise. RFC 021's sweep caught it. Today the numbers are 28 and 42) — then:
 //!
 //! ```sh
 //! STIKK_TEST_PRIKK_FLOOR_BIN=/tmp/prikk-floor/bin/prikk \

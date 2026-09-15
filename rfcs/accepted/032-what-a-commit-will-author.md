@@ -235,6 +235,37 @@ replaces it with `resolution`, **prevents on `resolution: "refused"`** — prikk
 replaces F3's content sentence with `content_changed`/`mode_changed`. **prikk names the fields final only when 0.43.0
 publishes**, and stikk measures them before relying on them.
 
+### A6 — the destination sentence says *a file*, because a directory of that name can be there
+
+**Measured at 0.42.0:** with the destination path replaced by a **directory** holding `q.txt`, prikk lists `missing {old}`
+and `untracked {new}/q.txt`, authors `delete-file {old}` and `create-file {new}/q.txt`, and prints *"declaration {old} ->
+{new}: destination is ignored; recorded as a deletion, not a rename"*. §3 classifies it destination-absent, correctly —
+**but §5's sentence claimed too much**: a directory named `{new}` *is* in the worktree.
+
+**§5's destination-absent sentence becomes, on both surfaces:**
+`declared rename {old} → {new}: {new} is not a file in the worktree, so prikk will not author it as a rename`
+
+True of row 1 (deleted), row 3 (moved away) and the directory case. **Any prose quoting it — the changelog, `requirements.md`
+— says the same.**
+
+### A7 — the content sentence is not said while prikk reports a refusal
+
+**Measured at 0.42.0:** with the destination replaced by a **symlink**, prikk lists **both halves** — so §3 says paired, rightly —
+but marks the destination `authoring: refused`, reports `refused_count: 1`, and **`commit` refuses the whole commit**
+(*"b.txt: worktree symlink authoring is out of scope"*). RFC 027 decision 5 already makes commit unavailable there
+(`WouldRefuse`), before any token exists, and the Changes view carries prikk's reason verbatim.
+
+**What still read wrong:** the same view said *"a declared rename is authored as a rename; prikk does not report whether its
+content also changed"* — **untrue while prikk will author nothing at all** (`C-T2b`).
+
+**Ruled:** the content sentence is **omitted whenever prikk reports at least one refused entry** — `refused: Some(n)`, `n ≥ 1`,
+**prikk's own verdict, never stikk's inference**. Below prikk 0.39 the verdict is unreported and the sentence stays as before:
+an unreported verdict is not a refusal any more than it is a zero (`C-T2c′`).
+
+**What stays:** the two row annotations and `renames N`. They describe prikk's declaration and the two halves prikk lists —
+**facts of the report** — while the omitted sentence was the only one that promised an outcome. **No fourth declaration state**:
+at 0.43, `resolution: "refused"` names this case exactly, and the re-baseline prevents on it (A5).
+
 ## Delivery
 
 **One handoff**, issued on the ruling.

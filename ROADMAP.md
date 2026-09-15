@@ -240,8 +240,8 @@ a fabricated worktree entry was fixed.
 
 ## Next — carried into 0.8.0, in order
 
-1. **`FR-106`'s passive notice is not wired** — [RFC 031](rfcs/proposed/031-seeing-a-change-made-outside-stikk.md),
-   proposed; Q1 (when stikk looks) and Q2 (an open confirmation) are the owner's. `stikk_core::staleness_notice` exists and is tested, but nothing
+1. **`FR-106`'s passive notice is not wired** — [RFC 031](rfcs/accepted/031-seeing-a-change-made-outside-stikk.md),
+   accepted; Q1 (b) and Q2 (b) — checks on focus and every 5 seconds while idle, and an open confirmation goes stale at once. `stikk_core::staleness_notice` exists and is tested, but nothing
    calls it, so *"repository changed outside stikk — refreshed"* renders nowhere, and a change made in a terminal
    is seen only at stikk's next Orientation read (on open, on `r`, or after a commit or seal). Found in RFC 030's
    review. RFC 030 protects confirmations regardless.

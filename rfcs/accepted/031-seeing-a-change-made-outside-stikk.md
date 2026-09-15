@@ -1,7 +1,7 @@
 # RFC 031 — Seeing a change made outside stikk
 
-**Status.** **Proposed 2026-09-15** by the architect: 0.8.0's first increment. **Two open questions**, both yours
-(Q1, Q2).
+**Status.** **Accepted by the project owner 2026-09-15; Q1 ruled (b), Q2 ruled (b).** Proposed the same day by the
+architect: 0.8.0's first increment.
 **Tracks.** `FR-106`, `OP-04`, `LC-4`, `CT-05`, `NFR-R02`, `NFR-P01`, `TU-03`, RFC 003 (the change token), RFC 010
 (the off-thread seam), RFC 030.
 **Touches.** `stikk-tui` (the UI loop, `App`, the terminal guard); possibly `stikk-core` (stamping a token with an
@@ -121,9 +121,21 @@ cannot. The cost is measured, and decision 2 keeps it invisible.
 **Its limit, stated:** the token does not include the worktree (RFC 003; RFC 030 F2), so an editor's autosave is
 **not** detected this way. That stays RFC 030's re-read at Enter.
 
+### RULED by the project owner, 2026-09-15: Q1 (b), Q2 (b)
+
+**Handoff A builds this:**
+
+- **Q1 (b):** stikk checks **when the terminal reports focus returning**, and **every 5 seconds while it is idle**.
+  - The interval is a named constant, not a setting.
+  - A check is decision 2's silent read.
+  - Where the terminal reports no focus, the interval alone serves.
+- **Q2 (b):** a confirmation open when a repository change is detected is **replaced at once by the stale overlay**,
+  cause *Repository*, in RFC 030's words. Nothing stays armed, and the one next step is to preview again, as `CT-05`
+  requires. **Its limit stands:** a worktree-only change is not in the token, and is RFC 030's to catch at Enter.
+
 ## Delivery
 
-**One handoff**, after the owner rules Q1 and Q2. **Its first commit moves the workspace to `0.8.0`**, as RFC 027 A's
+**One handoff**, issued on the ruling. **Its first commit moves the workspace to `0.8.0`**, as RFC 027 A's
 first commit did for 0.7.0.
 
 ## What this RFC does not do

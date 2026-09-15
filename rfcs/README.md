@@ -25,13 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 031 | [Seeing a change made outside stikk](./proposed/031-seeing-a-change-made-outside-stikk.md) | `FR-106`/`OP-04`: stikk sees a change made in another terminal only on its next read, and the notice the design names has no caller; a silent change-token check, when to run it (Q1), and what happens to an open confirmation (Q2) |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
+| 031 | [Seeing a change made outside stikk](./accepted/031-seeing-a-change-made-outside-stikk.md) | `FR-106`/`OP-04`: a silent change-token check on focus and every 5 seconds while idle; a detected change refreshes what is on screen and says so, and an open confirmation becomes stale at once. **Accepted 2026-09-15; Q1 (b), Q2 (b)** | [Change awareness](./handoffs/031-seeing-a-change-made-outside-stikk/change-awareness-handoff-v1.md) |
 
 ## Done (implemented)
 

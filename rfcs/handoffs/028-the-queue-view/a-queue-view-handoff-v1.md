@@ -1,6 +1,6 @@
 # Handoff A — the Queue view, and History's tier (v1)
 
-**Companion to:** [RFC 028](../../accepted/028-the-queue-view.md). Accepted 2026-09-13, Q1 ruled (b); decision 2
+**Companion to:** [RFC 028](../../done/028-the-queue-view.md). Accepted 2026-09-13, Q1 ruled (b); decision 2
 revised at prikk 0.42.0.
 **This handoff is decisions 1, 2, 3, 5 and 6:**
 - the reader and its seam method;

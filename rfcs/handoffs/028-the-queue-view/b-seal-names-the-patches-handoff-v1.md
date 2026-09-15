@@ -1,6 +1,6 @@
 # Handoff B — seal names what it freezes (v1)
 
-**Companion to:** [RFC 028](../../accepted/028-the-queue-view.md). Accepted 2026-09-13, Q1 ruled (b); Handoff A
+**Companion to:** [RFC 028](../../done/028-the-queue-view.md). Accepted 2026-09-13, Q1 ruled (b); Handoff A
 delivered.
 **This handoff is decision 4:** seal's confirmation names the patches it freezes, at prikk ≥ 0.39. It is
 separate from A because it changes a signing confirmation (RFC 016), which deserves its own review.

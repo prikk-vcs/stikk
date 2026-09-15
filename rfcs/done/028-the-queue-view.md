@@ -1,8 +1,8 @@
 # RFC 028 — The Queue view: what a seal will freeze, and what prikk cannot yet say about it
 
-**Status.** **Accepted by the project owner 2026-09-13, Q1 ruled (b)** — the work waited for the prikk release that
-answered letter 011. prikk 0.42.0 shipped it, and stikk re-baselined to it (RFC 029 A). **Handoff A delivered
-2026-09-15** (`4be8d84`, `3ea2877`); **Handoff B issued** the same day. Proposed the same day by the architect, 0.7.0's second increment. Every
+**Status.** **Done 2026-09-15** — Handoffs A and B delivered on `main`; a **0.7.0 candidate**. Accepted by the project owner
+2026-09-13, **Q1 ruled (b)**: the work waited for the prikk release that answered letter 011. prikk 0.42.0 shipped it, and
+stikk re-baselined to it (RFC 029 A). Proposed the same day by the architect, 0.7.0's second increment. Every
 finding below was measured against real prikk **0.28.0** and **0.41.0** binaries built from their tags the
 same day.
 **Tracks.** `FR-051`, `FR-052`, `FR-010`, `FR-030`, `TU-01`, `C-T2b`, `C-T2c′`, `ER-02`, `UD-02`, `ASM-2`,
@@ -10,6 +10,48 @@ RFC 014 decision 5, RFC 016.
 **Touches.** `stikk-prikk` (a queue seam method and a `status-report-v1` reader), `stikk-core` (a queue
 view-model, seal's read path, History's queued tier), `stikk-tui` (a Queue screen, the History tier),
 `stikk-real-binary`, and on acceptance `requirements.md` and `external-design.md`.
+
+## Delivered
+
+**A — the reader, the Queue view, and History's tier** (`4be8d84`, `3ea2877`).
+- **`Prikk::queue` reads `status --format json` at prikk ≥ 0.39**, and holds every rule as stikk's own environment
+  error:
+  - the schema;
+  - `count` against the patches listed;
+  - target and metadata status;
+  - thresholds `null` exactly when empty;
+  - object ids;
+  - exactly one path form;
+  - a rename's asserting key;
+  - the message's three states, by version.
+
+  Below 0.39 it answers from the prose read, **unreported, never empty**, and asks prikk for nothing new.
+- **The Queue view** (`Q`, or the palette) shows the heading, the thresholds and each patch's id and operations.
+  - **Messages:** it shows them at ≥ 0.42, and says once at 0.39–0.41 that prikk does not report them.
+  - **Below 0.39:** it says prikk does not list queued patches.
+  - **Height:** it scrolls in the Glossary's idiom.
+  - **Refusals:** a refused read explains itself and offers Refresh.
+- **History's tier says whose queue it is**, and shows no line when nothing is queued.
+- **Measured:** at 0.42 the queued patch ids equal the ids `log` reports after sealing, on Linux, macOS and Windows
+  (suite `34937410390`); CI `34941290983` and Docs `34941290968` at `3ea2877` on `main`.
+
+**B — seal names what it freezes** (`d333e16`, `cc26313`).
+- **One queue read.** Seal's preview reads the queue once for the empty and cross-ref blocks, the count and the
+  list; Orientation only for RFC 029's branch notice.
+- **The confirmation names each patch** by short id and, at ≥ 0.42, message, directly under the count. Below 0.39
+  it says prikk does not list queued patches.
+- **The list is the only part of the card that gives up height.** Rows are measured in cells. When they do not all
+  fit, a remainder line states the fact and names no key: `and {m} more not shown — the Queue view lists all {n}`,
+  or `none shown here — …`. The consequence, its trust-refusal warning and the affordances are never displaced.
+- **Measured:** at 0.42 the card's short ids begin the sealed block's patch ids on every platform (suite
+  `34943828411`, supply chain `34943830895` at `d333e16`); CI `34969788195` and Docs `34969788154` at `cc26313` on
+  `main`.
+
+### Carried forward
+
+- **A queued patch's content** is Patch detail's to show (`FR-030`, roadmap item 3); prikk ≥ 0.42 can render it
+  through `show`.
+- **No enumeration on prikk 0.35–0.38** (decision 1), a band stikk does not read.
 
 ## Summary
 

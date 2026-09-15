@@ -226,11 +226,9 @@ a fabricated worktree entry was fixed.
 1. **`refused paths:` — landed on `main`** ([RFC 027](rfcs/done/027-what-commit-would-refuse.md)): commit is
    unavailable, with prikk's reasons, when prikk would refuse a path; and the unsupported paths stikk had
    never listed are listed. Ships in 0.7.0.
-2. **The Queue view** (`FR-051`) — **[RFC 028](rfcs/accepted/028-the-queue-view.md), accepted. prikk 0.42.0
-   shipped what it waited for** — each queued patch's message, and `show` on a queued patch. **Handoff A landed
-   on `main`** (`4be8d84`, `3ea2877`): the Queue view (`Q`) lists each queued patch, with its message on prikk ≥ 0.42,
-   and History's tier says whose queue it is. **Handoff B** (seal names the patches it freezes) **is issued**. Until
-   it lands, the seal ceremony still says how many patches it will freeze but not which.
+2. **The Queue view** (`FR-051`) — **landed on `main`** ([RFC 028](rfcs/done/028-the-queue-view.md); A `3ea2877`,
+   B `cc26313`). The Queue view (`Q`) lists each queued patch, with its message on prikk ≥ 0.42; History's tier says
+   whose queue it is; and the seal confirmation names the patches it freezes. Ships in 0.7.0.
 3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
 4. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.

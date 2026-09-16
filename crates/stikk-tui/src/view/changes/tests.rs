@@ -656,7 +656,7 @@ fn rfc032_both_unmatched_declaration_sentences_are_on_screen_whole_at_80_columns
     let text = draw_032(&renamed_view(), &stikk_core::RefHistory::Published, false);
     let flat = joined(&text);
     assert!(
-        flat.contains("declared rename c.txt → d.txt: d.txt is not in the worktree, so prikk will not author it as a rename"),
+        flat.contains("declared rename c.txt → d.txt: d.txt is not a file in the worktree, so prikk will not author it as a rename"),
         "{text}"
     );
     assert!(
@@ -664,7 +664,7 @@ fn rfc032_both_unmatched_declaration_sentences_are_on_screen_whole_at_80_columns
         "{text}"
     );
     assert!(
-        row_of(&text, "d.txt is not in") < row_of(&text, "commits are whole-worktree"),
+        row_of(&text, "d.txt is not a file") < row_of(&text, "commits are whole-worktree"),
         "{text}"
     );
 }
@@ -730,5 +730,43 @@ fn rfc032_a_ref_with_no_published_history_says_so_in_place_of_against_baseline()
     assert!(
         joined(&text).contains("heads/main has no published history yet — its 1 queued patch(es) are the baseline here, and nothing is sealed"),
         "{text}"
+    );
+}
+
+#[test]
+fn rfc032_a_refused_destination_keeps_the_annotations_and_drops_the_content_sentence() {
+    const REASON: &str = "precondition not met: b.txt: worktree symlink authoring is out of scope";
+    let mut view = renamed_view();
+    view.refused = Some(1);
+    for entry in &mut view.entries {
+        if entry.path == "b.txt" {
+            entry.authoring = Authoring::Refused(REASON.to_string());
+        }
+    }
+    let text = draw_032(&view, &stikk_core::RefHistory::Published, false);
+    println!("--- RFC 032 A7: a paired rename whose destination prikk refuses, 80 columns\n{text}");
+    let flat = joined(&text);
+    // prikk's report stays whole: both halves annotated, the pair counted, the refusal verbatim.
+    assert!(flat.contains("· declared rename → b.txt"), "{text}");
+    assert!(flat.contains("· declared rename ← a.txt"), "{text}");
+    assert!(flat.contains("renames 1"), "{text}");
+    assert!(flat.contains(REASON), "{text}");
+    // And nothing promises an outcome prikk would refuse.
+    assert!(
+        !flat.contains("a declared rename is authored as a rename"),
+        "the content sentence must be withheld:\n{text}"
+    );
+
+    // Below prikk 0.39 the verdict is unreported, never a zero, and the sentence stays.
+    let mut unreported = renamed_view();
+    unreported.refused = None;
+    assert!(
+        joined(&draw_032(
+            &unreported,
+            &stikk_core::RefHistory::Published,
+            false
+        ))
+        .contains("a declared rename is authored as a rename"),
+        "an unreported verdict is not a refusal"
     );
 }

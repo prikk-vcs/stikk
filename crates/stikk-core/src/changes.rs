@@ -169,7 +169,7 @@ impl DeclaredRename {
         match self.state {
             DeclarationState::Paired => None,
             DeclarationState::DestinationAbsent => Some(format!(
-                "declared rename {old} → {new}: {new} is not in the worktree, so prikk will not author it as a rename"
+                "declared rename {old} → {new}: {new} is not a file in the worktree, so prikk will not author it as a rename"
             )),
             DeclarationState::SourcePresent { destination_listed } => {
                 let sentence = format!(
@@ -187,7 +187,8 @@ impl DeclaredRename {
     }
 }
 
-/// Said once under the entries when any declared rename is paired (RFC 032 decision 1; F3).
+/// Said once under the entries when any declared rename is paired and prikk refuses nothing (RFC 032
+/// decision 1; F3; amendment A7). Emitted through [`ChangesView::content_note`], never directly.
 pub const RENAME_CONTENT_NOTE: &str = "a declared rename is authored as a rename; prikk does not report whether its content also changed";
 
 /// Said once under a confirmation's counts when any declared rename is paired (RFC 032 decision 4).
@@ -333,6 +334,27 @@ pub struct ChangesView {
     pub declared_renames: Vec<DeclaredRename>,
     /// The number of paired declared renames (RFC 032 decision 1).
     pub renames: u64,
+}
+
+impl ChangesView {
+    /// [`RENAME_CONTENT_NOTE`], when this report has a paired declared rename to say it about — and
+    /// **`None` while prikk reports that `commit` would refuse something** (RFC 032 amendment A7).
+    ///
+    /// **Why a refusal withholds it.** The sentence promises an outcome: *authored as a rename*. One refused
+    /// entry refuses the whole commit (RFC 027 F2), so prikk would author **nothing** — and a paired rename
+    /// whose own destination is the refused entry is exactly the measured case (a symlink at `{new}`). A
+    /// `refused —` marker elsewhere on the screen does not make the promise true (`C-T2b`).
+    ///
+    /// **prikk's verdict only.** Below prikk 0.39 [`Self::refused`] is `None`: the verdict is **unreported,
+    /// never a zero** (`C-T2c′`), so the sentence stays exactly as it was. At prikk 0.43 this becomes
+    /// `resolution`, prikk's own word for what each declaration will do.
+    #[must_use]
+    pub fn content_note(&self) -> Option<&'static str> {
+        if self.renames == 0 || self.refused.is_some_and(|refused| refused >= 1) {
+            return None;
+        }
+        Some(RENAME_CONTENT_NOTE)
+    }
 }
 
 /// Produce the Changes view for `reff` (design FR-034; RFC 008), with whether `reff` has published history

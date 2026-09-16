@@ -537,7 +537,7 @@ fn every_rename_sentence_is_byte_exact() {
     assert_eq!(
         notice(DeclarationState::DestinationAbsent).as_deref(),
         Some(
-            "declared rename a.txt → b.txt: b.txt is not in the worktree, so prikk will not author it as a rename"
+            "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will not author it as a rename"
         )
     );
     // Row 2: both copies present — no way out offered.
@@ -751,4 +751,35 @@ note: use `prikk commit -m <message>` to author node-addressed worktree changes;
             old_path: "modified draft.txt".into()
         })
     );
+}
+
+/// RFC 032 amendment A7: the content sentence promises an outcome, so it is withheld while prikk reports that
+/// `commit` would refuse something — a paired rename whose destination is the refused entry is the measured case.
+#[test]
+fn the_content_sentence_is_withheld_while_prikk_reports_a_refusal() {
+    let paired = |refused| {
+        let mut status = report(
+            vec![listed("missing", "a.txt"), listed("untracked", "b.txt")],
+            vec![declared("a.txt", "b.txt")],
+        );
+        status.refused = refused;
+        from_status(status)
+    };
+    let refused = paired(Some(1));
+    assert_eq!(refused.content_note(), None);
+    // The declaration and both halves are prikk's own report, and stay.
+    assert_eq!(refused.renames, 1);
+    assert_eq!(state_of(&refused), [DeclarationState::Paired]);
+    assert!(refused.entries.iter().all(|e| e.rename.is_some()));
+
+    // Nothing refused, and — below prikk 0.39 — a verdict that is unreported, never a zero (`C-T2c′`).
+    assert_eq!(paired(Some(0)).content_note(), Some(RENAME_CONTENT_NOTE));
+    assert_eq!(paired(None).content_note(), Some(RENAME_CONTENT_NOTE));
+
+    // Nothing paired, nothing to say.
+    let unpaired = from_status(report(
+        vec![listed("missing", "a.txt")],
+        vec![declared("a.txt", "b.txt")],
+    ));
+    assert_eq!(unpaired.content_note(), None);
 }

@@ -33,8 +33,9 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 - **A file renamed with `prikk mv` is shown as one declared rename**, on the Changes view and in commit's confirmation,
   when prikk lists both halves: prikk's `missing` and `untracked` rows stay, each annotated as half of the rename, and
   both count `renames N`. The untracked filter never hides a rename's destination (RFC 032).
-  **Limit:** prikk does not report whether a renamed file's content also changed, and stikk says so.
-- **A declaration prikk will not author as a rename is named, not counted**: its destination is not in the worktree,
+  **Limit:** prikk does not report whether a renamed file's content also changed, and stikk says so — except while prikk
+  reports that the commit would be refused, when stikk promises nothing, because prikk would author nothing.
+- **A declaration prikk will not author as a rename is named, not counted**: its destination is not a file in the worktree,
   so prikk records a deletion; or its source is present again, and prikk refuses to commit. Where the destination is
   gone too, stikk says that `prikk mv {new} {old}` in a terminal drops the declaration, as measured at prikk 0.42.0. A
   clean worktree holding such a declaration is blocked with that reason, not only "nothing to commit" (RFC 032).

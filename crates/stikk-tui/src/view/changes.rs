@@ -201,7 +201,8 @@ pub fn render(
         .iter()
         .filter_map(stikk_core::DeclaredRename::notice)
         .collect();
-    if !notices.is_empty() || view.renames > 0 {
+    let content_note = view.content_note();
+    if !notices.is_empty() || content_note.is_some() {
         lines.push(Line::from(""));
     }
     for notice in &notices {
@@ -212,8 +213,9 @@ pub fn render(
             )));
         }
     }
-    if view.renames > 0 {
-        for row in wrap_indented(stikk_core::RENAME_CONTENT_NOTE, text_width, "  ") {
+    // RFC 032 A7: withheld while prikk reports a refusal — core decides, the view only renders.
+    if let Some(note) = content_note {
+        for row in wrap_indented(note, text_width, "  ") {
             lines.push(Line::from(Span::styled(row, dim)));
         }
     }

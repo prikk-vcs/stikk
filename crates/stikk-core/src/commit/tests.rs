@@ -747,7 +747,7 @@ fn rows_1_and_2_are_named_on_the_card_and_never_counted_as_renames() {
     assert_eq!(
         summary.declaration_notices,
         [
-            "declared rename a.txt → b.txt: b.txt is not in the worktree, so prikk will not author it as a rename"
+            "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will not author it as a rename"
         ]
     );
 

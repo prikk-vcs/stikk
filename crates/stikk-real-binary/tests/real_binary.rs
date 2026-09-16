@@ -3015,7 +3015,7 @@ fn rfc032_a_declaration_without_its_destination_is_named_and_commit_authors_a_de
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     Fixture::clear_env();
-    const SENTENCE: &str = "declared rename a.txt → b.txt: b.txt is not in the worktree, so prikk will not author it as a rename";
+    const SENTENCE: &str = "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will not author it as a rename";
     let cases: [(&str, Rfc032Setup, &[&str]); 3] = [
         (
             "row 1: mv, b.txt deleted",
@@ -3431,5 +3431,99 @@ fn rfc032_a_ref_with_no_published_history_is_named_and_its_first_commit_is_not_s
             Some("heads/main has no published history"),
             "{ctx}"
         );
+    }
+}
+
+/// **RFC 032 amendment A7 at prikk ≥ 0.39: a paired declared rename whose destination prikk refuses.**
+///
+/// `prikk mv a.txt b.txt`, then `b.txt` replaced by a symlink — measured at 0.42.0, and neither the RFC nor the
+/// handoff anticipated it. prikk lists **both halves**, so the declaration is paired and the two rows stay
+/// annotated; prikk's verdict on the destination is **`refused`**, and `commit` refuses the whole commit. **So
+/// nothing may promise that the rename will be authored**: `content_note` is `None`.
+///
+/// **Below 0.39** prikk states no per-entry verdict (`refused` is unreported, never zero), and below 0.38 there is
+/// no `prikk mv`; both are announced skips. A platform that cannot create a symlink is announced too.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc032_a_paired_rename_whose_destination_prikk_refuses_promises_nothing() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if bin.minor < 39 {
+            eprintln!(
+                "RFC 032 A7: a refused rename destination SKIPPED at 0.{} — prikk states no per-entry commit verdict \
+                 below 0.39 (unreported, never zero), and `prikk mv` does not exist below 0.38. Announced rather than \
+                 silent (RFC 022 §3).",
+                bin.minor
+            );
+            continue;
+        }
+        let ctx = format!("0.{}", bin.minor);
+        let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+        rfc032_mv(&bin, &repo, "a.txt", "b.txt");
+        std::fs::remove_file(repo.join("b.txt"))
+            .unwrap_or_else(|e| panic!("{ctx}: remove b.txt: {e}"));
+        if let Err(e) = make_symlink("keep.txt", &repo.join("b.txt")) {
+            eprintln!(
+                "RFC 032 A7: SKIPPED at 0.{} — this platform could not create a symlink ({e}), so a refused rename \
+                 destination cannot be built here. Announced rather than silent (RFC 022 §3).",
+                bin.minor
+            );
+            continue;
+        }
+
+        let read = stikk_core::changes_view(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: changes_view: {e}"));
+        assert_eq!(
+            read.view
+                .declared_renames
+                .iter()
+                .map(|d| d.state.clone())
+                .collect::<Vec<_>>(),
+            [stikk_core::DeclarationState::Paired],
+            "{ctx}: prikk lists both halves: {:?}",
+            read.view
+        );
+        assert_eq!(read.view.renames, 1, "{ctx}");
+        assert_eq!(read.view.refused, Some(1), "{ctx}: {:?}", read.view);
+        assert_eq!(
+            read.view.content_note(),
+            None,
+            "{ctx}: nothing may promise a rename while prikk would refuse the commit"
+        );
+        let destination = read
+            .view
+            .entries
+            .iter()
+            .find(|e| e.path == "b.txt")
+            .unwrap_or_else(|| panic!("{ctx}: b.txt not listed: {:?}", read.view));
+        assert!(destination.rename.is_some(), "{ctx}: the annotation stays");
+        let stikk_core::Authoring::Refused(reason) = &destination.authoring else {
+            panic!("{ctx}: b.txt is not refused: {destination:?}");
+        };
+
+        // prikk's own commit on this very tree, and stikk's prevention, agree with that verdict.
+        fixture.set_author_env();
+        let attempt = backend.commit(&repo, "heads/main", "would be refused");
+        let preview = stikk_core::commit_preview(&backend, &repo, "heads/main");
+        Fixture::clear_env();
+        let message = match attempt {
+            Err(StikkError::Refusal { message }) => message,
+            other => panic!("{ctx}: expected prikk to refuse, got {other:?}"),
+        };
+        assert_eq!(
+            message.strip_prefix("error: "),
+            Some(reason.as_str()),
+            "{ctx}: the verdict and commit's own refusal disagree"
+        );
+        match preview {
+            Ok(stikk_core::CommitPreviewOutcome::WouldRefuse(paths)) => assert!(
+                paths.iter().any(|p| p.path == "b.txt"),
+                "{ctx}: commit is unavailable, carrying b.txt: {paths:?}"
+            ),
+            other => panic!("{ctx}: expected WouldRefuse, got {other:?}"),
+        }
     }
 }

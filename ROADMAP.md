@@ -255,7 +255,7 @@ a fabricated worktree entry was fixed.
 
 ## Next — carried into 0.9.0, in order
 
-1. **The prikk 0.43.0 re-baseline — when prikk publishes it.** prikk's reply 013 to letter 012: at 0.42 a refused
+1. **The prikk 0.43.0 re-baseline — [RFC 033](rfcs/proposed/033-prikk-0-43-rebaseline.md), proposed; Q1 open.** prikk 0.43.0 published 2026-09-16 and was measured the same day: stikk 0.8.0 keeps working on it, and one declaration state disagrees with `commit` (letter 014, drafted). prikk's reply 013 to letter 012: at 0.42 a refused
    `checkout --patch-materialize` writes files before refusing and leaves prikk's worktree-dirty marker set, and the
    **next `prikk commit` refuses** with `integrity error: worktree materialization was interrupted …` — which stikk
    presents as an integrity finding, though nothing is corrupt. **0.43.0 plans every write before the first**, makes

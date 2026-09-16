@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 033 | [The prikk 0.43 re-baseline](./proposed/033-prikk-0-43-rebaseline.md) | prikk's own resolution of each rename declaration in place of RFC 032's inference, prevention on a refused declaration, a rename's content and mode, a checkout that stopped part-way, and a provisional worktree measured before it is designed. **Q1 open**: where prikk's `resolution` and the listed halves disagree (a directory at the destination) |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

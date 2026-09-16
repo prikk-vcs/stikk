@@ -20,7 +20,7 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.7.x shows what a change will do — and makes no change it did not show.** The security-critical
+**0.8.x keeps the screen true to the repository.** The security-critical
 layers (shared model, prikk seam, state layer), the interactive **TUI** (shell + Orientation, built on
 `ratatui` — RFC 001), **History** + Block detail (RFC 006), the refusal-explanation and glossary surfaces
 (RFC 007), **worktree Changes** (RFC 008) and the **Queue view** (RFC 028) are all implemented and
@@ -30,7 +30,15 @@ and **seal** that queue into permanent, MAINTAINER-signed history (RFC 016) — 
 tiered-confirmation machinery that makes skipping a step a compile error, not a review finding (RFC 013).
 At prikk ≥ 0.39 commit is unavailable, with prikk's reasons, when prikk says it would refuse (RFC 027), and
 the seal confirmation names the patches it freezes (RFC 028); a confirmed commit authors only the
-worktree its preview showed (RFC 030). Piped/CI invocation keeps the one-shot orientation. stikk targets
+worktree its preview showed (RFC 030). **stikk notices a change made outside it** — a commit, seal or
+branch switch in another terminal — when the terminal regains focus or within five seconds while idle,
+refreshes what is on screen, says *"repository changed outside stikk — refreshed"*, and makes an open
+confirmation stale at once; `r` refreshes in place, and every refresh re-reads the ref its own screen
+shows (RFC 031). **The Changes view and commit's confirmation say what a commit will author**: a
+`prikk mv` whose two halves prikk lists is shown as one declared rename and counted, a declaration prikk
+will not author as a rename is named instead, and a ref with no published history is named as one rather
+than shown against a baseline it does not have (RFC 032). Piped/CI invocation keeps the one-shot
+orientation. stikk targets
 prikk **≥ 0.28**, validated through **0.42.0**, and on prikk 0.42 opens on prikk's current branch (RFC
 029). **Patch detail** (`FR-030`) and **Compare** (`FR-033`) are not built: prikk ≥ 0.36 can render a
 patch's content with `show`, so what waits is stikk's own work. Merge, sync, tag create, and branch

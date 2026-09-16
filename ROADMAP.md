@@ -238,37 +238,24 @@ a fabricated worktree entry was fixed.
   stale confirmation says whether the repository or the worktree changed
   ([RFC 030](rfcs/done/030-a-confirmed-commit-authors-the-worktree-it-previewed.md)).
 
-## Next — carried into 0.8.0, in order
+## Shipped — stikk stops describing a repository it has stopped watching (0.8.0, breaking)
 
-1. **stikk sees a change made outside it — landed on `main`** ([RFC 031](rfcs/done/031-seeing-a-change-made-outside-stikk.md);
-   `d5356a8`, `7f1f391`). A silent check on focus and every 5 seconds while idle; a detected change refreshes what is
-   on screen with *"repository changed outside stikk — refreshed"*, and an open confirmation goes stale at once. `r`
-   now refreshes Changes and the tip's Block detail, each re-reading its own ref. Ships in 0.8.0.
-2. **The commit preview shows the rename a declaration authors — landed on `main`**
-   ([RFC 032](rfcs/done/032-what-a-commit-will-author.md); `415bcb6`, `00a2eca`). With item 4. A `prikk mv` whose two
-   halves prikk lists is annotated on both rows as one declared rename and counted `renames N` at prikk ≥ 0.38, on the
-   Changes view and commit's confirmation; a declaration prikk will not author as a rename is named and never counted,
-   with the measured way out where one exists. **stikk promises no outcome while prikk reports a refusal.** Ships in 0.8.0.
-3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
-4. **The Changes view says what an unpublished baseline is — landed on `main`** (with item 2, in
-   [RFC 032](rfcs/done/032-what-a-commit-will-author.md)). A ref absent from prikk's `refs()` is named in place of
-   *"against baseline"*, and its words come from prikk's queue for that ref: a commit would be its first, or it adds to
-   the patches queued for it with nothing sealed. **That an unpublished ref reads as an empty baseline is prikk's
-   deliberate model, not a defect** — it is exactly how a first commit is previewed, so nothing was asked of prikk. The
-   default-focus half of this item shipped in 0.7.0 (RFC 029). Ships in 0.8.0.
-5. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
-   where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
-   `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as
-   prikk's refusal.
-6. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
-   about 64 characters clips on an entry row, and prikk 0.39–0.41 report unsupported paths absolute. prikk 0.42 reports them relative
-   (RFC 029 A), so the absolute case stays open only on that band.
-7. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
-   and a source-level test holds that only in the two modules that name those variables. A guard
-   over every shipped crate would let the sentence say *enforced by test* without a qualifier.
-8. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
-   to move to.
-9. **The prikk 0.43.0 re-baseline — when prikk publishes it.** prikk's reply 013 to letter 012: at 0.42 a refused
+- **stikk notices a change made outside it**: a silent change-token check when the terminal regains focus and every
+  five seconds while idle — never in `⟳ n`, never in the Operations list, and never sent while stikk's own work is
+  running, so its own commit is never mistaken for one. A detected change refreshes what is on screen, says
+  *"repository changed outside stikk — refreshed"*, and makes an open confirmation stale at once; `r` now refreshes
+  Changes and the tip's Block detail too, and every refresh re-reads the ref its own screen shows
+  ([RFC 031](rfcs/done/031-seeing-a-change-made-outside-stikk.md)).
+- **What a commit will author**: a `prikk mv` whose two halves prikk lists is annotated on both rows as one declared
+  rename and counted `renames N` at prikk ≥ 0.38, on the Changes view and commit's confirmation; a declaration prikk
+  will not author as a rename is named and never counted, with the measured way out where one exists; **a ref with no
+  published history is named as one**, with words chosen from prikk's queue for that ref; and **stikk promises no
+  outcome while prikk reports the commit would be refused**
+  ([RFC 032](rfcs/done/032-what-a-commit-will-author.md)).
+
+## Next — carried into 0.9.0, in order
+
+1. **The prikk 0.43.0 re-baseline — when prikk publishes it.** prikk's reply 013 to letter 012: at 0.42 a refused
    `checkout --patch-materialize` writes files before refusing and leaves prikk's worktree-dirty marker set, and the
    **next `prikk commit` refuses** with `integrity error: worktree materialization was interrupted …` — which stikk
    presents as an integrity finding, though nothing is corrupt. **0.43.0 plans every write before the first**, makes
@@ -281,6 +268,19 @@ a fabricated worktree entry was fixed.
    commit's own `refusal` counted in `refused_declaration_count`, and `content_changed`/`mode_changed` — so the
    re-baseline replaces RFC 032's inference with prikk's resolution, prevents a refused declaration, and says whether a
    renamed file's content changed. **Measure each on the binary before relying on it.**
+2. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
+3. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
+   where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
+   `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as
+   prikk's refusal.
+4. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
+   about 64 characters clips on an entry row, and prikk 0.39–0.41 report unsupported paths absolute. prikk 0.42 reports them relative
+   (RFC 029 A), so the absolute case stays open only on that band.
+5. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
+   and a source-level test holds that only in the two modules that name those variables. A guard
+   over every shipped crate would let the sentence say *enforced by test* without a qualifier.
+6. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
+   to move to.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

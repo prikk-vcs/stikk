@@ -55,7 +55,24 @@ Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; 
 the patches waiting to be sealed; `C` commits worktree changes and `S` seals the queue, each after a
 preview and a confirmation; `:` opens the command palette; `R` shows the session's recent refusals; `o` lists background operations still in flight or
 recently finished (a listing only — there is no cancel action); `?` opens the glossary and full key
-reference; `r` refreshes the current view from prikk; `Esc`/`q` steps back, and quits at the root.
+reference; `r` refreshes Orientation and the screen you are on — History, the Queue, Changes, or the tip's Block
+detail — **in place**, each view staying visible while its read runs, and **re-reading the ref that screen
+shows**, which need not be the ref you have focused; `Esc`/`q` steps back, and quits at the root.
+
+**When another terminal changes the repository.** stikk checks for a commit, seal or branch switch made
+outside it — when your terminal reports that you have come back to it, and every few seconds while stikk
+is idle. When it finds one it refreshes what is on screen and says *"repository changed outside stikk —
+refreshed"*, and a commit or seal confirmation that is open becomes stale at once, so nothing armed
+survives a change it was not built for. The check is silent otherwise: it never appears among background
+operations. **Its limit:** editing a file in your worktree is not a repository change, so it is not caught
+this way — `r`, opening Changes, or pressing Enter on a confirmation catches that.
+
+**Two things the Changes view says that prikk's own report does not.** A file moved with `prikk mv` is
+listed by prikk as one missing path and one untracked path; where prikk lists both halves, stikk marks
+them as the two halves of one **declared rename** and counts `renames N`, because that is the single
+operation a commit will author. And when the ref has **no published history** — nothing sealed on it yet —
+stikk says so in place of "against baseline", since there is no baseline to compare against: a commit
+would be the ref's first, or, once patches are queued for it, those queued patches are its baseline.
 
 Run `stikk` piped or in CI (no terminal) and you get the same orientation as a one-shot print instead.
 To see the TUI with no repository at all: `cargo run -p stikk-tui --example orientation_demo` (also see

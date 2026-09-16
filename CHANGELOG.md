@@ -2,58 +2,92 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.8.0 — 2026-09-16
+
+**stikk stops describing a repository it has stopped watching.** 0.7.0 made stikk show what a change will do
+before it does it; 0.8.0 is about the screen staying true — while another terminal works in the same repository,
+and where prikk's own report has a shape stikk was reading too simply. **stikk now notices a commit, seal or
+branch switch made outside it**, refreshes what is on screen, says so, and makes an open confirmation stale at
+once (RFC 031). **A `prikk mv` is shown as the rename it will author**, counted beside the other changes, and a
+declaration prikk will *not* author as a rename is named instead of counted (RFC 032). **A ref with no published
+history is named as one**, in place of the "against baseline" it has no baseline for. `r` refreshes in place, and
+every refresh re-reads the ref its own screen shows. The real-binary suite now drives 32 cases against real prikk
+binaries at 0.28.0 and 0.42.0, on Linux, macOS and Windows.
 
 ### Breaking
 
+Per RFC 011, for a `0.x` crate the minor version is the breaking position; these land in 0.8.0, grouped by crate in
+dependency order. `stikk-model`, `stikk-state` and the `stikk` launcher are unchanged, and `stikk-prikk` is additive
+only.
+
 | Crate | Change |
 |---|---|
-| `stikk-tui` | `Screen::Changes` gains a `refreshing: Option<u64>` field (RFC 031 §7). Struct-literal construction, and a pattern naming every field without `..`, no longer compile. |
-| `stikk-tui` | `Screen::BlockDetail(BlockDetailView)` becomes `Screen::BlockDetail { reff, view, refreshing }` (RFC 031 §7). `reff` names the ref the detail was read for, which a refresh re-reads. Construction and any pattern on the tuple form no longer compile. |
-| `stikk-core` | `changes_view` returns `ChangesRead { view, history }` instead of `ChangesView` (RFC 032 §4): whether the ref has published history travels beside the view, never inside it. |
-| `stikk-core` | `ChangeEntry` gains `rename: Option<RenameHalf>`, and `ChangesView` gains `declared_renames: Vec<DeclaredRename>` and `renames: u64` (RFC 032 §3). Struct-literal construction no longer compiles. |
-| `stikk-core` | `ConfirmationSummary` gains `history_notice`, `rename_note` and `declaration_notices` (RFC 032 §7). Struct-literal construction no longer compiles. |
-| `stikk-core` | `CommitPreviewOutcome::Ready`'s `preview` becomes `Box<CommitPreview>`, as its `token` already was (`clippy::large_enum_variant`, after the view grew). |
-| `stikk-tui` | `Screen::Changes` gains `history: RefHistory`, and `Focus::Changes` gains a third field, `&RefHistory` (RFC 032 §4). |
-| `stikk-tui` | `Overlay::Confirmation`'s `summary` becomes `Box<ConfirmationSummary>` (`clippy::large_enum_variant`, after the summary grew). |
+| `stikk-core` | `changes_view` returns `ChangesRead { view, history }` instead of `ChangesView`: whether the ref has published history travels **beside** the view, never inside it, so a commit's re-read at Enter still builds an equal view. `ChangesView` itself gains `declared_renames: Vec<DeclaredRename>` and `renames: u64`, both derived from prikk's worktree report alone |
+| `stikk-core` | `ChangeEntry` gains `rename: Option<RenameHalf>` — which half of a paired declared rename this entry is, or `None` |
+| `stikk-core` | `ConfirmationSummary` gains `history_notice`, `rename_note` and `declaration_notices` |
+| `stikk-core` | `CommitPreviewOutcome::Ready`'s `preview` becomes `Box<CommitPreview>`, as its `token` already was (`clippy::large_enum_variant`, after the view grew) |
+| `stikk-tui` | `Screen::Changes` gains `refreshing: Option<u64>` and `history: RefHistory` — the in-place refresh slot, and the publication state kept beside the view |
+| `stikk-tui` | `Screen::BlockDetail(BlockDetailView)` becomes `Screen::BlockDetail { reff, view, refreshing }`: the ref the detail was read for, which a refresh re-reads, and its own refresh slot |
+| `stikk-tui` | `Focus::Changes` gains a third field, `&RefHistory` |
+| `stikk-tui` | `Overlay::Confirmation`'s `summary` becomes `Box<ConfirmationSummary>` (`clippy::large_enum_variant`, after the summary grew) |
 
-**Additive:** in `stikk-core`, `ChangesRead`, `DeclaredRename`, `DeclarationState`, `RenameHalf`, `RefHistory`,
-`UnpublishedQueue`, `RENAME_CONTENT_NOTE` and `RENAMES_ALSO_COUNTED`; in `stikk-prikk`, `NullBackend::with_refs_refusal`.
+Every struct above is constructed with struct literals by anyone rendering a view or driving the app, and none is
+`#[non_exhaustive]`; a pattern that names every field without `..`, or matches a tuple variant, no longer compiles.
+**One public signature changed** — `changes_view` — and **no public function, trait method or re-export was
+removed.** The `Prikk` trait is unchanged. The MSRV is unchanged at 1.88.
+
+**Additive**, and not listed above:
+
+- **`stikk-core`:** the `ChangesRead`, `DeclaredRename`, `DeclarationState`, `RenameHalf`, `RefHistory` and
+  `UnpublishedQueue` types; `ChangesView::content_note`, `DeclaredRename::notice`, `RenameHalf::annotation`,
+  `RenameHalf::is_destination`, `RefHistory::from_facts`, `RefHistory::changes_headline` and `RefHistory::card_line`;
+  and the `RENAME_CONTENT_NOTE` and `RENAMES_ALSO_COUNTED` sentences.
+- **`stikk-prikk`:** `NullBackend::with_refs_refusal`.
+- **`stikk-tui`:** `App::tick` and `App::focus_gained`, which take the current `Instant`.
 
 ### Added
 
 - **stikk notices a change made outside it** — a commit, seal or branch switch in another terminal — when the
-  terminal regains focus, or within 5 seconds. It refreshes what is on screen and says *"repository changed
-  outside stikk — refreshed"*. A commit or seal confirmation that is open when that happens becomes stale at
-  once, and the one next step is to preview again. The check is silent: it is not counted in `⟳ n`, never
-  appears in the Background Operations list, and says nothing when it fails (RFC 031).
-  **Limit:** an edit to a file in the worktree is not noticed this way. It is caught at Enter (RFC 030), or by
-  `r`.
-- `App::tick` and `App::focus_gained`, which take the current `Instant` (RFC 031 §5).
-- **A file renamed with `prikk mv` is shown as one declared rename**, on the Changes view and in commit's confirmation,
-  when prikk lists both halves: prikk's `missing` and `untracked` rows stay, each annotated as half of the rename, and
-  both count `renames N`. The untracked filter never hides a rename's destination (RFC 032).
-  **Limit:** prikk does not report whether a renamed file's content also changed, and stikk says so — except while prikk
-  reports that the commit would be refused, when stikk promises nothing, because prikk would author nothing.
-- **A declaration prikk will not author as a rename is named, not counted**: its destination is not a file in the worktree,
-  so prikk records a deletion; or its source is present again, and prikk refuses to commit. Where the destination is
-  gone too, stikk says that `prikk mv {new} {old}` in a terminal drops the declaration, as measured at prikk 0.42.0. A
-  clean worktree holding such a declaration is blocked with that reason, not only "nothing to commit" (RFC 032).
+  terminal regains focus, or within 5 seconds while stikk is idle. It refreshes what is on screen, in place, and says
+  *"repository changed outside stikk — refreshed"*. A commit or seal confirmation open at that moment becomes stale
+  at once, with one next step: preview again. **The check is silent** — never counted in `⟳ n`, never in the
+  Background Operations list, and it says nothing when it fails — and it is never sent while a request of stikk's own
+  is running, so stikk can never take its own commit for an outside change (RFC 031).
+  **Limit:** an edit to a file in the worktree is not a repository change and is not noticed this way. It is caught at
+  Enter (RFC 030), by `r`, or by opening Changes.
+- **A file renamed with `prikk mv` is shown as the one rename prikk will author**, on the Changes view and in
+  commit's confirmation, whenever prikk lists both halves: prikk's `missing` and `untracked` rows both stay, each
+  annotated as half of one declared rename, and the counts gain `renames N` at prikk ≥ 0.38. The untracked filter
+  never hides a rename's destination (RFC 032).
+  **Limit:** prikk does not report whether a renamed file's content also changed, and stikk says so — **except while
+  prikk reports that the commit would be refused, when stikk says nothing at all, because prikk would author
+  nothing.**
+- **A declaration prikk will not author as a rename is named, and never counted** (RFC 032): its destination is not a
+  file in the worktree, so prikk records a deletion; or its source is present again, and prikk refuses the commit
+  until the declaration is resolved. Where the destination is gone too, stikk names the way out it measured at prikk
+  0.42.0 — `prikk mv {new} {old}` in a terminal drops the declaration — and offers none where it measured none. A
+  clean worktree holding such a declaration says that, rather than only "nothing to commit". **This is a notice, not a
+  prevention:** stikk makes commit unavailable only on prikk's own verdict.
 
 ### Changed
 
-- **`r` refreshes the Changes view, and the tip's Block detail, in place** (RFC 031 §7). Both stay visible while
-  the read runs; Changes keeps its untracked filter. An older block's detail cannot change and is not re-read.
-- **A refresh re-reads the ref its screen shows**, not the focused ref: History and Block detail opened for one ref
-  stay that ref's after the ref picker moves focus (RFC 031).
-- The Changes operation reads prikk's refs and status beside `worktree-status`, and commit's preview reads the refs
-  (RFC 032).
+- **`r` refreshes in place, and refreshes more.** The Changes view and the tip's Block detail now refresh too, beside
+  Orientation, History and the Queue; each view stays on screen while its read runs, and Changes keeps its untracked
+  filter. An older block's detail cannot change and is not re-read (RFC 031).
+- **Every in-place refresh re-reads the ref its own screen shows**, not the focused ref: a History or Block-detail
+  screen opened for one ref stays that ref's after the ref picker moves focus elsewhere (RFC 031).
+- **The Changes operation reads more of prikk in one go**: `worktree-status`, then `refs()` for whether the ref is
+  published, then `status` for the queue those words depend on; commit's preview reads `refs()` beside the reads it
+  already made. **Three reads are not one instant**, so a terminal `prikk seal` landing between them can show the
+  no-published-history words once for a ref just published — **stated rather than hidden**: RFC 031's check notices
+  and refreshes within five seconds, and RFC 030's change token stops a confirmation armed on the old state (RFC 032).
 
 ### Fixed
 
-- **A ref's first commit no longer reads as untracked files "against baseline"**: there is no baseline. stikk says the
-  ref has no published history, on the Changes view and under commit's targets — that a commit would be its first, or,
-  once patches are queued for it and not yet sealed, that they are its baseline and nothing is sealed (RFC 032).
+- **A ref with no published history no longer reads as untracked files "against baseline"** — there is no baseline
+  (RFC 032). stikk names it, on the Changes view and under commit's targets, in the words prikk's own facts support:
+  **that a commit would be the ref's first**, or — once patches are queued for that ref and nothing is sealed — **that
+  those queued patches are its baseline**. A queue belonging to another ref claims nothing about this one.
 
 ## 0.7.0 — 2026-09-15
 

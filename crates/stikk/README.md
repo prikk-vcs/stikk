@@ -41,13 +41,17 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.7.x shows what a change will do — and makes no change it did not show.** It reads orientation,
-ref history, block detail, worktree changes and the **Queue view** (each queued patch, with its message
-on prikk ≥ 0.42), with refusal explanations and a glossary. It performs two mutations: **commit** (author
-a worktree capture into the active queue) and **seal** (freeze that queue into permanent,
-MAINTAINER-signed history, naming the patches it freezes) — both always preview-first, with tiered
-confirmation a compile error can't let you skip. **A confirmed commit authors only the worktree its
-preview showed**: if anything changes between preview and Enter, stikk says so and commits nothing.
+**v0.8.x keeps the screen true to the repository.** It reads orientation, ref history, block detail,
+worktree changes and the **Queue view** (each queued patch, with its message on prikk ≥ 0.42), with
+refusal explanations and a glossary. It performs two mutations: **commit** (author a worktree capture
+into the active queue) and **seal** (freeze that queue into permanent, MAINTAINER-signed history, naming
+the patches it freezes) — both always preview-first, with tiered confirmation a compile error can't let
+you skip. **A confirmed commit authors only the worktree its preview showed**: if anything changes
+between preview and Enter, stikk says so and commits nothing. **stikk notices a commit, seal or branch
+switch made in another terminal** — when the terminal regains focus, or within seconds — refreshes what
+is on screen, and makes an open confirmation stale. **A `prikk mv` is shown as the rename it will
+author**, and a declaration prikk will not author as one is named rather than counted. **A ref with no
+published history is named as one**, rather than shown as changes against a baseline it does not have.
 Patch detail, Compare, merge, sync, and tag or branch creation are not built yet.
 
 ## Links

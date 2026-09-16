@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 032 | [What a commit will author](./accepted/032-what-a-commit-will-author.md) | a paired `prikk mv` shown as one rename (both halves listed, or no mark), declarations prikk will not author named and never counted, and a ref with no published history named as one, on the Changes view and commit's confirmation. **Accepted 2026-09-16; Q1 (a)** | [What a commit will author](./handoffs/032-what-a-commit-will-author/what-a-commit-will-author-handoff-v1.md) |
+_None: RFC 032 delivered and closed 2026-09-16._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 032 | [What a commit will author](./done/032-what-a-commit-will-author.md) | 0.8.0 candidate (on `main`) | a pair prikk refuses is still classified as a pair (prevention stays RFC 027's, on prikk's verdict); prikk does not report whether a renamed file's content changed; F7 stays a notice; the three-read race; the whole declaration analysis is inference until the prikk 0.43 re-baseline reports each declaration's `resolution` | [What a commit will author](./handoffs/032-what-a-commit-will-author/what-a-commit-will-author-handoff-v1.md) |
 | 027 | [What commit would refuse](./done/027-what-commit-would-refuse.md) | **0.7.0** | `unsupported-path` prevention arrives with prikk's RFC 147 §3f (reply 011), verified at the next re-baseline; the would-refuse overlay's scrolling and the long-path row budget; the prose path's parse-failure attribution; an unknown ref reported against an empty baseline | [A: unsupported-path entries](./handoffs/027-what-commit-would-refuse/a-unsupported-path-entries-handoff-v1.md) · [B: verdict and prevention](./handoffs/027-what-commit-would-refuse/b-verdict-and-prevention-handoff-v1.md) |
 | 030 | [A confirmed commit authors the worktree its preview showed](./done/030-a-confirmed-commit-authors-the-worktree-it-previewed.md) | **0.7.0** | the commit preview does not show rename declarations; `FR-106`'s passive notice is not wired; the prose path's parse-failure attribution; `checkout --patch-materialize` writes before it refuses (letter 012) | [Confirm freshness](./handoffs/030-a-confirmed-commit-authors-the-worktree-it-previewed/confirm-freshness-handoff-v2.md) |
 | 029 | [The prikk 0.42 re-baseline, and prikk's current branch](./done/029-prikk-0-42-rebaseline-and-the-current-branch.md) | **0.7.0** | `no ref focused` persists across `r` (a known consequence); the status bar is as fresh as the last Orientation read | [A: re-baseline](./handoffs/029-prikk-0-42-rebaseline-and-the-current-branch/a-rebaseline-handoff-v1.md) · [B: current branch](./handoffs/029-prikk-0-42-rebaseline-and-the-current-branch/b-current-branch-handoff-v1.md) |

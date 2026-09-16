@@ -1,6 +1,6 @@
 # RFC 032 — What a commit will author: declared renames, and a ref with no published history
 
-**Status.** **Accepted by the project owner 2026-09-16; Q1 ruled (a).** Proposed the same day by the architect: 0.8.0's
+**Status.** **Done 2026-09-16** — delivered on `main` (`415bcb6`, `00a2eca`); a **0.8.0 candidate**. **Accepted by the project owner 2026-09-16, Q1 ruled (a).** Proposed the same day by the architect: 0.8.0's
 second increment, taking the roadmap's items 2 and 4 together, because both are the same failure. **Revised before
 acceptance** after the owner asked about risks to user operation and data safety: F6–F8 are measured, and decisions
 1–4 were narrowed to what they found. **Amended 2026-09-16** by the architect after the handoff's first review and
@@ -114,8 +114,8 @@ followed. **stikk must not repeat advice it measured to loop.** Letter 013 repor
    - **Once, under the entries, when any pair exists:** *"a declared rename is authored as a rename; prikk does not
      report whether its content also changed"* (F3). It is removed on the day prikk reports that.
 2. **A declaration without both halves is named for what it is, and never counted as a rename:**
-   - **its destination is not listed** (F6): *"declared rename {old} → {new}: {new} is not in the worktree, so prikk will
-     not author it as a rename"*. That is true of both F6 rows as measured;
+   - **its destination is not listed** (F6): *"declared rename {old} → {new}: {new} is not a file in the worktree, so prikk
+     will not author it as a rename"* (**amended A6**). That is true of both F6 rows as measured;
    - **its source is present again** (F7, F8): *"declared rename {old} → {new}: {old} is present again, and prikk refuses
      to commit until the declaration is resolved"*. **It is a notice, not a prevention**, keeping RFC 027's ruling. It is
      shown on the Changes view and on commit's confirmation. **No way out is offered in stikk's words** until one is
@@ -266,9 +266,46 @@ an unreported verdict is not a refusal any more than it is a zero (`C-T2c′`).
 **facts of the report** — while the omitted sentence was the only one that promised an outcome. **No fourth declaration state**:
 at 0.43, `resolution: "refused"` names this case exactly, and the re-baseline prevents on it (A5).
 
-## Delivery
+## Delivered
 
-**One handoff**, issued on the ruling.
+**One handoff** (`415bcb6`), **and its review's two text corrections** (`00a2eca`). On `main` for 0.8.0.
+
+- **A declared rename is marked only where prikk lists both halves** — a `missing` entry at the source and an `untracked`
+  entry at the destination. The two rows are annotated as one rename, `renames N` counts the pairs at prikk ≥ 0.38, and the
+  untracked filter never hides a paired destination.
+- **A declaration prikk will not author as a rename is named and never counted**: its destination is not a file in the
+  worktree (prikk records a deletion), or its source is present again (prikk refuses to commit). **Notices, not preventions**,
+  keeping RFC 027's rule that stikk prevents only on prikk's own verdict.
+- **The measured way out, only where measured** (A3): where the destination is gone too, stikk says `prikk mv {new} {old}`
+  drops the declaration, as prikk's reply 014 and the dev team both measured at 0.42.0. **Where both copies exist, stikk
+  offers nothing** — prikk's route there is moving a user's files by hand.
+- **A clean worktree holding such a declaration is blocked with that reason** (A3), not only *"nothing to commit"*: prikk
+  reports `clean: true` there while `commit` refuses.
+- **A ref with no published history is named as one**, from `refs()` **and its queue** (A2): whether a commit would be its
+  first, or would add to the patches queued for it with nothing sealed. **Nothing is inferred from the tracked count.**
+- **No outcome is promised while prikk reports a refusal** (A7): the content sentence is withheld when `refused` is
+  `Some(n ≥ 1)`, and below prikk 0.39, where the verdict is unreported, it stays (`C-T2c′`).
+- **Publication state never entered `ChangesView`**, so RFC 030's equality re-read at Enter is unaffected — its positive
+  control runs unmodified at both ends of the range.
+
+**Runs:** at `415bcb6`, CI `35029801259`, the suite `35029845688` (full matrix) and supply chain `35029848644`; at
+`00a2eca`, CI `35042226477`, the suite `35042224804` and supply chain `35042226511`, then on `main` CI `35042506745` and
+Docs `35042506643`. The suite is **32 passed**, 1 filtered, at prikk 0.28.0 and 0.42.0.
+
+### Carried forward
+
+- **A pair prikk refuses is still classified as a pair.** The symlink case (A7) is annotated and counted as a rename while
+  `commit` refuses everything. **No harm reaches a commit** — RFC 027 makes commit unavailable on prikk's verdict — and
+  the promise was removed rather than the classification changed, because prikk 0.43's `resolution` names the case exactly.
+- **prikk does not report whether a renamed file's content changed** (F3), and stikk says so. 0.43's `content_changed`
+  and `mode_changed` retire the sentence.
+- **F7 stays a notice, not a prevention** (RFC 027). 0.43's `resolution: "refused"` is the verdict that allows prevention.
+- **Three reads, one accepted race** — `worktree-status`, `refs()` and Orientation. RFC 031's check refreshes within five
+  seconds, and RFC 030's token stales a confirmation armed on the old state.
+- **A queue count with no target reported is not reproducible** by prikk commands at 0.42.0; its words are held by core
+  tests only.
+- **The whole declaration analysis is inference from the report**, for prikk 0.28–0.42. **The 0.43 re-baseline replaces it**
+  with prikk's own resolution (A5).
 
 ## What this RFC does not do
 

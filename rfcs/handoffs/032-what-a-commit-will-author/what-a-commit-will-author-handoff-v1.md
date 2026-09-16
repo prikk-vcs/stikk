@@ -5,7 +5,7 @@
 > deletion is `delete-file` in `prikk commit`'s output and `delete-node` in `status-report-v1` (A4). Where this handoff
 > disagrees with them, the amendments win.
 
-**Companion to:** [RFC 032](../../accepted/032-what-a-commit-will-author.md). Accepted 2026-09-16; **Q1 ruled (a)**.
+**Companion to:** [RFC 032](../../done/032-what-a-commit-will-author.md). Accepted 2026-09-16, **Q1 ruled (a)**; delivered and closed 2026-09-16.
 **This handoff is all of RFC 032:**
 - declared renames marked when prikk lists both halves;
 - declarations prikk will not author named, never counted;
@@ -120,7 +120,7 @@ read anything else into them.**
 | Changes, a paired **source** row | paired | after prikk's note: `· declared rename → {new}` |
 | Changes, a paired **destination** row | paired | after prikk's note: `· declared rename ← {old}` |
 | Changes, once under the entries | at least one pair | `a declared rename is authored as a rename; prikk does not report whether its content also changed` |
-| Changes, and commit's card | destination absent | `declared rename {old} → {new}: {new} is not in the worktree, so prikk will not author it as a rename` |
+| Changes, and commit's card | destination absent | `declared rename {old} → {new}: {new} is not a file in the worktree, so prikk will not author it as a rename` (**A6**) |
 | Changes, and commit's card | source present again | `declared rename {old} → {new}: {old} is present again, and prikk refuses to commit until the declaration is resolved` |
 | Changes headline, replacing `N change(s) against baseline` | no published history, and changes | `{ref} has no published history — every file is listed as untracked, and a commit would be its first` |
 | Changes headline, replacing `clean against baseline` | no published history, and clean (if §2 measures it) | `{ref} has no published history, and nothing in the worktree to commit` |

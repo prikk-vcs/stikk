@@ -244,20 +244,18 @@ a fabricated worktree entry was fixed.
    `d5356a8`, `7f1f391`). A silent check on focus and every 5 seconds while idle; a detected change refreshes what is
    on screen with *"repository changed outside stikk — refreshed"*, and an open confirmation goes stale at once. `r`
    now refreshes Changes and the tip's Block detail, each re-reading its own ref. Ships in 0.8.0.
-2. **The commit preview does not show the rename a declaration authors** (prikk ≥ 0.38) — with item 4, in
-   [RFC 032](rfcs/accepted/032-what-a-commit-will-author.md), accepted; Q1 (a). Measured at 0.42 for
-   RFC 030's amendment: after `prikk mv a.txt b.txt`, `worktree-status` lists `missing a.txt` and `untracked b.txt`,
-   and `prikk commit` authors `rename-path a.txt -> b.txt`. stikk's preview shows the two paths and never the
-   rename. RFC 030 v2 makes a declaration that changes after the preview stale; showing declarations at all is
-   its own RFC.
+2. **The commit preview shows the rename a declaration authors — landed on `main`**
+   ([RFC 032](rfcs/done/032-what-a-commit-will-author.md); `415bcb6`, `00a2eca`). With item 4. A `prikk mv` whose two
+   halves prikk lists is annotated on both rows as one declared rename and counted `renames N` at prikk ≥ 0.38, on the
+   Changes view and commit's confirmation; a declaration prikk will not author as a rename is named and never counted,
+   with the measured way out where one exists. **stikk promises no outcome while prikk reports a refusal.** Ships in 0.8.0.
 3. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
-4. **The Changes view says nothing when its baseline is unpublished** — with item 2, in
-   [RFC 032](rfcs/accepted/032-what-a-commit-will-author.md). Measured at prikk 0.28 and 0.41, a ref with
-   no published history reads as an empty baseline everywhere — `worktree-status` lists every file untracked, `log`
-   reports empty history, and `commit` authors onto the new name. **That is prikk's deliberate model, not a defect**:
-   it is exactly how a first commit is previewed, so nothing is asked of prikk. Orientation already shows
-   `<unpublished>`, and the Changes view should say the same rather than show a whole tree as untracked without
-   comment. The default-focus half of this item shipped in 0.7.0 (RFC 029).
+4. **The Changes view says what an unpublished baseline is — landed on `main`** (with item 2, in
+   [RFC 032](rfcs/done/032-what-a-commit-will-author.md)). A ref absent from prikk's `refs()` is named in place of
+   *"against baseline"*, and its words come from prikk's queue for that ref: a commit would be its first, or it adds to
+   the patches queued for it with nothing sealed. **That an unpublished ref reads as an empty baseline is prikk's
+   deliberate model, not a defect** — it is exactly how a first commit is previewed, so nothing was asked of prikk. The
+   default-focus half of this item shipped in 0.7.0 (RFC 029). Ships in 0.8.0.
 5. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
    where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
    `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as

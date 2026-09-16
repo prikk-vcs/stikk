@@ -1,6 +1,6 @@
 # RFC 032 — What a commit will author: declared renames, and a ref with no published history
 
-**Status.** **Done 2026-09-16** — delivered on `main` (`415bcb6`, `00a2eca`); a **0.8.0 candidate**. **Accepted by the project owner 2026-09-16, Q1 ruled (a).** Proposed the same day by the architect: 0.8.0's
+**Status.** **Done 2026-09-16** — delivered on `main` (`415bcb6`, `00a2eca`); **shipped in 0.8.0** (tag `0.8.0` at `c25339f`). **Accepted by the project owner 2026-09-16, Q1 ruled (a).** Proposed the same day by the architect: 0.8.0's
 second increment, taking the roadmap's items 2 and 4 together, because both are the same failure. **Revised before
 acceptance** after the owner asked about risks to user operation and data safety: F6–F8 are measured, and decisions
 1–4 were narrowed to what they found. **Amended 2026-09-16** by the architect after the handoff's first review and

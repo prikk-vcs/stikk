@@ -1,6 +1,6 @@
 # RFC 031 — Seeing a change made outside stikk
 
-**Status.** **Done 2026-09-16** — delivered on `main` (`357e8d0`, `d5356a8`, `7f1f391`); a **0.8.0 candidate**. Accepted by
+**Status.** **Done 2026-09-16** — delivered on `main` (`357e8d0`, `d5356a8`, `7f1f391`); **shipped in 0.8.0** (tag `0.8.0` at `c25339f`). Accepted by
 the project owner 2026-09-15, **Q1 ruled (b), Q2 ruled (b)**. Proposed the same day by the architect: 0.8.0's first increment.
 **Tracks.** `FR-106`, `OP-04`, `LC-4`, `CT-05`, `NFR-R02`, `NFR-P01`, `TU-03`, RFC 003 (the change token), RFC 010
 (the off-thread seam), RFC 030.

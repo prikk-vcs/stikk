@@ -3954,6 +3954,13 @@ fn rfc034_stikk_says_what_prikks_resolution_says_at_both_ends() {
         }
         for (name, setup, resolution, sentence, printed) in &rows {
             let ctx = format!("0.{} {name}", bin.minor);
+            // Windows has no executable bit, so the mode row's arrangement cannot arrange
+            // anything: prikk correctly reports `mode_changed: false` and stikk correctly says
+            // nothing. Announced rather than silent (RFC 022 §3).
+            if *name == "rename, mode changed" && !cfg!(unix) {
+                eprintln!("{ctx}: SKIPPED — this platform has no executable bit to change");
+                continue;
+            }
             let (fixture, backend, repo) = rfc032_sealed_base(&bin);
             setup(&bin, &repo);
 

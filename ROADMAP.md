@@ -255,13 +255,14 @@ a fabricated worktree entry was fixed.
 
 ## Next — carried into 0.9.0, in order
 
-1. **The prikk 0.46 re-baseline, and a repair the released line needs** —
-   [RFC 034](rfcs/accepted/034-prikk-0-46-rebaseline.md), **accepted**; **Q1 ruled (b)** — no 0.8.1, it rides here
-   (supersedes RFC 033, archived).
-   prikk 0.44.0, 0.45.0 and 0.46.0 landed 2026-09-16..22. **0.45.0 made an unpublished ref refuse when stikk names
-   it**, so on a repository with nothing sealed yet the Changes view, History and commit's preview all refuse —
-   measured against the published 0.8.0. prikk still reports it without `--ref`, which is the repair. 0.44.0 fixed
-   the defect letter 014 reported; letter 015 reports this one.
+1. **The prikk 0.46 re-baseline, and a repair the released line needed — landed on `main`**
+   ([RFC 034](rfcs/done/034-prikk-0-46-rebaseline.md), Q1 ruled (b), superseding RFC 033; `ad95152`, `8a23045`).
+   prikk 0.44.0, 0.45.0 and 0.46.0 landed 2026-09-16..22, and **0.45.0 made an unpublished ref refuse when stikk
+   names it** — so on a repository with nothing sealed yet, the Changes view, History and commit's preview all
+   refused, measured against the published 0.8.0. stikk now re-reads without `--ref` and **accepts the report only
+   when it names the ref that was asked for**; the ceiling is 46; a declaration's fate comes from prikk's own
+   `resolution` at ≥ 0.44, a refused one makes commit unavailable, and a checkout that stopped part-way is shown.
+   Letter 015 asks prikk to restore the unpublished-ref read, which would retire the retry. Ships in 0.9.0.
 2. **Patch detail** (`FR-030`), then **Compare** (`FR-033`) — **unblocked by prikk 0.46.0**, each its own RFC.
    `prikk tree`, `prikk cat` and `prikk diff` arrived, and every read-only mode now takes a **bare block id**, so
    `UD-10` retires: a block id is addressable as a content root, which was Compare's stated blocker. `diff` also

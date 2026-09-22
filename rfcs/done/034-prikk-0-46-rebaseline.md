@@ -1,6 +1,7 @@
 # RFC 034 — The prikk 0.46 re-baseline: a ref with no published history stopped being readable
 
-**Status.** **Accepted by the project owner 2026-09-22**, **Q1 ruled (b)** the same day: no 0.8.1 — stikk has no
+**Status.** **Done 2026-09-22** — Handoffs A and B delivered on `main` (`ad95152`, `8a23045`); a **0.9.0 candidate**.
+**Accepted by the project owner 2026-09-22**, **Q1 ruled (b)** the same day: no 0.8.1 — stikk has no
 users yet, so the repair rides in 0.9.0 with the re-baseline. **Amended on acceptance (A1)** — the ceiling raise comes
 *first*, not last. **Proposed 2026-09-22** by the architect, the day prikk's letter 017 arrived. **Supersedes
 [RFC 033](../archive/033-prikk-0-43-rebaseline.md)**, whose prikk is two releases old and whose open question prikk
@@ -203,6 +204,55 @@ report what the raise cost."* RFC 029 did exactly that (`9b0a6e4`, the ceiling a
 **So Handoff A raises the ceiling to 46 in its own first commit**, with the suite then red on the four regressions of
 F0 — *expected, and reported in the review request rather than hidden* — and repairs them in the commits that follow.
 **The raise is not the re-baseline**: Handoff B still carries decision 4's work, re-measured at 0.46.
+
+## Delivered
+
+**Two handoffs, in order, both green on `main`.**
+
+**A — the repair and the ceiling** (`5df4b68` the ceiling alone, `0793297`, `7484431`, `a938cb2`, `ad95152`).
+- **The ceiling is 46**, raised first, with the suite red at that commit on F0's four regressions and the redness
+  reported rather than hidden.
+- **A ref with no published history reads again.** On prikk's own clause, stikk re-runs the command without `--ref`
+  and **accepts the report only when it names the ref that was asked for**; every other outcome returns prikk's
+  original refusal. Nothing consults `refs()` or `current_branch`, and **an absent ref still refuses** — driven by a
+  test asserting the current branch's name never leaks into another ref's answer.
+- **The environment class** gained prikk's no-repository and too-old-binary answers, matched on their clauses, with
+  **no format number parsed** — a second capture at `version: 9` stops that dependency forming.
+- **The two wording pins are version-aware**: the source-present refusal was reworded at **0.43**, and the directory
+  destination at **0.44**.
+- **Runs:** CI `35709723018`, the suite `35709723045` (full matrix), supply chain `35709726600`; on `main`, CI
+  `35710637853` and Docs `35710637900`.
+
+**B — the re-baseline, on prikk's own verdict** (`f45c24a`, `f6ca0af`, `3ab8fca`, `ef25f68`, `31d5aae`).
+- **Declarations come from prikk's `resolution` at ≥ 0.44** — `rename`, `deletion`, `deletion-ignored`,
+  `never-tracked`, `refused` — each with its own measured sentence, and RFC 032's inference below the band. **The band
+  is justified by a captured 0.43 report read at both 43 and 44**, resolving `rename` then `deletion`.
+- **A rename's content and mode come from prikk**, and RFC 032's *"prikk does not report whether its content also
+  changed"* is **asserted absent** inside the band. `null` renders nothing: unknown is not "unchanged".
+- **A declaration prikk would refuse makes commit unavailable**, with prikk's refusal verbatim and **no way out in
+  stikk's words** — checked **before** the clean-worktree block, which is what keeps prikk's verdict visible on the
+  row prikk calls clean.
+- **A checkout that stopped part-way is shown** in Orientation, from prikk's prose sentence (`ER-02`), and blocks
+  commit's preview — **while Changes and History keep working**, asserted at real binaries.
+- **37 suite cases green** at 0.28 and 0.46, and by hand at 0.44 and 0.45.
+- **Runs:** CI `35716937849`, the suite `35716937497` (full matrix, all three platforms), supply chain
+  `35716940461`; on `main`, CI `35718339874` and Docs `35718339861`.
+
+### Carried forward
+
+- **The `--ref` retry exists only because prikk 0.45 refuses a named unpublished ref.** Letter 015 asks prikk to
+  restore it; the retry retires when prikk does and stikk's floor passes that release.
+- **An unpublished ref that is not prikk's current branch stays unreadable** at ≥ 0.45, and stikk says so rather than
+  showing an empty view.
+- **prikk 0.43 is a release stikk does not build declaration behaviour on** — its classifier is wrong in one measured
+  state, and prikk reports it can hang on a FIFO destination.
+- **Orientation is prose-parsed.** Reading the marker from `status --format json` instead is its own increment
+  (roadmap), and nothing waits on it.
+- **The mode row skips where a platform has no executable bit**, announced; the content row beside it runs
+  everywhere.
+- **No gloss for prikk 0.42's interrupted-materialization refusal** (A2).
+- **prikk 0.46's `tree`, `cat` and `diff` unblock `FR-030` and `FR-033`, and `UD-10` retires** — each its own RFC,
+  deliberately not built here.
 
 ## Amendment A2 — 2026-09-22, from Handoff B's review: the 0.42 gloss rested on a stale premise
 

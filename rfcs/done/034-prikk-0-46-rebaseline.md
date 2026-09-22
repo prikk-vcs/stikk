@@ -243,7 +243,12 @@ F0 — *expected, and reported in the review request rather than hidden* — and
 - **The `--ref` retry exists only because prikk 0.45 refuses a named unpublished ref.** Letter 015 asks prikk to
   restore it; the retry retires when prikk does and stikk's floor passes that release.
 - **An unpublished ref that is not prikk's current branch stays unreadable** at ≥ 0.45, and stikk says so rather than
-  showing an empty view.
+  showing an empty view. **Narrowed 2026-09-22 by prikk's reply 018:** they measured that `branch create` *also*
+  refuses in that state, so a second unpublished ref **cannot be created before the first seal** — the state is
+  unreachable, and the retry covers every unpublished ref that can exist today. **prikk's fix is on their `main`**
+  (`6dee6c4f`, `7405ec3b`) and ships in their next release, where a named current branch reads published or not;
+  it was also **wider than stikk measured** — `tree` and `diff` refused the same way, neither of which stikk drives
+  yet.
 - **prikk 0.43 is a release stikk does not build declaration behaviour on** — its classifier is wrong in one measured
   state, and prikk reports it can hang on a FIFO destination.
 - **Orientation is prose-parsed.** Reading the marker from `status --format json` instead is its own increment

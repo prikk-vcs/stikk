@@ -1,6 +1,8 @@
 # RFC 035 — Patch detail: what one patch changed, in prikk's own terms
 
-**Status.** **Proposed 2026-09-22** by the architect, the day RFC 034 closed. **One open question (Q1).**
+**Status.** **Proposed 2026-09-22** by the architect, the day RFC 034 closed. **Revised the same day after prikk's
+reply 019: F2's central claim was wrong, and the correction shrinks this RFC's only real gap** (see F2). **One open
+question (Q1), now much narrower.**
 `FR-030` has been blocked since **0.1.0** — first on `UD-09`, then on its own increment — and prikk 0.46 leaves
 nothing else in the way.
 Measured against a real prikk **0.46.0** binary (`cargo install --locked`), one repository exercising **every
@@ -21,12 +23,12 @@ view.**
 **spans**, a create's **content and mode**, a delete's **preimage**, a binary replacement's **blob ids and sizes**, a
 permission change's **old and new mode**, and a rename's **two paths and the key that asserted it**.
 
-**One thing is missing, and it is the one a reader needs most: the file's name.** For `edit-text`, `replace-binary`
-and `change-perm`, the JSON reports an **`unresolved_node_id`** instead of a path — while **prikk's own prose `show`
-prints the path for all three** (F2). So prikk knows it; the machine-readable form does not carry it. **Letter 016
-asks for it.**
+**Paths resolve when `show` is given a block id** — in both formats. They are unresolved for a **bare patch id**,
+and therefore for a **queued patch**, which has no block to resolve against (F1, F2). **prikk 0.47 resolves the
+queued case too**, against the folded baseline, and stikk must not key on a path being absent.
 
-**Q1 is whether that gap is worth shipping around**, or whether the view waits for prikk.
+**So sealed history is complete today**, and the only gap is a queued patch on prikk ≤ 0.46. **Q1 is whether to ship
+with that gap** or wait one prikk release.
 
 ## Findings
 
@@ -49,36 +51,39 @@ which is how stikk enumerates them — `log` reports `patch_count` and `patch_me
 **`queued: true|false` is prikk's own word for whether the patch is still in the WAL**, so Patch detail serves the
 Queue view and History from one read.
 
-### F1 — three operations name no path
+### F1 — three operations name no path **when `show` is given a patch id**
 
-`edit-text`, `replace-binary` and `change-perm` report `paths: [{"unresolved_node_id": "<64 hex>"}]`. **Sealing does
-not resolve them** — measured before and after `prikk seal`, byte-identical.
+`edit-text`, `replace-binary` and `change-perm` report `paths: [{"unresolved_node_id": "<64 hex>"}]` when `show` is
+asked about a **patch id**. Sealing the patch does not change that — measured before and after `prikk seal`,
+byte-identical — because a patch id carries no block context to resolve against.
 
-**stikk cannot resolve them either:** `prikk tree` lists `path`, `kind`, `encoding`, `mode`, `size` and `content_id`
-— **no node id** — so there is nothing to join on. The id is opaque to every surface stikk can read.
+**Given a block id, the same three operations carry their paths** (F2). **stikk cannot resolve a node id itself:**
+`prikk tree` lists `path`, `kind`, `encoding`, `mode`, `size` and `content_id` — **no node id** — so there is nothing
+to join on.
 
-### F2 — prikk's prose `show` prints the paths its JSON withholds
+### F2 — the axis is the id `show` is given, not the output format — **my letter 016 was wrong**
 
-The same command, same patch, without `--format json`:
+Measured as a 2×2, one patch, one repository, prikk 0.46.0:
 
-```
-  operation 3: change-perm
-    path: moved.sh
-    mode: 644 -> 755
-  operation 5: edit-text
-    path: a.txt
-    old:
-two
-    new:
-TWO
-```
+| | `--format json` | prose |
+|---|---|---|
+| **`show <block-id>`** | `"path": "a.txt"` | `path: a.txt` |
+| **`show <patch-id>`** | `"unresolved_node_id": "be664e1a…"` | `path: <unresolved node be664e1a…>` |
 
-**prikk resolves the path and prints it.** The JSON does not carry it.
+**The two formats agree in both directions.** Letter 016 claimed prikk's JSON withheld what its prose printed; it
+does not. **The architect compared a prose run against a block id with a JSON run against a patch id, and attributed
+the difference to the visible axis rather than the one that changed in the input.** prikk's reply 019 corrected it.
 
-**And the prose is not a safe fallback.** Content is printed raw and unframed — the `old:`/`new:`/`content:` blocks
-are file bytes with no delimiter — so a file containing a line like `  operation 7: create-file` would be read as
-structure. **Parsing that would be stikk inventing a patch from a user's file content**, which is the `T-T4` failure
-in its purest form. **stikk reads the JSON and asks prikk for the path** (letter 016).
+**The evidence to catch this was already in `measure035-0.46.txt`** — its prose section runs a patch id and prints
+`<unresolved node …>` — and it was grepped for a few patterns rather than read. **Measuring is not the same as
+reading what was measured.**
+
+**What this changes here:** for a sealed patch, Patch detail asks `show <block-id>` and gets every path. The
+unresolved case is a **queued** patch alone, which has no block by definition — and prikk 0.47 resolves that against
+the folded baseline (reply 019 §2), rendering a queued patch identically to a sealed one apart from `"queued": true`.
+
+**prikk files that as `### Changed`, not `### Fixed`:** a `path` will appear where one was absent. **stikk must not
+key on absence** (decision 3).
 
 ### F3 — prikk's own diff names every path, for a sealed block
 
@@ -118,6 +123,8 @@ between stikk's rendering and prikk's fields, which is also the honest place to 
 1. **Patch detail reads `show --format json`, and only that.** One new seam method (`show`), one reader, at prikk
    ≥ 0.36 where `show-report-v1` exists. **Below 0.36 the view says prikk does not report a patch's content** and
    shows what the Queue and History already know — never an empty patch.
+   **It asks with the id that resolves the most:** a **block id** for a sealed patch, rendering the one patch the
+   user opened from the block's report; a **patch id** only for a queued patch, which has no block (F2).
 
 2. **Every operation is rendered from prikk's own fields**, in prikk's kind word, verbatim (`ER-02`):
    - **`edit-text`** shows `old_span_text` → `replacement_text` **as spans**, labelled as spans, with **no invented
@@ -130,8 +137,11 @@ between stikk's rendering and prikk's fields, which is also the honest place to 
    - **`rename-path`** shows both paths and the asserting AUTHOR key id.
 
 3. **An unresolved path is named as unresolved** — prikk's node id, inert, with one sentence saying prikk does not
-   resolve it in this report. **stikk never guesses which file it is**, from `diff`, from the Changes view, or from
-   anything else. This is RFC 028's rule for the Queue view, applied to the same value.
+   resolve it *for a patch with no block yet*. **stikk never guesses which file it is**, from `diff`, from the
+   Changes view, or from anything else. This is RFC 028's rule for the Queue view, applied to the same value.
+   **It is reachable only for a queued patch on prikk ≤ 0.46**, and stikk **must not key on the absence of `path`**:
+   0.47 adds one there, as a `### Changed`. The reader takes a path when prikk gives one and says so when it does
+   not, at every version.
 
 4. **Prikk's block diff is a separate, labelled section, and only where it is honest** (F3): shown when the patch's
    block holds exactly one patch, labelled *"what this block changed, from `prikk diff`"*; **offered in Block detail
@@ -148,29 +158,26 @@ between stikk's rendering and prikk's fields, which is also the honest place to 
    bounded prefix with an explicit *"N more bytes not shown"*, **never a silent truncation** (`C-T2c′`). The bound is
    stikk's own display limit, stated where it bites.
 
-8. **Letter 016 asks prikk to carry the path in `show --format json`** for the three operations whose prose already
-   names it.
+8. **Letter 016 is withdrawn and corrected by letter 017** (F2). Nothing is asked of prikk for the sealed case;
+   the queued case is already ruled and shipping in 0.47.
 
 ## Open question
 
-### Q1 — does Patch detail ship before prikk resolves those paths?
+### Q1 — does Patch detail ship before prikk 0.47 resolves a queued patch's paths?
 
-**The facts.** Three of six operation kinds — including `edit-text`, the one a reader opens a patch *for* — arrive
-with a node id instead of a path. prikk's prose has the path; its JSON does not; parsing the prose is unsafe (F2). A
-single-operation patch is unambiguous in practice (the Queue view's row names the file), but a patch touching four
-files shows three edits whose targets stikk cannot name.
+**The facts, after F2's correction.** **Sealed history is complete today**: every operation carries its path when
+`show` is asked about the block. **A queued patch** — committed, not yet sealed — reports a node id for `edit-text`,
+`replace-binary` and `change-perm` on prikk ≤ 0.46, in both formats, because it has no block to resolve against.
+**prikk 0.47 fixes exactly that**, and it is ruled and handed off upstream.
 
-- **(a) Ship it, with unresolved paths named as unresolved — recommended.** Everything else in the patch is exact:
-  the spans, the preimage, the modes, the blob ids. A reader sees *what changed* and, for three kinds, not *where*
-  until prikk answers. **stikk says so plainly**, and the gap closes with a prikk release rather than a stikk one.
-- **(b) Wait for prikk.** The view arrives complete. *Cost:* `FR-030` stays unbuilt on an upstream timeline we do not
-  control, having already waited since 0.1.0 — and prikk has answered every letter so far in days.
-- **(c) Ship it, and resolve paths from `prikk diff` where the mapping is unambiguous** (one modified path, one
-  `edit-text`). *Cost:* **it is inference**, and the moment it is wrong it is wrong on a confirmation-free screen a
-  user trusts. It also cannot serve a queued patch, where there is no diff at all.
+- **(a) Ship it — recommended.** Sealed patches, which are the history a user browses, are complete. A queued patch
+  shows its spans, preimages, modes and blob ids, and says plainly that prikk does not resolve those three paths
+  until the patch is sealed — which is **true, short-lived and self-correcting**: the same patch renders completely
+  the moment it seals, and completely at any age once prikk 0.47 lands.
+- **(b) Wait for prikk 0.47.** The view arrives with no caveat at all. *Cost:* `FR-030` waits again — since 0.1.0 —
+  for a gap that affects only unsealed work, on a release prikk has already handed off.
 
-**My recommendation is (a).** stikk's whole discipline is to show what prikk reports and name what it does not.
-**(c) is the option this project exists to refuse.**
+**My recommendation is (a).** The caveat is one sentence, it is true, and it disappears twice over.
 
 ## Delivery
 

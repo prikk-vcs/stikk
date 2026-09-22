@@ -97,10 +97,32 @@ pub(super) fn pick_message(stdout: &str, stderr: &str) -> String {
 /// `this repository uses format 2, which prikk no longer supports …`). Matched on `uses format` +
 /// `no longer supports` — the stable clause — never the format number or the removal version, both of
 /// which change (RFC 017 §5).
+/// The states that are stikk's environment to fix, not prikk's repository to refuse — each matched on its
+/// own **semantic clause**, never on a class prefix (this module's second rule).
+///
+/// - **`no such file` / `permission denied`** — prikk's `i/o error:` shapes, captured live at 0.33.0.
+/// - **`uses format` + `no longer supports`** — a **retired** format prikk will not read at any version,
+///   provoked from a real format-2 repository (prikk 0.19.0's own output, read by 0.33.0).
+/// - **`no prikk repository at`** — how prikk ≥ 0.45 answers a directory holding no repository, where
+///   0.44 and earlier said `i/o error: No such file or directory` and landed on the first clause (RFC
+///   034 F3). Measured at 0.45.0 and 0.46.0: `precondition not met: no prikk repository at <path>`.
+///   Matching the clause is what keeps both eras environment.
+/// - **`unsupported format version`** — a repository whose format **this binary is too old for**, which
+///   is a different state from the retired-format clause above: there the repository is too old for
+///   every prikk, here the *binary* is too old for the repository. A repository created by prikk ≥ 0.45
+///   is format 7 from birth, and prikk 0.44 reads it as `unsupported format version: 0` (measured).
+///   **The number is not parsed or asserted** — prikk names `0` where the repository is format 7, which
+///   stikk letter 015 reports; the class must not depend on either value.
+///
+/// stikk never causes the format state: it writes nothing inside a repository (`CON-1`) and runs no
+/// `format` verb. It reaches stikk only when a user's `STIKK_PRIKK_BIN` is older than their repository
+/// (RFC 034 F4), which is exactly a "your prikk is too old for this repository" answer to give.
 fn is_environment(lowered: &str) -> bool {
     lowered.contains("no such file")
         || lowered.contains("permission denied")
         || (lowered.contains("uses format") && lowered.contains("no longer supports"))
+        || lowered.contains("no prikk repository at")
+        || lowered.contains("unsupported format version")
 }
 
 /// Matched on the one clause commit's and seal's cross-ref refusals share (RFC 016 §6) — never either

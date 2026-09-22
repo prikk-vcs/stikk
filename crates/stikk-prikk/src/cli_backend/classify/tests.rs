@@ -471,3 +471,50 @@ fn stdout_is_used_when_stderr_is_empty() {
     assert_eq!(e.class(), "refusal");
     assert!(e.to_string().contains("tags/gone"));
 }
+
+#[test]
+fn a_directory_with_no_repository_is_environment_at_prikk_0_45_and_above() {
+    // RFC 034 F3, captured live: `prikk status` in an empty directory at prikk 0.45.0 and 0.46.0.
+    // Through 0.44 the same state surfaced as `i/o error: No such file or directory` and matched the
+    // `no such file` arm; from 0.45 prikk states it as a precondition, and the class must not change
+    // with prikk's wording. Matched on `no prikk repository at`, never on the class prefix.
+    let (out, err) =
+        on_stderr("error: precondition not met: no prikk repository at /tmp/empty-dir");
+    let e = classify(out, err, RequestCategory::ReadHistory);
+    assert_eq!(e.class(), "environment");
+    assert!(e.to_string().contains("no prikk repository at"));
+}
+
+#[test]
+fn a_repository_newer_than_the_binary_is_environment_and_no_number_is_read() {
+    // RFC 034 F3/F4, captured live: a repository created by prikk 0.46.0 (format 7 from birth), read by
+    // prikk 0.44.0. **prikk names `0`, not 7** — stikk letter 015 reports that, and nothing here parses
+    // or asserts the number: the clause alone carries the class.
+    let (out, err) = on_stderr("error: unsupported format version: 0");
+    let e = classify(out, err, RequestCategory::ReadHistory);
+    assert_eq!(e.class(), "environment");
+    assert!(e.to_string().contains("unsupported format version"));
+
+    // A different number is the same state, and classifies the same way.
+    let (out, err) = on_stderr("error: unsupported format version: 9");
+    assert_eq!(
+        classify(out, err, RequestCategory::ReadHistory).class(),
+        "environment"
+    );
+}
+
+#[test]
+fn the_retired_format_refusal_is_still_its_own_state() {
+    // The clause added above must not swallow the older one: a **retired** format (too old for every
+    // prikk) and a format **this binary is too old for** are different answers to give, and prikk words
+    // them differently. This is the format-2 capture, asserted to still classify environment through the
+    // `uses format` + `no longer supports` pair rather than the new clause.
+    let (out, err) = on_stderr(
+        "error: integrity error: this repository uses format 2, which prikk no longer supports \
+         (this version requires format 6). format-2 support was removed after 0.19.0; migration from \
+         format 2 is not supported.",
+    );
+    let e = classify(out, err, RequestCategory::ReadHistory);
+    assert_eq!(e.class(), "environment");
+    assert!(!e.to_string().contains("unsupported format version"));
+}

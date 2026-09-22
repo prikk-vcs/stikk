@@ -2,7 +2,8 @@
 
 **Status.** **Proposed 2026-09-22** by the architect, the day prikk's letter 017 arrived. **Supersedes
 [RFC 033](../archive/033-prikk-0-43-rebaseline.md)**, whose prikk is two releases old and whose open question prikk
-answered in 0.44.0. **One open question (Q1), and it is a release decision.**
+answered in 0.44.0. **Q1 ruled (b) by the project owner 2026-09-22**: no 0.8.1 — stikk has no users yet, so the repair rides
+in 0.9.0 with the re-baseline.
 Measured against real prikk **0.28.0**, **0.43.0**, **0.44.0**, **0.45.0** and **0.46.0** binaries
 (`cargo install --locked`), and by running the **published 0.8.0's own suite** — a scratch copy of `c25339f` with
 only the validated ceiling raised — at 0.28 and 0.46. Evidence:
@@ -15,7 +16,8 @@ classifier), `stikk-core` (the declaration analysis; commit's preview; Orientati
 
 ## Summary
 
-**prikk 0.45.0 broke something stikk 0.8.0 shipped three weeks ago, and it is the first thing a new user sees.**
+**prikk 0.45.0 broke something stikk 0.8.0 shipped a week ago — the path a repository's first commit takes.**
+**stikk has no users yet** (the owner, 2026-09-22), so this is a correctness and scheduling matter, not an incident.
 
 On prikk ≥ 0.45, `worktree-status --ref <R>` and `log --ref <R>` **refuse** when `R` has no published history —
 *"precondition not met: ref heads/main does not exist in this repository"*. Until a repository's first **seal**, that is
@@ -174,14 +176,26 @@ verbatim, nothing is written, and a repository with published history is unaffec
 - **(c) Wait for prikk to restore the behaviour.** prikk has moved fast for us, and this is their regression. *Cost:*
   stikk's shipped release stays broken on a prikk it does not control, for a fix that is ours to make in one place.
 
-**My recommendation is (a), and letter 015 goes regardless.** stikk's rule is that it reads what prikk reports rather
-than guessing — here prikk still reports it, under a different invocation, and stikk can verify it got what it asked
-for. That is a repair stikk can make honestly without waiting.
+**My recommendation was (a), and letter 015 goes regardless.**
+
+### RULED by the project owner, 2026-09-22: (b)
+
+**"No need to care about stikk user because no actual user yet."** That removes (a)'s only argument — first-run
+urgency — so **there is no 0.8.1**, and decisions 1 and 2 ride in 0.9.0 with the rest of the re-baseline.
+
+**The repair is still built, rather than waiting for prikk** (which would be (c)). stikk supports prikk from **0.28**
+upward, so **0.45 and 0.46 stay inside that range whatever prikk does next**, and anyone pinning either one meets this
+for as long as stikk supports them. If prikk restores the behaviour, the workaround narrows to a two-release band
+instead of being permanent, and it retires entirely if stikk's floor ever rises above 0.46.
+
+**What the ruling changes about order:** nothing is urgent, but nothing moves without it either — **the ceiling cannot
+rise to 0.46 while four suite cases fail**, and Patch detail and Compare both need 0.46's verbs. So this RFC still
+comes before them.
 
 ## Delivery
 
 - **Handoff A — the repair**, issued on acceptance: decisions 1 and 2, with the suite legs that pin them at 0.44,
-  0.45 and 0.46. **This is 0.8.1's content if Q1 is (a).**
+  0.45 and 0.46. **Not a patch release** (Q1 ruled (b)); it lands on `main` for 0.9.0.
 - **Handoff B — the re-baseline**, after A: decisions 3 and 4.
 - Patch detail, Compare and the per-file diff follow as their own RFCs (decision 5).
 

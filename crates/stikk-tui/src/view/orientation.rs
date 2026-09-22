@@ -88,6 +88,28 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
     }
     lines.push(field(palette, "queued", queued_spans));
 
+    // RFC 034 §7: a checkout or branch switch that stopped part-way. **A state of the repository, not
+    // an error** — reads keep working, and only `commit` refuses — so it is a field here rather than a
+    // fault, in prikk's own words, which name both ways out. Wrapped rather than clipped: the sentence
+    // carries two commands a user has to be able to read (RFC 024).
+    if let Some(interrupted) = &view.interrupted_materialization {
+        lines.push(field(
+            palette,
+            "interrupted",
+            vec![Span::styled(
+                "prikk reports a checkout that stopped part-way —",
+                Style::default().fg(palette.warn),
+            )],
+        ));
+        // One line, wrapped by this view's own `Paragraph` (which trims, so a hand-made indent would be
+        // dropped anyway). prikk's sentence is carried whole: it names both ways out, and a clipped
+        // command is worse than none.
+        lines.push(Line::from(Span::styled(
+            inert(interrupted).to_string(),
+            Style::default().fg(palette.fg),
+        )));
+    }
+
     if view.trailing_partial_wal_bytes != 0 {
         lines.push(field(
             palette,

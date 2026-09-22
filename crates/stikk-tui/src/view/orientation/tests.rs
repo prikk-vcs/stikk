@@ -180,3 +180,36 @@ fn prikks_current_branch_has_a_whole_row_above_heads_main() {
     );
     assert!(!below_0_42.contains("  branch "), "{below_0_42}");
 }
+
+/// RFC 034 §7: a checkout that stopped part-way is a **state of the repository**, shown in prikk's own
+/// words — which name both ways out — rather than as a fault. Reads keep working; only commit refuses.
+#[test]
+fn rfc034_an_interrupted_materialization_is_shown_whole_in_prikks_words() {
+    const PRIKK_SAYS: &str = "a checkout or branch switch stopped part-way; move aside any file it \
+                              named, then run prikk checkout --patch-materialize --ref heads/main or \
+                              prikk branch switch heads/main";
+    let mut v = view(Readiness::none(), true, 0, 0);
+    v.interrupted_materialization = Some(PRIKK_SAYS.to_string());
+    let text = render_to_text(&v);
+    println!("--- RFC 034: a checkout that stopped part-way, 90 columns\n{text}");
+    let flat: String = text
+        .lines()
+        .map(|line| line.trim_matches(|c: char| c == '│' || c.is_whitespace()))
+        .collect::<Vec<_>>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(flat.contains("interrupted"), "{text}");
+    assert!(
+        flat.contains(
+            "a checkout or branch switch stopped part-way; move aside any file it named, then run \
+             prikk checkout --patch-materialize --ref heads/main or prikk branch switch heads/main"
+        ),
+        "prikk's sentence, whole, with both routes:\n{text}"
+    );
+
+    // Nothing is said when prikk reports nothing.
+    let quiet = render_to_text(&view(Readiness::none(), true, 0, 0));
+    assert!(!quiet.contains("interrupted"), "{quiet}");
+}

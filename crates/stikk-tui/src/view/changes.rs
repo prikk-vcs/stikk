@@ -194,12 +194,18 @@ pub fn render(
         )));
     }
 
-    // RFC 032 decisions 1 and 2: under the entries, stikk's words — a declaration prikk will not author as a
-    // rename (in warn), then the content sentence once when any rename is paired.
+    // RFC 032 decisions 1 and 2, extended by RFC 034 §3–§4: under the entries, one sentence per
+    // declaration — what prikk will do with it instead of a rename, or, for a rename prikk resolves,
+    // what else that rename carries. A declaration prikk **refuses** says nothing here: commit is
+    // prevented instead, and prikk's own refusal is shown there (RFC 034 §5).
     let notices: Vec<String> = view
         .declared_renames
         .iter()
-        .filter_map(stikk_core::DeclaredRename::notice)
+        .filter_map(|declaration| {
+            declaration
+                .notice()
+                .or_else(|| declaration.content_sentence())
+        })
         .collect();
     let content_note = view.content_note();
     if !notices.is_empty() || content_note.is_some() {

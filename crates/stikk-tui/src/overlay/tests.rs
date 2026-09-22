@@ -2509,3 +2509,42 @@ fn rfc032_the_commit_card_counts_renames_and_names_what_it_will_not_author_at_80
         "{text}"
     );
 }
+
+/// RFC 034 §5 at 80×24: a declaration prikk itself would refuse makes commit unavailable, and **prikk's
+/// refusal is shown whole** — it is two sentences naming two commands, which a banner would clip and a
+/// paraphrase would make stikk's claim.
+#[test]
+fn rfc034_a_refused_declaration_shows_prikks_whole_refusal_and_no_advice_of_stikks_own() {
+    const REFUSAL: &str = "a.txt -> b.txt: the source is present in the worktree again, so the \
+                           declared move is not what the worktree holds. Run `prikk mv b.txt a.txt` \
+                           to drop the declaration, or `prikk mv a.txt b.txt` to make the move again";
+    let overlay = Overlay::CommitWouldRefuseDeclarations {
+        declarations: vec![stikk_core::RefusedDeclaration {
+            old_path: "a.txt".to_string(),
+            new_path: "b.txt".to_string(),
+            reason: REFUSAL.to_string(),
+        }],
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("--- RFC 034: commit unavailable, a refused declaration, 80×24\n{text}");
+    let flat = joined(&text);
+    assert!(flat.contains("Commit is unavailable"), "{text}");
+    assert!(flat.contains("declared rename a.txt → b.txt"), "{text}");
+    assert!(
+        flat.contains("prikk reported —"),
+        "prikk's voice is marked: {text}"
+    );
+    assert!(
+        flat.contains(REFUSAL),
+        "prikk's refusal, whole and unclipped:\n{text}"
+    );
+    // Both of prikk's own routes survive the wrap.
+    assert!(flat.contains("prikk mv b.txt a.txt"), "{text}");
+    assert!(flat.contains("prikk mv a.txt b.txt"), "{text}");
+    // §5: prikk's refusal already names the ways out, so stikk adds none of its own.
+    assert!(
+        !flat.contains("What you can do:"),
+        "stikk must not add advice beside prikk's: {text}"
+    );
+    assert!(flat.contains("Esc: close"), "{text}");
+}

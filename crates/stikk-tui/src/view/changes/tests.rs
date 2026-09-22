@@ -779,3 +779,87 @@ fn rfc032_a_refused_destination_keeps_the_annotations_and_drops_the_content_sent
         "an unreported verdict is not a refusal"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 034 §3–§4 at 80 columns: prikk's own resolution, and what a rename carries besides.
+// ---------------------------------------------------------------------------------------------
+
+fn resolved(
+    old: &str,
+    new: &str,
+    resolution: stikk_core::DeclarationResolution,
+    content: Option<bool>,
+    mode: Option<bool>,
+) -> stikk_core::DeclaredRename {
+    stikk_core::DeclaredRename {
+        old_path: old.into(),
+        new_path: new.into(),
+        state: stikk_core::DeclarationState::DestinationAbsent,
+        resolution: Some(resolution),
+        refusal: None,
+        content_changed: content,
+        mode_changed: mode,
+    }
+}
+
+#[test]
+fn rfc034_prikks_resolutions_read_whole_at_80_columns() {
+    use stikk_core::DeclarationResolution as R;
+    let mut view = renamed_view();
+    // One rename prikk resolves, whose content changed, and the three it will not author as renames.
+    view.declared_renames = vec![
+        {
+            let mut rename = resolved("a.txt", "b.txt", R::Rename, Some(true), Some(false));
+            rename.state = stikk_core::DeclarationState::Paired;
+            rename
+        },
+        resolved("c.txt", "d.txt", R::Deletion, None, None),
+        resolved("e.txt", "f.txt", R::DeletionIgnored, None, None),
+        resolved("g.txt", "h.txt", R::NeverTracked, None, None),
+    ];
+    view.renames = 1;
+    let text = draw_032(&view, &stikk_core::RefHistory::Published, false);
+    println!("--- RFC 034: prikk's own resolutions, 80 columns\n{text}");
+    let flat = joined(&text);
+    for sentence in [
+        "declared rename a.txt → b.txt: its content changed too",
+        "declared rename c.txt → d.txt: d.txt is not a file in the worktree, so prikk will record a deletion, not a rename",
+        "declared rename e.txt → f.txt: f.txt is ignored, so prikk will record a deletion, not a rename",
+        "declared rename g.txt → h.txt: g.txt was never tracked, so prikk will create h.txt and drop the declaration",
+    ] {
+        assert!(flat.contains(sentence), "{sentence:?} whole:\n{text}");
+    }
+    // RFC 034 §4: prikk reports content and mode now, so RFC 032's "prikk does not report whether its
+    // content also changed" must be gone.
+    assert!(
+        !flat.contains("prikk does not report whether its content also changed"),
+        "the retired sentence must not appear inside the band:\n{text}"
+    );
+    assert!(flat.contains("renames 1"), "{text}");
+}
+
+#[test]
+fn rfc034_a_rename_whose_mode_changed_says_so_and_silence_means_unchanged() {
+    use stikk_core::DeclarationResolution as R;
+    let with = |content, mode| {
+        let mut view = renamed_view();
+        let mut rename = resolved("a.txt", "b.txt", R::Rename, content, mode);
+        rename.state = stikk_core::DeclarationState::Paired;
+        view.declared_renames = vec![rename];
+        view.renames = 1;
+        joined(&draw_032(&view, &stikk_core::RefHistory::Published, false))
+    };
+    assert!(
+        with(Some(false), Some(true))
+            .contains("declared rename a.txt → b.txt: its mode changed too")
+    );
+    assert!(
+        with(Some(true), Some(true))
+            .contains("declared rename a.txt → b.txt: its content and mode changed too")
+    );
+    // Nothing changed, and nothing is said — and `null` (a destination that is not a regular file) is
+    // silent too, because unknown is not "unchanged".
+    for silent in [with(Some(false), Some(false)), with(None, None)] {
+        assert!(!silent.contains("changed too"), "{silent}");
+    }
+}

@@ -31,7 +31,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 034 | [The prikk 0.46 re-baseline](./accepted/034-prikk-0-46-rebaseline.md) | prikk 0.45 made an unpublished ref unreadable when stikk names it, so Changes, History and commit's preview refuse until a repository's first seal; the repair, the environment class after prikk's refusal sweep, and the 0.46 ceiling. **Accepted 2026-09-22; Q1 (b)** — no 0.8.1, it rides in 0.9.0 | [A: the repair](./handoffs/034-prikk-0-46-rebaseline/a-the-repair-handoff-v1.md) |
+| 034 | [The prikk 0.46 re-baseline](./accepted/034-prikk-0-46-rebaseline.md) | prikk 0.45 made an unpublished ref unreadable when stikk names it, so Changes, History and commit's preview refuse until a repository's first seal; the repair, the environment class after prikk's refusal sweep, and the 0.46 ceiling. **Accepted 2026-09-22; Q1 (b)** — no 0.8.1, it rides in 0.9.0 | [A: the repair](./handoffs/034-prikk-0-46-rebaseline/a-the-repair-handoff-v1.md) · [B: the re-baseline](./handoffs/034-prikk-0-46-rebaseline/b-the-rebaseline-handoff-v1.md) |
 
 ## Done (implemented)
 

@@ -49,6 +49,7 @@ fn shows_queue_and_maintainer_badge() {
         read_only: false,
     };
     let view = OrientationView {
+        interrupted_materialization: None,
         prikk_version: "prikk 0.27.1".into(),
         prikk_supported: true,
         prikk_validated: true,
@@ -88,6 +89,7 @@ fn maintainer_unknown_never_renders_as_a_pass() {
             read_only: false,
         };
         OrientationView {
+            interrupted_materialization: None,
             prikk_version: "prikk 0.33.0".into(),
             prikk_supported: true,
             prikk_validated: true,
@@ -144,6 +146,7 @@ fn read_only_badge_appears_and_no_queue_when_zero() {
         read_only: true,
     };
     let view = OrientationView {
+        interrupted_materialization: None,
         prikk_version: "prikk 0.27.1".into(),
         prikk_supported: true,
         prikk_validated: true,
@@ -177,6 +180,7 @@ fn the_in_flight_indicator_appears_while_a_request_is_pending_and_clears_once_an
         read_only: false,
     };
     let view = OrientationView {
+        interrupted_materialization: None,
         prikk_version: "prikk 0.30.0".into(),
         prikk_supported: true,
         prikk_validated: true,
@@ -225,6 +229,7 @@ fn view_on(current: stikk_model::CurrentBranch, queued: u64) -> OrientationView 
         read_only: false,
     };
     OrientationView {
+        interrupted_materialization: None,
         prikk_version: "prikk 0.42.0".into(),
         prikk_supported: true,
         prikk_validated: true,

@@ -58,6 +58,11 @@ pub enum CommitPreviewOutcome {
     /// [`Self::Blocked`], not an error and not routed through `present()`: nothing was armed.
     /// Stikk's own next steps for this outcome come from [`would_refuse_next_steps`].
     WouldRefuse(Vec<RefusedPath>),
+    /// **Commit is unavailable because prikk would refuse a rename declaration** (RFC 034 §5; prikk ≥
+    /// 0.44). The same posture as [`Self::WouldRefuse`] — nothing armed, not an error — but a different
+    /// fact: that one is about a path in the worktree, this one about a declaration, and the two are
+    /// measured to occur apart. Each carries prikk's own refusal, which names prikk's ways out.
+    WouldRefuseDeclarations(Vec<RefusedDeclaration>),
     /// Commit is available: the preview to show and the token to carry into confirmation. `token` is
     /// boxed only to keep this enum's two variants close in size (`clippy::large_enum_variant`) — no
     /// meaning attaches to the indirection.
@@ -95,6 +100,9 @@ pub fn commit_preview(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<Com
     Ok(match view {
         CommitReadView::Blocked(reason) => CommitPreviewOutcome::Blocked(reason),
         CommitReadView::WouldRefuse(paths) => CommitPreviewOutcome::WouldRefuse(paths),
+        CommitReadView::WouldRefuseDeclarations(declarations) => {
+            CommitPreviewOutcome::WouldRefuseDeclarations(declarations)
+        }
         CommitReadView::Ready(preview) => {
             let previewed = preview.changes.clone();
             CommitPreviewOutcome::Ready {
@@ -148,7 +156,24 @@ impl CommitToken {
 enum CommitReadView {
     Blocked(String),
     WouldRefuse(Vec<RefusedPath>),
+    WouldRefuseDeclarations(Vec<RefusedDeclaration>),
     Ready(Box<CommitPreview>),
+}
+
+/// One **declaration** prikk reports `commit` would refuse (RFC 034 §5) — a different fact from
+/// [`RefusedPath`], which is about a path in the worktree.
+///
+/// `reason` is prikk's own refusal, verbatim (`ER-02`). It already names prikk's measured ways out, so
+/// **stikk adds none of its own** at prikk ≥ 0.44; RFC 032 A3's suffix is for below the band, where
+/// prikk says nothing and stikk had measured one itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefusedDeclaration {
+    /// The path the declaration renames from.
+    pub old_path: String,
+    /// The path it renames to.
+    pub new_path: String,
+    /// prikk's verbatim refusal for this declaration.
+    pub reason: String,
 }
 
 /// One entry prikk reports `commit` would refuse (RFC 027 decision 5).
@@ -211,7 +236,45 @@ fn compute(
         return Ok((CommitReadView::Blocked(reason), placeholder_summary()));
     }
 
+    // RFC 034 §7.2: a checkout or branch switch that stopped part-way leaves the worktree unverified,
+    // and prikk's own `commit` and `doctor` both say commit refuses. prikk's sentence names both ways
+    // out, so it is shown whole rather than reworded (`ER-02`). **Reads are not blocked** — Changes and
+    // History keep working, measured with the marker set.
+    if let Some(interrupted) = orientation.interrupted_materialization.as_deref() {
+        return Ok((
+            CommitReadView::Blocked(format!("prikk reports: {interrupted}")),
+            placeholder_summary(),
+        ));
+    }
+
     let view = changes::from_status(prikk.worktree_status(repo, reff)?);
+
+    // RFC 034 §5: a declaration prikk itself would refuse makes commit unavailable — RFC 027's rule
+    // (prevention only on prikk's own verdict) finally applied to declarations, which is why RFC 032
+    // could only warn. **Before the clean check**, because the measured row that provokes it reports
+    // `clean: true` and exits 0: checking clean first would hide prikk's verdict behind stikk's own
+    // "nothing to commit". Each reason is prikk's verbatim refusal, which already names its ways out.
+    let refused_declarations: Vec<RefusedDeclaration> = view
+        .declared_renames
+        .iter()
+        .filter_map(|declaration| {
+            declaration
+                .refusal
+                .as_ref()
+                .map(|reason| RefusedDeclaration {
+                    old_path: declaration.old_path.clone(),
+                    new_path: declaration.new_path.clone(),
+                    reason: reason.clone(),
+                })
+        })
+        .collect();
+    if !refused_declarations.is_empty() {
+        return Ok((
+            CommitReadView::WouldRefuseDeclarations(refused_declarations),
+            placeholder_summary(),
+        ));
+    }
+
     if view.clean {
         // RFC 032 A3: prikk reports a declaration whose source is back as `clean: true` (row 5) while
         // `commit` refuses it, so "nothing to commit" alone is not the whole reason. The analysis runs on
@@ -294,10 +357,17 @@ fn compute(
         freezes: None,
         history_notice: history.card_line(reff),
         rename_note: (view.renames > 0).then(|| crate::changes::RENAMES_ALSO_COUNTED.to_string()),
+        // RFC 034 §3 and §4: what prikk will do with each declaration it will not author as a rename,
+        // and — for the ones it will — what else that rename carries. Both are prikk's own report; the
+        // content words appear only at ≥ 0.44, where prikk reports them.
         declaration_notices: view
             .declared_renames
             .iter()
-            .filter_map(changes::DeclaredRename::notice)
+            .filter_map(|declaration| {
+                declaration
+                    .notice()
+                    .or_else(|| declaration.content_sentence())
+            })
             .collect(),
     };
     let preview = CommitPreview {

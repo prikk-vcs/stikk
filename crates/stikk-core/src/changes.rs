@@ -25,7 +25,7 @@ use stikk_prikk::{Handshake, Orientation, Prikk, WorktreeStatus};
 
 /// prikk's per-entry verdict and its queued-elsewhere report, re-exported so a front-end reads the view
 /// model without reaching past this crate to the seam (RFC 027 decision 3, F6).
-pub use stikk_prikk::{Authoring, QueuedElsewhere, RenameDeclaration};
+pub use stikk_prikk::{Authoring, DeclarationResolution, QueuedElsewhere, RenameDeclaration};
 
 /// The lowest prikk version where `worktree-status` is reliable (RFC 008; UD-03 fixed at 0.28).
 /// `pub(crate)`: the commit preview (RFC 014 §3) is derived from the same read and needs the same
@@ -156,20 +156,70 @@ pub struct DeclaredRename {
     pub old_path: String,
     /// The path it renames to.
     pub new_path: String,
-    /// Paired, destination absent, or source present again.
+    /// What **stikk inferred** from the report's two halves (RFC 032). Still computed at every version,
+    /// and still what decides the sentences below prikk 0.44.
     pub state: DeclarationState,
+    /// What **prikk itself says** the next commit will do with this declaration, at prikk ≥ 0.44 (RFC
+    /// 034 decision 4). `Some` replaces the inference for every sentence; `None` below the band.
+    pub resolution: Option<DeclarationResolution>,
+    /// prikk's verbatim refusal, present exactly when [`Self::resolution`] is
+    /// [`DeclarationResolution::Refused`]. It names prikk's own ways out, so stikk adds none.
+    pub refusal: Option<String>,
+    /// Whether the renamed file's content changed too — `None` is **unknown, never "unchanged"**.
+    pub content_changed: Option<bool>,
+    /// Whether its mode changed too, on the same terms.
+    pub mode_changed: Option<bool>,
 }
 
 impl DeclaredRename {
-    /// stikk's sentence for a declaration prikk will not author as a rename, or `None` when paired (RFC
-    /// 032 decision 2; A3). Carries repository text: render it inert.
+    /// Whether the next commit authors this declaration as a rename: **prikk's own word inside the
+    /// band, stikk's pairing below it** (RFC 034 decision 4; RFC 032 decision 1).
+    #[must_use]
+    pub fn is_rename(&self) -> bool {
+        match &self.resolution {
+            Some(resolution) => *resolution == DeclarationResolution::Rename,
+            None => self.state == DeclarationState::Paired,
+        }
+    }
+
+    /// stikk's sentence for a declaration the next commit will not author as a rename, or `None` when it
+    /// will. Carries repository text: render it inert.
+    ///
+    /// **At prikk ≥ 0.44 this is prikk's own resolution** (RFC 034 decision 4), which knows *why* —
+    /// a destination that is gone, one that is ignored, a source that was never tracked — where stikk
+    /// could only see that the report listed one half. **Below the band** it is RFC 032's inference,
+    /// with §6's corrected wording: the report not listing the destination is all stikk can say there.
+    ///
+    /// **A refused declaration gets no sentence here.** prikk's own refusal is shown instead, and
+    /// commit is prevented (RFC 034 §5) rather than merely annotated.
     #[must_use]
     pub fn notice(&self) -> Option<String> {
         let (old, new) = (&self.old_path, &self.new_path);
+        if let Some(resolution) = &self.resolution {
+            return match resolution {
+                DeclarationResolution::Rename | DeclarationResolution::Refused => None,
+                DeclarationResolution::Deletion => Some(format!(
+                    "declared rename {old} → {new}: {new} is not a file in the worktree, so prikk will record a deletion, not a rename"
+                )),
+                DeclarationResolution::DeletionIgnored => Some(format!(
+                    "declared rename {old} → {new}: {new} is ignored, so prikk will record a deletion, not a rename"
+                )),
+                DeclarationResolution::NeverTracked => Some(format!(
+                    "declared rename {old} → {new}: {old} was never tracked, so prikk will create {new} and drop the declaration"
+                )),
+                // A word this stikk does not model: say prikk's word and claim no outcome (`ER-02`).
+                DeclarationResolution::Other(word) => Some(format!(
+                    "declared rename {old} → {new}: prikk resolves it as \"{word}\", which this stikk does not know"
+                )),
+            };
+        }
         match self.state {
             DeclarationState::Paired => None,
+            // RFC 034 §6: below 0.44 the report cannot tell a destination that is gone from one that is
+            // ignored — the ignored file **is** in the worktree, prikk simply does not list it — so the
+            // sentence states only what the report shows.
             DeclarationState::DestinationAbsent => Some(format!(
-                "declared rename {old} → {new}: {new} is not a file in the worktree, so prikk will not author it as a rename"
+                "declared rename {old} → {new}: prikk's report does not list {new}, so prikk will not author it as a rename"
             )),
             DeclarationState::SourcePresent { destination_listed } => {
                 let sentence = format!(
@@ -184,6 +234,26 @@ impl DeclaredRename {
                 })
             }
         }
+    }
+
+    /// What prikk reports a resolved rename **also** does, at prikk ≥ 0.44 (RFC 034 §4): its content, its
+    /// mode, both, or — when prikk reports `null`, as it does for a destination that is not a regular
+    /// file — **nothing at all**, because unknown is not "unchanged" (`C-T2c′`).
+    ///
+    /// `None` is silence, and silence is the true statement when nothing else changed.
+    #[must_use]
+    pub fn content_sentence(&self) -> Option<String> {
+        if self.resolution != Some(DeclarationResolution::Rename) {
+            return None;
+        }
+        let (old, new) = (&self.old_path, &self.new_path);
+        let also = match (self.content_changed, self.mode_changed) {
+            (Some(true), Some(true)) => "its content and mode changed too",
+            (Some(true), _) => "its content changed too",
+            (_, Some(true)) => "its mode changed too",
+            _ => return None,
+        };
+        Some(format!("declared rename {old} → {new}: {also}"))
     }
 }
 
@@ -313,6 +383,10 @@ pub struct ChangesView {
     /// Entries prikk reports `commit` would refuse: `Some(n)` at prikk ≥ 0.39, **`None` below it —
     /// never `Some(0)`** (RFC 027 decision 3, `C-T2c′`).
     pub refused: Option<u64>,
+    /// **Declarations** prikk reports `commit` would refuse: `Some(n)` at prikk ≥ 0.44, `None` below it
+    /// (RFC 034 decision 4). A different fact from [`Self::refused`], which counts paths — the two are
+    /// measured to disagree in both directions, and commit's preview reads both.
+    pub refused_declarations: Option<u64>,
     /// The changed paths (the counts summarize these).
     pub entries: Vec<ChangeEntry>,
     /// Present when the active WAL holds queued patches for a **different** ref than the one asked
@@ -351,6 +425,16 @@ impl ChangesView {
     #[must_use]
     pub fn content_note(&self) -> Option<&'static str> {
         if self.renames == 0 || self.refused.is_some_and(|refused| refused >= 1) {
+            return None;
+        }
+        // RFC 034 §4: **false at prikk ≥ 0.44**, where prikk reports content and mode per rename and
+        // `DeclaredRename::content_sentence` says what it reports. A resolution present anywhere is the
+        // band, since the reader fills it for every declaration or none.
+        if self
+            .declared_renames
+            .iter()
+            .any(|declaration| declaration.resolution.is_some())
+        {
             return None;
         }
         Some(RENAME_CONTENT_NOTE)
@@ -442,7 +526,7 @@ pub(crate) fn from_status(status: WorktreeStatus) -> ChangesView {
     let declared_renames = classify(&status.declarations, &mut entries);
     let renames = declared_renames
         .iter()
-        .filter(|d| d.state == DeclarationState::Paired)
+        .filter(|declaration| declaration.is_rename())
         .count() as u64;
     ChangesView {
         reff: status.reff,
@@ -454,6 +538,7 @@ pub(crate) fn from_status(status: WorktreeStatus) -> ChangesView {
         untracked: status.untracked,
         unsupported: status.unsupported,
         refused: status.refused,
+        refused_declarations: status.refused_declarations,
         entries,
         queued_elsewhere: status.queued_elsewhere,
         declarations: status.declarations,
@@ -484,24 +569,37 @@ fn classify(
                     destination_listed: destination.is_some(),
                 },
                 (Some(_), None) => DeclarationState::DestinationAbsent,
-                (Some(s), Some(d)) => {
-                    if let Some(entry) = entries.get_mut(s) {
-                        entry.rename = Some(RenameHalf::Source {
-                            new_path: new.clone(),
-                        });
-                    }
-                    if let Some(entry) = entries.get_mut(d) {
-                        entry.rename = Some(RenameHalf::Destination {
-                            old_path: old.clone(),
-                        });
-                    }
-                    DeclarationState::Paired
-                }
+                (Some(_), Some(_)) => DeclarationState::Paired,
             };
+            // **Who decides it is a rename**: prikk inside its band, stikk's pairing below (RFC 034
+            // decision 4; RFC 032 decision 1).
+            let is_rename = match &declaration.resolution {
+                Some(resolution) => *resolution == DeclarationResolution::Rename,
+                None => state == DeclarationState::Paired,
+            };
+            // **The marks still need a row to sit on.** Where prikk resolves a rename and the report
+            // lists only one half, the half that exists is annotated and **the other is not invented**
+            // (RFC 034 §3).
+            if is_rename {
+                if let Some(entry) = source.and_then(|index| entries.get_mut(index)) {
+                    entry.rename = Some(RenameHalf::Source {
+                        new_path: new.clone(),
+                    });
+                }
+                if let Some(entry) = destination.and_then(|index| entries.get_mut(index)) {
+                    entry.rename = Some(RenameHalf::Destination {
+                        old_path: old.clone(),
+                    });
+                }
+            }
             DeclaredRename {
                 old_path: old.clone(),
                 new_path: new.clone(),
                 state,
+                resolution: declaration.resolution.clone(),
+                refusal: declaration.refusal.clone(),
+                content_changed: declaration.content_changed,
+                mode_changed: declaration.mode_changed,
             }
         })
         .collect()

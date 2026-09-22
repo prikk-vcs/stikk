@@ -815,6 +815,7 @@ impl App {
                 Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::CommitWouldRefuse { .. }
+                | Overlay::CommitWouldRefuseDeclarations { .. }
                 | Overlay::CommitResult { .. }
                 | Overlay::SealResult { .. },
             )
@@ -971,6 +972,7 @@ impl App {
                 Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::CommitWouldRefuse { .. }
+                | Overlay::CommitWouldRefuseDeclarations { .. }
                 | Overlay::Confirmation { .. }
                 | Overlay::CommitMessage { .. }
                 | Overlay::CommitResult { .. }
@@ -1017,6 +1019,7 @@ impl App {
                 | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::CommitWouldRefuse { .. }
+                | Overlay::CommitWouldRefuseDeclarations { .. }
                 | Overlay::Confirmation { .. }
                 | Overlay::CommitMessage { .. }
                 | Overlay::CommitResult { .. }
@@ -1422,6 +1425,13 @@ impl App {
             Ok(CommitPreviewOutcome::WouldRefuse(paths)) => {
                 if let Some(slot) = self.overlays.get_mut(index) {
                     *slot = Overlay::CommitWouldRefuse { paths };
+                }
+            }
+            // RFC 034 §5: the same posture for a declaration prikk would refuse — an overlay, because
+            // prikk's refusal is two sentences and a banner would clip it.
+            Ok(CommitPreviewOutcome::WouldRefuseDeclarations(declarations)) => {
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::CommitWouldRefuseDeclarations { declarations };
                 }
             }
             Ok(CommitPreviewOutcome::Ready { preview: _, token }) => {

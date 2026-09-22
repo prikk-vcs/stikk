@@ -51,6 +51,7 @@ fn orientation_view(
 ) -> stikk_core::OrientationView {
     let readiness = Readiness::none();
     stikk_core::OrientationView {
+        interrupted_materialization: None,
         prikk_version: "prikk 0.30.0".to_string(),
         prikk_supported: true,
         prikk_validated: true,
@@ -81,6 +82,7 @@ fn author_orientation_view() -> stikk_core::OrientationView {
         read_only: false,
     };
     stikk_core::OrientationView {
+        interrupted_materialization: None,
         prikk_version: "prikk 0.30.0".to_string(),
         prikk_supported: true,
         prikk_validated: true,
@@ -111,6 +113,7 @@ fn maintainer_orientation_view(
         read_only: false,
     };
     stikk_core::OrientationView {
+        interrupted_materialization: None,
         prikk_version: "prikk 0.33.0".to_string(),
         prikk_supported: true,
         prikk_validated: true,
@@ -155,6 +158,7 @@ fn two_block_history() -> HistoryView {
 
 fn dirty_changes() -> ChangesView {
     ChangesView {
+        refused_declarations: None,
         reff: "heads/main".into(),
         clean: false,
         tracked: 1,

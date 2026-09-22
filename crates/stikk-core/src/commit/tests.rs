@@ -81,6 +81,9 @@ fn a_clean_worktree_blocks_before_arming_anything() {
         }
         CommitPreviewOutcome::Ready { .. } => panic!("expected Blocked"),
         CommitPreviewOutcome::WouldRefuse(paths) => panic!("expected Blocked, got {paths:?}"),
+        CommitPreviewOutcome::WouldRefuseDeclarations(declarations) => {
+            panic!("expected Blocked, got {declarations:?}")
+        }
     }
 }
 
@@ -94,6 +97,9 @@ fn a_cross_ref_queue_blocks_before_arming_anything() {
         }
         CommitPreviewOutcome::Ready { .. } => panic!("expected Blocked"),
         CommitPreviewOutcome::WouldRefuse(paths) => panic!("expected Blocked, got {paths:?}"),
+        CommitPreviewOutcome::WouldRefuseDeclarations(declarations) => {
+            panic!("expected Blocked, got {declarations:?}")
+        }
     }
 }
 
@@ -107,6 +113,9 @@ fn a_ready_preview_carries_the_worktree_counts_and_a_token() {
         }
         CommitPreviewOutcome::Blocked(reason) => panic!("expected Ready, got Blocked({reason})"),
         CommitPreviewOutcome::WouldRefuse(paths) => panic!("expected Ready, got {paths:?}"),
+        CommitPreviewOutcome::WouldRefuseDeclarations(declarations) => {
+            panic!("expected Ready, got {declarations:?}")
+        }
     }
 }
 
@@ -136,6 +145,9 @@ fn the_active_patch_warning_is_carried_verbatim_into_the_preview_and_consequence
         }
         CommitPreviewOutcome::Blocked(reason) => panic!("expected Ready, got Blocked({reason})"),
         CommitPreviewOutcome::WouldRefuse(paths) => panic!("expected Ready, got {paths:?}"),
+        CommitPreviewOutcome::WouldRefuseDeclarations(declarations) => {
+            panic!("expected Ready, got {declarations:?}")
+        }
     }
 }
 
@@ -765,7 +777,7 @@ fn rows_1_and_2_are_named_on_the_card_and_never_counted_as_renames() {
     assert_eq!(
         summary.declaration_notices,
         [
-            "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will not author it as a rename"
+            "declared rename a.txt → b.txt: prikk's report does not list b.txt, so prikk will not author it as a rename"
         ]
     );
 
@@ -874,4 +886,142 @@ fn an_unpublished_refs_commit_is_not_stale_when_the_worktree_is_unchanged() {
     assert!(result.is_ok(), "{result:?}");
     assert!(!is_stale(&result, StaleCause::Worktree));
     assert_eq!(backend.commit_calls(), 1);
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 034 decision 4 §5 and §7: a declaration prikk would refuse prevents the commit, and a checkout
+// that stopped part-way makes the preview unavailable in prikk's own words.
+// ---------------------------------------------------------------------------------------------
+
+/// prikk's verbatim refusal for the measured source-back row, at 0.44.0 and 0.46.0 alike.
+const SOURCE_BACK_REFUSAL: &str = "a.txt -> b.txt: the source is present in the worktree again, so \
+                                   the declared move is not what the worktree holds. Run `prikk mv \
+                                   b.txt a.txt` to drop the declaration, or `prikk mv a.txt b.txt` \
+                                   to make the move again";
+
+fn refused_declaration(old: &str, new: &str, reason: &str) -> stikk_prikk::RenameDeclaration {
+    stikk_prikk::RenameDeclaration {
+        old_path: old.into(),
+        new_path: new.into(),
+        resolution: Some(stikk_prikk::DeclarationResolution::Refused),
+        refusal: Some(reason.into()),
+        content_changed: None,
+        mode_changed: None,
+    }
+}
+
+#[test]
+fn a_refused_declaration_prevents_the_commit_before_the_clean_check() {
+    // **The measured row this exists for**: after `prikk mv a.txt b.txt` and a shell `mv b.txt a.txt`,
+    // prikk reports `clean: true` and exits 0 — and refuses the commit. Checking clean first would hide
+    // prikk's verdict behind stikk's own "nothing to commit" (RFC 034 §5).
+    let mut status = row(
+        &[],
+        vec![refused_declaration("a.txt", "b.txt", SOURCE_BACK_REFUSAL)],
+    );
+    status.clean = true;
+    status.refused = Some(0);
+    status.refused_declarations = Some(1);
+    let backend = ready_backend().with_worktree_status(status);
+    match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::WouldRefuseDeclarations(declarations) => {
+            let [refused] = declarations.as_slice() else {
+                panic!("expected exactly one refused declaration: {declarations:?}");
+            };
+            assert_eq!(refused.old_path, "a.txt");
+            assert_eq!(refused.new_path, "b.txt");
+            assert_eq!(
+                refused.reason, SOURCE_BACK_REFUSAL,
+                "prikk's own refusal, verbatim — it already names the ways out"
+            );
+        }
+        other => panic!("expected the declaration prevention, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_refused_path_and_a_refused_declaration_are_different_preventions() {
+    // The symlink row: a path refused, no declaration refused — RFC 027's prevention, unchanged.
+    let mut symlink = row(
+        &[("missing", "a.txt"), ("untracked", "b.txt")],
+        vec![stikk_prikk::RenameDeclaration {
+            old_path: "a.txt".into(),
+            new_path: "b.txt".into(),
+            resolution: Some(stikk_prikk::DeclarationResolution::Rename),
+            refusal: None,
+            content_changed: None,
+            mode_changed: None,
+        }],
+    );
+    symlink.refused = Some(1);
+    symlink.refused_declarations = Some(0);
+    for entry in symlink.entries.iter_mut().filter(|e| e.path == "b.txt") {
+        entry.authoring = stikk_prikk::Authoring::Refused(
+            "b.txt: worktree symlink authoring is out of scope".into(),
+        );
+    }
+    let backend = ready_backend().with_worktree_status(symlink);
+    match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::WouldRefuse(paths) => {
+            let [refused] = paths.as_slice() else {
+                panic!("expected exactly one refused path: {paths:?}");
+            };
+            assert_eq!(refused.path, "b.txt");
+        }
+        other => panic!("expected the path prevention, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_interrupted_materialization_makes_the_preview_unavailable_in_prikks_words() {
+    const PRIKK_SAYS: &str = "a checkout or branch switch stopped part-way; move aside any file it \
+                              named, then run prikk checkout --patch-materialize --ref heads/main or \
+                              prikk branch switch heads/main";
+    let mut orientation = orientation(0, None);
+    orientation.interrupted_materialization = Some(PRIKK_SAYS.to_string());
+    let backend = ready_backend().with_orientation(orientation);
+    match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::Blocked(reason) => {
+            assert!(
+                reason.contains(PRIKK_SAYS),
+                "prikk's sentence, whole: {reason}"
+            );
+            assert!(
+                reason.starts_with("prikk reports:"),
+                "attributed to prikk, never stikk's own claim: {reason}"
+            );
+        }
+        other => panic!("expected Blocked, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_card_carries_prikks_content_words_for_a_resolved_rename() {
+    let status = row(
+        &[("missing", "a.txt"), ("untracked", "b.txt")],
+        vec![stikk_prikk::RenameDeclaration {
+            old_path: "a.txt".into(),
+            new_path: "b.txt".into(),
+            resolution: Some(stikk_prikk::DeclarationResolution::Rename),
+            refusal: None,
+            content_changed: Some(true),
+            mode_changed: Some(false),
+        }],
+    );
+    let backend = ready_backend().with_worktree_status(status);
+    let summary = ready_summary(&backend);
+    assert!(
+        summary.counts.contains(&("renames", 1)),
+        "{:?}",
+        summary.counts
+    );
+    assert_eq!(
+        summary.declaration_notices,
+        ["declared rename a.txt → b.txt: its content changed too"],
+        "what prikk says the rename also does"
+    );
+    assert_eq!(
+        summary.rename_note.as_deref(),
+        Some(crate::changes::RENAMES_ALSO_COUNTED)
+    );
 }

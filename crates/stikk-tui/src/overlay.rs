@@ -113,6 +113,13 @@ pub enum Overlay {
         /// The entries prikk would refuse, each with prikk's reason.
         paths: Vec<RefusedPath>,
     },
+    /// **Commit is unavailable because prikk would refuse a rename declaration** (RFC 034 §5; prikk ≥
+    /// 0.44). The same overlay shape as [`Self::CommitWouldRefuse`], and a different fact: that one is
+    /// about paths, this one about declarations, and prikk reports them apart.
+    CommitWouldRefuseDeclarations {
+        /// The declarations prikk would refuse, each with prikk's own refusal.
+        declarations: Vec<stikk_core::RefusedDeclaration>,
+    },
     /// The command palette (TU-07): a filter and the highlighted match.
     Palette {
         /// The current filter text.
@@ -201,7 +208,9 @@ impl Overlay {
         match self {
             Self::Glossary { .. } => " Glossary & Help ",
             Self::Loading { .. } => " Loading ",
-            Self::CommitWouldRefuse { .. } => " Commit unavailable ",
+            Self::CommitWouldRefuse { .. } | Self::CommitWouldRefuseDeclarations { .. } => {
+                " Commit unavailable "
+            }
             Self::Operations { .. } => " Background operations ",
             Self::RefPicker { .. } => " Choose ref ",
             Self::Refusal { .. } => " prikk refused ",
@@ -241,6 +250,9 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
         ),
         Overlay::CommitWouldRefuse { paths } => {
             render_commit_would_refuse(paths, palette, frame, area);
+        }
+        Overlay::CommitWouldRefuseDeclarations { declarations } => {
+            render_commit_would_refuse_declarations(declarations, palette, frame, area);
         }
         Overlay::Palette {
             filter,
@@ -663,6 +675,85 @@ fn render_stale(
     }
     Panel {
         title: " stikk stopped ",
+        width: REFUSAL_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.warn),
+    }
+    .render(frame, area);
+}
+
+/// Render [`Overlay::CommitWouldRefuseDeclarations`] (RFC 034 §5).
+///
+/// The same shape as [`render_commit_would_refuse`], with one deliberate difference: **stikk offers no
+/// next steps of its own.** prikk's refusal for a declaration already names its measured ways out — run
+/// `prikk mv` again, or move the destination back — and RFC 032 A3's stikk-authored suffix is for below
+/// prikk 0.44, where prikk said nothing at all. Repeating prikk's advice in stikk's voice would make it
+/// stikk's claim (`ER-02`), and inventing a second route would be worse.
+fn render_commit_would_refuse_declarations(
+    declarations: &[stikk_core::RefusedDeclaration],
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose: Vec<Line> = Vec::new();
+    for row in wrap_indented(
+        "Commit is unavailable: prikk reports that it would refuse the declared rename below, and a \
+         refused declaration refuses the whole commit. Nothing was armed.",
+        REFUSAL_TEXT_WIDTH,
+        "  ",
+    ) {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.fg),
+        )));
+    }
+    prose.push(Line::from(""));
+
+    for declaration in declarations {
+        let heading = format!(
+            "declared rename {} → {}",
+            inert(&declaration.old_path),
+            inert(&declaration.new_path)
+        );
+        for row in wrap_indented(&heading, REFUSAL_TEXT_WIDTH, "  ") {
+            prose.push(Line::from(Span::styled(
+                row,
+                Style::default().add_modifier(Modifier::BOLD),
+            )));
+        }
+        prose.push(Line::from(Span::styled(
+            "  prikk reported —",
+            Style::default().fg(palette.dim),
+        )));
+        let reason = inert(&declaration.reason);
+        for row in wrap_indented(&reason, REFUSAL_TEXT_WIDTH, QUOTE_INDENT) {
+            prose.push(Line::from(vec![
+                Span::styled(QUOTE_BAR, Style::default().fg(palette.warn)),
+                Span::styled(
+                    row.get(QUOTE_INDENT.len()..)
+                        .unwrap_or_default()
+                        .to_string(),
+                    Style::default().fg(palette.fg),
+                ),
+            ]));
+        }
+        prose.push(Line::from(""));
+    }
+
+    let actions = vec![
+        Line::from(Span::styled(
+            "  prikk's refusal above names what to do.",
+            Style::default().fg(palette.dim),
+        )),
+        Line::from(Span::styled(
+            "  Esc: close",
+            Style::default().fg(palette.dim),
+        )),
+    ];
+
+    Panel {
+        title: " Commit unavailable ",
         width: REFUSAL_WIDTH,
         prose,
         actions,

@@ -12,6 +12,7 @@ use crate::test_util::buffer_text;
 
 fn dirty_view() -> ChangesView {
     ChangesView {
+        refused_declarations: None,
         reff: "heads/main".into(),
         clean: false,
         tracked: 2,
@@ -87,6 +88,7 @@ fn renders_the_changed_headline_counts_and_paths() {
 #[test]
 fn a_clean_worktree_says_so() {
     let view = ChangesView {
+        refused_declarations: None,
         reff: "heads/main".into(),
         clean: true,
         tracked: 3,
@@ -119,6 +121,7 @@ fn hiding_untracked_removes_the_row_but_keeps_the_caveat() {
 #[test]
 fn a_hostile_path_is_rendered_inert() {
     let view = ChangesView {
+        refused_declarations: None,
         reff: "heads/main".into(),
         clean: false,
         tracked: 1,
@@ -216,6 +219,7 @@ const SYMLINK_REASON: &str =
 /// prikk 0.41's refused-symlink report as the JSON reader maps it (`WORKTREE_SYMLINK_JSON_0_41`).
 fn refused_view() -> ChangesView {
     ChangesView {
+        refused_declarations: None,
         reff: "heads/main".into(),
         clean: false,
         tracked: 1,
@@ -536,6 +540,10 @@ fn declared(
     state: stikk_core::DeclarationState,
 ) -> stikk_core::DeclaredRename {
     stikk_core::DeclaredRename {
+        resolution: None,
+        refusal: None,
+        content_changed: None,
+        mode_changed: None,
         old_path: old.into(),
         new_path: new.into(),
         state,
@@ -547,6 +555,7 @@ fn declared(
 fn renamed_view() -> ChangesView {
     use stikk_core::{DeclarationState, RenameHalf};
     ChangesView {
+        refused_declarations: None,
         reff: "heads/main".into(),
         clean: false,
         tracked: 4,
@@ -656,7 +665,7 @@ fn rfc032_both_unmatched_declaration_sentences_are_on_screen_whole_at_80_columns
     let text = draw_032(&renamed_view(), &stikk_core::RefHistory::Published, false);
     let flat = joined(&text);
     assert!(
-        flat.contains("declared rename c.txt → d.txt: d.txt is not a file in the worktree, so prikk will not author it as a rename"),
+        flat.contains("declared rename c.txt → d.txt: prikk's report does not list d.txt, so prikk will not author it as a rename"),
         "{text}"
     );
     assert!(
@@ -664,7 +673,7 @@ fn rfc032_both_unmatched_declaration_sentences_are_on_screen_whole_at_80_columns
         "{text}"
     );
     assert!(
-        row_of(&text, "d.txt is not a file") < row_of(&text, "commits are whole-worktree"),
+        row_of(&text, "does not list d.txt") < row_of(&text, "commits are whole-worktree"),
         "{text}"
     );
 }

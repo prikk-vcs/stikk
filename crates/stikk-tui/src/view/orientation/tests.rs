@@ -11,6 +11,7 @@ use crate::test_util::buffer_text;
 
 fn view(readiness: Readiness, supported: bool, queued: u64, partial: u64) -> OrientationView {
     OrientationView {
+        interrupted_materialization: None,
         prikk_version: "prikk 0.27.1".to_string(),
         prikk_supported: supported,
         prikk_validated: supported,
@@ -139,6 +140,7 @@ fn a_hostile_ref_state_is_rendered_inert() {
 #[test]
 fn prikks_current_branch_has_a_whole_row_above_heads_main() {
     let with = |current| OrientationView {
+        interrupted_materialization: None,
         current_branch: current,
         ..view(Readiness::none(), true, 0, 0)
     };

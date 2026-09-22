@@ -25,6 +25,14 @@ const MESSAGES_PERSIST_MIN: (u32, u32, u32) = (0, 32, 0);
 pub struct OrientationView {
     /// prikk's raw version line, verbatim.
     pub prikk_version: String,
+    /// prikk's interrupted-materialization line, **verbatim**, when a checkout or branch switch stopped
+    /// part-way (prikk ≥ 0.43; RFC 034 §7). `None` when prikk reports none, and below 0.43, where prikk
+    /// reports the state nowhere at all.
+    ///
+    /// **A state of the repository, not an error.** Reads keep working — Changes and History are
+    /// unaffected, measured — and only `commit` refuses, which is why commit's preview blocks on it and
+    /// the Orientation view merely says so. prikk's sentence names both ways out, so it is shown whole.
+    pub interrupted_materialization: Option<String>,
     /// Whether this prikk version is at or above the floor stikk requires; when false the UI degrades
     /// mutation to read-only and says why (NFR-R03).
     pub prikk_supported: bool,
@@ -105,6 +113,7 @@ pub fn orient(prikk: &impl Prikk, repo: &Path) -> Result<OrientationView> {
         trailing_partial_wal_bytes: orientation.trailing_partial_wal_bytes,
         main_ref_state: orientation.main_ref_state,
         current_branch: orientation.current_branch,
+        interrupted_materialization: orientation.interrupted_materialization,
         capability,
         readiness,
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables {

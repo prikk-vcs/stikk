@@ -1190,6 +1190,9 @@ fn coverage(overlay: &Overlay) -> Coverage {
         // A content card: the refused paths are prose, the next steps are text, nothing is selected
         // (RFC 027 decision 5). One entry per refused path, so it grows with the worktree.
         Overlay::CommitWouldRefuse { .. } => Coverage::NoSelection,
+        // RFC 034 §5: the same shape for a refused declaration — prose and a close affordance, with no
+        // cursor to move.
+        Overlay::CommitWouldRefuseDeclarations { .. } => Coverage::NoSelection,
         Overlay::Palette { filter, .. } => {
             Coverage::Selectable(stikk_core::palette::matching(filter).len())
         }
@@ -2457,7 +2460,7 @@ fn wide_character_rows_are_measured_in_cells_and_the_remainder_count_stays_exact
 fn rfc032_the_commit_card_counts_renames_and_names_what_it_will_not_author_at_80x24() {
     const CONSEQUENCE: &str = "Queues this worktree capture as a new patch in the active WAL; nothing is sealed until you run Seal.";
     const HISTORY: &str = "heads/main has no published history: this would be its first commit";
-    const ABSENT: &str = "declared rename c.txt → d.txt: d.txt is not a file in the worktree, so prikk will not author it as a rename";
+    const ABSENT: &str = "declared rename c.txt → d.txt: prikk's report does not list d.txt, so prikk will not author it as a rename";
     let mut card = summary(vec!["heads/main"], None);
     card.counts = vec![
         ("modified", 0),

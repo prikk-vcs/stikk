@@ -533,6 +533,10 @@ fn every_rename_sentence_is_byte_exact() {
     );
     let notice = |state| {
         DeclaredRename {
+            resolution: None,
+            refusal: None,
+            content_changed: None,
+            mode_changed: None,
             old_path: "a.txt".into(),
             new_path: "b.txt".into(),
             state,
@@ -543,7 +547,7 @@ fn every_rename_sentence_is_byte_exact() {
     assert_eq!(
         notice(DeclarationState::DestinationAbsent).as_deref(),
         Some(
-            "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will not author it as a rename"
+            "declared rename a.txt → b.txt: prikk's report does not list b.txt, so prikk will not author it as a rename"
         )
     );
     // Row 2: both copies present — no way out offered.
@@ -788,4 +792,179 @@ fn the_content_sentence_is_withheld_while_prikk_reports_a_refusal() {
         vec![declared("a.txt", "b.txt")],
     ));
     assert_eq!(unpaired.content_note(), None);
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 034 decision 4: at prikk ≥ 0.44 the declaration analysis is prikk's own resolution, not stikk's
+// inference. Every state below is shaped exactly like a row measured at 0.44.0 and 0.46.0.
+// ---------------------------------------------------------------------------------------------
+
+/// A declaration carrying prikk's verdict, as the reader fills it inside the band.
+fn resolved(
+    old: &str,
+    new: &str,
+    resolution: DeclarationResolution,
+    content: Option<bool>,
+    mode: Option<bool>,
+) -> RenameDeclaration {
+    RenameDeclaration {
+        old_path: old.into(),
+        new_path: new.into(),
+        resolution: Some(resolution),
+        refusal: None,
+        content_changed: content,
+        mode_changed: mode,
+    }
+}
+
+#[test]
+fn prikks_resolution_replaces_the_inference_and_says_why() {
+    // The report is identical in every case below — one `missing a.txt`, no destination listed — and
+    // stikk's own inference could only ever say "the report does not list b.txt". prikk's verdict knows
+    // which of three things is true, and the sentences say so.
+    let entries = || vec![listed("missing", "a.txt")];
+    let cases = [
+        (
+            DeclarationResolution::Deletion,
+            Some(
+                "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will record a deletion, not a rename",
+            ),
+        ),
+        (
+            DeclarationResolution::DeletionIgnored,
+            Some(
+                "declared rename a.txt → b.txt: b.txt is ignored, so prikk will record a deletion, not a rename",
+            ),
+        ),
+        (
+            DeclarationResolution::NeverTracked,
+            Some(
+                "declared rename a.txt → b.txt: a.txt was never tracked, so prikk will create b.txt and drop the declaration",
+            ),
+        ),
+        // A refused declaration gets no sentence of stikk's own: prikk's refusal is shown, and commit
+        // is prevented (RFC 034 §5).
+        (DeclarationResolution::Refused, None),
+        // A rename needs no explaining; §4's content words say what else it carries.
+        (DeclarationResolution::Rename, None),
+    ];
+    for (resolution, expected) in cases {
+        let view = from_status(report(
+            entries(),
+            vec![resolved("a.txt", "b.txt", resolution.clone(), None, None)],
+        ));
+        assert_eq!(
+            view.declared_renames[0].notice().as_deref(),
+            expected,
+            "{resolution:?}"
+        );
+        assert_eq!(
+            view.renames,
+            u64::from(resolution == DeclarationResolution::Rename),
+            "only prikk's `rename` counts: {resolution:?}"
+        );
+    }
+}
+
+#[test]
+fn an_unmodelled_resolution_says_prikks_word_and_claims_no_outcome() {
+    let view = from_status(report(
+        vec![listed("missing", "a.txt")],
+        vec![resolved(
+            "a.txt",
+            "b.txt",
+            DeclarationResolution::Other("teleport".into()),
+            None,
+            None,
+        )],
+    ));
+    let notice = view.declared_renames[0].notice().expect("a sentence");
+    assert!(notice.contains("teleport"), "prikk's word: {notice}");
+    assert!(
+        !notice.contains("rename, not") && !notice.contains("will record"),
+        "no outcome is claimed: {notice}"
+    );
+    assert_eq!(view.renames, 0);
+}
+
+#[test]
+fn a_resolved_rename_marks_the_rows_the_report_lists_and_invents_no_other() {
+    // RFC 034 §3: prikk resolves a rename, and the report lists only the source. The row that exists is
+    // annotated; the other is **not** invented.
+    let view = from_status(report(
+        vec![listed("missing", "a.txt")],
+        vec![resolved(
+            "a.txt",
+            "b.txt",
+            DeclarationResolution::Rename,
+            Some(false),
+            Some(false),
+        )],
+    ));
+    assert_eq!(view.renames, 1, "prikk's word decides, not the pairing");
+    assert_eq!(
+        view.entries[0].rename,
+        Some(RenameHalf::Source {
+            new_path: "b.txt".into()
+        })
+    );
+    assert_eq!(view.entries.len(), 1, "no row was invented");
+}
+
+#[test]
+fn content_and_mode_are_said_only_where_prikk_reports_them() {
+    let sentence = |content, mode| {
+        from_status(report(
+            vec![listed("missing", "a.txt"), listed("untracked", "b.txt")],
+            vec![resolved(
+                "a.txt",
+                "b.txt",
+                DeclarationResolution::Rename,
+                content,
+                mode,
+            )],
+        ))
+        .declared_renames[0]
+            .content_sentence()
+    };
+    assert_eq!(sentence(Some(false), Some(false)), None, "silence is true");
+    assert_eq!(
+        sentence(Some(true), Some(false)).as_deref(),
+        Some("declared rename a.txt → b.txt: its content changed too")
+    );
+    assert_eq!(
+        sentence(Some(false), Some(true)).as_deref(),
+        Some("declared rename a.txt → b.txt: its mode changed too")
+    );
+    assert_eq!(
+        sentence(Some(true), Some(true)).as_deref(),
+        Some("declared rename a.txt → b.txt: its content and mode changed too")
+    );
+    // A destination that is not a regular file: prikk reports `null`, and **unknown is not
+    // "unchanged"** (`C-T2c′`) — so stikk says nothing about either.
+    assert_eq!(sentence(None, None), None);
+}
+
+#[test]
+fn the_content_note_retires_inside_the_band_and_stays_below_it() {
+    let pair = |declaration| {
+        from_status(report(
+            vec![listed("missing", "a.txt"), listed("untracked", "b.txt")],
+            vec![declaration],
+        ))
+    };
+    // Below 0.44 prikk says nothing about content, and stikk says so — RFC 032 F3's sentence.
+    let below = pair(declared("a.txt", "b.txt"));
+    assert_eq!(below.renames, 1);
+    assert_eq!(below.content_note(), Some(RENAME_CONTENT_NOTE));
+    // Inside the band that sentence is false: prikk reports exactly what it claims prikk does not.
+    let inside = pair(resolved(
+        "a.txt",
+        "b.txt",
+        DeclarationResolution::Rename,
+        Some(false),
+        Some(false),
+    ));
+    assert_eq!(inside.renames, 1);
+    assert_eq!(inside.content_note(), None);
 }

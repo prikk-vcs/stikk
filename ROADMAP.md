@@ -263,11 +263,12 @@ a fabricated worktree entry was fixed.
    when it names the ref that was asked for**; the ceiling is 46; a declaration's fate comes from prikk's own
    `resolution` at ≥ 0.44, a refused one makes commit unavailable, and a checkout that stopped part-way is shown.
    Letter 015 asks prikk to restore the unpublished-ref read, which would retire the retry. Ships in 0.9.0.
-2. **Patch detail** (`FR-030`), then **Compare** (`FR-033`) — **unblocked by prikk 0.46.0**, each its own RFC.
-   `prikk tree`, `prikk cat` and `prikk diff` arrived, and every read-only mode now takes a **bare block id**, so
-   `UD-10` retires: a block id is addressable as a content root, which was Compare's stated blocker. `diff` also
-   answers `UD-09`'s per-file content half for the Changes view. Measured at 0.46 (RFC 034 F6); the views are not
-   built.
+2. **Patch detail** (`FR-030`) — [RFC 035](rfcs/proposed/035-patch-detail.md), proposed; Q1 open. **Measured at prikk
+   0.46**: `show --format json` carries every operation's content — a text edit's spans, a delete's preimage, a
+   create's content and mode, a binary replacement's blob ids and sizes, both modes of a permission change, a
+   rename's two paths — and `show <block-id>` enumerates a block's patches, which `log` does not. **Three operation
+   kinds report a node id instead of a path**, which prikk's own prose resolves; letter 016 asks for it. Then
+   **Compare** (`FR-033`), which shares this RFC's `show` reader and prikk 0.46's `diff`.
 3. **Orientation on `status --format json`** (prikk ≥ 0.35), its own increment. Orientation is prose-parsed today,
    which is why RFC 034's interrupted-materialization marker is read from prikk's prose line rather than the JSON
    field beside the queue (ruled 2026-09-22: prose carries prikk's whole sentence, `ER-02`, and the JSON would have

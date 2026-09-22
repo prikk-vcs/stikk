@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 035 | [Patch detail](./proposed/035-patch-detail.md) | `FR-030`, blocked since 0.1.0: one patch's operations rendered from `show --format json` — a text edit's spans, a delete's preimage, a create's content, both modes, both blob ids — with an unresolved node id named as one. **Q1 open**: ship before prikk resolves the three paths its prose already prints (letter 016) |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

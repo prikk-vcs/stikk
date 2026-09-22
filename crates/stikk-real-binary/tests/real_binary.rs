@@ -2126,13 +2126,16 @@ fn rfc030_a_rename_declared_between_preview_and_confirmation_is_stale_then_a_fre
         );
         // And stikk's reader carries them (RFC 030 amendment A1), so the confirmation can compare them.
         assert!(before.declarations.is_empty(), "0.{}", bin.minor);
+        // RFC 034: inside the band prikk fills its own verdict on the same declaration, so the
+        // expectation follows the band rather than pinning one era's shape.
+        let inside = bin.minor >= RFC034_VERDICT_FROM;
         assert_eq!(
             after.declarations,
             vec![stikk_prikk::RenameDeclaration {
-                resolution: None,
+                resolution: inside.then_some(stikk_prikk::DeclarationResolution::Rename),
                 refusal: None,
-                content_changed: None,
-                mode_changed: None,
+                content_changed: inside.then_some(false),
+                mode_changed: inside.then_some(false),
                 old_path: "a.txt".to_string(),
                 new_path: "b.txt".to_string(),
             }],
@@ -3033,7 +3036,26 @@ fn rfc032_a_paired_declared_rename_is_marked_counted_and_authored_as_a_rename() 
                 Some(stikk_core::RENAMES_ALSO_COUNTED),
                 "{ctx}"
             );
-            assert!(summary.declaration_notices.is_empty(), "{ctx}");
+            // RFC 034 §4: inside the band the card carries what prikk says the rename **also** does, so
+            // the expectation comes from prikk's report rather than from this file's idea of the row.
+            let content_words: Vec<String> = read
+                .view
+                .declared_renames
+                .iter()
+                .filter_map(stikk_core::DeclaredRename::content_sentence)
+                .collect();
+            assert_eq!(summary.declaration_notices, content_words, "{ctx}");
+            // And where the destination's bytes really did change — edited after the move, or another
+            // file moved over it — prikk must be reporting exactly that.
+            if bin.minor >= RFC034_VERDICT_FROM
+                && (name.contains("b.txt edited") || name.contains("over b.txt"))
+            {
+                assert_eq!(
+                    content_words,
+                    ["declared rename a.txt → b.txt: its content changed too"],
+                    "{ctx}: prikk reports the content change"
+                );
+            }
 
             let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
             assert!(committed, "{ctx}: prikk commit:\n{printed}");
@@ -3065,7 +3087,11 @@ fn rfc032_a_declaration_without_its_destination_is_named_and_commit_authors_a_de
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     Fixture::clear_env();
-    const SENTENCE: &str = "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will not author it as a rename";
+    // RFC 034 §3 and §6: inside the band prikk says **why** it will record a deletion; below it, stikk
+    // can say only that the report does not list the destination — an ignored destination is in the
+    // worktree, and the report cannot tell the two apart.
+    const SENTENCE_FROM_0_44: &str = "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will record a deletion, not a rename";
+    const SENTENCE_BELOW_0_44: &str = "declared rename a.txt → b.txt: prikk's report does not list b.txt, so prikk will not author it as a rename";
     let cases: [(&str, Rfc032Setup, &[&str]); 3] = [
         (
             "row 1: mv, b.txt deleted",
@@ -3129,9 +3155,14 @@ fn rfc032_a_declaration_without_its_destination_is_named_and_commit_authors_a_de
                 .iter()
                 .filter_map(stikk_core::DeclaredRename::notice)
                 .collect();
+            let sentence = if bin.minor >= RFC034_VERDICT_FROM {
+                SENTENCE_FROM_0_44
+            } else {
+                SENTENCE_BELOW_0_44
+            };
             assert_eq!(
                 notices,
-                [SENTENCE],
+                [sentence],
                 "{ctx}: {:?}",
                 read.view.declared_renames
             );
@@ -3147,7 +3178,7 @@ fn rfc032_a_declaration_without_its_destination_is_named_and_commit_authors_a_de
                 "{ctx}"
             );
             assert_eq!(summary.rename_note, None, "{ctx}");
-            assert_eq!(summary.declaration_notices, [SENTENCE], "{ctx}");
+            assert_eq!(summary.declaration_notices, [sentence], "{ctx}");
 
             let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
             assert!(committed, "{ctx}: prikk commit:\n{printed}");
@@ -3222,12 +3253,29 @@ fn rfc032_a_declaration_whose_source_is_back_is_named_and_prikk_refuses_the_comm
                 "{ctx}: {:?}",
                 read.view
             );
-            let stikk_core::CommitPreviewOutcome::Ready { token, .. } =
-                rfc032_preview(&bin, &fixture, &backend, &repo)
-            else {
-                panic!("{ctx}: a notice, not a prevention: commit is still offered");
-            };
-            assert_eq!(token.summary().declaration_notices, [SENTENCE], "{ctx}");
+            // **RFC 034 §5 moved this line.** Below the band prikk states no verdict stikk may act on,
+            // so RFC 032 could only annotate an offered commit; inside the band prikk refuses the
+            // declaration itself, and stikk prevents the commit with prikk's own words.
+            match rfc032_preview(&bin, &fixture, &backend, &repo) {
+                stikk_core::CommitPreviewOutcome::WouldRefuseDeclarations(declarations)
+                    if bin.minor >= RFC034_VERDICT_FROM =>
+                {
+                    let [refused] = declarations.as_slice() else {
+                        panic!("{ctx}: one refused declaration: {declarations:?}");
+                    };
+                    assert!(
+                        refused.reason.contains("a.txt -> b.txt"),
+                        "{ctx}: prikk's own refusal: {}",
+                        refused.reason
+                    );
+                }
+                stikk_core::CommitPreviewOutcome::Ready { token, .. }
+                    if bin.minor < RFC034_VERDICT_FROM =>
+                {
+                    assert_eq!(token.summary().declaration_notices, [SENTENCE], "{ctx}");
+                }
+                other => panic!("{ctx}: unexpected outcome for this band: {other:?}"),
+            }
 
             let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
             assert!(!committed, "{ctx}: prikk commit must refuse:\n{printed}");
@@ -3285,16 +3333,37 @@ fn rfc032_row_5_is_recorded_as_prikk_reports_it_and_prikk_mv_back_drops_the_decl
         );
         assert!(status.clean, "{ctx}: prikk reports row 5 clean: {status:?}");
 
+        // **RFC 034 §5 moved this line too**, and this is the row that decides the check's order:
+        // prikk calls the worktree clean and exits 0, so inside the band the refused-declaration check
+        // must run **before** the clean check or prikk's verdict disappears behind "nothing to commit".
         match rfc032_preview(&bin, &fixture, &backend, &repo) {
-            stikk_core::CommitPreviewOutcome::Blocked(reason) => assert_eq!(
-                reason,
-                format!(
-                    "{CLEAN}; declared rename a.txt → b.txt: a.txt is present again, and prikk refuses to commit until \
-                     the declaration is resolved; in a terminal, prikk mv b.txt a.txt drops it"
-                ),
-                "{ctx}"
-            ),
-            other => panic!("{ctx}: expected Blocked, got {other:?}"),
+            stikk_core::CommitPreviewOutcome::WouldRefuseDeclarations(declarations)
+                if bin.minor >= RFC034_VERDICT_FROM =>
+            {
+                let [refused] = declarations.as_slice() else {
+                    panic!("{ctx}: one refused declaration: {declarations:?}");
+                };
+                assert!(
+                    refused
+                        .reason
+                        .contains("the source is present in the worktree again"),
+                    "{ctx}: prikk's own refusal: {}",
+                    refused.reason
+                );
+            }
+            stikk_core::CommitPreviewOutcome::Blocked(reason)
+                if bin.minor < RFC034_VERDICT_FROM =>
+            {
+                assert_eq!(
+                    reason,
+                    format!(
+                        "{CLEAN}; declared rename a.txt → b.txt: a.txt is present again, and prikk refuses to commit until \
+                         the declaration is resolved; in a terminal, prikk mv b.txt a.txt drops it"
+                    ),
+                    "{ctx}"
+                );
+            }
+            other => panic!("{ctx}: unexpected outcome for this band: {other:?}"),
         }
         let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
         assert!(!committed, "{ctx}: prikk commit refuses:\n{printed}");
@@ -3751,4 +3820,339 @@ fn rfc034_a_first_commit_on_a_fresh_repository_reads_previews_and_commits_at_bot
             .unwrap_or_else(|e| panic!("{ctx}: history after seal: {e}"));
         assert_eq!(history.blocks.len(), 1, "{ctx}: {history:?}");
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 034 decision 4: at prikk ≥ 0.44 stikk says what prikk's own classifier resolves, and a
+// declaration prikk would refuse prevents the commit.
+// ---------------------------------------------------------------------------------------------
+
+/// The first prikk whose declaration verdict stikk reads (RFC 034 §1; 0.43's classifier is wrong).
+const RFC034_VERDICT_FROM: u32 = 44;
+
+fn rfc034_skip_below_the_band(bin: &PrikkBin, what: &str) -> bool {
+    if bin.minor < RFC034_VERDICT_FROM {
+        eprintln!(
+            "RFC 034: {what} SKIPPED at 0.{} — prikk states no declaration verdict stikk will read below \
+             0.{RFC034_VERDICT_FROM} (0.43 reports one whose classifier is wrong, measured), and `prikk mv` \
+             does not exist below 0.38. Announced rather than silent (RFC 022 §3).",
+            bin.minor
+        );
+        return true;
+    }
+    false
+}
+
+/// **RFC 034 §3–§4 against real binaries: prikk's own resolution, and what stikk says about it.**
+///
+/// Each row is a state measured at 0.44.0 and 0.46.0. The assertion pairs **stikk's sentence** with
+/// **`prikk commit`'s own printed output** for the same worktree, so a wording that drifts apart from
+/// what prikk does fails here rather than in front of a user (RFC 032 A4 — the surface is named).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc034_stikk_says_what_prikks_resolution_says_at_both_ends() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    type Row = (
+        &'static str,
+        Rfc032Setup,
+        stikk_core::DeclarationResolution,
+        Option<&'static str>,
+        &'static str,
+    );
+    let rows: [Row; 7] = [
+        (
+            "rename",
+            |bin, repo| rfc032_mv(bin, repo, "a.txt", "b.txt"),
+            stikk_core::DeclarationResolution::Rename,
+            None,
+            "rename-path a.txt -> b.txt",
+        ),
+        (
+            "rename, content changed",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                rfc032_write(repo, "b.txt", "alpha\nmore\n");
+            },
+            stikk_core::DeclarationResolution::Rename,
+            Some("declared rename a.txt → b.txt: its content changed too"),
+            "edit-text b.txt",
+        ),
+        (
+            "rename, mode changed",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let path = repo.join("b.txt");
+                    let mut perms = std::fs::metadata(&path).unwrap().permissions();
+                    perms.set_mode(0o755);
+                    std::fs::set_permissions(&path, perms).unwrap();
+                }
+            },
+            stikk_core::DeclarationResolution::Rename,
+            Some("declared rename a.txt → b.txt: its mode changed too"),
+            "change-perm b.txt",
+        ),
+        (
+            "deletion, destination gone",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                std::fs::remove_file(repo.join("b.txt")).unwrap();
+            },
+            stikk_core::DeclarationResolution::Deletion,
+            Some(
+                "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will record a deletion, not a rename",
+            ),
+            "delete-file a.txt",
+        ),
+        (
+            "deletion, destination is a directory",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                std::fs::remove_file(repo.join("b.txt")).unwrap();
+                std::fs::create_dir(repo.join("b.txt")).unwrap();
+                rfc032_write(repo, "b.txt/q.txt", "q\n");
+            },
+            stikk_core::DeclarationResolution::Deletion,
+            Some(
+                "declared rename a.txt → b.txt: b.txt is not a file in the worktree, so prikk will record a deletion, not a rename",
+            ),
+            "declaration a.txt -> b.txt: destination is a directory; recorded as a deletion, not a rename",
+        ),
+        (
+            "deletion-ignored",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                rfc032_write(repo, ".prikkignore", "b.txt\n");
+            },
+            stikk_core::DeclarationResolution::DeletionIgnored,
+            Some(
+                "declared rename a.txt → b.txt: b.txt is ignored, so prikk will record a deletion, not a rename",
+            ),
+            "declaration a.txt -> b.txt: destination is ignored; recorded as a deletion, not a rename",
+        ),
+        (
+            "never-tracked",
+            |bin, repo| {
+                rfc032_write(repo, "new.txt", "new\n");
+                rfc032_mv(bin, repo, "new.txt", "new2.txt");
+            },
+            stikk_core::DeclarationResolution::NeverTracked,
+            Some(
+                "declared rename new.txt → new2.txt: new.txt was never tracked, so prikk will create new2.txt and drop the declaration",
+            ),
+            "declaration new.txt -> new2.txt: source was never a tracked node; there was no node to rename",
+        ),
+    ];
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc034_skip_below_the_band(&bin, "prikk's declaration resolutions") {
+            continue;
+        }
+        for (name, setup, resolution, sentence, printed) in &rows {
+            let ctx = format!("0.{} {name}", bin.minor);
+            let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+            setup(&bin, &repo);
+
+            let read = stikk_core::changes_view(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("{ctx}: changes_view: {e}"));
+            let declaration = read
+                .view
+                .declared_renames
+                .first()
+                .unwrap_or_else(|| panic!("{ctx}: no declaration: {:?}", read.view));
+            assert_eq!(
+                declaration.resolution.as_ref(),
+                Some(resolution),
+                "{ctx}: prikk's own word"
+            );
+            let said = declaration
+                .notice()
+                .or_else(|| declaration.content_sentence());
+            assert_eq!(said.as_deref(), *sentence, "{ctx}: what stikk says");
+            assert_eq!(
+                read.view.renames,
+                u64::from(*resolution == stikk_core::DeclarationResolution::Rename),
+                "{ctx}: only a resolved rename is counted"
+            );
+
+            let (committed, output) = rfc032_raw_commit(&bin, &fixture, &repo);
+            assert!(committed, "{ctx}: prikk commit:\n{output}");
+            assert!(
+                rfc032_printed_line(&output, printed),
+                "{ctx}: `prikk commit`'s printed output says `{printed}`:\n{output}"
+            );
+        }
+    }
+}
+
+/// **RFC 034 §5 against real binaries: a declaration prikk would refuse makes commit unavailable**, and
+/// the reason stikk shows is **prikk's own refusal, compared against a real `prikk commit` attempt on
+/// the same worktree** — not a literal copied into this file.
+///
+/// The second row is the one that decides the check's order: prikk reports that worktree **clean** and
+/// exits 0, so a clean check running first would hide prikk's verdict behind "nothing to commit".
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc034_a_refused_declaration_prevents_the_commit_at_both_ends() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let rows: [(&str, Rfc032Setup, bool); 2] = [
+        (
+            "both paths present",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                rfc032_write(repo, "a.txt", "alpha\n");
+            },
+            false,
+        ),
+        (
+            "the source is back, and prikk calls the worktree clean",
+            |bin, repo| {
+                rfc032_mv(bin, repo, "a.txt", "b.txt");
+                std::fs::rename(repo.join("b.txt"), repo.join("a.txt")).unwrap();
+            },
+            true,
+        ),
+    ];
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc034_skip_below_the_band(&bin, "refused declarations") {
+            continue;
+        }
+        for (name, setup, expect_clean) in rows {
+            let ctx = format!("0.{} {name}", bin.minor);
+            let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+            setup(&bin, &repo);
+
+            let read = stikk_core::changes_view(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("{ctx}: changes_view: {e}"));
+            assert_eq!(
+                read.view.clean, expect_clean,
+                "{ctx}: prikk's own `clean`: {:?}",
+                read.view
+            );
+            assert_eq!(read.view.refused_declarations, Some(1), "{ctx}");
+            assert_eq!(
+                read.view.refused,
+                Some(0),
+                "{ctx}: no *path* is refused here"
+            );
+
+            // prikk's own refusal for this very worktree, from a real commit attempt.
+            let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
+            assert!(!committed, "{ctx}: prikk commit must refuse:\n{printed}");
+            let prikks_refusal = printed
+                .lines()
+                .find_map(|line| line.trim().strip_prefix("error: precondition not met: "))
+                .unwrap_or_else(|| panic!("{ctx}: prikk's refusal line:\n{printed}"));
+
+            match rfc032_preview(&bin, &fixture, &backend, &repo) {
+                stikk_core::CommitPreviewOutcome::WouldRefuseDeclarations(declarations) => {
+                    let [refused] = declarations.as_slice() else {
+                        panic!("{ctx}: one refused declaration: {declarations:?}");
+                    };
+                    assert_eq!(refused.old_path, "a.txt", "{ctx}");
+                    assert_eq!(refused.new_path, "b.txt", "{ctx}");
+                    assert_eq!(
+                        refused.reason, prikks_refusal,
+                        "{ctx}: stikk shows prikk's own refusal, and `prikk commit` prints the same"
+                    );
+                }
+                other => panic!("{ctx}: expected the declaration prevention, got {other:?}"),
+            }
+        }
+    }
+}
+
+/// **RFC 034 §7 against real binaries: a checkout that stopped part-way.**
+///
+/// The marker is set by a `checkout --patch-materialize` that refuses **after** writing something, and
+/// then read by another prikk. **Only an older prikk can set it**: measured at 0.46.0, the checkout
+/// refuses with *"nothing was written"* — prikk 0.43 "plans every write before the first", which is the
+/// fix RFC 034 F7 records. So this leg has the floor try, and the ceiling read.
+///
+/// **If the floor cannot set it either, the leg announces a skip rather than passing quietly** (RFC 022
+/// §3): the state is then unreachable from the suite's two ends, and the hand measurement in the review
+/// request carries it instead (0.42 sets, 0.43 and 0.46 read).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc034_an_interrupted_materialization_is_shown_and_blocks_only_commit() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let floor = PrikkBin::floor();
+    let ceiling = PrikkBin::ceiling();
+    let fixture = Fixture::build(&floor);
+    let repo = fixture.repo().to_path_buf();
+    let floor_backend = CliBackend::with_program(&floor.path);
+    let ceiling_backend = CliBackend::with_program(&ceiling.path);
+
+    // A published ref, so the floor's checkout has something to materialize.
+    fixture.set_author_env();
+    floor_backend
+        .commit(&repo, "heads/main", "baseline")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", floor.minor));
+    fixture.set_maintainer_env();
+    floor_backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", floor.minor));
+    Fixture::clear_env();
+
+    // A file in the way, so materialization refuses part-way through.
+    std::fs::write(repo.join("readme.txt"), "in the way\n")
+        .unwrap_or_else(|e| panic!("write: {e}"));
+    let attempt = rfc032_prikk(
+        &floor,
+        &repo,
+        &["checkout", "--patch-materialize", "--ref", "heads/main"],
+    );
+    println!(
+        "0.{}: checkout --patch-materialize said: {}",
+        floor.minor,
+        String::from_utf8_lossy(&attempt.stderr).trim()
+    );
+
+    let orientation = stikk_core::orient(&ceiling_backend, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: orient: {e}", ceiling.minor));
+    let Some(marker) = orientation.interrupted_materialization.as_deref() else {
+        eprintln!(
+            "RFC 034 §7: the interrupted-materialization marker SKIPPED — prikk 0.{} left none, and \
+             prikk 0.{} plans every write before the first, so it refuses without writing (measured). \
+             The state is unreachable from this suite's two ends; the review request carries the hand \
+             measurement (0.42 sets it, 0.43 and 0.46 report it). Announced rather than silent (RFC 022 §3).",
+            floor.minor, ceiling.minor
+        );
+        return;
+    };
+
+    // prikk's own sentence, whole, with its routes.
+    assert!(
+        marker.contains("stopped part-way"),
+        "0.{}: {marker}",
+        ceiling.minor
+    );
+    // Commit is unavailable, in prikk's words.
+    fixture.set_author_env();
+    let preview = stikk_core::commit_preview(&ceiling_backend, &repo, "heads/main");
+    Fixture::clear_env();
+    match preview {
+        Ok(stikk_core::CommitPreviewOutcome::Blocked(reason)) => assert!(
+            reason.contains(marker),
+            "0.{}: commit is blocked in prikk's words: {reason}",
+            ceiling.minor
+        ),
+        other => panic!("0.{}: expected Blocked, got {other:?}", ceiling.minor),
+    }
+    // **Reads are not blocked**, and stikk must not block them.
+    stikk_core::changes_view(&ceiling_backend, &repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: Changes must keep working: {e}", ceiling.minor));
+    ceiling_backend
+        .history(&repo, "heads/main", 20)
+        .unwrap_or_else(|e| panic!("0.{}: History must keep working: {e}", ceiling.minor));
 }

@@ -256,7 +256,7 @@ a fabricated worktree entry was fixed.
 ## Next — carried into 0.9.0, in order
 
 1. **The prikk 0.46 re-baseline, and a repair the released line needs** —
-   [RFC 034](rfcs/proposed/034-prikk-0-46-rebaseline.md), proposed; **Q1 ruled (b)** — no 0.8.1, it rides here
+   [RFC 034](rfcs/accepted/034-prikk-0-46-rebaseline.md), **accepted**; **Q1 ruled (b)** — no 0.8.1, it rides here
    (supersedes RFC 033, archived).
    prikk 0.44.0, 0.45.0 and 0.46.0 landed 2026-09-16..22. **0.45.0 made an unpublished ref refuse when stikk names
    it**, so on a repository with nothing sealed yet the Changes view, History and commit's preview all refuse —

@@ -2,8 +2,9 @@
 
 **Status.** **Proposed 2026-09-22** by the architect, the day prikk's letter 017 arrived. **Supersedes
 [RFC 033](../archive/033-prikk-0-43-rebaseline.md)**, whose prikk is two releases old and whose open question prikk
-answered in 0.44.0. **Q1 ruled (b) by the project owner 2026-09-22**: no 0.8.1 — stikk has no users yet, so the repair rides
-in 0.9.0 with the re-baseline.
+answered in 0.44.0. **Accepted by the project owner 2026-09-22**, **Q1 ruled (b)** the same day: no 0.8.1 — stikk has no
+users yet, so the repair rides in 0.9.0 with the re-baseline. **Amended on acceptance (A1)** — the ceiling raise comes
+*first*, not last.
 Measured against real prikk **0.28.0**, **0.43.0**, **0.44.0**, **0.45.0** and **0.46.0** binaries
 (`cargo install --locked`), and by running the **published 0.8.0's own suite** — a scratch copy of `c25339f` with
 only the validated ceiling raised — at 0.28 and 0.46. Evidence:
@@ -149,8 +150,7 @@ ignored).
    — `no prikk repository at`, and `unsupported format version` — never on the class prefix, which is the rule that
    survived every previous sweep.
 
-3. **The ceiling rises to 46 only after decisions 1 and 2**, then the suite reports what the raise costs, and the two
-   wording-pinned tests become version-aware.
+3. **The ceiling rises to 46 first** — see amendment A1 — and the two wording-pinned tests become version-aware.
 
 4. **RFC 033's carried work lands with this re-baseline** (F7), re-measured at 0.46: the marker, prevention on a
    refused declaration, content and mode per rename, and the corrected destination sentence.
@@ -191,6 +191,18 @@ instead of being permanent, and it retires entirely if stikk's floor ever rises 
 **What the ruling changes about order:** nothing is urgent, but nothing moves without it either — **the ceiling cannot
 rise to 0.46 while four suite cases fail**, and Patch detail and Compare both need 0.46's verbs. So this RFC still
 comes before them.
+
+## Amendment A1 — 2026-09-22, on acceptance: the ceiling raise comes first
+
+**Decision 3 as proposed had the order backwards**, and it would have left Handoff A unable to measure its own repair.
+
+`VALIDATED_MAX_MINOR`'s own documentation states the rule: *"The raise comes early in a re-baseline, not last. The
+real-binary suite refuses to run against a binary this constant does not name, so raising it is what lets the suite
+report what the raise cost."* RFC 029 did exactly that (`9b0a6e4`, the ceiling alone).
+
+**So Handoff A raises the ceiling to 46 in its own first commit**, with the suite then red on the four regressions of
+F0 — *expected, and reported in the review request rather than hidden* — and repairs them in the commits that follow.
+**The raise is not the re-baseline**: Handoff B still carries decision 4's work, re-measured at 0.46.
 
 ## Delivery
 

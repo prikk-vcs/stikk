@@ -1,10 +1,10 @@
 # RFC 034 — The prikk 0.46 re-baseline: a ref with no published history stopped being readable
 
-**Status.** **Proposed 2026-09-22** by the architect, the day prikk's letter 017 arrived. **Supersedes
-[RFC 033](../archive/033-prikk-0-43-rebaseline.md)**, whose prikk is two releases old and whose open question prikk
-answered in 0.44.0. **Accepted by the project owner 2026-09-22**, **Q1 ruled (b)** the same day: no 0.8.1 — stikk has no
+**Status.** **Accepted by the project owner 2026-09-22**, **Q1 ruled (b)** the same day: no 0.8.1 — stikk has no
 users yet, so the repair rides in 0.9.0 with the re-baseline. **Amended on acceptance (A1)** — the ceiling raise comes
-*first*, not last.
+*first*, not last. **Proposed 2026-09-22** by the architect, the day prikk's letter 017 arrived. **Supersedes
+[RFC 033](../archive/033-prikk-0-43-rebaseline.md)**, whose prikk is two releases old and whose open question prikk
+answered in 0.44.0.
 Measured against real prikk **0.28.0**, **0.43.0**, **0.44.0**, **0.45.0** and **0.46.0** binaries
 (`cargo install --locked`), and by running the **published 0.8.0's own suite** — a scratch copy of `c25339f` with
 only the validated ceiling raised — at 0.28 and 0.46. Evidence:

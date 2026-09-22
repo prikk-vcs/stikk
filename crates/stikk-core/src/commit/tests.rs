@@ -10,6 +10,7 @@ use stikk_model::RoleReadiness;
 
 fn dirty_worktree() -> WorktreeStatus {
     WorktreeStatus {
+        refused_declarations: None,
         reff: "heads/main".to_string(),
         clean: false,
         tracked: 1,
@@ -27,6 +28,7 @@ fn dirty_worktree() -> WorktreeStatus {
 
 fn orientation(queued_patches: u64, queued_target: Option<&str>) -> Orientation {
     Orientation {
+        interrupted_materialization: None,
         queued_patches,
         queued_target: queued_target.map(str::to_string),
         main_ref_state: None,
@@ -59,6 +61,7 @@ fn ready_backend() -> NullBackend {
 #[test]
 fn a_clean_worktree_blocks_before_arming_anything() {
     let backend = ready_backend().with_worktree_status(WorktreeStatus {
+        refused_declarations: None,
         reff: "heads/main".to_string(),
         clean: true,
         tracked: 1,
@@ -111,6 +114,7 @@ fn a_ready_preview_carries_the_worktree_counts_and_a_token() {
 fn the_active_patch_warning_is_carried_verbatim_into_the_preview_and_consequence() {
     let backend = ready_backend().with_orientation(orientation(800, None)).with_orientation(
         Orientation {
+            interrupted_materialization: None,
             active_patch_warning: Some("warning: active patches (800) at or above the recommended threshold (800); consider running `prikk seal`".to_string()),
             ..orientation(800, None)
         },
@@ -300,6 +304,7 @@ fn entry(kind: &str, path: &str, authoring: stikk_prikk::Authoring) -> stikk_pri
 /// symlink `commit` refuses, with the reason `commit` prints.
 fn refused_symlink_worktree() -> WorktreeStatus {
     WorktreeStatus {
+        refused_declarations: None,
         untracked: 1,
         refused: Some(1),
         entries: vec![
@@ -472,6 +477,7 @@ fn a_substituted_name_gets_the_caution_that_it_is_not_the_real_name() {
 /// The worktree a preview lists: one modified file, authored.
 fn previewed_worktree() -> WorktreeStatus {
     WorktreeStatus {
+        refused_declarations: None,
         modified: 1,
         entries: vec![entry(
             "modified",
@@ -551,6 +557,7 @@ fn only_the_declarations_differing_is_stale_worktree_and_never_commits() {
     // M7's shape: the shell moved a.txt to b.txt before the preview; `prikk mv` declared it after. The
     // entries are identical, and only the declaration says `commit` would now author `rename-path`.
     let moved = WorktreeStatus {
+        refused_declarations: None,
         missing: 1,
         modified: 0,
         untracked: 1,
@@ -561,7 +568,12 @@ fn only_the_declarations_differing_is_stale_worktree_and_never_commits() {
         ..dirty_worktree()
     };
     let declared = WorktreeStatus {
+        refused_declarations: None,
         declarations: vec![stikk_prikk::RenameDeclaration {
+            resolution: None,
+            refusal: None,
+            content_changed: None,
+            mode_changed: None,
             old_path: "a.txt".to_string(),
             new_path: "b.txt".to_string(),
         }],
@@ -655,6 +667,7 @@ fn commits_branch_notice_follows_each_row_of_safeguard_three_exactly() {
     ];
     for (current, expected) in rows {
         let backend = ready_backend().with_orientation(Orientation {
+            interrupted_materialization: None,
             current_branch: current.clone(),
             ..orientation(0, None)
         });
@@ -679,6 +692,10 @@ fn commits_branch_notice_follows_each_row_of_safeguard_three_exactly() {
 
 fn declared(old: &str, new: &str) -> stikk_prikk::RenameDeclaration {
     stikk_prikk::RenameDeclaration {
+        resolution: None,
+        refusal: None,
+        content_changed: None,
+        mode_changed: None,
         old_path: old.into(),
         new_path: new.into(),
     }
@@ -691,6 +708,7 @@ fn row(
 ) -> WorktreeStatus {
     let count = |kind: &str| entries.iter().filter(|(k, _)| *k == kind).count() as u64;
     WorktreeStatus {
+        refused_declarations: None,
         clean: entries.is_empty(),
         tracked: 2,
         missing: count("missing"),
@@ -786,6 +804,7 @@ fn row_5_is_blocked_as_clean_with_the_source_present_notice_and_its_way_out() {
 
 fn first_commit_worktree() -> WorktreeStatus {
     WorktreeStatus {
+        refused_declarations: None,
         tracked: 0,
         ..row(
             &[("untracked", "x.txt"), ("untracked", "y.txt")],

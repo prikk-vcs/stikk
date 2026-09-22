@@ -193,6 +193,7 @@ fn a_0_42_status_parses_exactly_as_its_older_equivalent_under_both_pointer_forms
             ),
         };
         let expected = Orientation {
+            interrupted_materialization: None,
             current_branch: expected_branch,
             ..older.clone()
         };
@@ -1716,6 +1717,10 @@ fn the_0_38_rename_fixtures_carry_their_declarations() {
     assert_eq!(
         s.declarations,
         vec![RenameDeclaration {
+            resolution: None,
+            refusal: None,
+            content_changed: None,
+            mode_changed: None,
             old_path: "modified draft.txt".into(),
             new_path: "renamed.txt".into(),
         }]
@@ -1724,6 +1729,10 @@ fn the_0_38_rename_fixtures_carry_their_declarations() {
     assert_eq!(
         bare.declarations,
         vec![RenameDeclaration {
+            resolution: None,
+            refusal: None,
+            content_changed: None,
+            mode_changed: None,
             old_path: "modified".into(),
             new_path: "untracked".into(),
         }]
@@ -1813,4 +1822,59 @@ fn a_queue_with_missing_target_metadata_reads_as_a_count_with_no_target() {
     let o = orientation(STATUS_QUEUED_MISSING_METADATA_0_42_FIXTURE, 42).expect("parses");
     assert_eq!(o.queued_patches, 1);
     assert_eq!(o.queued_target, None);
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 034 decision 4 §7: a checkout or branch switch that stopped part-way.
+// ---------------------------------------------------------------------------------------------
+
+/// Captured verbatim from **prikk 0.46.0** reading a repository whose marker prikk **0.42.0** set, by
+/// refusing a `checkout --patch-materialize` that would have overwritten a file with different content.
+/// prikk 0.43.0 prints the identical line for the identical repository (measured both ways).
+const STATUS_INTERRUPTED_MATERIALIZATION_0_46_FIXTURE: &str = "\
+prikk repository: /tmp/probe/.prikk
+active WAL records: 0
+trailing partial WAL bytes: 0
+heads/main RefState: 03c62b71c969eafd0c418d5132bb1eb1e334dea4a3dd4c38b1d37c1f4aec2083
+current branch: heads/main
+interrupted materialization: a checkout or branch switch stopped part-way; move aside any file it named, then run prikk checkout --patch-materialize --ref heads/main or prikk branch switch heads/main
+queued patches: 0
+status: multi-operation text diff minimization and plugins not yet implemented
+";
+
+#[test]
+fn an_interrupted_materialization_is_carried_verbatim_with_prikks_own_routes() {
+    let orientation =
+        orientation(STATUS_INTERRUPTED_MATERIALIZATION_0_46_FIXTURE, 46).expect("parses");
+    assert_eq!(
+        orientation.interrupted_materialization.as_deref(),
+        Some(
+            "a checkout or branch switch stopped part-way; move aside any file it named, then run \
+             prikk checkout --patch-materialize --ref heads/main or prikk branch switch heads/main"
+        ),
+        "prikk's sentence, naming both ways out, never reworded"
+    );
+    // The line changes nothing else the report says (the reader looks fields up by label).
+    assert_eq!(orientation.queued_patches, 0);
+    assert_eq!(
+        orientation.current_branch,
+        stikk_model::CurrentBranch::Branch(
+            stikk_model::RefName::parse("heads/main").expect("a valid ref name")
+        )
+    );
+}
+
+#[test]
+fn no_marker_line_is_no_marker_at_any_version() {
+    // **Absence is not a version error here**, unlike `current branch:`: prikk prints this line only
+    // when the marker is set, and below 0.43 never — the state is unreportable there (RFC 034 §7.4),
+    // which is why `present()` glosses 0.42's commit refusal instead.
+    for (fixture, minor) in [
+        (STATUS_QUEUED_0_42_FIXTURE, 42),
+        (STATUS_QUEUED_FIXTURE, 38),
+        (STATUS_EMPTY_FIXTURE, 38),
+    ] {
+        let orientation = orientation(fixture, minor).expect("parses");
+        assert_eq!(orientation.interrupted_materialization, None);
+    }
 }

@@ -32,6 +32,7 @@ fn history_view_composes_lineage_and_queue_count() {
             blocks: vec![block("bb", 2, "Normal", 1), block("aa", 1, "Root", 0)],
         })
         .with_orientation(Orientation {
+            interrupted_materialization: None,
             queued_patches: 3,
             queued_target: None,
             main_ref_state: Some("rs-bb".into()),
@@ -190,6 +191,7 @@ fn history_view_takes_the_count_and_the_target_from_one_orientation_read() {
             blocks: Vec::new(),
         })
         .with_orientation(Orientation {
+            interrupted_materialization: None,
             queued_patches: 2,
             queued_target: Some("heads/main".into()),
             main_ref_state: None,

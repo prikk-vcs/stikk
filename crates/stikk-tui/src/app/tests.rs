@@ -1072,6 +1072,7 @@ fn select_on_a_confirmation_overlay_with_no_pending_commit_is_a_defensive_no_op(
 
 fn dirty_worktree_status() -> WorktreeStatus {
     WorktreeStatus {
+        refused_declarations: None,
         reff: "heads/main".to_string(),
         clean: false,
         tracked: 1,
@@ -1090,6 +1091,7 @@ fn dirty_worktree_status() -> WorktreeStatus {
 fn commit_backend() -> NullBackend {
     NullBackend::supported()
         .with_orientation(Orientation {
+            interrupted_materialization: None,
             queued_patches: 0,
             queued_target: None,
             main_ref_state: None,
@@ -1339,6 +1341,7 @@ fn back_on_the_message_prompt_clears_the_pending_commit() {
 fn seal_backend() -> NullBackend {
     NullBackend::supported()
         .with_orientation(Orientation {
+            interrupted_materialization: None,
             queued_patches: 1,
             queued_target: Some("heads/main".to_string()),
             main_ref_state: None,

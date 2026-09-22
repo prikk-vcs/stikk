@@ -41,9 +41,9 @@ use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{
-    Authoring, BlockRow, History, PatchMessage, Queue, QueueTarget, QueueThreshold,
-    QueuedElsewhere, QueuedMessage, QueuedOperation, QueuedPatch, QueuedPath, RefEntry,
-    RenameDeclaration, ThresholdStatus, WorktreeEntry, WorktreeStatus,
+    Authoring, BlockRow, DeclarationResolution, History, PatchMessage, Queue, QueueTarget,
+    QueueThreshold, QueuedElsewhere, QueuedMessage, QueuedOperation, QueuedPatch, QueuedPath,
+    RefEntry, RenameDeclaration, ThresholdStatus, WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -313,7 +313,7 @@ const WORKTREE_SCHEMA: &str = "worktree-status-report-v1";
 /// # Errors
 /// [`StikkError::Environment`] if the text is not JSON, announces another schema, or breaks any rule
 /// above.
-pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
+pub(super) fn worktree_status(text: &str, prikk_minor: u32) -> Result<WorktreeStatus> {
     let value = report(text, WORKTREE_SCHEMA)?;
     let reff = ref_name_field(&value, "ref")?.to_string();
     let tracked = value.u64_field("tracked_files")?;
@@ -355,6 +355,31 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         )));
     }
 
+    // RFC 034 decision 4: prikk's own verdict on each declaration, and how many it would refuse, read
+    // only inside the band (see `DECLARATION_VERDICT_FROM_MINOR`).
+    let reads_verdict = prikk_minor >= DECLARATION_VERDICT_FROM_MINOR;
+    let declarations = declarations(&value, reads_verdict)?;
+    let refused_declarations = if reads_verdict {
+        let reported = value.u64_field("refused_declaration_count")?;
+        let listed = declarations
+            .iter()
+            .filter(|declaration| {
+                declaration.resolution == Some(crate::DeclarationResolution::Refused)
+            })
+            .count();
+        // The same rule `refused_count` carries: prikk computes both from one list, so a disagreement
+        // means stikk misread the report, and there is no right number to pick between.
+        if u64::try_from(listed).ok() != Some(reported) {
+            return Err(StikkError::environment_msg(format!(
+                "prikk's JSON report says `refused_declaration_count` is {reported} but resolves \
+                 {listed} declarations \"refused\"; stikk does not choose between them"
+            )));
+        }
+        Some(reported)
+    } else {
+        None
+    };
+
     let count = |kind: &str| {
         u64::try_from(entries.iter().filter(|entry| entry.kind == kind).count()).unwrap_or(u64::MAX)
     };
@@ -368,25 +393,98 @@ pub(super) fn worktree_status(text: &str) -> Result<WorktreeStatus> {
         untracked: count("untracked"),
         unsupported: count("unsupported-path"),
         refused: Some(refused_count),
+        refused_declarations,
         queued_elsewhere,
         entries,
-        declarations: declarations(&value)?,
+        declarations,
     })
 }
 
+/// The first prikk minor whose declaration verdict stikk reads (RFC 034 §1).
+///
+/// **The fields exist from 0.43, and stikk skips that release deliberately:** its classifier resolved a
+/// directory destination as `rename` while `commit` recorded a deletion (stikk letter 014, fixed in
+/// 0.44 — measured here at 0.43.0 against 0.44.0), it is reported to hang on a FIFO destination
+/// (prikk's letter 017 §2), and `content_changed`/`mode_changed` changed meaning in 0.44. One band,
+/// rather than a matrix for a superseded release.
+const DECLARATION_VERDICT_FROM_MINOR: u32 = 44;
+
 /// The report's `declarations` array: required present, each entry a string `old_path` and `new_path`
 /// (RFC 030 amendment A1). Paths are carried as reported.
-fn declarations(value: &Json) -> Result<Vec<RenameDeclaration>> {
+///
+/// **From prikk 0.44 each entry also carries prikk's own verdict** (RFC 034 decision 4): `resolution`,
+/// `refusal`, `content_changed` and `mode_changed`, all required present — a missing one would read as
+/// "unknown" for a prikk that does in fact report it, which is the shape `UD-02` refuses to guess at.
+/// Below the band every field is `None`, and the reader does not look.
+///
+/// **Two rules, both measured:** `resolution: "refused"` comes with a refusal and no other resolution
+/// does, and `content_changed`/`mode_changed` are `null` for anything but a resolved rename.
+fn declarations(value: &Json, reads_verdict: bool) -> Result<Vec<RenameDeclaration>> {
     value
         .array_field("declarations")?
         .iter()
         .map(|declaration| {
+            let old_path = declaration.str_field("old_path")?.to_string();
+            let new_path = declaration.str_field("new_path")?.to_string();
+            if !reads_verdict {
+                return Ok(RenameDeclaration {
+                    old_path,
+                    new_path,
+                    resolution: None,
+                    refusal: None,
+                    content_changed: None,
+                    mode_changed: None,
+                });
+            }
+            let resolution =
+                DeclarationResolution::from_label(declaration.str_field("resolution")?);
+            let refusal = match (&resolution, declaration.get("refusal")) {
+                (DeclarationResolution::Refused, Some(Json::String(reason))) => {
+                    Some(reason.clone())
+                }
+                (DeclarationResolution::Refused, other) => {
+                    return Err(StikkError::environment_msg(format!(
+                        "prikk's JSON report resolves the declaration {old_path} -> {new_path} \
+                         \"refused\" with `refusal` {other:?}; stikk shows prikk's own refusal and \
+                         will not invent one"
+                    )));
+                }
+                (_, Some(Json::Null) | None) => None,
+                (resolution, Some(_)) => {
+                    return Err(StikkError::environment_msg(format!(
+                        "prikk's JSON report carries a `refusal` on the declaration {old_path} -> \
+                         {new_path}, whose resolution is {:?}; stikk reads a refusal only on \
+                         \"refused\"",
+                        resolution.label()
+                    )));
+                }
+            };
             Ok(RenameDeclaration {
-                old_path: declaration.str_field("old_path")?.to_string(),
-                new_path: declaration.str_field("new_path")?.to_string(),
+                old_path,
+                new_path,
+                resolution: Some(resolution),
+                refusal,
+                content_changed: opt_bool_field(declaration, "content_changed")?,
+                mode_changed: opt_bool_field(declaration, "mode_changed")?,
             })
         })
         .collect()
+}
+
+/// A field that is `true`, `false` or `null`, and **must be present**: its absence would be
+/// indistinguishable from prikk's own "unknown", and stikk does not read a missing field as a value
+/// (`UD-02`). `None` is unknown, never "unchanged" (`C-T2c′`).
+fn opt_bool_field(value: &Json, key: &str) -> Result<Option<bool>> {
+    match value.get(key) {
+        Some(Json::Bool(flag)) => Ok(Some(*flag)),
+        Some(Json::Null) => Ok(None),
+        Some(_) => Err(StikkError::environment_msg(format!(
+            "prikk's JSON report has `{key}` as neither a boolean nor null"
+        ))),
+        None => Err(StikkError::environment_msg(format!(
+            "prikk's JSON report is missing `{key}`; stikk does not read its absence as a value"
+        ))),
+    }
 }
 
 /// One change's verdict: exactly one of prikk's two legal `authoring`/`refusal` pairs.

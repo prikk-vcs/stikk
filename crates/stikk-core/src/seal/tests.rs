@@ -10,6 +10,7 @@ use super::*;
 
 fn orientation(queued_patches: u64, queued_target: Option<&str>) -> Orientation {
     Orientation {
+        interrupted_materialization: None,
         queued_patches,
         queued_target: queued_target.map(str::to_string),
         main_ref_state: None,
@@ -335,6 +336,7 @@ fn seals_branch_notice_follows_each_row_of_safeguard_three_exactly() {
     ];
     for (current, expected) in rows {
         let backend = ready_backend().with_orientation(Orientation {
+            interrupted_materialization: None,
             current_branch: current.clone(),
             ..orientation(1, Some("heads/main"))
         });

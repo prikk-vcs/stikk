@@ -10,6 +10,7 @@ use super::*;
 
 fn dirty_status() -> WorktreeStatus {
     WorktreeStatus {
+        refused_declarations: None,
         reff: "heads/main".into(),
         clean: false,
         tracked: 2,
@@ -318,6 +319,10 @@ fn listed(kind: &str, path: &str) -> WorktreeEntry {
 
 fn declared(old: &str, new: &str) -> RenameDeclaration {
     RenameDeclaration {
+        resolution: None,
+        refusal: None,
+        content_changed: None,
+        mode_changed: None,
         old_path: old.into(),
         new_path: new.into(),
     }
@@ -327,6 +332,7 @@ fn declared(old: &str, new: &str) -> RenameDeclaration {
 fn report(entries: Vec<WorktreeEntry>, declarations: Vec<RenameDeclaration>) -> WorktreeStatus {
     let count = |kind: &str| entries.iter().filter(|e| e.kind == kind).count() as u64;
     WorktreeStatus {
+        refused_declarations: None,
         reff: "heads/main".into(),
         clean: entries.is_empty(),
         tracked: 2,

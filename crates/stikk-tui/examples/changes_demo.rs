@@ -49,6 +49,7 @@ fn main() -> ExitCode {
     let backend = NullBackend::supported()
         .with_version(0, 28, 1)
         .with_orientation(Orientation {
+            interrupted_materialization: None,
             queued_patches: 1,
             queued_target: Some("heads/main".to_string()),
             main_ref_state: Some(
@@ -59,6 +60,7 @@ fn main() -> ExitCode {
             current_branch: stikk_model::CurrentBranch::NotReported,
         })
         .with_worktree_status(WorktreeStatus {
+            refused_declarations: None,
             reff: "heads/main".to_string(),
             clean: false,
             tracked: 3,

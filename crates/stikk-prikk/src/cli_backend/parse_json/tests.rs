@@ -520,7 +520,7 @@ pub(in crate::cli_backend) fn variant(fixture: &str, from: &str, to: &str) -> St
 
 #[test]
 fn a_refused_symlink_reads_with_prikks_reason_verbatim() {
-    let s = worktree_status(WORKTREE_SYMLINK_JSON_0_41).expect("parses");
+    let s = worktree_status(WORKTREE_SYMLINK_JSON_0_41, 41).expect("parses");
     assert_eq!(s.reff, "heads/main");
     assert!(!s.clean);
     assert_eq!((s.tracked, s.unchanged), (1, 0));
@@ -561,7 +561,7 @@ fn a_refused_symlink_reads_with_prikks_reason_verbatim() {
 
 #[test]
 fn queued_elsewhere_reads_as_the_typed_ref() {
-    let s = worktree_status(WORKTREE_QUEUED_JSON_0_41).expect("parses");
+    let s = worktree_status(WORKTREE_QUEUED_JSON_0_41, 41).expect("parses");
     assert_eq!(s.reff, "heads/other");
     assert_eq!(
         s.queued_elsewhere,
@@ -579,7 +579,7 @@ fn the_worktree_report_schema_is_checked_first() {
         "worktree-status-report-v1",
         "worktree-status-report-v2",
     );
-    let err = worktree_status(&text).unwrap_err();
+    let err = worktree_status(&text, 42).unwrap_err();
     assert_eq!(err.class(), "environment");
     assert!(
         err.to_string().contains("worktree-status-report-v2"),
@@ -618,7 +618,7 @@ fn only_prikks_two_authoring_pairs_are_read() {
         ),
     ];
     for text in illegal {
-        let err = worktree_status(&text).expect_err("an illegal authoring pair must not parse");
+        let err = worktree_status(&text, 42).expect_err("an illegal authoring pair must not parse");
         assert_eq!(err.class(), "environment", "{err}");
     }
 }
@@ -631,7 +631,7 @@ fn a_refused_count_that_disagrees_with_the_entries_is_refused() {
             r#""refused_count": 1"#,
             &format!(r#""refused_count": {count}"#),
         );
-        let err = worktree_status(&text).expect_err("no number is picked between the two");
+        let err = worktree_status(&text, 42).expect_err("no number is picked between the two");
         assert_eq!(err.class(), "environment");
         assert!(err.to_string().contains("refused_count"), "{err}");
     }
@@ -644,7 +644,7 @@ fn a_missing_queued_elsewhere_is_refused_not_read_as_nothing_queued() {
         "  \"queued_elsewhere\": null,\n",
         "",
     );
-    let err = worktree_status(&text).expect_err("absence is not null");
+    let err = worktree_status(&text, 42).expect_err("absence is not null");
     assert_eq!(err.class(), "environment");
     assert!(err.to_string().contains("queued_elsewhere"), "{err}");
 }
@@ -658,7 +658,7 @@ fn the_ref_and_the_queued_ref_are_validated_as_ref_names() {
         r#""ref": "heads/main""#,
     );
     assert_eq!(
-        worktree_status(&bad_ref).unwrap_err().class(),
+        worktree_status(&bad_ref, 42).unwrap_err().class(),
         "environment"
     );
 
@@ -668,7 +668,7 @@ fn the_ref_and_the_queued_ref_are_validated_as_ref_names() {
         r#""queued_elsewhere": """#,
     );
     assert_eq!(
-        worktree_status(&bad_queued).unwrap_err().class(),
+        worktree_status(&bad_queued, 42).unwrap_err().class(),
         "environment"
     );
 }
@@ -688,7 +688,7 @@ fn at_0_41_an_unsupported_path_is_carried_as_reported_not_validated() {
         r#"{"path": "/tmp/repo/back\\sl�sh.txt", "kind": "unsupported-path", "detail": "worktree path is not representable as a safe Prikk path", "authoring": "authored", "refusal": null}"#,
     );
     let text = variant(&text, r#""refused_count": 1"#, r#""refused_count": 0"#);
-    let s = worktree_status(&text).expect("parses");
+    let s = worktree_status(&text, 42).expect("parses");
     let entry = s
         .entries
         .iter()
@@ -762,7 +762,7 @@ const LOG_CURRENT_BRANCH_NULL_0_42: &str = r#"{
 fn at_0_42_every_unsupported_path_reads_as_refused_with_prikks_reason() {
     // RFC 029 Handoff A §5. prikk 0.42 began reporting unrepresentable names as refused — the answer
     // RFC 027's Q1 ruling (b) waited for. Nothing in stikk's reader changed to read it.
-    let s = worktree_status(WORKTREE_UNSUPPORTED_JSON_0_42).expect("captured 0.42 report");
+    let s = worktree_status(WORKTREE_UNSUPPORTED_JSON_0_42, 42).expect("captured 0.42 report");
     assert_eq!(s.unsupported, 3);
     assert_eq!(s.refused, Some(3), "refused_count counts them");
     let mut paths: Vec<&str> = Vec::new();
@@ -845,10 +845,16 @@ const WORKTREE_DECLARATION_JSON_0_42: &str = r#"{
 
 #[test]
 fn a_0_42_declaration_is_read_beside_the_entries_it_leaves_unchanged() {
-    let s = worktree_status(WORKTREE_DECLARATION_JSON_0_42).expect("captured 0.42 report");
+    let s = worktree_status(WORKTREE_DECLARATION_JSON_0_42, 42).expect("captured 0.42 report");
     assert_eq!(
         s.declarations,
         vec![RenameDeclaration {
+            // The 0.42 capture predates prikk's own verdict, and the reader is told so.
+            resolution: None,
+            refusal: None,
+            content_changed: None,
+            mode_changed: None,
+            // The 0.42 capture predates prikk's own verdict, and the reader is told so.
             old_path: "a.txt".into(),
             new_path: "b.txt".into(),
         }]
@@ -871,7 +877,7 @@ fn the_other_json_worktree_fixtures_report_no_declarations() {
             WORKTREE_UNSUPPORTED_JSON_0_42,
         ),
     ] {
-        let s = worktree_status(text).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        let s = worktree_status(text, 42).unwrap_or_else(|e| panic!("{name}: {e:?}"));
         assert!(s.declarations.is_empty(), "{name}: {:?}", s.declarations);
     }
 }
@@ -884,7 +890,7 @@ fn a_missing_declarations_array_is_refused_not_read_as_none() {
         r#""declarations": []"#,
         r#""declarations_moved": []"#,
     );
-    let err = worktree_status(&text).expect_err("a report without its declarations");
+    let err = worktree_status(&text, 42).expect_err("a report without its declarations");
     assert_eq!(err.class(), "environment");
     assert!(err.to_string().contains("declarations"), "{err}");
 }
@@ -896,7 +902,7 @@ fn a_declaration_without_both_paths_is_refused() {
         r#""new_path": "b.txt""#,
         r#""destination": "b.txt""#,
     );
-    let err = worktree_status(&text).expect_err("a declaration missing new_path");
+    let err = worktree_status(&text, 42).expect_err("a declaration missing new_path");
     assert_eq!(err.class(), "environment");
     assert!(err.to_string().contains("new_path"), "{err}");
 }
@@ -1416,4 +1422,230 @@ fn at_0_42_a_message_of_the_wrong_type_is_refused() {
     let text = STATUS_QUEUE_WARN_0_42.replace(r#""message": "one patch""#, r#""message": 7"#);
     let err = queue_rule_error(&text, 42);
     assert!(err.contains("string or null"), "{err}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 034 decision 4: prikk's own verdict on each declaration, read only inside its band (≥ 0.44).
+// Every fixture below is captured verbatim from the binary its name gives.
+// ---------------------------------------------------------------------------------------------
+
+/// `prikk worktree-status --ref heads/main --format json` at **0.46.0**: `a.txt` sealed, `prikk mv a.txt
+/// b.txt`, then `b.txt` edited.
+const WORKTREE_RENAME_CONTENT_JSON_0_46: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/probe/rc/.prikk",
+  "ref": "heads/main",
+  "current_branch": "heads/main",
+  "tracked_files": 2,
+  "unchanged_files": 1,
+  "clean": false,
+  "refused_count": 0,
+  "refused_declaration_count": 0,
+  "queued_elsewhere": null,
+  "changes": [
+    {"path": "a.txt", "kind": "missing", "detail": "tracked file is absent from the worktree", "authoring": "authored", "refusal": null},
+    {"path": "b.txt", "kind": "untracked", "detail": "worktree file is not in the baseline", "authoring": "authored", "refusal": null}
+  ],
+  "declarations": [
+    {"old_path": "a.txt", "new_path": "b.txt", "resolution": "rename", "refusal": null, "content_changed": true, "mode_changed": false}
+  ]
+}"#;
+
+/// The same command at **0.46.0** after `prikk mv a.txt b.txt` and a shell `mv b.txt a.txt`: prikk
+/// reports the worktree **clean** and exits 0, and still refuses the declaration.
+const WORKTREE_REFUSED_DECLARATION_JSON_0_46: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/probe/rb/.prikk",
+  "ref": "heads/main",
+  "current_branch": "heads/main",
+  "tracked_files": 2,
+  "unchanged_files": 2,
+  "clean": true,
+  "refused_count": 0,
+  "refused_declaration_count": 1,
+  "queued_elsewhere": null,
+  "changes": [],
+  "declarations": [
+    {"old_path": "a.txt", "new_path": "b.txt", "resolution": "refused", "refusal": "a.txt -> b.txt: the source is present in the worktree again, so the declared move is not what the worktree holds. Run `prikk mv b.txt a.txt` to drop the declaration, or `prikk mv a.txt b.txt` to make the move again", "content_changed": null, "mode_changed": null}
+  ]
+}"#;
+
+/// The same command at **0.46.0** with the destination listed in `.prikkignore`.
+const WORKTREE_DELETION_IGNORED_JSON_0_46: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/probe/ri/.prikk",
+  "ref": "heads/main",
+  "current_branch": "heads/main",
+  "tracked_files": 2,
+  "unchanged_files": 1,
+  "clean": false,
+  "refused_count": 0,
+  "refused_declaration_count": 0,
+  "queued_elsewhere": null,
+  "changes": [
+    {"path": ".prikkignore", "kind": "untracked", "detail": "worktree file is not in the baseline", "authoring": "authored", "refusal": null},
+    {"path": "a.txt", "kind": "missing", "detail": "tracked file is absent from the worktree", "authoring": "authored", "refusal": null}
+  ],
+  "declarations": [
+    {"old_path": "a.txt", "new_path": "b.txt", "resolution": "deletion-ignored", "refusal": null, "content_changed": null, "mode_changed": null}
+  ]
+}"#;
+
+/// The same state as `WORKTREE_RENAME_CONTENT_JSON_0_46`, captured from **0.43.0** — which reports every
+/// field and whose classifier stikk does not trust (RFC 034 §1).
+const WORKTREE_RENAME_CONTENT_JSON_0_43: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/probe/rc/.prikk",
+  "ref": "heads/main",
+  "current_branch": "heads/main",
+  "tracked_files": 2,
+  "unchanged_files": 1,
+  "clean": false,
+  "refused_count": 0,
+  "refused_declaration_count": 0,
+  "queued_elsewhere": null,
+  "changes": [
+    {"path": "a.txt", "kind": "missing", "detail": "tracked file is absent from the worktree", "authoring": "authored", "refusal": null},
+    {"path": "b.txt", "kind": "untracked", "detail": "worktree file is not in the baseline", "authoring": "authored", "refusal": null}
+  ],
+  "declarations": [
+    {"old_path": "a.txt", "new_path": "b.txt", "resolution": "rename", "refusal": null, "content_changed": true, "mode_changed": false}
+  ]
+}"#;
+
+#[test]
+fn prikks_own_resolution_and_its_content_flags_are_read_at_0_44_and_above() {
+    let s = worktree_status(WORKTREE_RENAME_CONTENT_JSON_0_46, 46).expect("captured 0.46 report");
+    assert_eq!(s.refused_declarations, Some(0));
+    let declaration = &s.declarations[0];
+    assert_eq!(declaration.old_path, "a.txt");
+    assert_eq!(declaration.new_path, "b.txt");
+    assert_eq!(
+        declaration.resolution,
+        Some(DeclarationResolution::Rename),
+        "prikk's own word, not stikk's inference"
+    );
+    assert_eq!(declaration.content_changed, Some(true));
+    assert_eq!(declaration.mode_changed, Some(false));
+    assert_eq!(declaration.refusal, None);
+}
+
+#[test]
+fn a_refused_declaration_carries_prikks_refusal_and_is_counted_apart_from_paths() {
+    let s =
+        worktree_status(WORKTREE_REFUSED_DECLARATION_JSON_0_46, 46).expect("captured 0.46 report");
+    // The row that makes the two counts different facts, and the clean check dangerous.
+    assert!(s.clean, "prikk reports this worktree clean");
+    assert_eq!(s.refused, Some(0), "no path is refused");
+    assert_eq!(s.refused_declarations, Some(1), "one declaration is");
+    let declaration = &s.declarations[0];
+    assert_eq!(declaration.resolution, Some(DeclarationResolution::Refused));
+    assert_eq!(
+        declaration.refusal.as_deref(),
+        Some(
+            "a.txt -> b.txt: the source is present in the worktree again, so the declared move is not \
+             what the worktree holds. Run `prikk mv b.txt a.txt` to drop the declaration, or `prikk mv \
+             a.txt b.txt` to make the move again"
+        ),
+        "prikk's words, verbatim"
+    );
+    // Unknown, never "unchanged" (`C-T2c′`).
+    assert_eq!(declaration.content_changed, None);
+    assert_eq!(declaration.mode_changed, None);
+}
+
+#[test]
+fn an_ignored_destination_is_prikks_own_word_for_it() {
+    let s = worktree_status(WORKTREE_DELETION_IGNORED_JSON_0_46, 46).expect("captured 0.46 report");
+    assert_eq!(
+        s.declarations[0].resolution,
+        Some(DeclarationResolution::DeletionIgnored)
+    );
+    assert_eq!(
+        s.declarations[0]
+            .resolution
+            .as_ref()
+            .map(DeclarationResolution::label),
+        Some("deletion-ignored")
+    );
+}
+
+#[test]
+fn below_the_band_prikks_verdict_is_not_read_even_though_0_43_reports_it() {
+    // RFC 034 §1: 0.43 carries every field, and stikk ignores them there — its classifier resolved a
+    // directory destination as `rename` while `commit` recorded a deletion (measured at 0.43.0).
+    let s = worktree_status(WORKTREE_RENAME_CONTENT_JSON_0_43, 43).expect("captured 0.43 report");
+    assert_eq!(s.refused_declarations, None, "unreported, never zero");
+    let declaration = &s.declarations[0];
+    assert_eq!(declaration.old_path, "a.txt");
+    assert_eq!(declaration.new_path, "b.txt");
+    assert_eq!(declaration.resolution, None);
+    assert_eq!(declaration.content_changed, None);
+    assert_eq!(declaration.mode_changed, None);
+
+    // The very same bytes, read as the band's first release, are read in full.
+    let inside = worktree_status(WORKTREE_RENAME_CONTENT_JSON_0_43, 44).expect("parses");
+    assert_eq!(
+        inside.declarations[0].resolution,
+        Some(DeclarationResolution::Rename)
+    );
+}
+
+#[test]
+fn a_refused_resolution_without_prikks_refusal_is_a_shape_error_not_a_guess() {
+    let text = WORKTREE_REFUSED_DECLARATION_JSON_0_46.replace(
+        r#""refusal": "a.txt -> b.txt: the source is present in the worktree again, so the declared move is not what the worktree holds. Run `prikk mv b.txt a.txt` to drop the declaration, or `prikk mv a.txt b.txt` to make the move again""#,
+        r#""refusal": null"#,
+    );
+    let err = worktree_status(&text, 46).expect_err("stikk will not invent prikk's refusal");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("refused"), "{err}");
+}
+
+#[test]
+fn a_refusal_on_a_resolution_that_is_not_refused_is_a_shape_error() {
+    let text = WORKTREE_RENAME_CONTENT_JSON_0_46
+        .replace(r#""refusal": null"#, r#""refusal": "something""#);
+    let err = worktree_status(&text, 46).expect_err("a refusal belongs only to `refused`");
+    assert_eq!(err.class(), "environment");
+}
+
+#[test]
+fn a_declaration_missing_its_content_flag_is_a_shape_error_not_unknown() {
+    let text = WORKTREE_RENAME_CONTENT_JSON_0_46.replace(r#""content_changed": true, "#, "");
+    let err = worktree_status(&text, 46).expect_err("absence is not null");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("content_changed"), "{err}");
+}
+
+#[test]
+fn the_refused_declaration_count_must_match_the_declarations_listed() {
+    let text = WORKTREE_REFUSED_DECLARATION_JSON_0_46.replace(
+        r#""refused_declaration_count": 1"#,
+        r#""refused_declaration_count": 2"#,
+    );
+    let err = worktree_status(&text, 46).expect_err("no number is picked between the two");
+    assert_eq!(err.class(), "environment");
+    assert!(
+        err.to_string().contains("refused_declaration_count"),
+        "{err}"
+    );
+}
+
+#[test]
+fn an_unmodelled_resolution_is_kept_verbatim_rather_than_dropped() {
+    let text = WORKTREE_RENAME_CONTENT_JSON_0_46
+        .replace(r#""resolution": "rename""#, r#""resolution": "teleport""#);
+    let s = worktree_status(&text, 46).expect("an unknown word is not a broken report");
+    assert_eq!(
+        s.declarations[0].resolution,
+        Some(DeclarationResolution::Other("teleport".to_string()))
+    );
+    assert_eq!(
+        s.declarations[0]
+            .resolution
+            .as_ref()
+            .map(DeclarationResolution::label),
+        Some("teleport")
+    );
 }

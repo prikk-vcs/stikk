@@ -2129,6 +2129,10 @@ fn rfc030_a_rename_declared_between_preview_and_confirmation_is_stale_then_a_fre
         assert_eq!(
             after.declarations,
             vec![stikk_prikk::RenameDeclaration {
+                resolution: None,
+                refusal: None,
+                content_changed: None,
+                mode_changed: None,
                 old_path: "a.txt".to_string(),
                 new_path: "b.txt".to_string(),
             }],

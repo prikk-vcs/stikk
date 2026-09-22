@@ -93,6 +93,7 @@ fn main() -> ExitCode {
         return ExitCode::from(4);
     }
     let backend = SlowOrientation(NullBackend::supported().with_orientation(Orientation {
+        interrupted_materialization: None,
         queued_patches: 2,
         queued_target: Some("heads/main".to_string()),
         main_ref_state: Some(

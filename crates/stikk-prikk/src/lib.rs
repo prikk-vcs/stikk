@@ -61,6 +61,16 @@ pub struct Orientation {
     pub main_ref_state: Option<String>,
     /// Trailing partial WAL bytes, if any — a torn tail an interrupted commit left behind.
     pub trailing_partial_wal_bytes: u64,
+    /// prikk's interrupted-materialization line, **verbatim**, when a checkout or branch switch stopped
+    /// part-way and left the worktree unverified (prikk ≥ 0.43; RFC 034 decision 4 §7).
+    ///
+    /// `None` when prikk reports none — **and below 0.43, where prikk reports the state nowhere at all**
+    /// (measured: 0.42 prints no such line, its `status --format json` has no such field, and its
+    /// `doctor` finds nothing; only its `commit` refuses, which `present()` glosses instead).
+    ///
+    /// **It is a state of the repository, not an error**, and prikk's sentence names both ways out, so
+    /// it is carried whole rather than reworded (`ER-02`).
+    pub interrupted_materialization: Option<String>,
     /// prikk's own active-patch threshold warning, verbatim, when the queue is at or above the warn or
     /// hard-limit threshold (`PRIKK_ACTIVE_PATCH_WARN`/`_LIMIT`; design `C-D2a`; RFC 014 F5). `None`
     /// below the warn threshold. Read from the same `status` report `Orientation` already parses — the
@@ -362,6 +372,14 @@ pub struct WorktreeStatus {
     /// ≥ 0.39's JSON report, checked there against the entries themselves; **`None` below 0.39, never
     /// `Some(0)`** — a report that cannot say is not a report of zero (`C-T2c′`).
     pub refused: Option<u64>,
+    /// How many **declarations** prikk reports `commit` would refuse (RFC 034 decision 4): `Some(n)` at
+    /// prikk ≥ 0.44, **`None` below it, never `Some(0)`** — the same posture as [`Self::refused`].
+    ///
+    /// **A different fact from [`Self::refused`], and neither implies the other** (RFC 034 §8 trap 1):
+    /// a symlink destination measures `refused: Some(1)` with `refused_declarations: Some(0)`, and a
+    /// declaration whose source is back measures the reverse — with `clean: true` besides, which is why
+    /// commit's preview must read this before it decides there is nothing to commit.
+    pub refused_declarations: Option<u64>,
     /// The per-path entries (the counts above summarize these).
     pub entries: Vec<WorktreeEntry>,
     /// Present when the active WAL holds queued patches for a **different** ref than the one asked
@@ -388,6 +406,78 @@ pub struct RenameDeclaration {
     pub old_path: String,
     /// The path it renames to.
     pub new_path: String,
+    /// **prikk's own verdict on what the next `commit` will do with this declaration** (RFC 034
+    /// decision 4), replacing the inference RFC 032 had to make because prikk would not say.
+    ///
+    /// **`None` below prikk 0.44 — including at 0.43, where the field exists and stikk does not read
+    /// it.** 0.43's classifier is wrong in a measured state: a directory at the destination resolved
+    /// `rename` while `commit` recorded a deletion (stikk letter 014, fixed in 0.44; re-measured here at
+    /// 0.43.0 and 0.44.0). One band, `≥ 0.44`.
+    pub resolution: Option<DeclarationResolution>,
+    /// prikk's verbatim refusal for this declaration, present exactly when [`Self::resolution`] is
+    /// [`DeclarationResolution::Refused`] (`ER-02`: prikk's words, never stikk's paraphrase).
+    pub refusal: Option<String>,
+    /// Whether the renamed file's content changed too, when prikk reports it.
+    ///
+    /// **`None` is unknown, never "unchanged"** (`C-T2c′`): below 0.44 prikk does not report it at all,
+    /// and at ≥ 0.44 a destination that is not a regular file reports `null` (measured: a symlink
+    /// destination at 0.44.0 and 0.46.0).
+    pub content_changed: Option<bool>,
+    /// Whether the renamed file's mode changed too, on the same terms as [`Self::content_changed`].
+    pub mode_changed: Option<bool>,
+}
+
+/// What prikk's own classifier says the next `commit` will do with a rename declaration — the
+/// `resolution` field of `worktree-status-report-v1` (prikk ≥ 0.43; **read by stikk from 0.44**, see
+/// [`RenameDeclaration::resolution`]).
+///
+/// Every variant below was provoked against real 0.44.0 and 0.46.0 binaries and matched against what
+/// `prikk commit` then printed. [`Self::Other`] keeps a word stikk does not model rather than dropping
+/// it, exactly as [`WorktreeEntry::kind`] does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclarationResolution {
+    /// `commit` authors a `rename-path`.
+    Rename,
+    /// The destination is not a file prikk will author: gone, or a directory. `commit` records a
+    /// deletion of the source instead.
+    Deletion,
+    /// The destination is ignored (`.prikkignore`), so `commit` records a deletion of the source.
+    DeletionIgnored,
+    /// The source was never a tracked node, so there is nothing to rename: `commit` creates the
+    /// destination and drops the declaration.
+    NeverTracked,
+    /// prikk will refuse the whole commit over this declaration; [`RenameDeclaration::refusal`] carries
+    /// its words.
+    Refused,
+    /// A word stikk does not model, kept verbatim (render it inert).
+    Other(String),
+}
+
+impl DeclarationResolution {
+    /// prikk's own word for this resolution — including an unmodelled one, so a frontend shows what
+    /// prikk said rather than a stikk paraphrase (`ER-02`).
+    #[must_use]
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Rename => "rename",
+            Self::Deletion => "deletion",
+            Self::DeletionIgnored => "deletion-ignored",
+            Self::NeverTracked => "never-tracked",
+            Self::Refused => "refused",
+            Self::Other(word) => word,
+        }
+    }
+
+    fn from_label(label: &str) -> Self {
+        match label {
+            "rename" => Self::Rename,
+            "deletion" => Self::Deletion,
+            "deletion-ignored" => Self::DeletionIgnored,
+            "never-tracked" => Self::NeverTracked,
+            "refused" => Self::Refused,
+            other => Self::Other(other.to_string()),
+        }
+    }
 }
 
 /// One file-level change `prikk commit` recorded, from its per-path output lines (design `FR-050`;

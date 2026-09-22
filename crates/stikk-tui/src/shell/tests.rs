@@ -32,6 +32,7 @@ fn draw(app: &App, w: u16, h: u16) -> String {
 /// resolves to no focus — and a test about rendering History needs one.
 fn orientation_naming_heads_main() -> Orientation {
     Orientation {
+        interrupted_materialization: None,
         queued_patches: 0,
         queued_target: None,
         main_ref_state: None,
@@ -65,6 +66,7 @@ fn drain(app: &mut App, rx: &mpsc::Receiver<Request>, backend: &NullBackend) {
 #[test]
 fn renders_header_orientation_and_status_together() {
     let backend = NullBackend::supported().with_orientation(Orientation {
+        interrupted_materialization: None,
         queued_patches: 1,
         queued_target: Some("heads/main".into()),
         main_ref_state: Some("237d0681".into()),
@@ -170,6 +172,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
     use stikk_prikk::{BlockRow, History};
     let backend = NullBackend::supported()
         .with_orientation(Orientation {
+            interrupted_materialization: None,
             queued_patches: 3,
             queued_target: Some("heads/main".into()),
             main_ref_state: Some("bbbb".into()),
@@ -307,6 +310,7 @@ fn the_backslash_refusal_shows_gloss_and_prikks_words_at_80x24() {
 fn picking_the_unpublished_heads_main_opens_its_empty_history_at_80x24() {
     let backend = NullBackend::supported()
         .with_orientation(Orientation {
+            interrupted_materialization: None,
             queued_patches: 0,
             queued_target: None,
             main_ref_state: None,

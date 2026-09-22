@@ -66,6 +66,13 @@ pub(super) fn orientation(status: &str, prikk_minor: u32) -> Result<Orientation>
         .find(|line| line.starts_with("warning: active patches"))
         .map(str::to_string);
     let current_branch = current_branch(status, prikk_minor)?;
+    // RFC 034 §7: prikk ≥ 0.43 prints this line when a checkout or branch switch stopped part-way. Read
+    // from the prose `status` Orientation already parses — prikk's own sentence, naming both ways out —
+    // rather than from the JSON report, which is a different seam call and would cost a second read.
+    // **Its absence is not a version error:** prikk prints it only when the marker is set, and below
+    // 0.43 never (measured at 0.42.0, 0.43.0 and 0.46.0).
+    let interrupted_materialization =
+        field(status, "interrupted materialization:").map(str::to_string);
     Ok(Orientation {
         queued_patches,
         queued_target,
@@ -73,6 +80,7 @@ pub(super) fn orientation(status: &str, prikk_minor: u32) -> Result<Orientation>
         trailing_partial_wal_bytes,
         active_patch_warning,
         current_branch,
+        interrupted_materialization,
     })
 }
 
@@ -482,6 +490,8 @@ pub(super) fn worktree_status(text: &str, prikk_minor: u32) -> Result<WorktreeSt
         .find(|line| line.starts_with(QUEUED_ELSEWHERE_PREFIX))
         .map(|line| QueuedElsewhere::Note(line.to_string()));
     Ok(WorktreeStatus {
+        // RFC 034: unreported on the prose path, never zero (`C-T2c′`), exactly as `refused` is.
+        refused_declarations: None,
         reff,
         clean,
         tracked: required_u64(text, "tracked files:")?,
@@ -537,6 +547,12 @@ fn prose_declarations(text: &str, prikk_minor: u32) -> Result<Vec<RenameDeclarat
         match (parts.next(), parts.next(), parts.next()) {
             (Some(old), Some(new), None) if !old.is_empty() && !new.is_empty() => {
                 declarations.push(RenameDeclaration {
+                    // RFC 034: prikk's own verdict rides in the JSON report from 0.44; the prose
+                    // reader serves prikk < 0.39, which reports none of it.
+                    resolution: None,
+                    refusal: None,
+                    content_changed: None,
+                    mode_changed: None,
                     old_path: old.to_string(),
                     new_path: new.to_string(),
                 });

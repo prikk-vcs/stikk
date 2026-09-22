@@ -228,11 +228,16 @@ impl CliBackend {
     /// did not ask about is the failure this must never have** (`T-T4`), which is why the report's own
     /// `ref` is the check: it costs no extra call and it cannot race. **Nothing consults `refs()` or
     /// `current_branch`** to decide this (RFC 034 Handoff A §3), and the retry is never cached.
-    fn worktree_status_without_ref(&self, repo: &Path, reff: &str) -> Option<WorktreeStatus> {
+    fn worktree_status_without_ref(
+        &self,
+        repo: &Path,
+        reff: &str,
+        prikk_minor: u32,
+    ) -> Option<WorktreeStatus> {
         let (stdout, _stderr, _success) = self
             .run_capturing(Some(repo), ["worktree-status", "--format", "json"])
             .ok()?;
-        let status = parse_json::worktree_status(&stdout).ok()?;
+        let status = parse_json::worktree_status(&stdout, prikk_minor).ok()?;
         (status.reff == reff).then_some(status)
     }
 
@@ -461,6 +466,9 @@ impl Prikk for CliBackend {
         // handling is the same on both paths, deliberately — the JSON report is written on a dirty
         // exit exactly as the prose one is (measured at 0.41).
         if self.reads_json()? {
+            // RFC 034 decision 4: the declaration verdict is read only inside its band, and the reader
+            // is told which prikk produced the report — the handshake is cached.
+            let prikk_minor = Prikk::handshake(self)?.version.minor;
             let (stdout, stderr, _success) = self.run_capturing(
                 Some(repo),
                 ["worktree-status", "--ref", reff, "--format", "json"],
@@ -472,7 +480,7 @@ impl Prikk for CliBackend {
             // that prefers stderr: prikk's `worktree has changes against the baseline` on a dirty tree,
             // the raw report on a clean one — the validation invisible exactly when it fired. Only
             // when stdout carries no JSON document at all is the outcome classified, as before.
-            return match parse_json::worktree_status(&stdout) {
+            return match parse_json::worktree_status(&stdout, prikk_minor) {
                 Ok(status) => Ok(status),
                 Err(rejected) if crate::json::parse(&stdout).is_ok() => Err(rejected),
                 Err(_no_report) => {
@@ -481,7 +489,8 @@ impl Prikk for CliBackend {
                     // prikk's own clause, and keep prikk's original refusal unless the retry's report
                     // names the ref that was asked for — an absent ref (a typo) refuses either way.
                     if refuses_absent_ref(&stdout, &stderr)
-                        && let Some(status) = self.worktree_status_without_ref(repo, reff)
+                        && let Some(status) =
+                            self.worktree_status_without_ref(repo, reff, prikk_minor)
                     {
                         return Ok(status);
                     }

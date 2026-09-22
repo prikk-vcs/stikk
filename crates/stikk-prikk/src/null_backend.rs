@@ -96,6 +96,7 @@ impl NullBackend {
                 maintainer: crate::RoleDetail::default(),
             }),
             orientation: Ok(Orientation {
+                interrupted_materialization: None,
                 queued_patches: 0,
                 queued_target: None,
                 main_ref_state: None,
@@ -120,6 +121,7 @@ impl NullBackend {
             }]),
             tags: Ok(Vec::new()),
             worktree: Ok(WorktreeStatus {
+                refused_declarations: None,
                 reff: "heads/main".to_string(),
                 clean: true,
                 tracked: 0,

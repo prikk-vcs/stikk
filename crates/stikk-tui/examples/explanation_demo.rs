@@ -32,6 +32,7 @@ fn main() -> ExitCode {
 
     let backend = NullBackend::supported()
         .with_orientation(Orientation {
+            interrupted_materialization: None,
             queued_patches: 0,
             queued_target: None,
             main_ref_state: Some(

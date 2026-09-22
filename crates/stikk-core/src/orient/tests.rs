@@ -25,6 +25,7 @@ fn orients_a_clean_repo_as_viewer_by_default() {
 #[test]
 fn surfaces_queue_depth_and_partial_tail() {
     let backend = NullBackend::supported().with_orientation(Orientation {
+        interrupted_materialization: None,
         queued_patches: 5,
         queued_target: Some("heads/main".to_string()),
         main_ref_state: Some("abc".to_string()),

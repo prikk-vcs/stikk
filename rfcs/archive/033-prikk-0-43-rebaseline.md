@@ -1,6 +1,11 @@
 # RFC 033 — The prikk 0.43 re-baseline: what a declaration resolves to, and a checkout that stopped part-way
 
-**Status.** **Proposed 2026-09-16** by the architect, the day prikk 0.43.0 published. **One open question (Q1).**
+**Status.** **WITHDRAWN 2026-09-22, superseded by [RFC 034](../proposed/034-prikk-0-46-rebaseline.md)** — never accepted,
+never built. **Q1 was answered by prikk, not by stikk**: 0.44.0 fixed F2, so a directory at a rename's destination now
+resolves `deletion` and the disagreement this RFC asked the owner to rule on no longer exists. **Its measurements stand**
+and its carried work (the interrupted-materialization marker, prevention on a refused declaration, content and mode per
+rename, and the destination sentence that gives a reason stikk cannot know) moves to RFC 034 F7.
+Originally **proposed 2026-09-16** by the architect, the day prikk 0.43.0 published.
 Measured against real prikk **0.28.0**, **0.42.0** and **0.43.0** binaries (`cargo install --locked`), against the
 **published stikk 0.8.0** from crates.io, and by running stikk's own real-binary suite at 0.28 and 0.43 with only the
 validated ceiling raised, in a scratch copy of `c25339f` (the 0.8.0 tag). Evidence:

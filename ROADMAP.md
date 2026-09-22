@@ -255,20 +255,17 @@ a fabricated worktree entry was fixed.
 
 ## Next — carried into 0.9.0, in order
 
-1. **The prikk 0.43.0 re-baseline — [RFC 033](rfcs/proposed/033-prikk-0-43-rebaseline.md), proposed; Q1 open.** prikk 0.43.0 published 2026-09-16 and was measured the same day: stikk 0.8.0 keeps working on it, and one declaration state disagrees with `commit` (letter 014, drafted). prikk's reply 013 to letter 012: at 0.42 a refused
-   `checkout --patch-materialize` writes files before refusing and leaves prikk's worktree-dirty marker set, and the
-   **next `prikk commit` refuses** with `integrity error: worktree materialization was interrupted …` — which stikk
-   presents as an integrity finding, though nothing is corrupt. **0.43.0 plans every write before the first**, makes
-   those refusals `precondition not met:`, and **reports the marker** in a `status` line, an additive
-   `status-report-v1` field and a `doctor` finding. So: Orientation (prose `status`) and the Queue reader
-   (`status-report-v1`) re-verify against 0.43, stikk shows a checkout that stopped part-way, and the 0.42 refusal
-   gets a gloss with the way out prikk measured (re-run the checkout, or `branch switch`, for the current branch —
-   and move the stray files aside before committing). **prikk's reply 014 adds to 0.43.0**, per declaration in
-   `worktree-status-report-v1`: a `resolution` (`rename`, `deletion`, `deletion-ignored`, `never-tracked`, `refused`),
-   commit's own `refusal` counted in `refused_declaration_count`, and `content_changed`/`mode_changed` — so the
-   re-baseline replaces RFC 032's inference with prikk's resolution, prevents a refused declaration, and says whether a
-   renamed file's content changed. **Measure each on the binary before relying on it.**
-2. **Patch detail** (`FR-030`), then **Compare** (`FR-033`), each its own RFC.
+1. **The prikk 0.46 re-baseline, and a repair the released line needs** —
+   [RFC 034](rfcs/proposed/034-prikk-0-46-rebaseline.md), proposed; Q1 open (supersedes RFC 033, archived).
+   prikk 0.44.0, 0.45.0 and 0.46.0 landed 2026-09-16..22. **0.45.0 made an unpublished ref refuse when stikk names
+   it**, so on a repository with nothing sealed yet the Changes view, History and commit's preview all refuse —
+   measured against the published 0.8.0. prikk still reports it without `--ref`, which is the repair. 0.44.0 fixed
+   the defect letter 014 reported; letter 015 reports this one.
+2. **Patch detail** (`FR-030`), then **Compare** (`FR-033`) — **unblocked by prikk 0.46.0**, each its own RFC.
+   `prikk tree`, `prikk cat` and `prikk diff` arrived, and every read-only mode now takes a **bare block id**, so
+   `UD-10` retires: a block id is addressable as a content root, which was Compare's stated blocker. `diff` also
+   answers `UD-09`'s per-file content half for the Changes view. Measured at 0.46 (RFC 034 F6); the views are not
+   built.
 3. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
    where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
    `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as

@@ -1,0 +1,194 @@
+# RFC 034 — The prikk 0.46 re-baseline: a ref with no published history stopped being readable
+
+**Status.** **Proposed 2026-09-22** by the architect, the day prikk's letter 017 arrived. **Supersedes
+[RFC 033](../archive/033-prikk-0-43-rebaseline.md)**, whose prikk is two releases old and whose open question prikk
+answered in 0.44.0. **One open question (Q1), and it is a release decision.**
+Measured against real prikk **0.28.0**, **0.43.0**, **0.44.0**, **0.45.0** and **0.46.0** binaries
+(`cargo install --locked`), and by running the **published 0.8.0's own suite** — a scratch copy of `c25339f` with
+only the validated ceiling raised — at 0.28 and 0.46. Evidence:
+`.git-exclude/reports/034-prikk-0-46-rebaseline/`.
+**Tracks.** `ASM-2`, `NFR-R03`, `FR-034`, `FR-050`, `FR-030`, `FR-033`, `UD-09`, `UD-10`, `C-T2b`, `ER-02`, `T-T4`,
+RFC 027 (Q1 (b)), RFC 029, RFC 030, RFC 032, stikk letter 014, prikk letter 017.
+**Touches.** `stikk-prikk` (the ceiling; the ref argument of `worktree_status` and `history`; the refusal
+classifier), `stikk-core` (the declaration analysis; commit's preview; Orientation), `stikk-tui`,
+`stikk-real-binary`, the captured fixtures, and on delivery `requirements.md`.
+
+## Summary
+
+**prikk 0.45.0 broke something stikk 0.8.0 shipped three weeks ago, and it is the first thing a new user sees.**
+
+On prikk ≥ 0.45, `worktree-status --ref <R>` and `log --ref <R>` **refuse** when `R` has no published history —
+*"precondition not met: ref heads/main does not exist in this repository"*. Until a repository's first **seal**, that is
+every ref. So the Changes view, History **and commit's preview** all refuse on a brand-new repository. **RFC 032's
+"a ref with no published history" — the increment 0.8.0 led with — cannot run at all there.**
+
+prikk changed this deliberately, as *"`log` and `worktree-status` exit 1 for an explicitly named absent ref"*. **An
+unpublished ref is not an absent ref**, and prikk's own default path still agrees: **without `--ref`, both commands
+still report.** That is both the bug report (letter 015) and the workaround.
+
+The rest of the news is good. **prikk fixed what letter 014 reported** (F5), and **0.46's `tree`, `cat` and `diff`,
+with a bare block id accepted everywhere read-only, close the last dependency under Patch detail and Compare** (F6)
+— the two roadmap items that have been blocked longest.
+
+## Findings
+
+### F0 — what the published 0.8.0 does on prikk 0.46
+
+The 0.8.0 suite, ceiling raised only: **26 of 32 pass; 6 fail.** Four are one regression; two are tests pinning
+prikk's old wording.
+
+| Failing test | Why | Kind |
+|---|---|---|
+| `rfc032_a_ref_with_no_published_history_is_named_and_its_first_commit_is_not_stale` | `changes_view` refuses | **regression** |
+| `rfc029b_an_unpublished_heads_main_reads_as_an_empty_history_at_both_ends` | History refuses | **regression** |
+| `rfc030_a_file_added_between_preview_and_confirmation_is_stale_then_a_fresh_preview_commits` | `commit_preview` refuses | **regression** |
+| `queued_elsewhere_arrives_as_prikks_note_below_0_39_and_as_its_ref_above` | `worktree_status --ref heads/other` refuses | **regression** |
+| `rfc032_a_declaration_whose_source_is_back_…` | pins prikk 0.42's refusal text | test only |
+| `rfc032_a_declaration_without_its_destination_…` | pins *"destination is ignored"*; 0.44 says *"destination is a directory"* — the fix stikk asked for | test only |
+
+**A repository with published history is unaffected**, which is why 26 pass.
+
+### F1 — it entered in 0.45.0, and only the explicitly named ref is refused
+
+One fresh repository, one untracked file, `heads/main` never published:
+
+| prikk | `worktree-status --ref heads/main` | `log --ref heads/main` |
+|---|---|---|
+| 0.43.0 | the full report | an empty history, exit 0 |
+| **0.44.0** | **the full report** | — |
+| **0.45.0** | **refuses**, exit 1 | — |
+| 0.46.0 | refuses, exit 1 | refuses, exit 1 |
+
+**And at 0.46, with no `--ref` at all, both still report** — `worktree-status` lists the untracked file, `log` returns
+zero blocks, each naming `"ref": "heads/main"` beside `"current_branch": "heads/main"`. **`prikk commit
+--ref heads/main` still queues a first patch**, and everything reads normally again after the first `seal`.
+
+So prikk's own default disagrees with prikk's explicit form about whether that ref exists.
+
+### F2 — the workaround is verifiable, not a guess
+
+The ref-less report **names the ref it used**. So stikk can drop `--ref` only when prikk's `current_branch` equals the
+ref it wants, and then **confirm from the report itself** that it got that ref. If the returned ref differs, stikk has
+read something it did not ask for and must say so rather than show it (`T-T4`).
+
+**It is not a general substitute:** an unpublished ref that is *not* prikk's current branch stays unreadable on
+≥ 0.45, and prikk offers no way to ask for it. stikk says so plainly rather than showing an empty view.
+
+### F3 — two refusals stikk classifies by text changed, and one new one arrived
+
+`is_environment` matches `no such file`, `permission denied`, and `uses format` + `no longer supports`.
+
+| State | prikk 0.43 | prikk 0.46 | stikk's class |
+|---|---|---|---|
+| a directory holding no repository | `i/o error: No such file or directory` | **`precondition not met: no prikk repository at <path>`** | **no longer environment** |
+| a format-7 repository read by prikk 0.43 | — | **`unsupported format version: 0`** | **not environment** |
+
+Both now fall through to an ordinary refusal. **stikk still shows prikk's words** (`ER-02`), so nothing is invented —
+but the class drives stikk's own next steps, and "point stikk at a repository" and "your prikk is too old for this
+repository" are exactly the two an environment class exists to give.
+
+**`unsupported format version: 0` names 0, not 7.** Letter 015 reports that too.
+
+### F4 — repository format 7 is a pairing hazard, and stikk never causes it
+
+- **A repository created by prikk ≥ 0.45 is format 7 from birth** — measured: `format upgrade` on a fresh 0.46
+  repository answers *"already 7; nothing changed"*.
+- **prikk 0.44 and older cannot read it at all**, and there is no downgrade.
+- **stikk never upgrades anything** — it writes nothing inside a repository (`CON-1`) and runs no `format` verb. The
+  hazard reaches stikk only as F3's refusal, when a user's `STIKK_PRIKK_BIN` is older than the repository.
+
+### F5 — letter 014 is answered, and one claim I cannot confirm
+
+- **The directory destination is fixed in 0.44.0**, exactly as reported: it resolves **`deletion`**, and `commit` says
+  *"destination is a directory; recorded as a deletion, not a rename"*. **RFC 033's Q1 is moot** — prikk removed the
+  disagreement rather than stikk choosing a side.
+- **`content_changed` and `mode_changed` are `null` when the destination is not a regular file**: measured on a FIFO
+  destination at 0.46, which also reports `refused_count: 1` with `resolution: "rename"` — F3 of RFC 033 stands.
+- **prikk says 0.43.0 hung forever on a FIFO destination. I could not reproduce that**: 0.43 exited promptly under a
+  10-second timeout in my repository. Recorded as prikk's claim, not as stikk's measurement.
+
+### F6 — 0.46 closes the last dependency under Patch detail and Compare
+
+Measured at 0.46, in one repository:
+
+- **`prikk tree --ref <ref|block-id> --format json`** (`tree-listing-v1`) lists present leaf paths with `mode`,
+  `size`, `encoding`, and `content_id` on binary entries. **A bare block id resolves**: `tree --ref <block-id>`
+  returned the same entries as the ref. A genuinely non-UTF-8 file is `encoding: "binary"` **with** a `content_id`;
+  a file holding NUL bytes that is valid UTF-8 is `text`.
+- **`prikk cat --path <p> --ref <ref|block-id>`** returns a file's bytes at a point.
+- **`prikk diff --format json`** (`diff-report-v1`) compares two points, or — bare — the current branch against the
+  worktree. An entry carries `path`, `status`, `from`/`to` metadata, `minimal`, and unified `hunks`:
+  `{"path": "a.txt", "status": "modified", "minimal": true, "hunks": ["@@ -1,2 +1,3 @@\n one\n two\n+three\n"]}`.
+
+**`UD-10` retires** — a block id is addressable as a content root, which was the stated blocker on `FR-033` Compare.
+**`FR-030` Patch detail and `FR-033` Compare are unblocked**, and `diff` also answers `UD-09`'s per-file content half
+for the Changes view. **Each is its own RFC, not this one.**
+
+### F7 — what RFC 033 measured that still holds
+
+Carried forward, re-verified at 0.46 where the text changed: the **interrupted-materialization marker** in `status`
+prose, JSON and `doctor`, with `commit` refusing it as a precondition; **prevention on a refused declaration**
+(`refused_declaration_count`); **content and mode per rename**; and **the destination-absent sentence that gives a
+reason stikk cannot know** (RFC 033 F5 — *"{new} is not a file in the worktree"* is false when the destination is
+ignored).
+
+## Decisions
+
+1. **The unpublished-ref read is repaired before the ceiling moves.** At any prikk, when the target ref is absent from
+   `refs()`:
+   - if prikk's `current_branch` equals it, stikk reads `worktree-status` and `log` **without `--ref`**, and **accepts
+     the report only if it names that ref** (F2);
+   - otherwise stikk says the ref has no published history and that this prikk will not report it — **never an empty
+     view** (`C-T2c′`).
+   This restores RFC 032's words, RFC 029's empty history, and commit's preview for a first commit.
+
+2. **The environment class is matched on what prikk says now, as well as what it said before** (F3): the
+   no-repository answer and a format refusal from a too-old binary classify as environment, on their semantic clauses
+   — `no prikk repository at`, and `unsupported format version` — never on the class prefix, which is the rule that
+   survived every previous sweep.
+
+3. **The ceiling rises to 46 only after decisions 1 and 2**, then the suite reports what the raise costs, and the two
+   wording-pinned tests become version-aware.
+
+4. **RFC 033's carried work lands with this re-baseline** (F7), re-measured at 0.46: the marker, prevention on a
+   refused declaration, content and mode per rename, and the corrected destination sentence.
+
+5. **Patch detail, Compare and the per-file diff get their own RFCs** (F6). This one measures the ceiling and repairs
+   what broke; it builds no view.
+
+6. **Letter 015 goes to prikk**: an unpublished ref is not an absent one, with F1's table and the default-path
+   inconsistency; and `unsupported format version: 0` naming the wrong number.
+
+## Open question
+
+### Q1 — does the repair ship as 0.8.1 now, or wait for 0.9.0?
+
+**The facts.** prikk 0.46 is current on crates.io, so a new user installing both today gets a refusal on their first
+Changes view, History and commit preview, until their first seal. **No data is at risk** — prikk's refusal is shown
+verbatim, nothing is written, and a repository with published history is unaffected.
+
+- **(a) An 0.8.1 patch now, decisions 1 and 2 only — recommended.** Smallest possible change to the released line,
+  no new features, no ceiling move. It puts first-run back within days rather than weeks.
+- **(b) Fold it into 0.9.0** with the whole re-baseline. One release instead of two. *Cost:* first-run stays broken on
+  the current prikk for as long as 0.9.0 takes, and 0.9.0 now has Patch detail and Compare in front of it.
+- **(c) Wait for prikk to restore the behaviour.** prikk has moved fast for us, and this is their regression. *Cost:*
+  stikk's shipped release stays broken on a prikk it does not control, for a fix that is ours to make in one place.
+
+**My recommendation is (a), and letter 015 goes regardless.** stikk's rule is that it reads what prikk reports rather
+than guessing — here prikk still reports it, under a different invocation, and stikk can verify it got what it asked
+for. That is a repair stikk can make honestly without waiting.
+
+## Delivery
+
+- **Handoff A — the repair**, issued on acceptance: decisions 1 and 2, with the suite legs that pin them at 0.44,
+  0.45 and 0.46. **This is 0.8.1's content if Q1 is (a).**
+- **Handoff B — the re-baseline**, after A: decisions 3 and 4.
+- Patch detail, Compare and the per-file diff follow as their own RFCs (decision 5).
+
+## What this RFC does not do
+
+- **No new view**, and no Patch detail, Compare or per-file diff.
+- **No `format`, `bundle`, `sync` or `checkout` verb** in stikk.
+- **No claim that prikk 0.43's FIFO hang exists** — prikk states it; stikk did not reproduce it (F5).
+- **No reading of an unpublished ref that is not prikk's current branch** — prikk offers no way, and stikk says so
+  rather than showing an empty view.

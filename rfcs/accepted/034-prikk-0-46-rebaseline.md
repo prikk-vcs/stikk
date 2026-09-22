@@ -204,6 +204,22 @@ report what the raise cost."* RFC 029 did exactly that (`9b0a6e4`, the ceiling a
 F0 — *expected, and reported in the review request rather than hidden* — and repairs them in the commits that follow.
 **The raise is not the re-baseline**: Handoff B still carries decision 4's work, re-measured at 0.46.
 
+## Amendment A2 — 2026-09-22, from Handoff B's review: the 0.42 gloss rested on a stale premise
+
+**F7 and Handoff A's §7.4 said stikk *"presents [prikk 0.42's interrupted-materialization refusal] as an integrity
+finding, though nothing is corrupt"*. That has not been true since RFC 017.**
+
+`is_integrity_finding` was **removed** there — *"removed rather than kept on a guess"* — and **nothing in the seam
+constructs `StikkError::IntegrityFinding` from a prikk message any more**. `classify` returns a plain `Refusal`
+carrying prikk's words verbatim, which is what a user sees today.
+
+**The premise came from a roadmap note written before RFC 017 landed**, and the architect carried it into RFC 033's
+F7, then into this RFC, then into Handoff A without re-checking it. **The dev team measured prikk 0.42's refusal,
+found it already names its own way out, and declined to write the gloss rather than inventing one.** That was right.
+
+**Ruled: no gloss is built.** *"Nothing is corrupt"* is a claim about prikk's data that stikk has no standing to make,
+and prikk's own sentence is both accurate and actionable. **Decision 4 loses its 0.42 clause; nothing else changes.**
+
 ## Delivery
 
 - **Handoff A — the repair**, issued on acceptance: decisions 1 and 2, with the suite legs that pin them at 0.44,

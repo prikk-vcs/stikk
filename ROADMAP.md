@@ -267,17 +267,22 @@ a fabricated worktree entry was fixed.
    `UD-10` retires: a block id is addressable as a content root, which was Compare's stated blocker. `diff` also
    answers `UD-09`'s per-file content half for the Changes view. Measured at 0.46 (RFC 034 F6); the views are not
    built.
-3. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
+3. **Orientation on `status --format json`** (prikk ≥ 0.35), its own increment. Orientation is prose-parsed today,
+   which is why RFC 034's interrupted-materialization marker is read from prikk's prose line rather than the JSON
+   field beside the queue (ruled 2026-09-22: prose carries prikk's whole sentence, `ER-02`, and the JSON would have
+   stikk compose one from a `routes` array). Moving Orientation onto JSON would unify the two reads and retire a
+   parser — **the marker does not wait on it**, and nothing else does either.
+4. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
    where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
    `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as
    prikk's refusal.
-4. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
+5. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
    about 64 characters clips on an entry row, and prikk 0.39–0.41 report unsupported paths absolute. prikk 0.42 reports them relative
    (RFC 029 A), so the absolute case stays open only on that band.
-5. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
+6. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
    and a source-level test holds that only in the two modules that name those variables. A guard
    over every shipped crate would let the sentence say *enforced by test* without a qualifier.
-6. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
+7. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI

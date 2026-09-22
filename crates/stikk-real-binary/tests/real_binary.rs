@@ -2867,6 +2867,19 @@ fn rfc032_preview(
     outcome
 }
 
+/// prikk's own reason for a declaration whose destination is a **directory**, by version (RFC 034 §5).
+/// Through 0.43 prikk said the destination is *ignored*; **0.44 renamed it** to name what it actually
+/// found — the fix stikk asked for in letter 014 (RFC 034 F5). Measured at 0.43.0 and 0.44.0, and
+/// unchanged through 0.46.0.
+fn rfc032_directory_destination_reason(minor: u32) -> &'static str {
+    const RENAMED_FROM: u32 = 44;
+    if minor >= RENAMED_FROM {
+        "destination is a directory"
+    } else {
+        "destination is ignored"
+    }
+}
+
 fn rfc032_printed_line(printed: &str, line: &str) -> bool {
     printed.lines().any(|l| l.trim() == line)
 }
@@ -3084,7 +3097,9 @@ fn rfc032_a_declaration_without_its_destination_is_named_and_commit_authors_a_de
             &[
                 "delete-file a.txt",
                 "create-file b.txt/q.txt",
-                "declaration a.txt -> b.txt: destination is ignored; recorded as a deletion, not a rename",
+                // `{destination}` is filled per binary: prikk 0.44 renamed this reason (see
+                // `rfc032_directory_destination_reason`).
+                "declaration a.txt -> b.txt: {destination}; recorded as a deletion, not a rename",
             ],
         ),
     ];
@@ -3133,8 +3148,12 @@ fn rfc032_a_declaration_without_its_destination_is_named_and_commit_authors_a_de
             let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
             assert!(committed, "{ctx}: prikk commit:\n{printed}");
             for line in printed_lines {
+                let line = line.replace(
+                    "{destination}",
+                    rfc032_directory_destination_reason(bin.minor),
+                );
                 assert!(
-                    rfc032_printed_line(&printed, line),
+                    rfc032_printed_line(&printed, &line),
                     "{ctx}: `prikk commit`'s printed output says `{line}`:\n{printed}"
                 );
             }
@@ -3160,8 +3179,12 @@ fn rfc032_a_declaration_whose_source_is_back_is_named_and_prikk_refuses_the_comm
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     Fixture::clear_env();
     const SENTENCE: &str = "declared rename a.txt → b.txt: a.txt is present again, and prikk refuses to commit until the declaration is resolved";
-    const REFUSAL: &str =
-        "precondition not met: a.txt -> b.txt: the source is present in the worktree again";
+    // prikk reworded this refusal at 0.43 (RFC 034 §5). Measured: 0.42.0 says the declared move "was
+    // not completed on disk"; 0.43.0, 0.44.0, 0.45.0 and 0.46.0 all name the two ways out prikk will
+    // accept instead. The clause below is the stable half of each wording.
+    const REWORDED_FROM: u32 = 43;
+    const REFUSAL_THROUGH_0_42: &str = "the source is present in the worktree again";
+    const REFUSAL_FROM_0_43: &str = "both paths exist in the worktree, so which one is the tracked node is not prikk's to guess";
     let cases: [(&str, Rfc032Setup); 2] = [
         ("row 2: mv, a.txt recreated", |bin, repo| {
             rfc032_mv(bin, repo, "a.txt", "b.txt");
@@ -3205,8 +3228,12 @@ fn rfc032_a_declaration_whose_source_is_back_is_named_and_prikk_refuses_the_comm
             let (committed, printed) = rfc032_raw_commit(&bin, &fixture, &repo);
             assert!(!committed, "{ctx}: prikk commit must refuse:\n{printed}");
             assert!(
-                printed.contains(REFUSAL),
-                "{ctx}: prikk's refusal text:\n{printed}"
+                printed.contains(if bin.minor >= REWORDED_FROM {
+                    REFUSAL_FROM_0_43
+                } else {
+                    REFUSAL_THROUGH_0_42
+                }),
+                "{ctx}: `prikk commit`'s printed output carries prikk's own refusal:\n{printed}"
             );
 
             let moved_back = rfc032_prikk(&bin, &repo, &["mv", "b.txt", "a.txt"]);

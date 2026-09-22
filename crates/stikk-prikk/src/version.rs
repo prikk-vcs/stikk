@@ -1,7 +1,12 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.42.0` (**RFC 029**, the 0.42 re-baseline: the
+//! stikk targets prikk `>= 0.28`, validated through `0.46.0` (**RFC 034**, the 0.46 re-baseline:
+//! prikk 0.45.0 made `worktree-status --ref R` and `log --ref R` refuse for a ref with no published
+//! history — every ref until a repository's first seal — and `cli_backend` repairs that by retrying
+//! without `--ref` and verifying the report names the ref asked for. **This raise came first**, as the
+//! rule below requires: it is what let the suite measure the regression it repairs. The previous
+//! ceiling was `0.42.0` (**RFC 029**, the 0.42 re-baseline: the
 //! real-binary suite passed unchanged at 0.28 and 0.42 on every platform, and the fixtures were
 //! re-verified against the 0.42 binary **except those that record a state 0.42 cannot produce**:
 //! `LOG_FIXTURE`, whose 0.30.0 history carries no patch messages, which 0.42 writes on every commit;
@@ -47,7 +52,7 @@ const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
 /// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, to 38 by RFC 021, to 41 by RFC 026,
-/// then to **42 by RFC 029** — each only
+/// to 42 by RFC 029, then to **46 by RFC 034** — each only
 /// after empirical re-verification against a real released binary, never a changelog). RFC 017's
 /// re-verification found no output-shape drift; it found the classifier's own provenance gap instead
 /// (`classify.rs`'s module doc). A prikk above this still runs; [`Version::is_validated`] tells the
@@ -59,7 +64,7 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// established that order across five releases at once; **RFC 026 had to put one step before it** —
 /// the suite's fixture builder configures prikk through the environment, and prikk 0.40 stopped
 /// reading it, so the harness had to work before the raise could be measured at all.
-const VALIDATED_MAX_MINOR: u32 = 42;
+const VALIDATED_MAX_MINOR: u32 = 46;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -787,6 +787,18 @@ struct StandIn {
 
 #[cfg(unix)]
 impl StandIn {
+    /// A backend whose handshake has already run. **Two reasons, both load-bearing:** it absorbs the
+    /// transient ETXTBSY race against a just-written script (`retrying_transient_exec_busy` above —
+    /// observed only under `cargo test --workspace`'s process churn, and seen once here), and it empties
+    /// the calls log, so a test counting reads counts the call it is measuring and nothing else.
+    fn warmed_backend(&self) -> CliBackend {
+        let backend = CliBackend::with_program(&self.program);
+        retrying_transient_exec_busy(|| backend.handshake())
+            .expect("the stand-in reports a version");
+        std::fs::write(&self.calls, "").expect("clear the calls log");
+        backend
+    }
+
     fn calls(&self) -> Vec<String> {
         std::fs::read_to_string(&self.calls)
             .unwrap_or_default()
@@ -868,7 +880,7 @@ const SERVE_LOG_OTHER: &str = "cat \"$(dirname \"$0\")/log-other.json\"; exit 0"
 #[test]
 fn worktree_status_retries_without_ref_and_accepts_a_report_naming_the_ref() {
     let prikk = stand_in("wt-ok", ABSENT_REF_REFUSAL, SERVE_WORKTREE, SERVE_LOG);
-    let backend = CliBackend::with_program(&prikk.program);
+    let backend = prikk.warmed_backend();
     let status = backend
         .worktree_status(&prikk.dir, "heads/main")
         .expect("the ref-less retry's report names heads/main, so it is accepted");
@@ -903,7 +915,7 @@ fn worktree_status_keeps_prikks_refusal_when_the_retry_names_another_ref() {
         SERVE_WORKTREE_OTHER,
         SERVE_LOG,
     );
-    let backend = CliBackend::with_program(&prikk.program);
+    let backend = prikk.warmed_backend();
     let error = backend
         .worktree_status(&prikk.dir, "heads/main")
         .expect_err("a report naming another ref must not be shown");
@@ -927,7 +939,7 @@ fn worktree_status_keeps_prikks_refusal_when_the_retry_refuses_or_does_not_parse
         ("wt-garbage", "printf 'not a report at all\\n'; exit 1"),
     ] {
         let prikk = stand_in(label, ABSENT_REF_REFUSAL, retry, SERVE_LOG);
-        let backend = CliBackend::with_program(&prikk.program);
+        let backend = prikk.warmed_backend();
         let error = backend
             .worktree_status(&prikk.dir, "heads/main")
             .expect_err("a retry that gives no usable report leaves prikk's refusal standing");
@@ -950,7 +962,7 @@ fn a_refusal_that_is_not_prikks_absent_ref_clause_is_never_retried() {
     const OTHER: &str =
         "error: precondition not met: worktree has no node-addressed changes to commit";
     let prikk = stand_in("wt-other-refusal", OTHER, SERVE_WORKTREE, SERVE_LOG);
-    let backend = CliBackend::with_program(&prikk.program);
+    let backend = prikk.warmed_backend();
     let error = backend
         .worktree_status(&prikk.dir, "heads/main")
         .expect_err("an unrelated refusal stays a refusal");
@@ -970,7 +982,7 @@ fn a_refusal_that_is_not_prikks_absent_ref_clause_is_never_retried() {
 #[test]
 fn history_retries_without_ref_and_accepts_a_report_naming_the_ref() {
     let prikk = stand_in("log-ok", ABSENT_REF_REFUSAL, SERVE_WORKTREE, SERVE_LOG);
-    let backend = CliBackend::with_program(&prikk.program);
+    let backend = prikk.warmed_backend();
     let history = backend
         .history(&prikk.dir, "heads/main", 200)
         .expect("the ref-less retry's report names heads/main");
@@ -1006,7 +1018,7 @@ fn history_keeps_prikks_refusal_when_the_retry_names_another_ref() {
         SERVE_WORKTREE,
         SERVE_LOG_OTHER,
     );
-    let backend = CliBackend::with_program(&prikk.program);
+    let backend = prikk.warmed_backend();
     let error = backend
         .history(&prikk.dir, "heads/main", 200)
         .expect_err("a history for another ref must not be shown");

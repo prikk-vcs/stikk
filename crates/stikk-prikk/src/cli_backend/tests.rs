@@ -731,3 +731,290 @@ fn below_0_39_the_queue_is_unreported_and_asks_prikk_for_nothing_new() {
         "below 0.39 the queue must be read from prose `status` alone, never `--format json`"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 034 decision 1: the retry for a ref prikk ≥ 0.45 calls absent, and — the part the real-binary
+// suite cannot produce — every path that must return prikk's **original** refusal instead.
+// ---------------------------------------------------------------------------------------------
+
+/// prikk 0.46.0's own refusal for a ref with no published history, captured from the binary.
+#[cfg(unix)]
+const ABSENT_REF_REFUSAL: &str =
+    "error: precondition not met: ref heads/main does not exist in this repository";
+
+/// `prikk worktree-status --format json` at 0.46.0, in a fresh repository with one untracked file and
+/// `heads/main` never published — the ref-less report the retry reads. Captured verbatim.
+#[cfg(unix)]
+const REFLESS_WORKTREE_0_46: &str = r#"{
+  "schema_version": "worktree-status-report-v1",
+  "repository": "/tmp/probe/repo/.prikk",
+  "ref": "heads/main",
+  "current_branch": "heads/main",
+  "tracked_files": 0,
+  "unchanged_files": 0,
+  "clean": false,
+  "refused_count": 0,
+  "refused_declaration_count": 0,
+  "queued_elsewhere": null,
+  "changes": [
+    {"path": "readme.txt", "kind": "untracked", "detail": "worktree file is not in the baseline", "authoring": "authored", "refusal": null}
+  ],
+  "declarations": []
+}"#;
+
+/// `prikk log --limit 200 --format json` at 0.46.0 in the same repository. Captured verbatim.
+#[cfg(unix)]
+const REFLESS_LOG_0_46: &str = r#"{
+  "schema_version": "log-report-v1",
+  "repository": "/tmp/probe/repo/.prikk",
+  "ref": "heads/main",
+  "current_branch": "heads/main",
+  "blocks": []
+}"#;
+
+/// A stand-in prikk for the retry: it answers `--version` as 0.46.0, **refuses whatever carries
+/// `--ref`** with `refusal`, and answers the ref-less retry with `worktree_retry` or `log_retry`
+/// (shell snippets). Every invocation's argument list is appended to the returned calls file, so a test
+/// can assert that **no retry ran at all**.
+#[cfg(unix)]
+struct StandIn {
+    /// A real directory, used as the repository path: `Command::current_dir` on a path that does not
+    /// exist fails the spawn itself, which would test nothing about the retry.
+    dir: std::path::PathBuf,
+    program: std::path::PathBuf,
+    calls: std::path::PathBuf,
+}
+
+#[cfg(unix)]
+impl StandIn {
+    fn calls(&self) -> Vec<String> {
+        std::fs::read_to_string(&self.calls)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+#[cfg(unix)]
+fn stand_in(label: &str, refusal: &str, worktree_retry: &str, log_retry: &str) -> StandIn {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir =
+        std::env::temp_dir().join(format!("stikk-prikk-rfc034-{label}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create the stand-in's directory");
+    std::fs::write(dir.join("worktree.json"), REFLESS_WORKTREE_0_46).expect("write the report");
+    std::fs::write(dir.join("log.json"), REFLESS_LOG_0_46).expect("write the report");
+    // The same report with only its `ref` changed: what prikk would return if the retry read a
+    // different ref than the one stikk asked for.
+    std::fs::write(
+        dir.join("worktree-other.json"),
+        REFLESS_WORKTREE_0_46.replace(r#""ref": "heads/main""#, r#""ref": "heads/other""#),
+    )
+    .expect("write the report");
+    std::fs::write(
+        dir.join("log-other.json"),
+        REFLESS_LOG_0_46.replace(r#""ref": "heads/main""#, r#""ref": "heads/other""#),
+    )
+    .expect("write the report");
+
+    let calls = dir.join("calls.txt");
+    let program = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\n\
+             printf '%s\\n' \"$*\" >> '{calls}'\n\
+             case \"$1\" in\n\
+             --version) printf 'prikk 0.46.0\\n'; exit 0 ;;\n\
+             esac\n\
+             case \" $* \" in\n\
+             *\" --ref \"*) printf '%s\\n' '{refusal}' 1>&2; exit 1 ;;\n\
+             esac\n\
+             case \"$1\" in\n\
+             worktree-status) {worktree_retry} ;;\n\
+             log) {log_retry} ;;\n\
+             esac\n\
+             exit 1\n",
+            calls = calls.display(),
+        ),
+    )
+    .expect("write the stand-in");
+    let mut perms = std::fs::metadata(&program)
+        .expect("stat the stand-in")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&program, perms).expect("make the stand-in executable");
+
+    StandIn {
+        dir: dir.clone(),
+        program,
+        calls,
+    }
+}
+
+/// `worktree-status` exits 1 on a dirty tree, so the retry does too — the report is still on stdout.
+#[cfg(unix)]
+const SERVE_WORKTREE: &str = "cat \"$(dirname \"$0\")/worktree.json\"; exit 1";
+#[cfg(unix)]
+const SERVE_WORKTREE_OTHER: &str = "cat \"$(dirname \"$0\")/worktree-other.json\"; exit 1";
+#[cfg(unix)]
+const SERVE_LOG: &str = "cat \"$(dirname \"$0\")/log.json\"; exit 0";
+#[cfg(unix)]
+const SERVE_LOG_OTHER: &str = "cat \"$(dirname \"$0\")/log-other.json\"; exit 0";
+
+#[cfg(unix)]
+#[test]
+fn worktree_status_retries_without_ref_and_accepts_a_report_naming_the_ref() {
+    let prikk = stand_in("wt-ok", ABSENT_REF_REFUSAL, SERVE_WORKTREE, SERVE_LOG);
+    let backend = CliBackend::with_program(&prikk.program);
+    let status = backend
+        .worktree_status(&prikk.dir, "heads/main")
+        .expect("the ref-less retry's report names heads/main, so it is accepted");
+    assert_eq!(status.reff, "heads/main");
+    assert_eq!(status.entries.len(), 1, "{status:?}");
+    assert!(!status.clean);
+    // Exactly two reads: the one that refused, then the one without `--ref`.
+    let reads: Vec<String> = prikk
+        .calls()
+        .into_iter()
+        .filter(|call| call.starts_with("worktree-status"))
+        .collect();
+    let [refused, retry] = reads.as_slice() else {
+        panic!("expected exactly two worktree-status reads: {reads:?}");
+    };
+    assert!(refused.contains("--ref heads/main"), "{reads:?}");
+    assert!(
+        !retry.contains("--ref"),
+        "the retry drops the pair: {reads:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn worktree_status_keeps_prikks_refusal_when_the_retry_names_another_ref() {
+    // **The failure this repair must never have** (`T-T4`): a report for a ref the user did not ask
+    // about. It is also every mistyped ref on prikk ≥ 0.45, where the retry returns the current
+    // branch's report.
+    let prikk = stand_in(
+        "wt-other",
+        ABSENT_REF_REFUSAL,
+        SERVE_WORKTREE_OTHER,
+        SERVE_LOG,
+    );
+    let backend = CliBackend::with_program(&prikk.program);
+    let error = backend
+        .worktree_status(&prikk.dir, "heads/main")
+        .expect_err("a report naming another ref must not be shown");
+    assert_eq!(error.class(), "refusal");
+    assert!(
+        error
+            .to_string()
+            .contains("does not exist in this repository"),
+        "prikk's own refusal, verbatim: {error}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn worktree_status_keeps_prikks_refusal_when_the_retry_refuses_or_does_not_parse() {
+    for (label, retry) in [
+        (
+            "wt-refuses",
+            "printf 'error: precondition not met: ref heads/main does not exist in this repository\\n' 1>&2; exit 1",
+        ),
+        ("wt-garbage", "printf 'not a report at all\\n'; exit 1"),
+    ] {
+        let prikk = stand_in(label, ABSENT_REF_REFUSAL, retry, SERVE_LOG);
+        let backend = CliBackend::with_program(&prikk.program);
+        let error = backend
+            .worktree_status(&prikk.dir, "heads/main")
+            .expect_err("a retry that gives no usable report leaves prikk's refusal standing");
+        assert_eq!(error.class(), "refusal", "{label}: {error}");
+        assert!(
+            error
+                .to_string()
+                .contains("does not exist in this repository"),
+            "{label}: prikk's original refusal, verbatim: {error}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_refusal_that_is_not_prikks_absent_ref_clause_is_never_retried() {
+    // Matched on prikk's own clause, never on the `precondition not met:` prefix (`classify.rs`'s
+    // standing rule): another precondition with the same prefix must reach the caller untouched, and
+    // must not spend a second read.
+    const OTHER: &str =
+        "error: precondition not met: worktree has no node-addressed changes to commit";
+    let prikk = stand_in("wt-other-refusal", OTHER, SERVE_WORKTREE, SERVE_LOG);
+    let backend = CliBackend::with_program(&prikk.program);
+    let error = backend
+        .worktree_status(&prikk.dir, "heads/main")
+        .expect_err("an unrelated refusal stays a refusal");
+    assert!(
+        error.to_string().contains("no node-addressed changes"),
+        "{error}"
+    );
+    let reads = prikk
+        .calls()
+        .iter()
+        .filter(|call| call.starts_with("worktree-status"))
+        .count();
+    assert_eq!(reads, 1, "no retry was spent: {:?}", prikk.calls());
+}
+
+#[cfg(unix)]
+#[test]
+fn history_retries_without_ref_and_accepts_a_report_naming_the_ref() {
+    let prikk = stand_in("log-ok", ABSENT_REF_REFUSAL, SERVE_WORKTREE, SERVE_LOG);
+    let backend = CliBackend::with_program(&prikk.program);
+    let history = backend
+        .history(&prikk.dir, "heads/main", 200)
+        .expect("the ref-less retry's report names heads/main");
+    assert_eq!(history.reff, "heads/main");
+    assert!(
+        history.blocks.is_empty(),
+        "an unpublished ref has no blocks"
+    );
+    let reads: Vec<String> = prikk
+        .calls()
+        .into_iter()
+        .filter(|call| call.starts_with("log"))
+        .collect();
+    let [_refused, retry] = reads.as_slice() else {
+        panic!("expected exactly two log reads: {reads:?}");
+    };
+    assert!(
+        !retry.contains("--ref"),
+        "the retry drops the pair: {reads:?}"
+    );
+    assert!(
+        retry.contains("--limit 200"),
+        "everything else is identical: {reads:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn history_keeps_prikks_refusal_when_the_retry_names_another_ref() {
+    let prikk = stand_in(
+        "log-other",
+        ABSENT_REF_REFUSAL,
+        SERVE_WORKTREE,
+        SERVE_LOG_OTHER,
+    );
+    let backend = CliBackend::with_program(&prikk.program);
+    let error = backend
+        .history(&prikk.dir, "heads/main", 200)
+        .expect_err("a history for another ref must not be shown");
+    assert_eq!(error.class(), "refusal");
+    assert!(
+        error
+            .to_string()
+            .contains("does not exist in this repository"),
+        "{error}"
+    );
+}

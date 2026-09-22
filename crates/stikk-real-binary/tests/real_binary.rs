@@ -1054,6 +1054,14 @@ fn a_refused_symlink_is_reported_prevented_and_matches_commits_own_refusal() {
 
 /// **RFC 027 F6 against real binaries**: prikk's queued-elsewhere report arrives as prikk's own sentence
 /// below 0.39, where stikk reads prose, and as the typed ref at 0.39 and above, where it reads JSON.
+///
+/// **`heads/other` is published here, and that is the RFC 034 change** (2026-09-22). This test used to ask
+/// about a ref that was never created, which every prikk through 0.44 answered with an ordinary report.
+/// **prikk ≥ 0.45 refuses a ref it considers absent**, and the RFC 034 repair deliberately does not paper
+/// over that: its retry reads the current branch, sees the report name `heads/main`, and returns prikk's
+/// original refusal rather than another ref's report (`T-T4`, Handoff A §3 trap 2). **So the arrangement
+/// was wrong, not the code** — the queued-elsewhere fact is about a real ref either way, and publishing it
+/// measures the same thing at both ends.
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn queued_elsewhere_arrives_as_prikks_note_below_0_39_and_as_its_ref_above() {
@@ -1066,7 +1074,32 @@ fn queued_elsewhere_arrives_as_prikks_note_below_0_39_and_as_its_ref_above() {
         let backend = CliBackend::with_program(&bin.path);
         let repo = fixture.repo().to_path_buf();
 
+        // heads/main published, then heads/other published from it.
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "baseline")
+            .unwrap_or_else(|e| panic!("0.{}: baseline commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        // `branch create` signs as MAINTAINER from prikk 0.42, so its env stays set across it.
+        let created = std::process::Command::new(&bin.path)
+            .args(["branch", "create", "heads/other", "--from", "heads/main"])
+            .current_dir(&repo)
+            .output()
+            .unwrap_or_else(|e| panic!("0.{}: spawn prikk branch create: {e}", bin.minor));
+        Fixture::clear_env();
+        assert!(
+            created.status.success(),
+            "0.{}: prikk branch create: {}",
+            bin.minor,
+            String::from_utf8_lossy(&created.stderr).trim()
+        );
+
         // One unsealed patch queued for heads/main; then ask about heads/other.
+        std::fs::write(repo.join("queued.txt"), "queued\n")
+            .unwrap_or_else(|e| panic!("0.{}: write queued.txt: {e}", bin.minor));
         fixture.set_author_env();
         backend
             .commit(&repo, "heads/main", "queued patch")
@@ -3525,5 +3558,166 @@ fn rfc032_a_paired_rename_whose_destination_prikk_refuses_promises_nothing() {
             ),
             other => panic!("{ctx}: expected WouldRefuse, got {other:?}"),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 034 Handoff A: prikk ≥ 0.45 refuses `--ref R` for a ref with no published history, and stikk
+// retries without `--ref` — accepting the report **only** when it names the ref that was asked for.
+// ---------------------------------------------------------------------------------------------
+
+/// **An absent ref must still refuse** (Handoff A §3 trap 2). A mistyped ref is the case that would turn
+/// the repair into a lie: on prikk ≥ 0.45 the retry returns *the current branch's* report, and stikk must
+/// reject it and show prikk's own refusal instead of another ref's worktree.
+///
+/// Below 0.45 prikk answers a never-created ref with an ordinary report naming it, and stikk shows that,
+/// unchanged — the repair never fires, because prikk never refuses.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc034_an_absent_ref_is_never_answered_with_another_refs_report() {
+    const REFUSES_ABSENT_REF_FROM: u32 = 45;
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+        let ctx = format!("0.{}", bin.minor);
+
+        let status = backend.worktree_status(&repo, "heads/typo");
+        let history = backend.history(&repo, "heads/typo", 20);
+
+        if bin.minor >= REFUSES_ABSENT_REF_FROM {
+            for (what, message) in [
+                (
+                    "worktree_status",
+                    status.as_ref().err().map(ToString::to_string),
+                ),
+                ("history", history.as_ref().err().map(ToString::to_string)),
+            ] {
+                let message = message.unwrap_or_else(|| {
+                    panic!("{ctx}: {what} must refuse a ref prikk calls absent, got a report")
+                });
+                assert!(
+                    message.contains("heads/typo")
+                        && message.contains("does not exist in this repository"),
+                    "{ctx}: {what} shows prikk's own refusal: {message}"
+                );
+                assert!(
+                    !message.contains("heads/main"),
+                    "{ctx}: {what} must not mention the ref stikk read instead: {message}"
+                );
+            }
+            // The decisive one: nothing about heads/main reached the caller as heads/typo's answer.
+            assert!(status.is_err() && history.is_err(), "{ctx}");
+        } else {
+            let status =
+                status.unwrap_or_else(|e| panic!("{ctx}: prikk reports an absent ref here: {e}"));
+            let history =
+                history.unwrap_or_else(|e| panic!("{ctx}: prikk reports an absent ref here: {e}"));
+            assert_eq!(
+                status.reff, "heads/typo",
+                "{ctx}: prikk's own answer, unchanged"
+            );
+            assert_eq!(history.reff, "heads/typo", "{ctx}");
+            assert!(history.blocks.is_empty(), "{ctx}: {history:?}");
+        }
+    }
+}
+
+/// **A repository's first commit, end to end** — the path prikk 0.45 broke and RFC 034 repairs (F0).
+///
+/// On a fresh repository nothing is published, so at prikk ≥ 0.45 every `--ref` read of `heads/main`
+/// refuses and the repair's retry carries each one. This drives what a first-run user actually does:
+/// Changes lists the untracked files under RFC 032's no-published-history words, History is empty rather
+/// than refused, commit previews and confirms, and after `seal` the same reads work natively.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc034_a_first_commit_on_a_fresh_repository_reads_previews_and_commits_at_both_ends() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+        let ctx = format!("0.{}", bin.minor);
+
+        // Changes, on a ref with no published history.
+        let read = stikk_core::changes_view(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: changes_view on a fresh repository: {e}"));
+        assert_eq!(
+            read.history,
+            stikk_core::RefHistory::Unpublished(stikk_core::UnpublishedQueue::Empty),
+            "{ctx}"
+        );
+        assert_eq!(
+            read.history
+                .changes_headline("heads/main", read.view.clean)
+                .as_deref(),
+            Some(
+                "heads/main has no published history — every file is listed as untracked, and a commit would be its first"
+            ),
+            "{ctx}"
+        );
+        assert!(
+            read.view.entries.iter().any(|e| e.path == "readme.txt"),
+            "{ctx}: the untracked file is listed: {:?}",
+            read.view.entries
+        );
+
+        // History, likewise: empty, not refused (RFC 029 B).
+        let history = backend
+            .history(&repo, "heads/main", 20)
+            .unwrap_or_else(|e| panic!("{ctx}: history of an unpublished heads/main: {e}"));
+        assert_eq!(history.reff, "heads/main", "{ctx}");
+        assert!(history.blocks.is_empty(), "{ctx}: {history:?}");
+
+        // Commit previews, confirms and queues.
+        fixture.set_author_env();
+        let outcome = stikk_core::commit_preview(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: commit_preview on a fresh repository: {e}"));
+        let readiness = backend
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("{ctx}: readiness: {e}"))
+            .readiness;
+        let stikk_core::CommitPreviewOutcome::Ready { token, .. } = outcome else {
+            panic!("{ctx}: expected a Ready preview, got {outcome:?}");
+        };
+        assert_eq!(
+            token.summary().history_notice.as_deref(),
+            Some("heads/main has no published history: this would be its first commit"),
+            "{ctx}"
+        );
+        let committed = stikk_core::commit_confirm_and_execute(
+            &backend,
+            &repo,
+            *token,
+            readiness,
+            stikk_core::Evidence::ExplicitYes,
+            "first",
+        );
+        Fixture::clear_env();
+        assert!(
+            committed.is_ok(),
+            "{ctx}: the first commit must commit, not go stale: {committed:?}"
+        );
+
+        // Sealed: published, and every read works without the retry.
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: seal: {e}"));
+        Fixture::clear_env();
+        let sealed = stikk_core::changes_view(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("{ctx}: changes_view after seal: {e}"));
+        assert_eq!(sealed.history, stikk_core::RefHistory::Published, "{ctx}");
+        let history = backend
+            .history(&repo, "heads/main", 20)
+            .unwrap_or_else(|e| panic!("{ctx}: history after seal: {e}"));
+        assert_eq!(history.blocks.len(), 1, "{ctx}: {history:?}");
     }
 }

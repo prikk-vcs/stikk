@@ -43,6 +43,37 @@ mod parse_json;
 /// never reach [`classify::classify`].
 const USAGE_ERROR_EXIT: i32 = 2;
 
+/// prikk's own clause when it refuses a ref it treats as absent — the one string the RFC 034 repair
+/// keys on.
+///
+/// **prikk 0.45.0 made `worktree-status --ref R` and `log --ref R` refuse when `R` has no published
+/// history** (`precondition not met: ref R does not exist in this repository`, exit 1, measured at
+/// 0.45.0 and 0.46.0; 0.44.0 and below report normally). That is **every** ref until a repository's
+/// first `seal`, so the Changes view, History and commit's preview all refused on a new repository —
+/// the path RFC 032's own increment shipped.
+///
+/// prikk changed this deliberately, for a ref that is genuinely absent. **An unpublished ref is not an
+/// absent ref**, and prikk's own default path still agrees: **with no `--ref` at all both commands
+/// report**, and the report names the ref it used (`"ref": "heads/main"`). So stikk retries without
+/// `--ref` and **verifies from the report itself** that it got the ref it asked for
+/// ([`CliBackend::worktree_status_without_ref`], [`CliBackend::history_without_ref`]).
+///
+/// **Matched as prikk's semantic clause, never on the `precondition not met:` prefix** — `classify.rs`'s
+/// standing rule, and the reason prikk's class-word churn has never broken a match here.
+///
+/// **When prikk restores the behaviour** (stikk letter 015 asks it to), this constant, the two retry
+/// methods and their two call sites retire together; nothing else depends on them. The repair stays as
+/// long as stikk supports a prikk in the 0.45–0.46 band.
+const ABSENT_REF_CLAUSE: &str = "does not exist in this repository";
+
+/// Whether prikk's output carries [`ABSENT_REF_CLAUSE`]. prikk writes this refusal to stderr with an
+/// empty stdout (measured at 0.45.0 and 0.46.0); both streams are read so the match does not depend on
+/// which one a future prikk picks.
+fn refuses_absent_ref(stdout: &str, stderr: &str) -> bool {
+    let carries = |text: &str| text.to_ascii_lowercase().contains(ABSENT_REF_CLAUSE);
+    carries(stdout) || carries(stderr)
+}
+
 /// A [`Prikk`] implementation that shells out to the `prikk` binary.
 #[derive(Debug, Clone)]
 pub struct CliBackend {
@@ -189,6 +220,35 @@ impl CliBackend {
             ),
         }
     }
+    /// The RFC 034 retry for [`Prikk::worktree_status`]: **the same command with the `--ref <reff>` pair
+    /// removed**, and everything else identical. The report is accepted **only when it names `reff`**.
+    ///
+    /// `None` on every other outcome — the retry refuses, its report does not parse, or it names another
+    /// ref — and the caller then returns prikk's original refusal. **Showing a report for a ref the user
+    /// did not ask about is the failure this must never have** (`T-T4`), which is why the report's own
+    /// `ref` is the check: it costs no extra call and it cannot race. **Nothing consults `refs()` or
+    /// `current_branch`** to decide this (RFC 034 Handoff A §3), and the retry is never cached.
+    fn worktree_status_without_ref(&self, repo: &Path, reff: &str) -> Option<WorktreeStatus> {
+        let (stdout, _stderr, _success) = self
+            .run_capturing(Some(repo), ["worktree-status", "--format", "json"])
+            .ok()?;
+        let status = parse_json::worktree_status(&stdout).ok()?;
+        (status.reff == reff).then_some(status)
+    }
+
+    /// The RFC 034 retry for [`Prikk::history`]. See [`Self::worktree_status_without_ref`] for why the
+    /// report's own ref is the only thing that may accept it.
+    fn history_without_ref(&self, repo: &Path, reff: &str, limit: &str) -> Option<History> {
+        let out = self
+            .run(
+                Some(repo),
+                RequestCategory::ReadHistory,
+                ["log", "--limit", limit, "--format", "json"],
+            )
+            .ok()?;
+        let history = parse_json::history(&out).ok()?;
+        (history.reff == reff).then_some(history)
+    }
 }
 
 impl Prikk for CliBackend {
@@ -315,7 +375,7 @@ impl Prikk for CliBackend {
         // flag it adds, rather than inside either parser — a parser that had to know the version
         // would be two parsers in one function.
         if self.reads_json()? {
-            let out = self.run(
+            let refused = match self.run(
                 Some(repo),
                 RequestCategory::ReadHistory,
                 [
@@ -327,9 +387,24 @@ impl Prikk for CliBackend {
                     "--format",
                     "json",
                 ],
-            )?;
-            return parse_json::history(&out);
+            ) {
+                Ok(out) => return parse_json::history(&out),
+                Err(refused) => refused,
+            };
+            // RFC 034 decision 1, exactly as in `worktree_status` above. `run` has already classified
+            // this; prikk's absent-ref refusal matches no arm and so degrades to `Refusal` carrying
+            // prikk's verbatim message (`classify.rs`'s documented default), which is where the clause
+            // is read from.
+            if let StikkError::Refusal { message } = &refused
+                && refuses_absent_ref("", message)
+                && let Some(history) = self.history_without_ref(repo, reff, limit.as_str())
+            {
+                return Ok(history);
+            }
+            return Err(refused);
         }
+        // The prose path needs no RFC 034 repair, for the reason `worktree_status` gives: prose is read
+        // only below prikk 0.39, and the refusal starts at 0.45.
         let out = self.run(
             Some(repo),
             RequestCategory::ReadHistory,
@@ -400,13 +475,26 @@ impl Prikk for CliBackend {
             return match parse_json::worktree_status(&stdout) {
                 Ok(status) => Ok(status),
                 Err(rejected) if crate::json::parse(&stdout).is_ok() => Err(rejected),
-                Err(_no_report) => Err(classify::classify(
-                    &stdout,
-                    &stderr,
-                    RequestCategory::WorktreeAnalysis,
-                )),
+                Err(_no_report) => {
+                    // RFC 034 decision 1: on prikk ≥ 0.45 this is where a ref with no published history
+                    // lands, since prikk refuses it outright ([`ABSENT_REF_CLAUSE`]). Retry only on
+                    // prikk's own clause, and keep prikk's original refusal unless the retry's report
+                    // names the ref that was asked for — an absent ref (a typo) refuses either way.
+                    if refuses_absent_ref(&stdout, &stderr)
+                        && let Some(status) = self.worktree_status_without_ref(repo, reff)
+                    {
+                        return Ok(status);
+                    }
+                    Err(classify::classify(
+                        &stdout,
+                        &stderr,
+                        RequestCategory::WorktreeAnalysis,
+                    ))
+                }
             };
         }
+        // The prose path needs no RFC 034 repair: stikk reads JSON from prikk 0.39 (`reads_json`), and
+        // the refusal it repairs starts at 0.45, so a prose-era prikk never emits it.
         let (stdout, stderr, _success) =
             self.run_capturing(Some(repo), ["worktree-status", "--ref", reff])?;
         // RFC 030: only the version tells "no rename declarations exist" (< 0.38) from a report that

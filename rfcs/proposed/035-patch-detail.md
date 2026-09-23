@@ -79,8 +79,13 @@ the difference to the visible axis rather than the one that changed in the input
 reading what was measured.**
 
 **What this changes here:** for a sealed patch, Patch detail asks `show <block-id>` and gets every path. The
-unresolved case is a **queued** patch alone, which has no block by definition — and prikk 0.47 resolves that against
-the folded baseline (reply 019 §2), rendering a queued patch identically to a sealed one apart from `"queued": true`.
+unresolved case is a **queued** patch alone, which has no block by definition — and prikk resolves that against the
+folded baseline, rendering a queued patch identically to a sealed one apart from `"queued": true`.
+
+**Delivered upstream since, and shipping in 0.47** (reply 020 §4), with the property stikk would otherwise have had
+to discover: the baseline is **truncated at that patch**, so the first of two queued patches names the path **as it
+was at that patch**, not as a later patch renamed it. A view showing the later name would describe a state that never
+existed at that point in history.
 
 **prikk files that as `### Changed`, not `### Fixed`:** a `path` will appear where one was absent. **stikk must not
 key on absence** (decision 3).
@@ -141,7 +146,8 @@ between stikk's rendering and prikk's fields, which is also the honest place to 
    Changes view, or from anything else. This is RFC 028's rule for the Queue view, applied to the same value.
    **It is reachable only for a queued patch on prikk ≤ 0.46**, and stikk **must not key on the absence of `path`**:
    0.47 adds one there, as a `### Changed`. The reader takes a path when prikk gives one and says so when it does
-   not, at every version.
+   not, at every version. **At ≥ 0.47 the path prikk gives for a queued patch is resolved at that patch** — stikk
+   renders it as given and never substitutes a later name (F2).
 
 4. **Prikk's block diff is a separate, labelled section, and only where it is honest** (F3): shown when the patch's
    block holds exactly one patch, labelled *"what this block changed, from `prikk diff`"*; **offered in Block detail
@@ -168,7 +174,7 @@ between stikk's rendering and prikk's fields, which is also the honest place to 
 **The facts, after F2's correction.** **Sealed history is complete today**: every operation carries its path when
 `show` is asked about the block. **A queued patch** — committed, not yet sealed — reports a node id for `edit-text`,
 `replace-binary` and `change-perm` on prikk ≤ 0.46, in both formats, because it has no block to resolve against.
-**prikk 0.47 fixes exactly that**, and it is ruled and handed off upstream.
+**prikk 0.47 fixes exactly that**, and it is **delivered on prikk's `main`**, shipping in 0.47 (reply 020 §4).
 
 - **(a) Ship it — recommended.** Sealed patches, which are the history a user browses, are complete. A queued patch
   shows its spans, preimages, modes and blob ids, and says plainly that prikk does not resolve those three paths

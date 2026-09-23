@@ -269,22 +269,28 @@ a fabricated worktree entry was fixed.
    rename's two paths — and `show <block-id>` enumerates a block's patches, which `log` does not. **Three operation
    kinds report a node id instead of a path**, which prikk's own prose resolves; letter 016 asks for it. Then
    **Compare** (`FR-033`), which shares this RFC's `show` reader and prikk 0.46's `diff`.
-3. **Orientation on `status --format json`** (prikk ≥ 0.35), its own increment. Orientation is prose-parsed today,
+3. **Offer an unpublished current branch in the ref picker** (prikk ≥ 0.47), a small increment. prikk ruled
+   `branch list --format json` gains a nullable top-level `unpublished_current_branch` — `branches[]` and
+   `received[]` deliberately unchanged, because membership there is stikk's test for *published* and an unmarked row
+   would have inverted RFC 032's claim silently (stikk's answer decided it; prikk reply 020). The picker cannot
+   currently offer a branch that exists but has never been sealed — the state every new repository is in — and this
+   closes that, with *published* read from prikk's word instead of inferred from absence.
+4. **Orientation on `status --format json`** (prikk ≥ 0.35), its own increment. Orientation is prose-parsed today,
    which is why RFC 034's interrupted-materialization marker is read from prikk's prose line rather than the JSON
    field beside the queue (ruled 2026-09-22: prose carries prikk's whole sentence, `ER-02`, and the JSON would have
    stikk compose one from a `routes` array). Moving Orientation onto JSON would unify the two reads and retire a
    parser — **the marker does not wait on it**, and nothing else does either.
-4. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
+5. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
    where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
    `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as
    prikk's refusal.
-5. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
+6. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
    about 64 characters clips on an entry row, and prikk 0.39–0.41 report unsupported paths absolute. prikk 0.42 reports them relative
    (RFC 029 A), so the absolute case stays open only on that band.
-6. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
+7. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
    and a source-level test holds that only in the two modules that name those variables. A guard
    over every shipped crate would let the sentence say *enforced by test* without a qualifier.
-7. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
+8. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI

@@ -263,19 +263,18 @@ a fabricated worktree entry was fixed.
    when it names the ref that was asked for**; the ceiling is 46; a declaration's fate comes from prikk's own
    `resolution` at ≥ 0.44, a refused one makes commit unavailable, and a checkout that stopped part-way is shown.
    Letter 015 asks prikk to restore the unpublished-ref read, which would retire the retry. Ships in 0.9.0.
-2. **Raise the validated ceiling to 0.51** — small, and **already measured** (2026-10-13, prikk letter 021):
-   prikk 0.47–0.51 landed while stikk was idle, and the suite passes **37 of 37 at 0.28.0 and 0.51.0** with only
-   the constant raised. No schema stikk reads changed version. What remains is the constant, the fixtures, and the
-   `ASM-2`/README statements. **Two corrections came out of the check**: stikk *does* run `checkout --patch-plan`
-   (Block detail's tip state), which RFC 033 and RFC 034 both denied; and that call refuses for an unpublished ref
-   on prikk ≥ 0.45 — unreachable in the UI, and fixed upstream. Evidence:
-   `.git-exclude/reports/036-prikk-0-51-recheck/`.
-3. **Patch detail** (`FR-030`) — [RFC 035](rfcs/proposed/035-patch-detail.md), proposed; Q1 open. **Measured at prikk
-   0.46**: `show --format json` carries every operation's content — a text edit's spans, a delete's preimage, a
-   create's content and mode, a binary replacement's blob ids and sizes, both modes of a permission change, a
-   rename's two paths — and `show <block-id>` enumerates a block's patches, which `log` does not. **Three operation
-   kinds report a node id instead of a path**, which prikk's own prose resolves; letter 016 asks for it. Then
-   **Compare** (`FR-033`), which shares this RFC's `show` reader and prikk 0.46's `diff`.
+2. **Raise the validated ceiling to 0.51** — **handed off as the first commit of RFC 035 Handoff A** (RFC 034 A1: the
+   raise comes first). Already measured (2026-10-13, prikk letter 021): the suite passes **37 of 37 at 0.28.0 and
+   0.51.0** with only the constant raised. **Two corrections came out of the check**: stikk *does* run
+   `checkout --patch-plan` (Block detail's tip state), which RFC 033 and RFC 034 both denied; and that call refuses
+   for an unpublished ref on prikk ≥ 0.45 — unreachable in the UI. Evidence: `.git-exclude/reports/036-prikk-0-51-recheck/`.
+3. **Patch detail** (`FR-030`) — [RFC 035](rfcs/accepted/035-patch-detail.md), **accepted 2026-10-13, Q1 (a)**, handed
+   off ([Handoff A](rfcs/handoffs/035-patch-detail/a-patch-detail-handoff-v1.md)). `show --format json` carries every
+   operation's content and is unchanged from 0.46 to 0.51; opened from Block detail and the Queue, at prikk ≥ 0.39.
+   **Amendment A1, measured on acceptance:** a sealed block resolves every patch's path at the *block's* end, so in a
+   block of several patches an earlier patch can carry a later patch's name, or lose its path to a later delete. stikk
+   labels it rather than correcting it; our letter 020 asks prikk to resolve at the patch. Then **Compare** (`FR-033`),
+   which shares the `show` reader, reads prikk 0.46's `diff`, and takes RFC 035's decision 4 (the block-diff section).
 4. **Offer an unpublished current branch in the ref picker** (prikk ≥ 0.47), a small increment. prikk ruled
    `branch list --format json` gains a nullable top-level `unpublished_current_branch` — `branches[]` and
    `received[]` deliberately unchanged, because membership there is stikk's test for *published* and an unmarked row

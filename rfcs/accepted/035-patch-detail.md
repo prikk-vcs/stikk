@@ -1,8 +1,12 @@
 # RFC 035 — Patch detail: what one patch changed, in prikk's own terms
 
 **Status.** **Proposed 2026-09-22** by the architect, the day RFC 034 closed. **Revised the same day after prikk's
-reply 019: F2's central claim was wrong, and the correction shrinks this RFC's only real gap** (see F2). **One open
-question (Q1), now much narrower.**
+reply 019: F2's central claim was wrong, and the correction shrinks this RFC's only real gap** (see F2).
+**Accepted by the project owner 2026-10-13, Q1 ruled (a)**: *"No user on prikk 0.36–0.46. No problem."*
+**Amended on acceptance (A1)**, from measurements taken at prikk 0.46.0 and 0.51.0 before the handoff relied on
+them. **A sealed patch in a block of several is resolved at the block's end, not at the patch**, so decisions 1 and
+3 changed, and the band moved to stikk's JSON floor. A1 is below the open question, and it governs where it differs
+from the text above it.
 `FR-030` has been blocked since **0.1.0** — first on `UD-09`, then on its own increment — and prikk 0.46 leaves
 nothing else in the way.
 Measured against a real prikk **0.46.0** binary (`cargo install --locked`), one repository exercising **every
@@ -27,7 +31,9 @@ permission change's **old and new mode**, and a rename's **two paths and the key
 and therefore for a **queued patch**, which has no block to resolve against (F1, F2). **prikk 0.47 resolves the
 queued case too**, against the folded baseline, and stikk must not key on a path being absent.
 
-**So sealed history is complete today**, and the only gap is a queued patch on prikk ≤ 0.46. **Q1 is whether to ship
+**So sealed history is complete today**, and the only gap is a queued patch on prikk ≤ 0.46. **Corrected by A1 F7:**
+that holds only for a block of one patch. In a block of several, a sealed patch's path is resolved at the block's
+end. **Q1 is whether to ship
 with that gap** or wait one prikk release.
 
 ## Findings
@@ -190,10 +196,89 @@ prikk**, which is the band stikk serves honestly everywhere else. The recommenda
 
 **My recommendation is (a).** The caveat is one sentence, it is true, and it disappears twice over.
 
+**Ruled (a) by the project owner, 2026-10-13:** *"No user on prikk 0.36–0.46. No problem."*
+**A1 shows that "it disappears twice over" was too strong.** The queued case does disappear at 0.47. But a sealed
+patch can report an unresolved node at every version (A1 F7).
+
+## Amendment A1 — measured on acceptance, 2026-10-13
+
+Measured at prikk **0.46.0** and **0.51.0**, scripts and output in `.git-exclude/reports/035-patch-detail/`:
+`measure035-queued.sh`, `measure035-sealed-by-patch-id.sh`, `measure035-edit-then-delete.sh`, each with a
+`-0.46-0.51.txt` output, and `measure035.sh` re-run at 0.51.
+
+### F7 — a sealed block resolves every patch at the block's end
+
+Two patches, queued, then sealed into **one** block. Patch 1 edits `a.txt` (with a binary replacement and a mode
+change). Patch 2 renames `a.txt` → `z.txt` and edits it again.
+
+| Patch 1's `edit-text` | 0.46 | 0.51 |
+|---|---|---|
+| queued, `show <patch-id>` | unresolved | **`a.txt`**: as at that patch ✔ |
+| sealed, `show <patch-id>` | unresolved | unresolved |
+| sealed, `show <block-id>` | **`z.txt`** | **`z.txt`** |
+
+**`z.txt` is a name patch 1 never saw.** prikk's source says why: a sealed block's node-addressed operations resolve
+*"against that block's own lifecycle state"* (`prikk-store/src/show.rs`), meaning the state after **all** of its
+patches. Their own queued-paths handoff (§3, control 2) rules out exactly this for the queued form: *"The first
+patch's `edit-text` must name the path **as it was at that patch**, not the later one."* The sealed form was not
+held to the same rule.
+
+**A delete fails in the other direction.** Patch 1 edits `d.txt` and patch 2 deletes it. At 0.51, queued, patch 1
+names **`d.txt`**. Sealed into one block, `show <block-id>` reports patch 1's edit as **`unresolved_node_id`**,
+because the file is gone by the block's end. **Sealing removes a path prikk had already given.**
+
+**When a block holds one patch, the block's end is that patch's end**, and the path is right. Every two-patch
+measurement above is a block of two. **Within one patch**, an edit followed by a rename of the same file names the
+new path in **every** form. That is prikk's granularity, which is the patch, and it is consistent, so stikk takes it.
+
+**`show-report-v1` is otherwise unchanged from 0.46 to 0.51**: the same fields for all six operation kinds,
+re-measured. **0.39 was not measured here.** At 0.39 a seed can only be supplied through an environment variable,
+which the architect does not read. The handoff asks for a hand measurement through the suite's harness.
+
+**Letter 020 reports F7 to prikk**, with these scripts, and asks for each sealed patch to be resolved at its own
+patch, as the queued form already is.
+
+### Decisions, as amended
+
+- **Decision 1 — the band is stikk's JSON floor, prikk ≥ 0.39 (`reads_json`), not 0.36.** That number lives in one
+  place, and RFC 015 is why. Between 0.36 and 0.38, stikk reads no JSON from prikk at all, and the owner's ruling
+  says no user is there. **Below 0.39 the view is unavailable with stikk's own reason** (`C-T4d`): stikk reads a
+  patch's content from prikk 0.39 on. Decision 1's old wording, *"prikk does not report a patch's content"*, would
+  be **false** for 0.36–0.38, so it is withdrawn.
+  The id rule stands: **a block id for a sealed patch, a patch id for a queued one.** A sealed patch id resolves
+  nothing at any measured version (F7, row 2).
+- **Decision 3 — an unresolved path gets one sentence, true at every version:** *prikk names no path for this
+  operation*, and the node id is shown inert. **No reason is given**, because stikk cannot know which of F1's or
+  F7's reasons applies. The old sentence (*"for a patch with no block yet"*) is withdrawn: F7 reaches the same value
+  in a sealed block. **Not keying on absence** still stands, and still binds.
+- **Decision 3a (new) — in a block of more than one patch, a node-addressed operation's path is labelled as prikk's
+  resolution point:** *as at the end of this block*. The label goes on `edit-text`, `replace-binary` and
+  `change-perm` only; the other three carry their own paths in the payload (F0). The count comes from the block's
+  own `show <block-id>` report. stikk **never** corrects the name from a later rename in the same report. Renders
+  as given, labelled truthfully (`T-T4`, `ER-02`). **When prikk resolves at the patch, the label goes**, and that
+  is a design change made against a measured binary, not something stikk detects.
+- **Decision 6, narrowed — Patch detail opens from two places**: **Block detail**, which gains the block's patch
+  list, and **the Queue view**, which gains a selection. History reaches it through Block detail, which it already
+  opens. Block detail's `show <block-id>` read is **the** read: Patch detail renders one patch from that report and
+  reads nothing more. A queued patch is one `show <patch-id>` read.
+  **A patch's message is joined by id** from the block's `log` row (`BlockRow.messages`, which already pairs
+  `patch_id` with `message`) or from the queue's `QueuedPatch.message`. Never by position, and a patch with no
+  entry has no message reported, which is different from an empty one (`C-T2c′`).
+- **Decision 4 moves to Compare (`FR-033`).** prikk's block diff is a second read, and it needs a `diff-report-v1`
+  reader. Compare is next, and it builds both anyway. Patch detail stays at one read per view. The rule decision 4
+  set (only for a block of exactly one patch, never merged into the operation list, never for a queued patch) goes
+  with it unchanged.
+
 ## Delivery
 
-**One handoff**, issued on acceptance, in two commits: the seam method and reader, then the view. **Letter 016 goes
-out independently** — the design does not wait on it.
+**One handoff**, issued on acceptance, in **three** commits:
+[Handoff A](../handoffs/035-patch-detail/a-patch-detail-handoff-v1.md).
+1. **Raise the validated ceiling to 0.51** first: RFC 034 A1, and `VALIDATED_MAX_MINOR`'s own documentation. This
+   closes roadmap item 2.
+2. The seam's `show` method and its reader.
+3. The view.
+
+**Letter 016 was withdrawn by letter 017** (F2). F7 goes out as **letter 020**; the design does not wait on it.
 
 ## What this RFC does not do
 

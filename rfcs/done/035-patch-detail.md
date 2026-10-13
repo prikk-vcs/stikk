@@ -1,7 +1,7 @@
 # RFC 035 — Patch detail: what one patch changed, in prikk's own terms
 
-**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`dd90d4f` the ceiling alone … `c533947`); a
-**0.9.0 candidate**. **Amended in review (A3)**; see the end of this document.
+**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`dd90d4f` the ceiling alone … `c533947`); shipped
+in **0.9.0**. **Amended in review (A3)**; see the end of this document.
 **Accepted by the project owner 2026-10-13, Q1 ruled (a)**: *"No user on prikk 0.36–0.46. No
 problem."* **Proposed 2026-09-22** by the architect, the day RFC 034 closed, and **revised the same day after
 prikk's reply 019: F2's central claim was wrong, and the correction shrinks this RFC's only real gap** (see F2).

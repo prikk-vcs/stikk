@@ -2,6 +2,123 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## 0.9.0 — 2026-10-14
+
+**stikk now shows what each patch changed, in prikk's own terms and byte for byte.** `FR-030` has been
+unbuilt since 0.1.0: a reader could see that a block held three patches and what their messages said, but
+not what any of them did. **Patch detail** opens from Block detail — which now lists every block's patches
+— and from the Queue, and renders each operation from prikk's own `show` report: a text edit's spans, a
+created file's content and mode, a deleted file's preimage, both blobs of a binary replacement, both
+modes of a permission change, and a rename's two paths with the key that asserted it. `v` shows prikk's
+own fields instead. **Content is quoted and escaped**, so a whitespace-only edit is visible and nothing
+invisible or text-reordering reaches the terminal from it (RFC 035). The other half of this release is
+the **prikk 0.46 re-baseline**: a ref with no published history reads again on prikk 0.45 and 0.46, a
+rename declaration's fate is **prikk's own verdict** rather than stikk's inference at prikk ≥ 0.44, and a
+checkout that stopped part-way is shown (RFC 034). **The validated prikk range is now ≥ 0.28, through
+0.51.0**, and the real-binary suite drives 42 cases against real prikk binaries at 0.28.0 and 0.51.0, on
+Linux, macOS and Windows.
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position; these land in 0.9.0, grouped by
+crate in dependency order. `stikk-model`, `stikk-state` and the `stikk` launcher are unchanged.
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | the `Prikk` trait gains `show(&self, repo: &Path, id: &str) -> Result<ShowReport>`, **with no default** — every implementor must add it |
+| `stikk-prikk` | `Orientation` gains `interrupted_materialization: Option<String>` — prikk's own sentence for a checkout that stopped part-way, or `None` |
+| `stikk-prikk` | `WorktreeStatus` gains `refused_declarations: Option<u64>` — `None`, never `Some(0)`, where prikk states no declaration verdict stikk reads |
+| `stikk-prikk` | `RenameDeclaration` gains `resolution: Option<DeclarationResolution>`, `refusal: Option<String>`, `content_changed: Option<bool>` and `mode_changed: Option<bool>` — all `None` below prikk 0.44 |
+| `stikk-core` | `BlockDetailView` gains `patches: BlockPatches` — the block's own patches, listed, unreported below prikk 0.39, or a failed read |
+| `stikk-core` | `ChangesView` gains `refused_declarations: Option<u64>`, and `DeclaredRename` gains `resolution`, `refusal`, `content_changed` and `mode_changed` |
+| `stikk-core` | `OrientationView` gains `interrupted_materialization: Option<String>` |
+| `stikk-core` | `QueuedPatchView` gains `detail_message: PatchMessageState` — the message in the three states Patch detail needs, beside the line the Queue already showed |
+| `stikk-core` | `CommitPreviewOutcome` gains a variant, `WouldRefuseDeclarations(Vec<RefusedDeclaration>)` — breaking for an exhaustive `match` |
+| `stikk-tui` | `Screen` gains a variant, `PatchDetail { view, raw, source, refreshing, offset }`, and `Screen::BlockDetail` and `Screen::Queue` each gain `cursor: usize` |
+| `stikk-tui` | `Focus` gains a variant, `PatchDetail(&PatchDetailView, bool, &Cell<u16>)`; `Focus::BlockDetail` gains a second field and `Focus::Queue` a third, both the `usize` cursor |
+| `stikk-tui` | `Overlay` gains a variant, `CommitWouldRefuseDeclarations { declarations }` — breaking for an exhaustive `match` |
+
+Every struct above is constructed with struct literals by anyone scripting a `NullBackend` or rendering a
+view, and none is `#[non_exhaustive]`; a pattern that names every field without `..`, or matches a tuple
+variant, no longer compiles. **No public signature changed, and no public function, trait method, type or
+re-export was removed.** The MSRV is unchanged at 1.88.
+
+**Additive**, and not listed above:
+
+- **`stikk-prikk`:** the `escape` module (`needs_unicode_escape`, `escape_into`, `quoted`); the constant
+  `JSON_REPORTS_FROM_MINOR`; the `show-report-v1` types `ShowReport`, `ShownPatch`, `PatchOperation`,
+  `OperationContent`, `FileContent` and `BinaryBlob`; `DeclarationResolution` and its `label`; and
+  `NullBackend::with_show`, `NullBackend::with_show_refusal` and `NullBackend::show_calls`.
+- **`stikk-core`:** the `patch` module — `PatchDetailView`, `OperationView`, `OperationRow`,
+  `PatchMessageState`, `patch_detail` and `patch_detail_in_block` — plus `BlockPatches`, `BlockPatchRow`,
+  `RefusedDeclaration`, `Notation`, `glossary::notations`, `DeclaredRename::is_rename`,
+  `DeclaredRename::content_sentence`, the constants `CONTENT_DISPLAY_BYTES`, `NO_PATH_REPORTED` and
+  `AS_AT_BLOCK_END`, and the re-exports `DeclarationResolution` and `CONTENT_FROM_MINOR`.
+- **`stikk-tui`:** `PatchSource`, `App::toggle_raw`, and `text::wrap_verbatim`.
+
+### Added
+
+- **Patch detail** (`FR-030`), at prikk ≥ 0.39: one patch's operations, each under prikk's own kind word
+  with prikk's own fields — the span a text edit replaced and its replacement, **as spans**, never line
+  numbers or invented context; a created file's content and mode; a deleted file's preimage; a binary
+  replacement's two blob ids and sizes, **never its bytes**; a permission change's two modes; and a
+  rename's two paths with the AUTHOR key that asserted it. `v` toggles prikk's own fields for the
+  operation. It opens from **Block detail**, which now lists
+  every block's patches with each patch's message joined by patch id, and from the **Queue**, which gained
+  a selection; opening from a block spawns no second read (RFC 035).
+  **Limit:** Patch detail starts at prikk 0.39, stikk's JSON floor. Below that it says so in stikk's own
+  voice, rather than showing an empty patch.
+  **Limit:** in a block of more than one patch, a node-addressed path is labelled *as at the end of this
+  block*, because prikk resolves a sealed patch's path against the state after **all** of the block's
+  patches — so patch 1 can be reported under a name a later patch gave the file. stikk renders prikk's
+  value and labels it; it never corrects the name from a later rename. prikk has said it will resolve each
+  patch at that patch in a future release.
+- **Content is shown byte for byte.** Every content row is quoted, one row per source line with the line's
+  own terminator inside the quotes, and wrapped by hard-splitting rather than on whitespace, so a
+  re-indent, a tab turned into spaces, a double space, trailing whitespace and a removed trailing newline
+  are all visible — each of which used to render as *no change at all*. Inside the quotes the spelling is
+  prikk's own JSON: `\n`, `\t`, `\"`, `\\`, and `\uXXXX` for **every character that does not show as
+  itself** — control characters, bidirectional overrides ("Trojan Source"), zero-width and other
+  default-ignorable characters, and any whitespace that is not an ordinary space. Visible text stays as
+  itself. Two lines that differ in any byte never look alike. The Glossary (`?`) names the notation.
+  **Limit:** this is Patch detail's content only. **Paths, messages and ref names in every view still pass
+  bidirectional and zero-width characters through** — stikk's `inert` neutralises control characters only.
+  That gap predates this release and is not closed by it.
+- **A binary file's create or delete shows its blob id and byte count**, the same as a binary replacement,
+  and never its bytes. Where prikk reports content it does not hold, stikk says so and names the blob id
+  it could not read.
+- **A checkout that stopped part-way is shown** in Orientation, in prikk's own words, at prikk ≥ 0.43. It
+  blocks commit's preview, while Changes and History keep working (RFC 034).
+
+### Changed
+
+- **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` in the
+  published 0.8.0; `ASM-2`). A newer prikk still runs, and stikk says the range is unvalidated rather than
+  pretending to know it.
+- **A rename declaration's fate is prikk's own verdict at prikk ≥ 0.44**, not stikk's inference: prikk's
+  `resolution` — a rename, a deletion, an ignored deletion, a never-tracked destination, or a refusal —
+  each with its own sentence. Below that band stikk infers as 0.8.0 did. **A renamed file's content and
+  mode changes also come from prikk** where prikk reports them; where it reports nothing, stikk says
+  nothing, because unknown is not "unchanged" (RFC 034).
+- **A declaration prikk would refuse makes commit unavailable**, with prikk's refusal verbatim and no way
+  out in stikk's words — checked before the clean-worktree case, so prikk's verdict stays visible on a
+  worktree prikk itself calls clean. In 0.8.0 this was named but never prevented (RFC 034).
+- **prikk's no-repository and too-old-binary answers are environment errors**, matched on prikk's own
+  clauses with no format number parsed — not refusals of something the user did (RFC 034).
+- **A failed read of a block's patches costs the patch list only.** The block's own fields, and the tip's
+  replayed state files, do not start depending on a read that did not exist before this release; the
+  section says what failed, in the usual classes (RFC 035).
+
+### Fixed
+
+- **On prikk 0.45 and 0.46, a ref with no published history refused** the Changes view, History and
+  commit's preview — the state every new repository is in, measured against the published 0.8.0. stikk now
+  re-runs the command without `--ref` and **accepts the report only when it names the ref that was asked
+  for**; every other outcome returns prikk's original refusal, and an absent ref still refuses. Nothing
+  consults the current branch, so one ref's name can never leak into another ref's answer (RFC 034).
+  **prikk fixed this upstream in 0.47.0**, and stikk measured it again at 0.51, so the retry now matters
+  on those two releases alone.
+
 ## 0.8.0 — 2026-09-16
 
 **stikk stops describing a repository it has stopped watching.** 0.7.0 made stikk show what a change will do

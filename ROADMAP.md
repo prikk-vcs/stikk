@@ -253,29 +253,42 @@ a fabricated worktree entry was fixed.
   outcome while prikk reports the commit would be refused**
   ([RFC 032](rfcs/done/032-what-a-commit-will-author.md)).
 
-## Next — carried into 0.9.0, in order
+## Shipped — stikk shows what each patch changed (0.9.0, breaking)
 
-1. **The prikk 0.46 re-baseline, and a repair the released line needed — landed on `main`**
-   ([RFC 034](rfcs/done/034-prikk-0-46-rebaseline.md), Q1 ruled (b), superseding RFC 033; `ad95152`, `8a23045`).
-   prikk 0.44.0, 0.45.0 and 0.46.0 landed 2026-09-16..22, and **0.45.0 made an unpublished ref refuse when stikk
-   names it** — so on a repository with nothing sealed yet, the Changes view, History and commit's preview all
-   refused, measured against the published 0.8.0. stikk now re-reads without `--ref` and **accepts the report only
-   when it names the ref that was asked for**; the ceiling is 46; a declaration's fate comes from prikk's own
-   `resolution` at ≥ 0.44, a refused one makes commit unavailable, and a checkout that stopped part-way is shown.
-   Letter 015 asks prikk to restore the unpublished-ref read, which would retire the retry. Ships in 0.9.0.
-   **Restored upstream by 0.51** (measured 2026-10-13): `worktree-status`, `log` and `tree` all read a never-sealed
-   current branch by name. The retry now fires only on prikk 0.45 and 0.46, and it can go whenever the floor passes
-   them.
-2. **The validated ceiling is 0.51 — landed on `main`** (`dd90d4f`, raised first and alone, RFC 034 A1): 37 of 37 at
-   0.28.0 and 0.51.0 at that commit, and three stale ceiling claims swept. Ships in 0.9.0.
-3. **Patch detail** (`FR-030`), **unbuilt since 0.1.0 — landed on `main`**
-   ([RFC 035](rfcs/done/035-patch-detail.md), `d588409`..`c533947`). One patch's operations come from prikk's `show`
-   report, opened from Block detail (every block now lists its patches) and from the Queue (which gained a
-   selection), with `v` for prikk's own fields. **Content is byte-faithful and escaped from one table**, so a
-   whitespace-only edit is visible and Trojan Source is not. In a block of several patches, a path is labelled *as
-   at the end of this block* until prikk 0.52.0 resolves each patch at that patch (A2). Suite 42 of 42 on three
-   platforms. Ships in 0.9.0. **Next: Compare** (`FR-033`), which shares the `show` reader, reads prikk's `diff`, and
-   takes RFC 035's decision 4 (the block-diff section).
+- **Patch detail** (`FR-030`), unbuilt since 0.1.0: one patch's operations, each under prikk's own kind word with
+  prikk's own fields — a text edit's spans **as spans**, a create's content and mode, a delete's preimage, a binary
+  replacement's two blobs and sizes, a permission change's two modes, and a rename's two paths with the key that
+  asserted it — opened from Block detail, which now lists every block's patches, or from the Queue, which gained a
+  selection; `v` shows prikk's own fields. **Content is byte-faithful**: quoted, one row per source line, with
+  everything that does not show as itself escaped from one table, so a whitespace-only edit is visible and a
+  bidirectional override cannot reorder a row. In a block of several patches a node-addressed path is labelled *as
+  at the end of this block*, because prikk resolves it there
+  ([RFC 035](rfcs/done/035-patch-detail.md)).
+- **The prikk 0.46 re-baseline, and the repair the published line needed**: a ref with no published history reads
+  again on prikk 0.45 and 0.46 — stikk re-runs without `--ref` and accepts the answer only when it names the ref
+  asked for; a declaration's fate is **prikk's own `resolution`** at prikk ≥ 0.44, one prikk would refuse makes
+  commit unavailable, a checkout that stopped part-way is shown, and prikk's no-repository and too-old-binary
+  answers are environment errors
+  ([RFC 034](rfcs/done/034-prikk-0-46-rebaseline.md)).
+- **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
+  first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
+
+## Next — carried into 0.10.0, in order
+
+1. **Compare** (`FR-033`), the one named view still unbuilt. It shares RFC 035's `show` reader and reads prikk's
+   `diff`, and it takes **RFC 035's decision 4**: prikk's block diff is a separate, labelled section — *"what this
+   block changed, from `prikk diff`"* — shown only where it is honest, which is a block holding exactly one patch
+   in Patch detail and the block itself in Block detail where it holds more. **Never merged into the operation
+   list**, and never for a queued patch. prikk has refused arbitrary-point comparison (RFC 021 F3), so Compare is
+   what prikk can answer, not what Git would.
+2. **`inert` escapes only `Cc`**: paths, messages and ref names in every view still pass bidi overrides and
+   zero-width characters through to the terminal (`T-T2`). Patch detail's content does not (RFC 035 A3), and its
+   public predicate, `stikk_prikk::escape::needs_unicode_escape`, is what this increment reuses. **Do not write a
+   second table.**
+3. **The block-end label goes, or is banded below 0.52** (RFC 035 A2) — **waiting on prikk 0.52.0's release,
+   which is not published.** In a block of more than one patch, a node-addressed path is labelled *as at the end
+   of this block* because prikk 0.51 resolves it there; prikk has said it will resolve each patch at that patch.
+   When stikk validates that version, the label goes above it and is banded below.
 4. **Offer an unpublished current branch in the ref picker** (prikk ≥ 0.47), a small increment. prikk ruled
    `branch list --format json` gains a nullable top-level `unpublished_current_branch` — `branches[]` and
    `received[]` deliberately unchanged, because membership there is stikk's test for *published* and an unmarked row
@@ -306,13 +319,8 @@ a fabricated worktree entry was fixed.
    over every shipped crate would let the sentence say *enforced by test* without a qualifier.
 10. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
-11. **`inert` escapes only `Cc`**: paths, messages and ref names in every view still pass bidi overrides and
-   zero-width characters through to the terminal (`T-T2`). Patch detail's content does not (RFC 035 A3), and its
-   public predicate, `stikk_prikk::escape::needs_unicode_escape`, is what this increment reuses. **Do not write a
-   second table.**
-12. **Double spaces in paths collapse** wherever a path is word-wrapped through `wrap_indented` (RFC 035 review v1
+11. **Double spaces in paths collapse** wherever a path is word-wrapped through `wrap_indented` (RFC 035 review v1
    §2.1, found while fixing content). A path is not prose; it wants `wrap_verbatim`.
-
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 
 - **Verify report browser and doctor/recovery** (`FR-100/101/102`), with the three-valued
@@ -363,12 +371,12 @@ issues for the prikk project (requirement `UD-01…UD-05`):
 | `UD-04` | the CLI panics on EPIPE | the seam drains output fully (already implemented) |
 | `UD-08` | **retired at prikk 0.29** — `.prikkignore` excludes matching paths from `commit`'s walk and `worktree-status`'s untracked scan | prikk filters ignored paths before reporting them; stikk keeps its display-only untracked filter for what remains, and no longer claims files cannot be excluded |
 | `UD-05` | **revised at prikk 0.28**: `0`/`1`/`2` (2 = usage error); exit 1 still covers refusal, dirty worktree and integrity failure alike | the seam classifies exit 1 by message + context; exit 2 is a stikk argument bug, surfaced as `stikk-internal` (RFC 009) |
-| `UD-09` | **narrowed at prikk 0.32** (a messaged patch's *id* became enumerable via `log`), and its **content half retired at 0.36** — `prikk show <block-id\|patch-id> [--format json]` renders a patch's operations and content (RFC 021 F1; `FR-034`) | History shows block lineage + a block's state file list; Block detail lists a messaged patch's id/message; Patch detail as a rendered diff (3b) still waits; the gap is named where a user would open a patch |
+| `UD-09` | **narrowed at prikk 0.32** (a messaged patch's *id* became enumerable via `log`), and its **content half retired at 0.36** — `prikk show <block-id\|patch-id> [--format json]` renders a patch's operations and content (RFC 021 F1; `FR-034`) | History shows block lineage + a block's state file list; Block detail lists every block's patches; **Patch detail is built** (0.9.0, RFC 035), rendering each operation from `show-report-v1` at prikk ≥ 0.39 |
 
 ## Releases and versioning
 
 stikk versions independently of prikk and declares, per release, the prikk range it was validated
-against — currently **`>= 0.28`, validated through `0.42.0`** (`NFR-R03`; 0.27.x dropped by owner
+against — currently **`>= 0.28`, validated through `0.51.0`** (`NFR-R03`; 0.27.x dropped by owner
 ruling 2026-09-04, RFC 009). A prikk newer than the validated ceiling still runs, and stikk says the
 range is unvalidated rather than pretending to know it. Before a 1.0, the repository format and command surface of
 prikk are still moving, so stikk stays pre-1.0 too and treats its own APIs as unstable. Changes are

@@ -20,7 +20,7 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.8.x keeps the screen true to the repository.** The security-critical
+**0.9.x shows what each patch changed.** The security-critical
 layers (shared model, prikk seam, state layer), the interactive **TUI** (shell + Orientation, built on
 `ratatui` — RFC 001), **History** + Block detail (RFC 006), the refusal-explanation and glossary surfaces
 (RFC 007), **worktree Changes** (RFC 008) and the **Queue view** (RFC 028) are all implemented and
@@ -37,12 +37,17 @@ confirmation stale at once; `r` refreshes in place, and every refresh re-reads t
 shows (RFC 031). **The Changes view and commit's confirmation say what a commit will author**: a
 `prikk mv` whose two halves prikk lists is shown as one declared rename and counted, a declaration prikk
 will not author as a rename is named instead, and a ref with no published history is named as one rather
-than shown against a baseline it does not have (RFC 032). Piped/CI invocation keeps the one-shot
-orientation. stikk targets
-prikk **≥ 0.28**, validated through **0.51.0**, and on prikk 0.42 opens on prikk's current branch (RFC
-029). **Patch detail** (`FR-030`) is built at prikk ≥ 0.39 (RFC 035): Block detail lists a block's
-patches and the Queue lists the queued ones, and either opens one patch's operations — a text edit's
-spans, a create's content and mode, a delete's preimage, a binary replacement's blob ids and sizes, a
-permission change's two modes, and a rename with the key that asserted it — with `v` showing prikk's
-own fields. **Compare** (`FR-033`) is not built. Merge, sync, tag create, and branch
-create/close remain unbuilt; a **Trust & Keys** view is a named gap too.
+than shown against a baseline it does not have (RFC 032). **A declaration's fate is prikk's own
+verdict at prikk ≥ 0.44** rather than stikk's inference, one prikk would refuse makes commit
+unavailable, a checkout that stopped part-way is shown, and a ref with no published history reads
+again on prikk 0.45 and 0.46, where prikk refused it by name (RFC 034). Piped/CI invocation keeps the
+one-shot orientation. stikk targets prikk **≥ 0.28**, validated through **0.51.0**, and on prikk 0.42
+opens on prikk's current branch (RFC 029). **Patch detail** (`FR-030`) is built at prikk ≥ 0.39
+(RFC 035): Block detail lists a block's patches and the Queue lists the queued ones, and either opens
+one patch's operations — a text edit's spans, a create's content and mode, a delete's preimage, a
+binary replacement's blob ids and sizes, a permission change's two modes, and a rename with the key
+that asserted it — with `v` showing prikk's own fields, and content shown byte for byte: quoted, with
+everything that does not show as itself escaped. **Outside Patch detail, a path, a message or a ref
+name is not escaped**: `inert` neutralises control characters only. **Compare** (`FR-033`) is not
+built. Merge, sync, tag create, and branch create/close remain unbuilt; a **Trust & Keys** view is a
+named gap too.

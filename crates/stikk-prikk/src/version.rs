@@ -6,8 +6,9 @@
 //! own it cost nothing — the suite passed 37 of 37 at 0.28.0 and 0.51.0 with only this constant moved.
 //! What 0.51 changes for stikk is elsewhere and is read deliberately: `show <block-id>` resolves each
 //! sealed patch's node-addressed path **at the block's end**, not at that patch (RFC 035 A1 F7), so a
-//! two-patch block can name a path the first patch never saw; prikk confirmed it and fixes it in
-//! 0.52.0 (A2), which is a re-baseline's decision, not this one's. Across 0.47–0.51 the queued form
+//! two-patch block can name a path the first patch never saw; prikk confirmed it and has said it will
+//! fix it in 0.52.0 (A2) — **not a published release**, so nothing here reads as though it were, and
+//! the label is a re-baseline's decision, not this one's. Across 0.47–0.51 the queued form
 //! gained the paths it used to withhold (0.47, `### Changed`: a `path` appears where one was absent),
 //! which is why no reader here may key on a field's absence. The previous ceiling was `0.46.0`
 //! (**RFC 034**, the 0.46 re-baseline:

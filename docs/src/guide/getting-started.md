@@ -44,6 +44,10 @@ gives you — inside a shell with a status bar and a Help overlay. Run it inside
 argument and stikk discovers the repository root by walking upward for a `.prikk` directory, the same
 way prikk does.
 
+**A checkout that stopped part-way** — prikk's own term for a materialization it did not finish — is
+named in Orientation in prikk's words, on prikk ≥ 0.43. While it stands, commit's preview is blocked;
+History and Changes keep working.
+
 **Where stikk opens.** On prikk ≥ 0.42, stikk opens focused on prikk's current branch, and when you
 choose another ref the status bar shows prikk's default beside it. Below 0.42, or when prikk reports its
 current branch unresolved, stikk opens on `heads/main` if that is published, and otherwise with no ref
@@ -55,8 +59,9 @@ Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; 
 the patches waiting to be sealed; `C` commits worktree changes and `S` seals the queue, each after a
 preview and a confirmation; `:` opens the command palette; `R` shows the session's recent refusals; `o` lists background operations still in flight or
 recently finished (a listing only — there is no cancel action); `?` opens the glossary and full key
-reference; `r` refreshes Orientation and the screen you are on — History, the Queue, Changes, or the tip's Block
-detail — **in place**, each view staying visible while its read runs, and **re-reading the ref that screen
+reference; `v` toggles Patch detail's raw view of prikk's own fields; `r` refreshes Orientation and the
+screen you are on — History, the Queue, Changes, the tip's Block detail, or a Patch detail opened from
+the Queue — **in place**, each view staying visible while its read runs, and **re-reading the ref that screen
 shows**, which need not be the ref you have focused; `Esc`/`q` steps back, and quits at the root.
 
 **When another terminal changes the repository.** stikk checks for a commit, seal or branch switch made
@@ -68,9 +73,13 @@ operations. **Its limit:** editing a file in your worktree is not a repository c
 this way — `r`, opening Changes, or pressing Enter on a confirmation catches that.
 
 **Two things the Changes view says that prikk's own report does not.** A file moved with `prikk mv` is
-listed by prikk as one missing path and one untracked path; where prikk lists both halves, stikk marks
-them as the two halves of one **declared rename** and counts `renames N`, because that is the single
-operation a commit will author. And when the ref has **no published history** — nothing sealed on it yet —
+listed by prikk as one missing path and one untracked path; stikk marks them as the two halves of one
+**declared rename** and counts `renames N`, because that is the single operation a commit will author.
+**On prikk ≥ 0.44 that verdict is prikk's own** — prikk states for each declaration whether it will be
+authored as a rename, as a deletion, or refused, and stikk shows what prikk said rather than inferring
+it from which halves are listed; below 0.44 stikk still infers. **A declaration prikk says it would
+refuse makes commit unavailable**, with prikk's refusal in prikk's words, even on a worktree prikk
+otherwise calls clean. And when the ref has **no published history** — nothing sealed on it yet —
 stikk says so in place of "against baseline", since there is no baseline to compare against: a commit
 would be the ref's first, or, once patches are queued for it, those queued patches are its baseline.
 

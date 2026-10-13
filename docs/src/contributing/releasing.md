@@ -84,17 +84,21 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.8.x release is (and is not)
+## What a v0.9.x release is (and is not)
 
-v0.8.x reads orientation, history, block detail, worktree changes, the Queue view, and the
+v0.9.x reads orientation, history, block detail, worktree changes, the Queue view, **Patch detail** —
+what one patch changed, from prikk's own `show` report, with content shown byte for byte — and the
 refusal/glossary surfaces, and performs two mutations — **commit** (author a worktree capture) and **seal**
 (freeze the queue into signed history) — both preview-first with tiered confirmation, naming the key that
 will sign. A confirmed commit authors only the worktree its preview showed, and the seal confirmation
 names the patches it freezes. It also notices a change made outside it and refreshes what is on screen,
-and its commit preview shows a declared rename as a rename and names a ref with no published history.
-Signing readiness is read from prikk itself on prikk ≥ 0.41. Merge, sync, tag create, and branch
-create/close remain unbuilt: the `Prikk` seam has no method for any of them. It drives the external `prikk` binary
-at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.51.0** — so the release
+and its commit preview shows a declared rename as prikk's own verdict resolves it, makes commit
+unavailable where prikk would refuse a declaration, and names a ref with no published history.
+Signing readiness is read from prikk itself on prikk ≥ 0.41. **Compare**, merge, sync, tag create, and
+branch create/close remain unbuilt, and so is a **Trust & Keys** view: the `Prikk` seam has thirteen
+methods — `handshake`, `readiness`, `orientation`, `history`, `block_state`, `refs`, `tags`,
+`worktree_status`, `queue`, `show`, `change_token`, `commit` and `seal` — and none for any of them.
+It drives the external `prikk` binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.51.0** — so the release
 notes must state which prikk version it was validated against and how to install it — a
 `cargo install stikk` with no `prikk` on `PATH` will open and then explain that prikk is missing, by
 design.

@@ -266,18 +266,16 @@ a fabricated worktree entry was fixed.
    **Restored upstream by 0.51** (measured 2026-10-13): `worktree-status`, `log` and `tree` all read a never-sealed
    current branch by name. The retry now fires only on prikk 0.45 and 0.46, and it can go whenever the floor passes
    them.
-2. **Raise the validated ceiling to 0.51** — **handed off as the first commit of RFC 035 Handoff A** (RFC 034 A1: the
-   raise comes first). Already measured (2026-10-13, prikk letter 021): the suite passes **37 of 37 at 0.28.0 and
-   0.51.0** with only the constant raised. **Two corrections came out of the check**: stikk *does* run
-   `checkout --patch-plan` (Block detail's tip state), which RFC 033 and RFC 034 both denied; and that call refuses
-   for an unpublished ref on prikk ≥ 0.45 — unreachable in the UI. Evidence: `.git-exclude/reports/036-prikk-0-51-recheck/`.
-3. **Patch detail** (`FR-030`) — [RFC 035](rfcs/accepted/035-patch-detail.md), **accepted 2026-10-13, Q1 (a)**, handed
-   off ([Handoff A](rfcs/handoffs/035-patch-detail/a-patch-detail-handoff-v1.md)). `show --format json` carries every
-   operation's content and is unchanged from 0.46 to 0.51; opened from Block detail and the Queue, at prikk ≥ 0.39.
-   **Amendment A1, measured on acceptance:** a sealed block resolves every patch's path at the *block's* end, so in a
-   block of several patches an earlier patch can carry a later patch's name, or lose its path to a later delete. stikk
-   labels it rather than correcting it; our letter 020 asks prikk to resolve at the patch. Then **Compare** (`FR-033`),
-   which shares the `show` reader, reads prikk 0.46's `diff`, and takes RFC 035's decision 4 (the block-diff section).
+2. **The validated ceiling is 0.51 — landed on `main`** (`dd90d4f`, raised first and alone, RFC 034 A1): 37 of 37 at
+   0.28.0 and 0.51.0 at that commit, and three stale ceiling claims swept. Ships in 0.9.0.
+3. **Patch detail** (`FR-030`), **unbuilt since 0.1.0 — landed on `main`**
+   ([RFC 035](rfcs/done/035-patch-detail.md), `d588409`..`c533947`). One patch's operations come from prikk's `show`
+   report, opened from Block detail (every block now lists its patches) and from the Queue (which gained a
+   selection), with `v` for prikk's own fields. **Content is byte-faithful and escaped from one table**, so a
+   whitespace-only edit is visible and Trojan Source is not. In a block of several patches, a path is labelled *as
+   at the end of this block* until prikk 0.52.0 resolves each patch at that patch (A2). Suite 42 of 42 on three
+   platforms. Ships in 0.9.0. **Next: Compare** (`FR-033`), which shares the `show` reader, reads prikk's `diff`, and
+   takes RFC 035's decision 4 (the block-diff section).
 4. **Offer an unpublished current branch in the ref picker** (prikk ≥ 0.47), a small increment. prikk ruled
    `branch list --format json` gains a nullable top-level `unpublished_current_branch` — `branches[]` and
    `received[]` deliberately unchanged, because membership there is stikk's test for *published* and an unmarked row
@@ -308,6 +306,12 @@ a fabricated worktree entry was fixed.
    over every shipped crate would let the sentence say *enforced by test* without a qualifier.
 10. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
+11. **`inert` escapes only `Cc`**: paths, messages and ref names in every view still pass bidi overrides and
+   zero-width characters through to the terminal (`T-T2`). Patch detail's content does not (RFC 035 A3), and its
+   public predicate, `stikk_prikk::escape::needs_unicode_escape`, is what this increment reuses. **Do not write a
+   second table.**
+12. **Double spaces in paths collapse** wherever a path is word-wrapped through `wrap_indented` (RFC 035 review v1
+   §2.1, found while fixing content). A path is not prose; it wants `wrap_verbatim`.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

@@ -1,6 +1,8 @@
 # RFC 035 — Patch detail: what one patch changed, in prikk's own terms
 
-**Status.** **Accepted by the project owner 2026-10-13, Q1 ruled (a)**: *"No user on prikk 0.36–0.46. No
+**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`dd90d4f` the ceiling alone … `c533947`); a
+**0.9.0 candidate**. **Amended in review (A3)**; see the end of this document.
+**Accepted by the project owner 2026-10-13, Q1 ruled (a)**: *"No user on prikk 0.36–0.46. No
 problem."* **Proposed 2026-09-22** by the architect, the day RFC 034 closed, and **revised the same day after
 prikk's reply 019: F2's central claim was wrong, and the correction shrinks this RFC's only real gap** (see F2).
 **Amended on acceptance (A1)**, from measurements taken at prikk 0.46.0 and 0.51.0 before the handoff relied on
@@ -300,3 +302,53 @@ which removes the label altogether. That choice is made against the released bin
 - **No worktree reads.** Everything here comes from prikk's report of a patch (`CON-1`).
 - **No line-diff rendering of a span edit**, at any prikk version (RFC 021 F2).
 - **No prose `show` parsing**, ever, for the reason in F2.
+
+## A3 — made part of the design in review, 2026-10-14
+
+Three review rounds (`.git-exclude/reviewed/035-patch-detail/review-result-v1.md`–`v3.md`) settled four things that
+this RFC had not said. They now bind every later view that shows repository content.
+
+- **Content is rendered byte-faithfully.** Spans, created content and preimages are shown **quoted, one row per
+  source line, with the line's own terminator inside the quotes**, and wrapped by hard-splitting at the width
+  without collapsing anything. Before this, `wrap_indented`'s `split_whitespace` made a re-indent, a tab turned into
+  spaces, a double space and a removed trailing newline all render as *no change*. That is `T-T4` in the
+  commonest kind of edit there is.
+- **Everything that does not show as itself is escaped**, from **one table**, `stikk-prikk/src/escape.rs`, which both
+  the rendered view and the raw view (`v`) use. The table covers `Cc`, `White_Space` except U+0020, and
+  `Default_Ignorable_Code_Point` together with `Cf`. Characters above U+FFFF are escaped as surrogate pairs, the
+  spelling prikk's own JSON uses. This closes Trojan Source (bidi overrides) and invisible look-alikes in Patch
+  detail. **Two edits that differ in any byte never render identically**, and a test checks every pair from a set
+  of sixteen look-alike spans. The Glossary names the notation. A ZWJ emoji sequence therefore renders as its parts
+  in a content row; that is accepted as the price of the invariant.
+- **prikk's file content has three kinds:** `text`, `binary {blob_id, size}`, and `unavailable {blob_id}`. The last
+  is by prikk's design (DC-65: a text node's pre-edit blob is absent on purpose). Binary content renders as the
+  blob id and byte count, never as bytes. A kind stikk has never seen is named as unrendered, with `v` for prikk's
+  fields.
+- **A failed `show` costs Block detail its patch list, not the block.** The failure is classified as usual (`ER-02`).
+- **The JSON floor is one constant**, `stikk_prikk::JSON_REPORTS_FROM_MINOR`, read by the gate, core and the suite.
+  A second literal `39` reached review, which was RFC 015's defect, prevented a second time.
+
+## Delivered
+
+**One handoff, six commits, green on `main` at `c533947`** (CI and Docs on `main`; the real-binary suite with
+`full_platform_matrix=true` and the supply-chain gate on the prep branch at the same SHA).
+
+- **`f295201`**: RFC 035's Status line. **The dev team made this fix** after `main` had been red on four of the
+  architect's commits: the architect's gate run had compiled against a scratch copy of the repository.
+- **`dd90d4f`**: the ceiling raised to **51**, alone and first, with 37 of 37 tests passing at 0.28.0 and 0.51.0. The
+  sweep found three stale ceiling claims, two of them still at 0.42.0.
+- **`d588409`**: `Prikk::show` and the `show-report-v1` reader. It is strict where an unmeasured band needs it and
+  lenient for an unknown operation kind.
+- **`5b3ce18`, `2874657`, `c533947`**: the view, which shows Block detail's patch list for every block, the Queue's
+  selection, Patch detail, the `v` raw view, the block-end label, and A3.
+- **The suite: 42 of 42 at 0.28.0 and 0.51.0** on ubuntu, macos and windows. Workspace tests: 281, 257, 204, 53, 27,
+  6, 3 and 1, with 42 ignored.
+
+## Carried forward
+
+- **The block-end label** goes, or is banded below 0.52, when stikk validates prikk 0.52.0 (A2).
+- **`inert`'s `Cc`-only rule.** Paths, messages and ref names in every view still pass bidi and zero-width
+  characters through. The `escape` predicate is public so that increment reuses it.
+- **Double spaces in paths collapse** through `wrap_indented` in every view that wraps a path.
+- **Decision 4, prikk's block diff, belongs to Compare (`FR-033`)**, which is next.
+- **Block detail's state files still come from prose `checkout --patch-plan`**: roadmap item 6, moving to `tree`.

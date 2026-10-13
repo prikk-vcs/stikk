@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 035 | [Patch detail](./accepted/035-patch-detail.md) | `FR-030`, unbuilt since 0.1.0: one patch's operations rendered from `show --format json`, including a text edit's spans, a delete's preimage, a create's content, both modes and both blob ids. An unresolved node id is named as one. Opened from Block detail and the Queue, at prikk ≥ 0.39. **Accepted 2026-10-13, Q1 (a); A1**: a sealed block resolves every patch at the block's end, so a path in a block of several is labelled as such (letter 020). Decision 4 moves to Compare | [A: Patch detail, and the 0.51 ceiling](./handoffs/035-patch-detail/a-patch-detail-handoff-v1.md) |
+_None: RFC 035 delivered and closed 2026-10-14._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 035 | [Patch detail](./done/035-patch-detail.md) | 0.9.0 candidate (on `main`) | the block-end label goes or is banded when stikk validates prikk 0.52.0 (A2); `inert`'s `Cc`-only rule in every other view; double spaces in paths collapse; prikk's block diff (decision 4) moves to Compare; Block detail's state files still come from prose `checkout --patch-plan` | [A: Patch detail, and the 0.51 ceiling](./handoffs/035-patch-detail/a-patch-detail-handoff-v1.md) |
 | 034 | [The prikk 0.46 re-baseline](./done/034-prikk-0-46-rebaseline.md) | 0.9.0 candidate (on `main`) | the `--ref` retry lives only while prikk ≥ 0.45 refuses a named unpublished ref (letter 015); an unpublished ref that is not prikk's current branch is unreadable there; prikk 0.43 is not a band stikk builds declaration behaviour on; Orientation stays prose-parsed; no gloss for 0.42's interrupted-materialization refusal | [A: the repair](./handoffs/034-prikk-0-46-rebaseline/a-the-repair-handoff-v1.md) · [B: the re-baseline](./handoffs/034-prikk-0-46-rebaseline/b-the-rebaseline-handoff-v1.md) |
 | 032 | [What a commit will author](./done/032-what-a-commit-will-author.md) | **0.8.0** | a pair prikk refuses is still classified as a pair (prevention stays RFC 027's, on prikk's verdict); prikk does not report whether a renamed file's content changed; F7 stays a notice; the three-read race; the whole declaration analysis is inference until the prikk 0.43 re-baseline reports each declaration's `resolution` | [What a commit will author](./handoffs/032-what-a-commit-will-author/what-a-commit-will-author-handoff-v1.md) |
 | 027 | [What commit would refuse](./done/027-what-commit-would-refuse.md) | **0.7.0** | `unsupported-path` prevention arrives with prikk's RFC 147 §3f (reply 011), verified at the next re-baseline; the would-refuse overlay's scrolling and the long-path row budget; the prose path's parse-failure attribution; an unknown ref reported against an empty baseline | [A: unsupported-path entries](./handoffs/027-what-commit-would-refuse/a-unsupported-path-entries-handoff-v1.md) · [B: verdict and prevention](./handoffs/027-what-commit-would-refuse/b-verdict-and-prevention-handoff-v1.md) |

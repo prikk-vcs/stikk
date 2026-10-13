@@ -39,7 +39,7 @@ shows (RFC 031). **The Changes view and commit's confirmation say what a commit 
 will not author as a rename is named instead, and a ref with no published history is named as one rather
 than shown against a baseline it does not have (RFC 032). Piped/CI invocation keeps the one-shot
 orientation. stikk targets
-prikk **≥ 0.28**, validated through **0.42.0**, and on prikk 0.42 opens on prikk's current branch (RFC
+prikk **≥ 0.28**, validated through **0.51.0**, and on prikk 0.42 opens on prikk's current branch (RFC
 029). **Patch detail** (`FR-030`) and **Compare** (`FR-033`) are not built: prikk ≥ 0.36 can render a
 patch's content with `show`, so what waits is stikk's own work. Merge, sync, tag create, and branch
 create/close remain unbuilt; a **Trust & Keys** view is a named gap too.

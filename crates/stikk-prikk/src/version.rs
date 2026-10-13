@@ -1,7 +1,16 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.46.0` (**RFC 034**, the 0.46 re-baseline:
+//! stikk targets prikk `>= 0.28`, validated through `0.51.0` (**RFC 035**, the 0.51 re-baseline, which
+//! exists to build Patch detail against prikk's `show --format json`: the raise came first, and on its
+//! own it cost nothing — the suite passed 37 of 37 at 0.28.0 and 0.51.0 with only this constant moved.
+//! What 0.51 changes for stikk is elsewhere and is read deliberately: `show <block-id>` resolves each
+//! sealed patch's node-addressed path **at the block's end**, not at that patch (RFC 035 A1 F7), so a
+//! two-patch block can name a path the first patch never saw; prikk confirmed it and fixes it in
+//! 0.52.0 (A2), which is a re-baseline's decision, not this one's. Across 0.47–0.51 the queued form
+//! gained the paths it used to withhold (0.47, `### Changed`: a `path` appears where one was absent),
+//! which is why no reader here may key on a field's absence. The previous ceiling was `0.46.0`
+//! (**RFC 034**, the 0.46 re-baseline:
 //! prikk 0.45.0 made `worktree-status --ref R` and `log --ref R` refuse for a ref with no published
 //! history — every ref until a repository's first seal — and `cli_backend` repairs that by retrying
 //! without `--ref` and verifying the report names the ref asked for. **This raise came first**, as the
@@ -14,7 +23,7 @@
 //! seven RFC 027 captures (`WORKTREE_UNSUPPORTED_*`, `WORKTREE_SYMLINK_*`, `WORKTREE_QUEUED_JSON_0_41`),
 //! which record 0.28 and 0.41 by design. The one prose surface stikk reads that 0.42 changed is
 //! `status`, which gained a `current branch:` line — read into `Orientation` since RFC 030. See
-//! `cli_backend/parse/tests.rs` for what each version changed).
+//! `cli_backend/parse/tests.rs` for what each version changed).)
 //!
 //! The previous ceiling was `0.41.0` (**RFC 026**, the 0.41 re-baseline — raised from 0.38 across three
 //! releases, 0.39 through 0.41, one of which changed how prikk is configured at all: 0.40 moved signing
@@ -52,7 +61,7 @@ const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
 /// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, to 38 by RFC 021, to 41 by RFC 026,
-/// to 42 by RFC 029, then to **46 by RFC 034** — each only
+/// to 42 by RFC 029, to 46 by RFC 034, then to **51 by RFC 035** — each only
 /// after empirical re-verification against a real released binary, never a changelog). RFC 017's
 /// re-verification found no output-shape drift; it found the classifier's own provenance gap instead
 /// (`classify.rs`'s module doc). A prikk above this still runs; [`Version::is_validated`] tells the
@@ -63,8 +72,11 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// report what the raise cost; re-capturing fixtures first would leave it nothing to find. RFC 021
 /// established that order across five releases at once; **RFC 026 had to put one step before it** —
 /// the suite's fixture builder configures prikk through the environment, and prikk 0.40 stopped
-/// reading it, so the harness had to work before the raise could be measured at all.
-const VALIDATED_MAX_MINOR: u32 = 46;
+/// reading it, so the harness had to work before the raise could be measured at all. RFC 035 is the
+/// first raise made **to build a view on the new version's report** rather than to absorb drift, and
+/// the order held for the same reason: the suite would not have run `show` at 0.51 at all until this
+/// constant named it.
+const VALIDATED_MAX_MINOR: u32 = 51;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -35,6 +35,8 @@ pub enum Action {
     OpenQueue,
     /// Toggle the display-only untracked filter (Changes view).
     ToggleUntracked,
+    /// Toggle Patch detail's raw view — prikk's own fields (RFC 035 decision 5).
+    ToggleRaw,
     /// Begin the commit flow (`FL-05` step 1; RFC 014).
     Commit,
     /// Begin the seal flow (`FL-06` step 1; RFC 016).
@@ -86,6 +88,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('w') => Action::OpenChanges,
         KeyCode::Char('Q') => Action::OpenQueue,
         KeyCode::Char('u') => Action::ToggleUntracked,
+        KeyCode::Char('v') => Action::ToggleRaw,
         KeyCode::Char('C') => Action::Commit,
         KeyCode::Char('S') => Action::Seal,
         KeyCode::Char(' ') => Action::ToggleSealConsent,

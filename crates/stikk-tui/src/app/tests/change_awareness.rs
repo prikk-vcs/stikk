@@ -4,6 +4,7 @@
 
 use std::time::{Duration, Instant};
 
+use stikk_core::BlockPatches;
 use stikk_model::{ChangeToken, StaleCause};
 
 use super::*;
@@ -622,11 +623,13 @@ fn a_failed_changes_refresh_keeps_the_view_and_surfaces_the_error() {
 
 fn block_detail_screen(is_tip: bool) -> Screen {
     Screen::BlockDetail {
+        cursor: 0,
         reff: "heads/main".into(),
         view: BlockDetailView {
             row: block("bbbb", 2),
             is_tip,
             state: None,
+            patches: BlockPatches::Unreported(30),
         },
         refreshing: None,
     }
@@ -648,7 +651,7 @@ fn r_refreshes_the_tips_block_detail_in_place() {
         }
         other => panic!("expected a BlockState request, got {other:?}"),
     }
-    assert!(matches!(app.focus(), Focus::BlockDetail(view) if view.row.block_id == "bbbb"));
+    assert!(matches!(app.focus(), Focus::BlockDetail(view, _) if view.row.block_id == "bbbb"));
 
     app.apply(Response {
         seq: requests[1].seq,
@@ -658,6 +661,7 @@ fn r_refreshes_the_tips_block_detail_in_place() {
                 row: block("cccc", 3),
                 is_tip: true,
                 state: None,
+                patches: BlockPatches::Unreported(30),
             }),
         },
     });
@@ -770,6 +774,7 @@ fn tip_detail(reff: &str, id: &str, seq: u64) -> ResponseKind {
             row: block(id, seq),
             is_tip: true,
             state: None,
+            patches: BlockPatches::Unreported(30),
         }),
     }
 }
@@ -791,7 +796,7 @@ fn main_tip_detail_on_top(app: &mut App, rx: &mpsc::Receiver<Request>) {
         seq: block_req.seq,
         kind: tip_detail("heads/main", "bbbb", 2),
     });
-    assert!(matches!(app.focus(), Focus::BlockDetail(_)));
+    assert!(matches!(app.focus(), Focus::BlockDetail(_, _)));
 }
 
 /// `b`, pick `heads/dev`: its History is pushed above whatever is on top, and focus moves to it.
@@ -819,7 +824,7 @@ fn a_tip_block_detail_refresh_rereads_its_own_ref_after_focus_moved() {
     main_tip_detail_on_top(&mut app, &rx); // 1
     pick_dev_above(&mut app, &rx); // 2
     app.back(); // 3: heads/main's tip detail is back on top, focus still heads/dev
-    assert!(matches!(app.focus(), Focus::BlockDetail(view) if view.row.block_id == "bbbb"));
+    assert!(matches!(app.focus(), Focus::BlockDetail(view, _) if view.row.block_id == "bbbb"));
     assert_eq!(app.focused_ref(), Some("heads/dev"));
 
     app.reload(); // 4
@@ -842,7 +847,12 @@ fn a_tip_block_detail_refresh_rereads_its_own_ref_after_focus_moved() {
     });
     assert!(matches!(
         app.screens.last(),
-        Some(Screen::BlockDetail { reff, view, refreshing: None })
+        Some(Screen::BlockDetail {
+            reff,
+            view,
+            refreshing: None,
+            ..
+        })
             if reff == "heads/main" && view.row.block_id == "bbbb"
     ));
 }

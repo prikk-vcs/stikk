@@ -207,3 +207,117 @@ fn history_view_takes_the_count_and_the_target_from_one_orientation_read() {
         Some("the active WAL holds 2 patch(es) for heads/main — not this ref's history · Q: Queue")
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 035 §4.1 — Block detail lists the block's own patches.
+// ---------------------------------------------------------------------------------------------
+
+const PATCH_ONE: &str = "4db1669a176b64136838975ef7e2724e2161ad78b89c6dabc4efa24cd6818f66";
+const PATCH_TWO: &str = "c23a5d7d4d5d639b3e41e76806158e4bc475f113f3ed85858501010c2d830999";
+
+fn shown(id: &str, operations: usize) -> stikk_prikk::ShownPatch {
+    stikk_prikk::ShownPatch {
+        patch_id: id.to_string(),
+        queued: false,
+        operations: (0..operations)
+            .map(|_| stikk_prikk::PatchOperation {
+                kind: "edit-text".to_string(),
+                paths: vec![stikk_prikk::QueuedPath::Path("a.txt".to_string())],
+                content: stikk_prikk::OperationContent::TextEdit {
+                    old_span: "one".to_string(),
+                    replacement: "two".to_string(),
+                },
+                raw: "{}".to_string(),
+            })
+            .collect(),
+    }
+}
+
+/// **The message is joined by `patch_id`, never by position** (RFC 035 §5 trap 4).
+///
+/// `patch_messages` omits a patch that carries no message — a patch authored below prikk 0.32 — so
+/// positions drift. Here the block's **second** patch is the one with an entry, and the first must come
+/// out *no message reported*: absence, not an empty message (RFC 015 F4, `C-T2c′`).
+#[test]
+fn a_blocks_patch_messages_are_joined_by_id_not_by_position() {
+    let mut row = block("bb", 2, "Normal", 1);
+    row.patches = 2;
+    row.messages = vec![stikk_prikk::PatchMessage {
+        patch_id: PATCH_TWO.to_string(),
+        message: "the second patch".to_string(),
+    }];
+    let backend =
+        NullBackend::supported()
+            .with_version(0, 51, 0)
+            .with_show(stikk_prikk::ShowReport::Listed(vec![
+                shown(PATCH_ONE, 1),
+                shown(PATCH_TWO, 2),
+            ]));
+
+    let detail = block_detail(&backend, Path::new("/repo"), "heads/main", row, false)
+        .expect("block detail reads");
+    let rows = detail.patches.rows();
+    assert_eq!(rows.len(), 2, "prikk's order, both patches");
+    assert_eq!(rows[0].patch.patch_id, PATCH_ONE);
+    assert_eq!(
+        rows[0].message,
+        crate::patch::PatchMessageState::NotReported,
+        "no entry for this id — never the other patch's message"
+    );
+    assert_eq!(
+        rows[1].message,
+        crate::patch::PatchMessageState::Text("the second patch".to_string())
+    );
+    assert!(
+        rows[0].summary().contains("(no message reported)"),
+        "{}",
+        rows[0].summary()
+    );
+    assert!(
+        rows[1].summary().contains("the second patch")
+            && rows[1].summary().contains("2 operation(s)"),
+        "{}",
+        rows[1].summary()
+    );
+    assert_eq!(detail.patches.unreported_reason(), None);
+}
+
+/// Below stikk's JSON floor the section is **unreported**, with stikk's own reason — never an empty
+/// list (`C-T2c′`), and never *"prikk does not report it"*, which is false at 0.36–0.38.
+#[test]
+fn below_the_json_floor_the_patches_section_is_unreported() {
+    // The default backend reports prikk 0.30 and an `Unreported` show report.
+    let detail = block_detail(
+        &NullBackend::supported(),
+        Path::new("/repo"),
+        "heads/main",
+        block("bb", 2, "Normal", 1),
+        false,
+    )
+    .expect("block detail reads");
+    assert_eq!(detail.patches, BlockPatches::Unreported(30));
+    assert!(detail.patches.rows().is_empty());
+    assert_eq!(
+        detail.patches.unreported_reason().as_deref(),
+        Some("stikk reads a patch's content from prikk 0.39 on; this is 0.30.")
+    );
+}
+
+/// **Every block's patches are listed, not only the tip's** (RFC 035 §4.1): `show` takes a block id and
+/// needs no replay. The tip-only read above it — the replayed state file set — is unchanged.
+#[test]
+fn an_older_blocks_patches_are_listed_while_its_state_is_not() {
+    let backend = NullBackend::supported()
+        .with_version(0, 51, 0)
+        .with_show(stikk_prikk::ShowReport::Listed(vec![shown(PATCH_ONE, 1)]));
+    let older = block_detail(
+        &backend,
+        Path::new("/repo"),
+        "heads/main",
+        block("aa", 1, "Root", 0),
+        false,
+    )
+    .expect("block detail reads");
+    assert_eq!(older.patches.rows().len(), 1, "listed for an older block");
+    assert!(older.state.is_none(), "prikk replays only to the tip");
+}

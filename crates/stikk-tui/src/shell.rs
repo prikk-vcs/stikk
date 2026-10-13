@@ -123,7 +123,9 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
             centered_note(palette, frame, area, &format!("loading {what}…"), false)
         }
         Focus::History(v, cursor) => view::history::render(v, cursor, palette, frame, area),
-        Focus::BlockDetail(detail) => view::block::render(detail, palette, frame, area),
+        Focus::BlockDetail(detail, cursor) => {
+            view::block::render(detail, cursor, palette, frame, area);
+        }
         Focus::Changes(v, hide_untracked, history) => {
             // RFC 032: the `renames` count is shown at prikk ≥ 0.38, where a rename can be declared.
             let renames_reported =
@@ -138,7 +140,12 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
                 area,
             );
         }
-        Focus::Queue(v, offset) => view::queue::render(v, offset, palette, frame, area),
+        Focus::Queue(v, offset, cursor) => {
+            view::queue::render(v, offset, cursor, palette, frame, area);
+        }
+        Focus::PatchDetail(v, raw, offset) => {
+            view::patch::render(v, raw, offset, palette, frame, area);
+        }
     }
 }
 

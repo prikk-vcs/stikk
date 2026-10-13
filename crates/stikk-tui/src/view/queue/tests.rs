@@ -33,6 +33,7 @@ fn draw(view: &QueueView) -> String {
             render(
                 view,
                 &std::cell::Cell::new(0),
+                0,
                 &Palette::default(),
                 f,
                 f.area(),
@@ -262,6 +263,7 @@ fn a_hostile_message_is_rendered_inert() {
         patches: vec![stikk_core::QueuedPatchView {
             id: "3829ccfb080c07011497119384f429bbcf32395695bfc6030dc3fe20da56f321".to_string(),
             message: Some("evil\u{1b}[2Jmessage".to_string()),
+            detail_message: stikk_core::PatchMessageState::Text("evil\u{1b}[2Jmessage".to_string()),
             operations: Vec::new(),
         }],
         foot: None,
@@ -296,52 +298,59 @@ fn tall_queue() -> QueueView {
 }
 
 fn draw_scrolled(view: &QueueView, offset: &std::cell::Cell<u16>) -> String {
+    draw_at(view, offset, 0)
+}
+
+/// The same, with `cursor` selecting a patch — which is what moves the scroll since RFC 035 §4.2.
+fn draw_at(view: &QueueView, offset: &std::cell::Cell<u16>, cursor: usize) -> String {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     terminal
-        .draw(|f| render(view, offset, &Palette::default(), f, f.area()))
+        .draw(|f| render(view, offset, cursor, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
 
 #[test]
-fn a_tall_queue_scrolls_from_the_top_to_the_end_and_says_where_it_is() {
+fn a_tall_queue_scrolls_to_follow_the_selected_patch_and_says_where_it_is() {
     let view = tall_queue();
     let offset = std::cell::Cell::new(0);
 
-    let top = draw_scrolled(&view, &offset);
-    println!("--- Queue, twelve patches, offset 0, 80×24\n{top}");
+    let top = draw_at(&view, &offset, 0);
+    println!("--- Queue, twelve patches, first selected, 80×24\n{top}");
     assert!(
-        top.contains(" Queue — ↑/↓ to scroll · lines 1–22 of 54 "),
+        top.contains(" Queue — ↑/↓ to scroll · lines 1–22 of 53 "),
         "{top}"
     );
     assert!(top.contains("12 patch(es) queued for heads/main"), "{top}");
     assert!(
-        !top.contains("Patch detail"),
-        "the foot is below the fold: {top}"
+        top.contains("▸ 00000000000"),
+        "the first patch is marked: {top}"
     );
-    assert_eq!(offset.get(), 0);
+    assert_eq!(offset.get(), 0, "nothing to scroll to yet");
 
-    // Scrolled far past the end: clamped to the last full page, and written back.
-    offset.set(u16::MAX);
-    let end = draw_scrolled(&view, &offset);
-    println!("--- Queue, twelve patches, scrolled to the end, 80×24\n{end}");
-    assert_eq!(
-        offset.get(),
-        54 - 22,
-        "the offset cannot scroll past the end"
-    );
-    assert!(
-        end.contains(" Queue — ↑/↓ to scroll · lines 33–54 of 54 "),
-        "{end}"
-    );
+    // RFC 035 §4.2: the scroll follows the **cursor**, not a key of its own. Selecting the last patch
+    // brings its rows on screen, and no further.
+    let end = draw_at(&view, &offset, 11);
+    println!("--- Queue, twelve patches, last selected, 80×24\n{end}");
     assert!(end.contains("patch 12"), "{end}");
     assert!(end.contains("create-file p12.txt"), "{end}");
-    assert!(joined(&end).contains(
-        "A queued patch's content is not shown here; stikk's Patch detail view is not built yet."
-    ), "{end}");
     assert!(
         !end.contains("12 patch(es) queued"),
         "the heading scrolled away: {end}"
+    );
+    // The foot is *not* asserted here: the scroll stops as soon as the selected patch's last row is
+    // on screen, which is the whole point of following the cursor by the least it can — the rows below
+    // it stay below it.
+    // And the offset the renderer wrote back is the least that shows it, not the end of the list.
+    let followed = offset.get();
+    assert!(followed > 0 && followed <= 53 - 22, "{followed}");
+
+    // Selecting back upwards scrolls back up by the least it can, too.
+    let back = draw_at(&view, &offset, 0);
+    assert_eq!(offset.get(), 0, "{back}");
+    assert!(
+        back.contains("12 patch(es) queued for heads/main"),
+        "{back}"
     );
 }
 
@@ -349,8 +358,9 @@ fn a_tall_queue_scrolls_from_the_top_to_the_end_and_says_where_it_is() {
 fn a_refresh_that_shrinks_the_queue_clamps_the_offset() {
     let offset = std::cell::Cell::new(0);
     offset.set(u16::MAX);
-    draw_scrolled(&tall_queue(), &offset);
-    assert_eq!(offset.get(), 32);
+    // The last patch selected, so the clamp is tested against a scroll the cursor justifies.
+    draw_at(&tall_queue(), &offset, 11);
+    assert_eq!(offset.get(), 53 - 22);
 
     // The refreshed queue fits: the kept offset clamps to zero, and the title is plain.
     let small = view_at(
@@ -383,4 +393,37 @@ fn a_queue_that_fits_shows_the_plain_title_and_does_not_scroll() {
     assert!(text.contains("┌ Queue ─"), "{text}");
     assert!(!text.contains("to scroll"), "{text}");
     assert!(text.contains("2 patch(es) queued for heads/main"), "{text}");
+}
+
+/// **RFC 035 §6's capture: the Queue with its selection**, at 80 columns. The marker is on exactly one
+/// patch, and the foot says what `Enter` does.
+#[test]
+fn rfc035_the_queue_marks_the_selected_patch_at_80_columns() {
+    let view = view_at(
+        42,
+        two_patch(
+            [
+                "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a",
+                "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478",
+            ],
+            |m| QueuedMessage::Text(m.to_string()),
+        ),
+    );
+    let text = draw_at(&view, &std::cell::Cell::new(0), 1);
+    println!("--- RFC 035 §6: the Queue with its selection, 80 columns\n{text}");
+    let marked: Vec<&str> = text.lines().filter(|line| line.contains('▸')).collect();
+    assert_eq!(marked.len(), 1, "one patch marked: {text}");
+    assert!(
+        marked[0].contains("71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478"),
+        "the second patch: {text}"
+    );
+    assert!(
+        joined(&text).contains("Enter opens a patch's operations."),
+        "{text}"
+    );
+    // And the patch that is not selected is still listed, unmarked.
+    assert!(
+        text.contains("  493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a"),
+        "{text}"
+    );
 }

@@ -8,7 +8,9 @@
 use std::path::Path;
 
 use stikk_model::Result;
-use stikk_prikk::{BlockRow, Prikk, RefEntry, StateFiles};
+use stikk_prikk::{BlockRow, Prikk, RefEntry, ShowReport, ShownPatch, StateFiles};
+
+use crate::patch::{CONTENT_FROM_MINOR, PatchMessageState};
 
 /// A ref's history for the History view (design FR-010/011).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +61,86 @@ pub struct BlockDetailView {
     /// The replayed state file set — present only for the tip; `None` for older blocks, where prikk
     /// exposes no per-block state (RFC 006, UD-09).
     pub state: Option<StateFiles>,
+    /// The block's patches, from its own `show <block-id>` report (`FR-030`; RFC 035 §4.1) — **for
+    /// every block, not only the tip**, since `show` takes a block id and needs no replay.
+    pub patches: BlockPatches,
+}
+
+/// A block's patches, as Block detail lists them (RFC 035 §4.1).
+///
+/// **Two variants, because below stikk's JSON floor the patches are not reported, not absent**
+/// (`C-T2c′`), the shape [`stikk_prikk::QueueReport`] takes for the same reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockPatches {
+    /// prikk ≥ 0.39: one row per patch, in prikk's order.
+    Listed(Vec<BlockPatchRow>),
+    /// Below 0.39, carrying that prikk's minor for the sentence the view shows. **stikk's own voice**
+    /// (`C-T4d`): it reads a patch's content from 0.39 on. *"prikk does not report it"* would be false
+    /// at 0.36–0.38, where `show-report-v1` exists and stikk reads no JSON at all.
+    Unreported(u32),
+}
+
+impl BlockPatches {
+    /// The sentence for [`Self::Unreported`], or `None` when the patches are listed.
+    #[must_use]
+    pub fn unreported_reason(&self) -> Option<String> {
+        match self {
+            Self::Listed(_) => None,
+            Self::Unreported(minor) => Some(format!(
+                "stikk reads a patch's content from prikk 0.{CONTENT_FROM_MINOR} on; this is \
+                 0.{minor}."
+            )),
+        }
+    }
+
+    /// The listed rows, or an empty slice. **Never a stand-in for [`Self::Unreported`]** — the caller
+    /// asks [`Self::unreported_reason`] first, and the view shows the sentence rather than a list of
+    /// nothing.
+    #[must_use]
+    pub fn rows(&self) -> &[BlockPatchRow] {
+        match self {
+            Self::Listed(rows) => rows,
+            Self::Unreported(_) => &[],
+        }
+    }
+}
+
+/// One patch of a block, for the Patches section and the detail `Enter` opens from it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockPatchRow {
+    /// The patch exactly as prikk reported it. **Carried, not re-read**: `Enter` renders Patch detail
+    /// from this, so opening a patch spawns nothing (RFC 035 decision 6, §5 trap 7).
+    pub patch: ShownPatch,
+    /// The patch's message, **joined by `patch_id`** from the block's `log` row, in its own three
+    /// states (`C-T2c′`). Never joined by position: `patch_messages` omits a patch that carries no
+    /// message, so positions drift (§5 trap 4).
+    pub message: PatchMessageState,
+}
+
+impl BlockPatchRow {
+    /// The row's one line: the short patch id, the message, and the operation count.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let short: String = self
+            .patch
+            .patch_id
+            .chars()
+            .take(crate::SHORT_ID_CHARS)
+            .collect();
+        let count = self.patch.operations.len();
+        match &self.message {
+            PatchMessageState::Text(text) => {
+                let mut lines = text.lines();
+                let first = lines.next().unwrap_or_default();
+                let ellipsis = if lines.next().is_some() { "…" } else { "" };
+                format!("{short}  {first}{ellipsis}  ·  {count} operation(s)")
+            }
+            PatchMessageState::Absent => format!("{short}  (no message)  ·  {count} operation(s)"),
+            PatchMessageState::NotReported => {
+                format!("{short}  (no message reported)  ·  {count} operation(s)")
+            }
+        }
+    }
 }
 
 /// Produce the History view for `reff`, driving prikk through the seam (design FR-010/011).
@@ -100,7 +182,33 @@ pub fn block_detail(
     } else {
         None
     };
-    Ok(BlockDetailView { row, is_tip, state })
+    // RFC 035 §4.1: the block's own patches, for **every** block. `show` takes a block id and resolves
+    // against that block, so nothing here is tip-only — unlike the state read above, which is, because
+    // prikk replays only to the tip.
+    let patches = match prikk.show(repo, &row.block_id)? {
+        ShowReport::Unreported => BlockPatches::Unreported(prikk.handshake()?.version.minor),
+        ShowReport::Listed(patches) => BlockPatches::Listed(
+            patches
+                .into_iter()
+                .map(|patch| BlockPatchRow {
+                    // Joined by id, never by position (§5 trap 4).
+                    message: PatchMessageState::from_block_join(
+                        row.messages
+                            .iter()
+                            .find(|message| message.patch_id == patch.patch_id)
+                            .map(|message| message.message.as_str()),
+                    ),
+                    patch,
+                })
+                .collect(),
+        ),
+    };
+    Ok(BlockDetailView {
+        row,
+        is_tip,
+        state,
+        patches,
+    })
 }
 
 /// List every ref pointer — branches and tags — for the ref picker (design FR-014, completed RFC 012).

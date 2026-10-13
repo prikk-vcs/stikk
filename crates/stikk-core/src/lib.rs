@@ -21,6 +21,7 @@ pub mod glossary;
 pub mod history;
 pub mod orient;
 pub mod palette;
+pub mod patch;
 pub mod present;
 pub mod queue;
 pub mod refusal_history;
@@ -43,9 +44,16 @@ pub use confirm::{
     signing_key_claim, unshown_patches_line,
 };
 pub use glossary::{GlossaryEntry, TermMapping};
-pub use history::{BlockDetailView, HistoryView, block_detail, history_view, list_refs};
+pub use history::{
+    BlockDetailView, BlockPatchRow, BlockPatches, HistoryView, block_detail, history_view,
+    list_refs,
+};
 pub use orient::{OrientationView, orient};
 pub use palette::{Command, NO_FOCUSED_REF_REASON};
+pub use patch::{
+    AS_AT_BLOCK_END, CONTENT_DISPLAY_BYTES, CONTENT_FROM_MINOR, NO_PATH_REPORTED, OperationView,
+    PatchDetailView, PatchMessageState, patch_detail, patch_detail_in_block,
+};
 pub use present::{
     NextStep, NextTarget, OperationContext, Presentation, RefusalCard, Target, present,
     stale_gloss, stale_headline,

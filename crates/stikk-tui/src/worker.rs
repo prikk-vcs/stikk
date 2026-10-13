@@ -14,7 +14,7 @@ use stikk_core::{
     changes_view, commit_confirm_and_execute, commit_preview, history_view, list_refs, orient,
     seal_confirm_and_execute, seal_preview,
 };
-use stikk_core::{QueueView, queue_view};
+use stikk_core::{PatchDetailView, PatchMessageState, QueueView, patch_detail, queue_view};
 use stikk_model::{ChangeToken, Readiness, Result};
 use stikk_prikk::{BlockRow, CommitResult, Prikk, RefEntry, SealResult};
 
@@ -58,6 +58,17 @@ pub(crate) enum RequestKind {
     Refs,
     /// Read the active queue, for the Queue view (RFC 028).
     Queue,
+    /// Read one **queued** patch's content, for Patch detail (`FR-030`; RFC 035 decision 6) — one
+    /// `show <patch-id>` read. A *sealed* patch never comes through here: Block detail has already
+    /// read its block's report and Patch detail renders one patch from it, spawning nothing.
+    PatchDetail {
+        /// The patch to show, by **patch** id: a queued patch has no block to ask about (RFC 035 F2).
+        patch_id: String,
+        /// The message the Queue already read, in its three states — prikk reports a queued patch's
+        /// message in `status`, not in `show`, so re-reading it here would be a second read for a fact
+        /// stikk already holds.
+        message: PatchMessageState,
+    },
     /// Read worktree-vs-baseline status for a ref.
     Changes {
         /// The ref to compare the worktree against.
@@ -127,6 +138,8 @@ pub(crate) enum ResponseKind {
     Refs(Result<Vec<RefEntry>>),
     /// Answers [`RequestKind::Queue`].
     Queue(Result<QueueView>),
+    /// Answers [`RequestKind::PatchDetail`].
+    PatchDetail(Result<PatchDetailView>),
     /// Answers [`RequestKind::Changes`].
     Changes(Result<ChangesRead>),
     /// Answers [`RequestKind::CommitPreview`].
@@ -180,6 +193,7 @@ impl RequestKind {
             Self::BlockState { .. } => "block detail",
             Self::Refs => "refs",
             Self::Queue => "queue",
+            Self::PatchDetail { .. } => "patch detail",
             Self::Changes { .. } => "changes",
             Self::CommitPreview { .. } => "commit preview",
             Self::CommitConfirmExecute { .. } => "commit",
@@ -222,6 +236,9 @@ pub(crate) fn run(
             }
             RequestKind::Refs => ResponseKind::Refs(list_refs(prikk, repo)),
             RequestKind::Queue => ResponseKind::Queue(queue_view(prikk, repo)),
+            RequestKind::PatchDetail { patch_id, message } => {
+                ResponseKind::PatchDetail(patch_detail(prikk, repo, &patch_id, &message))
+            }
             RequestKind::Changes { reff } => {
                 ResponseKind::Changes(changes_view(prikk, repo, &reff))
             }

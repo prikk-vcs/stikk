@@ -131,6 +131,7 @@ fn ui_loop(
                     Action::OpenChanges => app.open_changes(),
                     Action::OpenQueue => app.open_queue(),
                     Action::ToggleUntracked => app.toggle_untracked(),
+                    Action::ToggleRaw => app.toggle_raw(),
                     Action::Commit => app.begin_commit(),
                     Action::Seal => app.begin_seal(),
                     Action::ToggleSealConsent => app.toggle_seal_consent(),

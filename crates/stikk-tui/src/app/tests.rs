@@ -10,7 +10,7 @@
 use std::sync::mpsc;
 
 use stikk_core::{
-    BlockDetailView, ChangeEntry, ChangeKind, ChangesView, CommitPreviewOutcome,
+    BlockDetailView, BlockPatches, ChangeEntry, ChangeKind, ChangesView, CommitPreviewOutcome,
     ConfirmationSummary, HistoryView, OperationContext, Outcome, SealPreviewOutcome,
     commit_preview, seal_preview,
 };
@@ -426,6 +426,7 @@ fn select_from_orientation_opens_history_then_a_block() {
             files: vec!["readme.txt".into()],
             total_bytes: 12,
         }),
+        patches: BlockPatches::Unreported(30),
     };
     app.apply(Response {
         seq: req.seq,
@@ -435,7 +436,7 @@ fn select_from_orientation_opens_history_then_a_block() {
         },
     });
     match app.focus() {
-        Focus::BlockDetail(detail) => {
+        Focus::BlockDetail(detail, _) => {
             assert!(detail.is_tip);
             assert_eq!(detail.state.as_ref().map(|s| s.files.len()), Some(1));
         }
@@ -467,6 +468,7 @@ fn nav_down_then_select_opens_a_non_tip_block_without_state() {
         row: row.clone(),
         is_tip: false,
         state: None,
+        patches: BlockPatches::Unreported(30),
     };
     app.apply(Response {
         seq: req.seq,
@@ -476,7 +478,7 @@ fn nav_down_then_select_opens_a_non_tip_block_without_state() {
         },
     });
     match app.focus() {
-        Focus::BlockDetail(detail) => {
+        Focus::BlockDetail(detail, _) => {
             assert!(!detail.is_tip);
             assert!(detail.state.is_none()); // prikk replays only to the tip (RFC 006)
             assert_eq!(detail.row.update_seq, 1);
@@ -1991,7 +1993,15 @@ fn queue_view_with(heading: &str) -> stikk_core::QueueView {
     stikk_core::QueueView {
         heading: heading.to_string(),
         thresholds: Vec::new(),
-        patches: Vec::new(),
+        // Four patches, so the selection RFC 035 §4.2 added has somewhere to move.
+        patches: (1..=4)
+            .map(|i| stikk_core::QueuedPatchView {
+                id: format!("{i:064x}"),
+                message: Some(format!("patch {i}")),
+                detail_message: stikk_core::PatchMessageState::Text(format!("patch {i}")),
+                operations: vec![format!("create-file p{i}.txt")],
+            })
+            .collect(),
         foot: None,
     }
 }
@@ -2014,7 +2024,7 @@ fn the_queue_opens_without_a_focused_ref() {
         kind: ResponseKind::Queue(Ok(queue_view_with("Nothing is queued."))),
     });
     match app.focus() {
-        Focus::Queue(view, _) => assert_eq!(view.heading, "Nothing is queued."),
+        Focus::Queue(view, _, _) => assert_eq!(view.heading, "Nothing is queued."),
         other => panic!("expected the Queue view, got {other:?}"),
     }
 
@@ -2047,7 +2057,7 @@ fn refreshing_the_queue_keeps_its_view_visible_until_the_new_one_arrives() {
     let refresh = requests.pop().unwrap();
     assert!(matches!(refresh.kind, RequestKind::Queue));
     match app.focus() {
-        Focus::Queue(view, _) => assert_eq!(view.heading, "1 patch(es) queued for heads/main"),
+        Focus::Queue(view, _, _) => assert_eq!(view.heading, "1 patch(es) queued for heads/main"),
         other => panic!("the old view stays while refreshing, got {other:?}"),
     }
     app.apply(Response {
@@ -2055,13 +2065,13 @@ fn refreshing_the_queue_keeps_its_view_visible_until_the_new_one_arrives() {
         kind: ResponseKind::Queue(Ok(queue_view_with("2 patch(es) queued for heads/main"))),
     });
     match app.focus() {
-        Focus::Queue(view, _) => assert_eq!(view.heading, "2 patch(es) queued for heads/main"),
+        Focus::Queue(view, _, _) => assert_eq!(view.heading, "2 patch(es) queued for heads/main"),
         other => panic!("expected the refreshed Queue view, got {other:?}"),
     }
 }
 
 #[test]
-fn up_and_down_scroll_the_queue_screen_and_a_refresh_keeps_the_offset() {
+fn up_and_down_move_the_queues_selection_and_a_refresh_keeps_it() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(orientation_view(0, None, None)),
@@ -2073,16 +2083,22 @@ fn up_and_down_scroll_the_queue_screen_and_a_refresh_keeps_the_offset() {
         seq: first.seq,
         kind: ResponseKind::Queue(Ok(queue_view_with("12 patch(es) queued for heads/main"))),
     });
-    let offset = |app: &App| match app.focus() {
-        Focus::Queue(_, offset) => offset.get(),
+    // RFC 035 §4.2: `↑`/`↓` move the **selection** now, and the renderer scrolls to follow it. The
+    // offset is no longer something a key sets directly, so it stays where the last render left it.
+    let cursor = |app: &App| match app.focus() {
+        Focus::Queue(_, _, cursor) => cursor,
         other => panic!("expected the Queue view, got {other:?}"),
     };
-    assert_eq!(offset(&app), 0);
+    assert_eq!(cursor(&app), 0);
     app.nav_down();
     app.nav_down();
     app.nav_down();
     app.nav_up();
-    assert_eq!(offset(&app), 2, "unclamped here; the renderer clamps");
+    assert_eq!(
+        cursor(&app),
+        2,
+        "three down, one up, over the listed patches"
+    );
 
     app.reload();
     let mut requests = vec![next_request(&rx), next_request(&rx)];
@@ -2093,10 +2109,228 @@ fn up_and_down_scroll_the_queue_screen_and_a_refresh_keeps_the_offset() {
         kind: ResponseKind::Queue(Ok(queue_view_with("13 patch(es) queued for heads/main"))),
     });
     assert_eq!(
-        offset(&app),
+        cursor(&app),
         2,
-        "a refresh keeps the offset; the next render clamps it"
+        "a refresh keeps the selection; the next render scrolls to it"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 035 — Patch detail: where it opens from, what it spawns, and what `v` and `r` do.
+// ---------------------------------------------------------------------------------------------
+
+const RFC035_PATCH_ONE: &str = "4db1669a176b64136838975ef7e2724e2161ad78b89c6dabc4efa24cd6818f66";
+const RFC035_PATCH_TWO: &str = "c23a5d7d4d5d639b3e41e76806158e4bc475f113f3ed85858501010c2d830999";
+
+fn rfc035_shown(id: &str, path: &str) -> stikk_prikk::ShownPatch {
+    stikk_prikk::ShownPatch {
+        patch_id: id.to_string(),
+        queued: false,
+        operations: vec![stikk_prikk::PatchOperation {
+            kind: "edit-text".to_string(),
+            paths: vec![stikk_prikk::QueuedPath::Path(path.to_string())],
+            content: stikk_prikk::OperationContent::TextEdit {
+                old_span: String::new(),
+                replacement: "more\n".to_string(),
+            },
+            raw: "{\n  \"kind\": \"edit-text\"\n}".to_string(),
+        }],
+    }
+}
+
+/// A Block detail whose report holds two patches, as prikk answers `show <block-id>` (A1 F7).
+fn rfc035_block_detail() -> BlockDetailView {
+    let mut row = block("bbbb", 2);
+    row.patches = 2;
+    row.messages = vec![stikk_prikk::PatchMessage {
+        patch_id: RFC035_PATCH_TWO.to_string(),
+        message: "patch two".to_string(),
+    }];
+    BlockDetailView {
+        row,
+        is_tip: true,
+        state: None,
+        patches: BlockPatches::Listed(vec![
+            stikk_core::BlockPatchRow {
+                patch: rfc035_shown(RFC035_PATCH_ONE, "z.txt"),
+                message: stikk_core::PatchMessageState::NotReported,
+            },
+            stikk_core::BlockPatchRow {
+                patch: rfc035_shown(RFC035_PATCH_TWO, "z.txt"),
+                message: stikk_core::PatchMessageState::Text("patch two".to_string()),
+            },
+        ]),
+    }
+}
+
+fn rfc035_on_block_detail() -> (App, mpsc::Receiver<Request>) {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_history();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::History(Ok(two_block_history())),
+    });
+    app.select();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::BlockState {
+            reff: "heads/main".into(),
+            result: Ok(rfc035_block_detail()),
+        },
+    });
+    (app, rx)
+}
+
+/// **Opening a patch from Block detail spawns nothing** (RFC 035 decision 6, §5 trap 7): the block's
+/// report is already in hand, and Patch detail renders one patch from it.
+///
+/// It also proves decision 3a's label is on screen, because the block holds two patches — and that the
+/// patch stikk opens is the one the cursor marks.
+#[test]
+fn opening_a_patch_from_block_detail_spawns_nothing() {
+    let (mut app, rx) = rfc035_on_block_detail();
+    app.nav_down(); // the second patch
+    app.select();
+    assert!(
+        rx.try_recv().is_err(),
+        "no seam request may be sent: the block's report is already read"
+    );
+    match app.focus() {
+        Focus::PatchDetail(view, raw, _) => {
+            assert_eq!(view.patch_id, RFC035_PATCH_TWO);
+            assert!(!raw, "the rendered view first");
+            assert_eq!(view.heading[1], "patch two", "joined by id");
+            assert_eq!(
+                view.operations[0].title,
+                format!("edit-text z.txt — {}", stikk_core::AS_AT_BLOCK_END),
+                "two patches in the block, so the path is labelled"
+            );
+        }
+        other => panic!("expected Patch detail, got {other:?}"),
+    }
+}
+
+/// `v` toggles the raw view in place — **no request, either way** (decision 5).
+#[test]
+fn v_toggles_the_raw_view_without_a_second_read() {
+    let (mut app, rx) = rfc035_on_block_detail();
+    app.select();
+    let raw_now = |app: &App| match app.focus() {
+        Focus::PatchDetail(_, raw, _) => raw,
+        other => panic!("expected Patch detail, got {other:?}"),
+    };
+    assert!(!raw_now(&app));
+    app.toggle_raw();
+    assert!(raw_now(&app));
+    app.toggle_raw();
+    assert!(!raw_now(&app));
+    assert!(rx.try_recv().is_err(), "a toggle is never a read");
+}
+
+/// `v` is a no-op anywhere else, as `u` is outside Changes.
+#[test]
+fn v_does_nothing_outside_patch_detail() {
+    let (mut app, rx) = rfc035_on_block_detail();
+    app.toggle_raw();
+    assert!(matches!(app.focus(), Focus::BlockDetail(_, _)));
+    assert!(rx.try_recv().is_err());
+}
+
+/// **`r` on a patch opened from a block re-reads Orientation and nothing else**: a sealed block's
+/// patches are fixed, the same reason an older block's detail is never refreshed (RFC 031 §7).
+#[test]
+fn r_on_a_block_opened_patch_re_reads_only_orientation() {
+    let (mut app, rx) = rfc035_on_block_detail();
+    app.select();
+    app.reload();
+    let first = next_request(&rx);
+    assert!(
+        matches!(first.kind, RequestKind::Orient),
+        "{:?}",
+        first.kind
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "nothing else: the block's patches cannot change"
+    );
+}
+
+/// **Opening a patch from the Queue is one `show <patch-id>` read** (§4.2), and `r` re-reads that same
+/// id — which is how a patch sealed while the screen was open comes back as prikk now reports it
+/// (§4.3, A1 F7 row 2).
+#[test]
+fn opening_a_patch_from_the_queue_reads_once_and_r_re_reads_the_same_id() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_queue();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::Queue(Ok(queue_view_with("4 patch(es) queued for heads/main"))),
+    });
+    app.nav_down(); // the second queued patch
+    app.select();
+    let req = next_request(&rx);
+    let RequestKind::PatchDetail { patch_id, message } = &req.kind else {
+        panic!("expected one PatchDetail request, got {:?}", req.kind);
+    };
+    assert_eq!(patch_id, &format!("{:064x}", 2));
+    assert_eq!(
+        message,
+        &stikk_core::PatchMessageState::Text("patch 2".to_string()),
+        "the message the Queue already read, carried across rather than re-read"
+    );
+    assert!(rx.try_recv().is_err(), "exactly one read");
+
+    let queued = stikk_prikk::ShownPatch {
+        patch_id: patch_id.clone(),
+        queued: true,
+        operations: vec![stikk_prikk::PatchOperation {
+            kind: "edit-text".to_string(),
+            paths: vec![stikk_prikk::QueuedPath::Path("a.txt".to_string())],
+            content: stikk_prikk::OperationContent::TextEdit {
+                old_span: String::new(),
+                replacement: "more\n".to_string(),
+            },
+            raw: "{}".to_string(),
+        }],
+    };
+    let view = stikk_core::patch_detail_in_block(
+        &queued,
+        "unused",
+        &stikk_core::PatchMessageState::Text("patch 2".to_string()),
+        1,
+    );
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::PatchDetail(Ok(view)),
+    });
+    match app.focus() {
+        Focus::PatchDetail(view, _, _) => assert_eq!(view.heading[0], "queued"),
+        other => panic!("expected Patch detail, got {other:?}"),
+    }
+
+    // `r`: Orientation, and the same patch id again.
+    app.reload();
+    let mut kinds: Vec<RequestKind> = vec![next_request(&rx).kind, next_request(&rx).kind];
+    assert!(rx.try_recv().is_err(), "two requests, no more");
+    kinds.sort_by_key(|kind| matches!(kind, RequestKind::PatchDetail { .. }));
+    let RequestKind::PatchDetail {
+        patch_id: again, ..
+    } = &kinds[1]
+    else {
+        panic!("expected the same patch id to be re-read, got {kinds:?}");
+    };
+    assert_eq!(again, patch_id);
 }
 
 mod change_awareness;

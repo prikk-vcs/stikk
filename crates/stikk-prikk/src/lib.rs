@@ -355,11 +355,15 @@ pub struct PatchMessage {
     pub message: String,
 }
 
-/// One sealed block in a ref's lineage, as `prikk log` reports it (design FR-011; RFC 006). Block
-/// granularity is prikk's ceiling — no per-patch *content* (operations, preimages) and no
-/// `log --format json` (`UD-09`, narrowed RFC 015 F3) — but patch **ids and messages** are no longer
-/// beyond it for a messaged patch (`messages`, RFC 015 F1); no author or date either way, by prikk's
-/// no-clock design.
+/// One sealed block in a ref's lineage, as `prikk log` reports it (design FR-011; RFC 006).
+///
+/// **Block granularity is `log`'s ceiling, not prikk's.** This doc comment used to say per-patch
+/// content was beyond prikk's reach; `UD-09`'s content half retired at prikk 0.36 and
+/// [`Prikk::show`] reads it (RFC 035) — what `log` itself still does not carry is a patch **id**
+/// (hence `show <block-id>`, which is how Block detail enumerates a block's patches) or any
+/// per-operation content. Patch **messages** are no longer beyond it for a messaged patch
+/// (`messages`, RFC 015 F1); `log --format json` arrived at 0.39. No author or date either way, by
+/// prikk's no-clock design.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockRow {
     /// The block's object id.

@@ -79,8 +79,16 @@ To see the TUI with no repository at all: `cargo run -p stikk-tui --example orie
 `history_demo`, `explanation_demo`, and `changes_demo` for the other views, all scripted — no prikk
 binary or repository needed).
 
-**Patch detail** and **Compare** are not built yet. prikk ≥ 0.36 can render a patch's content with
-`prikk show`, so Patch detail waits on stikk's own work, and both are on the roadmap.
+**Patch detail** is built, at prikk ≥ 0.39. Open a block from History and its **patches** are listed:
+`Enter` on one shows what it changed — a text edit's spans, a create's content and mode, a delete's
+preimage, a binary replacement's blob ids and sizes, a permission change's two modes, and a rename with
+the key that asserted it. `v` switches to prikk's own fields. The Queue opens a *queued* patch the same
+way. Two things it says rather than guesses: content past stikk's display bound is cut with the
+withheld byte count stated, and where prikk resolves no path for an operation it says so and names
+prikk's node id — which also happens for a sealed patch inside a block of several, where prikk resolves
+paths **at the block's end**, so a path there is labelled *as at the end of this block*.
+
+**Compare** is not built yet, and is on the roadmap.
 
 ## Capability and signing
 

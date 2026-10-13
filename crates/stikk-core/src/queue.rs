@@ -42,6 +42,12 @@ pub struct QueuedPatchView {
     /// The message line: the message's first line (with `…` when it has more), or `(no message)`. `None`
     /// when this prikk does not report messages, which the foot says once.
     pub message: Option<String>,
+    /// The same message in prikk's **three** states, for the Patch detail this row opens (RFC 035 §4.2):
+    /// `Enter` carries it across rather than re-reading, since `show` does not report a queued patch's
+    /// message — `status` does. [`Self::message`] is the Queue's own one-line rendering and collapses
+    /// *not reported* into `None`, which the foot explains once; this field keeps the distinction
+    /// (`C-T2c′`).
+    pub detail_message: crate::patch::PatchMessageState,
     /// One line per operation, or per path of an operation that touches several.
     pub operations: Vec<String>,
 }
@@ -76,14 +82,18 @@ fn view(report: QueueReport, prikk_minor: u32) -> QueueView {
             heading: heading(queue.count, &queue.target),
             thresholds: queue.threshold.map(thresholds).unwrap_or_default(),
             patches: queue.patches.into_iter().map(patch).collect(),
+            // RFC 035 §4.2: `Enter` now opens the patch's operations, so the line saying its content
+            // was not shown anywhere is gone. The message half of the old sentence stays, because that
+            // is still true below 0.42 and is prikk's own measured limit (RFC 028) — the content half
+            // is not repeated for 0.39–0.41, a band nobody runs and nobody has measured `show` at
+            // (RFC 035 §7): claiming either way there would be stikk asserting what it has not checked.
             foot: Some(if prikk_minor < QUEUED_MESSAGE_FROM_MINOR {
                 format!(
-                    "prikk 0.{prikk_minor} does not report a queued patch's message or content; both \
-                     appear in History once it is sealed."
+                    "prikk 0.{prikk_minor} does not report a queued patch's message; it appears in \
+                     History once the patch is sealed. Enter opens a patch's operations."
                 )
             } else {
-                "A queued patch's content is not shown here; stikk's Patch detail view is not built yet."
-                    .to_string()
+                "Enter opens a patch's operations.".to_string()
             }),
         },
     }
@@ -136,6 +146,7 @@ fn thresholds(threshold: QueueThreshold) -> Vec<String> {
 fn patch(patch: QueuedPatch) -> QueuedPatchView {
     QueuedPatchView {
         message: message_line(&patch.message),
+        detail_message: crate::patch::PatchMessageState::from_queued(&patch.message),
         operations: patch.operations.iter().flat_map(operation_lines).collect(),
         id: patch.patch_id,
     }

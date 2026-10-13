@@ -40,6 +40,9 @@ will not author as a rename is named instead, and a ref with no published histor
 than shown against a baseline it does not have (RFC 032). Piped/CI invocation keeps the one-shot
 orientation. stikk targets
 prikk **≥ 0.28**, validated through **0.51.0**, and on prikk 0.42 opens on prikk's current branch (RFC
-029). **Patch detail** (`FR-030`) and **Compare** (`FR-033`) are not built: prikk ≥ 0.36 can render a
-patch's content with `show`, so what waits is stikk's own work. Merge, sync, tag create, and branch
+029). **Patch detail** (`FR-030`) is built at prikk ≥ 0.39 (RFC 035): Block detail lists a block's
+patches and the Queue lists the queued ones, and either opens one patch's operations — a text edit's
+spans, a create's content and mode, a delete's preimage, a binary replacement's blob ids and sizes, a
+permission change's two modes, and a rename with the key that asserted it — with `v` showing prikk's
+own fields. **Compare** (`FR-033`) is not built. Merge, sync, tag create, and branch
 create/close remain unbuilt; a **Trust & Keys** view is a named gap too.

@@ -47,6 +47,9 @@ fn navigation_and_surface_keys_are_bound() {
         Action::OpenRefusals
     );
     assert_eq!(dispatch(key(KeyCode::Char('r')), false), Action::Refresh);
+    // RFC 035 decision 5: the raw-view toggle, in `u`'s pattern — resolved here, meaningful only on
+    // the screen it acts on.
+    assert_eq!(dispatch(key(KeyCode::Char('v')), false), Action::ToggleRaw);
     assert_eq!(
         dispatch(key(KeyCode::Char('o')), false),
         Action::OpenOperations

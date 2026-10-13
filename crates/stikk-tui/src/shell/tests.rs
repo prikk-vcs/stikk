@@ -225,7 +225,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
 }
 
 #[test]
-fn block_detail_screen_shows_tip_state_and_the_ud09_note() {
+fn block_detail_screen_shows_tip_state_and_where_patch_content_comes_from() {
     use stikk_prikk::{BlockRow, History, StateFiles};
     let backend = NullBackend::supported()
         .with_orientation(orientation_naming_heads_main())
@@ -260,7 +260,12 @@ fn block_detail_screen_shows_tip_state_and_the_ud09_note() {
     assert!(text.contains("Block")); // view title
     assert!(text.contains("readme.txt")); // tip state file
     assert!(text.contains("src/main.rs"));
-    assert!(text.contains("UD-09")); // honest ceiling note
+    // The NullBackend reports prikk 0.30, below stikk's JSON floor, so the Patches section says so
+    // in stikk's own voice (RFC 035 §4.1) where the UD-09 note used to be.
+    assert!(
+        text.contains("stikk reads a patch's content from prikk 0.39 on"),
+        "{text}"
+    );
 }
 
 /// RFC 023 F1 at **80×24** — the gloss and prikk's verbatim words are both on screen at the smallest

@@ -8,6 +8,7 @@ use stikk_prikk::{
 };
 
 use super::*;
+use crate::patch::PatchMessageState;
 
 const PATCH_A: &str = "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a";
 const PATCH_B: &str = "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478";
@@ -78,18 +79,17 @@ fn at_0_42_each_patch_shows_its_message_and_operations_and_the_foot_names_patch_
                 QueuedPatchView {
                     id: PATCH_A.to_string(),
                     message: Some("add b".to_string()),
+                    detail_message: PatchMessageState::Text("add b".to_string()),
                     operations: vec!["create-file b.txt".to_string()],
                 },
                 QueuedPatchView {
                     id: PATCH_B.to_string(),
                     message: Some("rename a to c".to_string()),
+                    detail_message: PatchMessageState::Text("rename a to c".to_string()),
                     operations: vec!["rename-path a.txt → c.txt · asserted by author".to_string()],
                 },
             ],
-            foot: Some(
-                "A queued patch's content is not shown here; stikk's Patch detail view is not built yet."
-                    .to_string()
-            ),
+            foot: Some("Enter opens a patch's operations.".to_string()),
         }
     );
 }
@@ -106,8 +106,8 @@ fn at_0_41_there_is_no_message_line_and_the_foot_says_why_once() {
     assert_eq!(
         view.foot.as_deref(),
         Some(
-            "prikk 0.41 does not report a queued patch's message or content; both appear in History \
-             once it is sealed."
+            "prikk 0.41 does not report a queued patch's message; it appears in History once the \
+             patch is sealed. Enter opens a patch's operations."
         )
     );
 }

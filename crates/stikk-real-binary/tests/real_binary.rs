@@ -4163,3 +4163,511 @@ fn rfc034_an_interrupted_materialization_is_shown_and_blocks_only_commit() {
         .history(&repo, "heads/main", 20)
         .unwrap_or_else(|e| panic!("0.{}: History must keep working: {e}", ceiling.minor));
 }
+
+// =============================================================================================
+// RFC 035 — Patch detail, against real binaries (§7).
+//
+// What these legs exist to catch is the gap between what prikk's report says and what stikk's view
+// says about it. Every expectation below is read **from the binary's own report in the same run**,
+// not from a literal in this file, except where the literal is stikk's own sentence.
+// =============================================================================================
+
+/// stikk's JSON floor, which is also Patch detail's band floor (RFC 035 A1, decision 1 as amended).
+const RFC035_CONTENT_FROM: u32 = 39;
+
+fn rfc035_skip_below_the_band(bin: &PrikkBin, what: &str) -> bool {
+    if bin.minor < RFC035_CONTENT_FROM {
+        eprintln!(
+            "RFC 035: {what} SKIPPED at 0.{} — stikk reads a patch's content from prikk \
+             0.{RFC035_CONTENT_FROM} on, its JSON floor, and 0.39–0.45 is unmeasured by the project \
+             owner's ruling. Announced rather than silent (RFC 022 §3).",
+            bin.minor
+        );
+        return true;
+    }
+    false
+}
+
+/// The tip block of `heads/main`, as `log` reports it.
+fn rfc035_tip(
+    backend: &CliBackend,
+    repo: &std::path::Path,
+    bin: &PrikkBin,
+) -> stikk_prikk::BlockRow {
+    let history = backend
+        .history(repo, "heads/main", 5)
+        .unwrap_or_else(|e| panic!("0.{}: log: {e}", bin.minor));
+    history
+        .blocks
+        .first()
+        .cloned()
+        .unwrap_or_else(|| panic!("0.{}: no sealed block", bin.minor))
+}
+
+/// **RFC 035 §7 at the ceiling: one sealed patch holding every operation kind prikk emits**, where
+/// every path resolves and the words stikk renders are prikk's own fields.
+///
+/// The repository is the one RFC 035's own measurement script built, and the expectations are read out
+/// of `show`'s report in this run: for each operation, stikk's rendered rows must carry prikk's path,
+/// its spans, its mode, its blob ids and sizes, and its asserting key id.
+#[test]
+#[ignore = "requires two real prikk binaries; see the module docs"]
+fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc035_skip_below_the_band(&bin, "every operation kind") {
+            continue;
+        }
+        let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+        // The base seal holds a.txt and keep.txt; add the rest of the kinds' starting state.
+        rfc032_write(&repo, "del.txt", "gone\n");
+        rfc032_write(&repo, "mode.sh", "x\n");
+        std::fs::write(repo.join("b.bin"), [0xff, 0xfe, 0x00, b'b', b'i', b'n'])
+            .unwrap_or_else(|e| panic!("write b.bin: {e}"));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "more kinds")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+
+        // One patch, every kind: an edit, a delete, a create, a binary replacement, a mode change and
+        // a rename.
+        rfc032_write(&repo, "a.txt", "ALPHA\n");
+        std::fs::remove_file(repo.join("del.txt")).unwrap_or_else(|e| panic!("remove: {e}"));
+        rfc032_write(&repo, "created.txt", "new file\n");
+        std::fs::write(
+            repo.join("b.bin"),
+            [0xff, 0xfe, 0x00, b'B', b'I', b'N', b'2'],
+        )
+        .unwrap_or_else(|e| panic!("write b.bin: {e}"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let path = repo.join("mode.sh");
+            let mut perms = std::fs::metadata(&path)
+                .unwrap_or_else(|e| panic!("stat: {e}"))
+                .permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).unwrap_or_else(|e| panic!("chmod: {e}"));
+        }
+        rfc032_mv(&bin, &repo, "keep.txt", "moved.txt");
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "every kind")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+
+        let row = rfc035_tip(&backend, &repo, &bin);
+        assert_eq!(row.patches, 1, "0.{}: a block of one patch", bin.minor);
+        let detail = stikk_core::block_detail(&backend, &repo, "heads/main", row.clone(), true)
+            .unwrap_or_else(|e| panic!("0.{}: block detail: {e}", bin.minor));
+        let rows = detail.patches.rows();
+        let [patch_row] = rows else {
+            panic!("0.{}: one patch listed, got {rows:?}", bin.minor)
+        };
+        assert_eq!(
+            patch_row.message,
+            stikk_core::PatchMessageState::Text("every kind".to_string()),
+            "0.{}: joined by id from the block's log row",
+            bin.minor
+        );
+
+        let view = stikk_core::patch_detail_in_block(
+            &patch_row.patch,
+            &row.block_id,
+            &patch_row.message,
+            rows.len(),
+        );
+        assert!(
+            view.heading[0].starts_with("sealed · in block"),
+            "0.{}: {:?}",
+            bin.minor,
+            view.heading
+        );
+
+        // Every kind prikk reported is rendered, and every rendered value is prikk's own.
+        let mut seen: Vec<&str> = Vec::new();
+        for (operation, rendered) in patch_row.patch.operations.iter().zip(&view.operations) {
+            seen.push(&operation.kind);
+            assert!(
+                rendered.title.starts_with(&operation.kind),
+                "0.{}: prikk's kind word leads the row: {rendered:?}",
+                bin.minor
+            );
+            for path in &operation.paths {
+                let stikk_prikk::QueuedPath::Path(path) = path else {
+                    panic!(
+                        "0.{}: a block of one resolves every path, got {:?}",
+                        bin.minor, operation.paths
+                    )
+                };
+                let whole = format!("{} {}", rendered.title, rendered.rows.join(" "));
+                assert!(
+                    whole.contains(path.as_str()),
+                    "0.{}: prikk's path {path} is on screen: {whole}",
+                    bin.minor
+                );
+            }
+            let rendered_rows = rendered.rows.join(" ");
+            match &operation.content {
+                stikk_prikk::OperationContent::TextEdit {
+                    old_span,
+                    replacement,
+                } => {
+                    for span in [old_span, replacement] {
+                        for line in span.lines() {
+                            assert!(
+                                rendered_rows.contains(line),
+                                "0.{}: prikk's span {line:?} is on screen: {rendered_rows}",
+                                bin.minor
+                            );
+                        }
+                    }
+                }
+                stikk_prikk::OperationContent::FileCreated { mode, .. } => assert!(
+                    rendered_rows.contains(&format!("mode {mode:o}")),
+                    "0.{}: prikk's mode as octal: {rendered_rows}",
+                    bin.minor
+                ),
+                stikk_prikk::OperationContent::NodeDeleted { .. } => assert!(
+                    rendered_rows.contains("removed content"),
+                    "0.{}: the preimage is labelled as what was removed: {rendered_rows}",
+                    bin.minor
+                ),
+                stikk_prikk::OperationContent::BinaryReplaced { old, new } => {
+                    for blob in [old, new] {
+                        assert!(
+                            rendered_rows.contains(&blob.blob_id)
+                                && rendered_rows.contains(&format!("{} byte(s)", blob.size)),
+                            "0.{}: prikk's blob id and size: {rendered_rows}",
+                            bin.minor
+                        );
+                    }
+                }
+                stikk_prikk::OperationContent::PermChanged { old_mode, new_mode } => assert!(
+                    rendered_rows.contains(&format!("mode {old_mode:o} → {new_mode:o}")),
+                    "0.{}: both modes, as octal: {rendered_rows}",
+                    bin.minor
+                ),
+                stikk_prikk::OperationContent::PathRenamed { author_key_id, .. } => assert!(
+                    rendered_rows.contains(author_key_id.as_str()),
+                    "0.{}: the asserting AUTHOR key id: {rendered_rows}",
+                    bin.minor
+                ),
+                stikk_prikk::OperationContent::Unrendered => panic!(
+                    "0.{}: prikk emitted a kind stikk does not read: {}",
+                    bin.minor, operation.kind
+                ),
+            }
+            // The raw view carries prikk's own fields for the same operation, out of the same report.
+            assert!(
+                !rendered.raw.is_empty() && rendered.raw.join("\n").contains(&operation.kind),
+                "0.{}: {rendered:?}",
+                bin.minor
+            );
+        }
+        seen.sort_unstable();
+        let mut want = vec![
+            "edit-text",
+            "create-file",
+            "delete-node",
+            "replace-binary",
+            "rename-path",
+        ];
+        // Windows has no executable bit, so there is no mode change to make there.
+        if cfg!(unix) {
+            want.push("change-perm");
+        }
+        want.sort_unstable();
+        assert_eq!(seen, want, "0.{}: every kind in one patch", bin.minor);
+        // A block of one is never labelled: the block's end is this patch's end (decision 3a).
+        assert!(
+            view.operations
+                .iter()
+                .all(|o| !o.title.contains(stikk_core::AS_AT_BLOCK_END)),
+            "0.{}: {:?}",
+            bin.minor,
+            view.operations
+        );
+    }
+}
+
+/// **RFC 035 A1 F7, both directions, against a real binary** — the measurement this whole increment's
+/// band exists for.
+///
+/// Two patches in **one** block. In the first repository patch 2 renames `a.txt` to `z.txt`, and patch
+/// 1's `edit-text` is resolved **at the block's end**, so stikk shows `z.txt` *and* says where that
+/// name comes from. In the second, patch 2 deletes the file patch 1 edited, and prikk resolves nothing
+/// at all — so stikk says exactly that, with no reason attached.
+#[test]
+#[ignore = "requires two real prikk binaries; see the module docs"]
+fn rfc035_a_sealed_blocks_patch_is_resolved_at_the_blocks_end_at_both_ends() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc035_skip_below_the_band(&bin, "a block of two patches") {
+            continue;
+        }
+        if bin.minor < 38 {
+            eprintln!(
+                "RFC 035: the rename direction SKIPPED at 0.{} — `prikk mv` does not exist below \
+                 0.38. The delete direction below still runs. Announced rather than silent.",
+                bin.minor
+            );
+        } else {
+            // ---- direction one: a later rename gives patch 1's edit a name it never saw.
+            let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+            rfc032_write(&repo, "a.txt", "alpha\nmore\n");
+            fixture.set_author_env();
+            backend
+                .commit(&repo, "heads/main", "patch one")
+                .unwrap_or_else(|e| panic!("0.{}: commit 1: {e}", bin.minor));
+            Fixture::clear_env();
+            rfc032_mv(&bin, &repo, "a.txt", "z.txt");
+            rfc032_write(&repo, "z.txt", "alpha\nmore\nagain\n");
+            fixture.set_author_env();
+            backend
+                .commit(&repo, "heads/main", "patch two")
+                .unwrap_or_else(|e| panic!("0.{}: commit 2: {e}", bin.minor));
+            fixture.set_maintainer_env();
+            backend
+                .seal(&repo, "heads/main")
+                .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+            Fixture::clear_env();
+
+            let row = rfc035_tip(&backend, &repo, &bin);
+            assert_eq!(row.patches, 2, "0.{}: one block, two patches", bin.minor);
+            let detail = stikk_core::block_detail(&backend, &repo, "heads/main", row.clone(), true)
+                .unwrap_or_else(|e| panic!("0.{}: block detail: {e}", bin.minor));
+            let rows = detail.patches.rows();
+            assert_eq!(rows.len(), 2, "0.{}: both patches listed", bin.minor);
+            let first = &rows[0];
+            let view = stikk_core::patch_detail_in_block(
+                &first.patch,
+                &row.block_id,
+                &first.message,
+                rows.len(),
+            );
+            let edit = first
+                .patch
+                .operations
+                .iter()
+                .find(|o| o.kind == "edit-text")
+                .unwrap_or_else(|| panic!("0.{}: patch 1 edits: {:?}", bin.minor, first.patch));
+            // Whatever prikk resolved it to, stikk renders **that** and labels where it came from.
+            match &edit.paths[..] {
+                [stikk_prikk::QueuedPath::Path(path)] => {
+                    let title = view
+                        .operations
+                        .iter()
+                        .find(|o| o.title.starts_with("edit-text"))
+                        .map(|o| o.title.clone())
+                        .unwrap_or_default();
+                    assert_eq!(
+                        title,
+                        format!("edit-text {path} — {}", stikk_core::AS_AT_BLOCK_END),
+                        "0.{}: prikk's own name, labelled as the block's end",
+                        bin.minor
+                    );
+                    assert_eq!(
+                        path, "z.txt",
+                        "0.{}: measured at 0.46.0 and 0.51.0 — the later patch's name",
+                        bin.minor
+                    );
+                }
+                other => panic!("0.{}: patch 1's edit names {other:?}", bin.minor),
+            }
+        }
+
+        // ---- direction two: a later delete leaves nothing to resolve.
+        let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+        rfc032_write(&repo, "a.txt", "beta\n");
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "edit a")
+            .unwrap_or_else(|e| panic!("0.{}: commit 1: {e}", bin.minor));
+        Fixture::clear_env();
+        std::fs::remove_file(repo.join("a.txt")).unwrap_or_else(|e| panic!("remove: {e}"));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "delete a")
+            .unwrap_or_else(|e| panic!("0.{}: commit 2: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+
+        let row = rfc035_tip(&backend, &repo, &bin);
+        let detail = stikk_core::block_detail(&backend, &repo, "heads/main", row.clone(), true)
+            .unwrap_or_else(|e| panic!("0.{}: block detail: {e}", bin.minor));
+        let rows = detail.patches.rows();
+        assert_eq!(rows.len(), 2, "0.{}: both patches listed", bin.minor);
+        let first = &rows[0];
+        let edit = first
+            .patch
+            .operations
+            .iter()
+            .find(|o| o.kind == "edit-text")
+            .unwrap_or_else(|| panic!("0.{}: patch 1 edits: {:?}", bin.minor, first.patch));
+        assert!(
+            matches!(edit.paths[..], [stikk_prikk::QueuedPath::UnresolvedNode(_)]),
+            "0.{}: sealing removed the path prikk had already given: {:?}",
+            bin.minor,
+            edit.paths
+        );
+        let view = stikk_core::patch_detail_in_block(
+            &first.patch,
+            &row.block_id,
+            &first.message,
+            rows.len(),
+        );
+        let shown = view
+            .operations
+            .iter()
+            .find(|o| o.title == "edit-text")
+            .unwrap_or_else(|| panic!("0.{}: {:?}", bin.minor, view.operations));
+        assert_eq!(
+            shown.rows[0],
+            stikk_core::NO_PATH_REPORTED,
+            "0.{}: one sentence, and no reason — stikk cannot know which applies",
+            bin.minor
+        );
+        assert!(
+            !shown.title.contains(stikk_core::AS_AT_BLOCK_END),
+            "0.{}: there is no name to label: {shown:?}",
+            bin.minor
+        );
+    }
+}
+
+/// **RFC 035 §4.2 against a real binary: a queued patch, opened the way the Queue opens it** — one
+/// `show <patch-id>` read, with the message the Queue already holds.
+#[test]
+#[ignore = "requires two real prikk binaries; see the module docs"]
+fn rfc035_a_queued_patch_opens_from_the_queue_at_both_ends() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc035_skip_below_the_band(&bin, "a queued patch's detail") {
+            continue;
+        }
+        let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+        rfc032_write(&repo, "a.txt", "alpha\nqueued\n");
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "a queued patch")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        Fixture::clear_env();
+
+        // What the Queue view itself reads, and the patch it would open.
+        let queue = backend
+            .queue(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: queue: {e}", bin.minor));
+        let stikk_prikk::QueueReport::Listed(queue) = queue else {
+            panic!("0.{}: the queue is enumerated at this version", bin.minor)
+        };
+        let [queued] = queue.patches.as_slice() else {
+            panic!("0.{}: one queued patch, got {:?}", bin.minor, queue.patches)
+        };
+        let message = stikk_core::PatchMessageState::from_queued(&queued.message);
+
+        let view = stikk_core::patch_detail(&backend, &repo, &queued.patch_id, &message)
+            .unwrap_or_else(|e| panic!("0.{}: patch detail: {e}", bin.minor));
+        assert_eq!(view.patch_id, queued.patch_id);
+        assert!(!view.unreported);
+        assert_eq!(
+            view.heading[0], "queued",
+            "0.{}: prikk's own word, and no block to name",
+            bin.minor
+        );
+        assert!(
+            !view.operations.is_empty(),
+            "0.{}: prikk reports this patch's operations",
+            bin.minor
+        );
+        // Never labelled: a queued patch has no block to resolve against (decision 3a, F2).
+        assert!(
+            view.operations
+                .iter()
+                .all(|o| !o.title.contains(stikk_core::AS_AT_BLOCK_END)),
+            "0.{}: {:?}",
+            bin.minor,
+            view.operations
+        );
+        // And what stikk shows is prikk's own span text for the edit it made.
+        let rendered = view
+            .operations
+            .iter()
+            .flat_map(|o| o.rows.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            rendered.contains("queued"),
+            "0.{}: prikk's replacement text: {rendered}",
+            bin.minor
+        );
+    }
+}
+
+/// **RFC 035 §7 at the floor: Block detail's below-0.39 sentence, and the Queue unchanged.**
+///
+/// At stikk's JSON floor there is no patch content to read, and stikk says so **in its own voice** —
+/// never *"prikk does not report it"*, which is false at prikk 0.36–0.38 (`C-T4d`). Above the floor the
+/// same block lists its patches instead, which is what makes this leg about the band rather than about
+/// one binary.
+#[test]
+#[ignore = "requires two real prikk binaries; see the module docs"]
+fn rfc035_below_the_json_floor_the_patches_section_names_stikks_own_limit() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let (_fixture, backend, repo) = rfc032_sealed_base(&bin);
+        let row = rfc035_tip(&backend, &repo, &bin);
+        let detail = stikk_core::block_detail(&backend, &repo, "heads/main", row, true)
+            .unwrap_or_else(|e| panic!("0.{}: block detail: {e}", bin.minor));
+        if bin.minor < RFC035_CONTENT_FROM {
+            assert_eq!(
+                detail.patches,
+                stikk_core::BlockPatches::Unreported(bin.minor),
+                "0.{}: unreported, never an empty list",
+                bin.minor
+            );
+            let reason = detail
+                .patches
+                .unreported_reason()
+                .unwrap_or_else(|| panic!("0.{}: a reason", bin.minor));
+            assert_eq!(
+                reason,
+                format!(
+                    "stikk reads a patch's content from prikk 0.{RFC035_CONTENT_FROM} on; this is \
+                     0.{}.",
+                    bin.minor
+                )
+            );
+            assert!(
+                !reason.contains("prikk does not report"),
+                "0.{}: {reason}",
+                bin.minor
+            );
+        } else {
+            assert_eq!(detail.patches.unreported_reason(), None);
+            assert_eq!(
+                detail.patches.rows().len(),
+                1,
+                "0.{}: the base block's one patch",
+                bin.minor
+            );
+        }
+        // The Queue is unchanged at either end: still the count and target it always reported.
+        let queue = stikk_core::queue_view(&backend, &repo)
+            .unwrap_or_else(|e| panic!("0.{}: queue view: {e}", bin.minor));
+        assert_eq!(
+            queue.heading, "Nothing is queued.",
+            "0.{}: {queue:?}",
+            bin.minor
+        );
+    }
+}

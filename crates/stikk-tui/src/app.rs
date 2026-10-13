@@ -29,7 +29,7 @@ use stikk_core::{
     HistoryView, NextTarget, OperationContext, Presentation, RefusalHistory, SEAL_OPERATION,
     SealPreviewOutcome, Target, present, staleness_notice,
 };
-use stikk_core::{QueueView, RefHistory};
+use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 use stikk_state::Config;
 
@@ -113,6 +113,9 @@ pub enum Screen {
         reff: String,
         /// The loaded detail.
         view: BlockDetailView,
+        /// The selected patch in the block's Patches section (RFC 035 §4.1), `0` where there are none.
+        /// `Enter` opens Patch detail for it, **from the report already read**.
+        cursor: usize,
         /// The `seq` of an in-flight refresh, if any (RFC 031 §7). Only the tip's detail is ever
         /// refreshed: an older block's detail cannot change.
         refreshing: Option<u64>,
@@ -137,12 +140,52 @@ pub enum Screen {
         /// The `seq` of an in-flight refresh (`r`), if any — the view stays visible while it runs, as
         /// History's does (RFC 010 §5).
         refreshing: Option<u64>,
-        /// First content row drawn, counting from zero after wrapping (RFC 028 A review v1 §2.1). The
-        /// Queue view has no selection, so the offset is the position. `↑`/`↓` move it unclamped; the
-        /// renderer, which alone knows the wrapped height, clamps it and writes the value back — the
-        /// Glossary's idiom. A refresh keeps it, and the next render clamps it to the new content.
+        /// First content row drawn, counting from zero after wrapping (RFC 028 A review v1 §2.1).
+        /// `↑`/`↓` now move [`Self::Queue::cursor`] and the renderer **follows** it, scrolling only as
+        /// far as it must to keep the selected patch on screen; it still clamps the value and writes it
+        /// back, the Glossary's idiom, because only the renderer knows the wrapped height. A refresh
+        /// keeps both, and the next render clamps them to the new content.
+        offset: std::cell::Cell<u16>,
+        /// The selected queued patch (RFC 035 §4.2), `0` for an empty queue. `Enter` opens Patch detail
+        /// for it, with one `show <patch-id>` read.
+        cursor: usize,
+    },
+    /// One patch's detail: what it changed, in prikk's own terms (`FR-030`; RFC 035).
+    PatchDetail {
+        /// The loaded detail.
+        view: PatchDetailView,
+        /// Whether the raw view is showing: prikk's own fields for each operation, instead of stikk's
+        /// rendering of them (`v`; RFC 035 decision 5). A toggle, never a second read.
+        raw: bool,
+        /// How this screen was opened, which decides what `r` re-reads (RFC 035 §4.3).
+        source: PatchSource,
+        /// The `seq` of an in-flight re-read, if any — the view stays visible while it runs.
+        refreshing: Option<u64>,
+        /// First content row drawn, clamped and written back by the renderer (the Queue's idiom): a
+        /// patch's operations, and a bounded preimage among them, run past one screen.
         offset: std::cell::Cell<u16>,
     },
+}
+
+/// How a [`Screen::PatchDetail`] was opened — and therefore what `r` can honestly re-read (RFC 035
+/// §4.3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PatchSource {
+    /// Opened from the Queue, by patch id. **`r` re-reads that same patch id**, and renders whatever
+    /// prikk now reports: a patch sealed while the screen was open comes back `queued: false` with its
+    /// node-addressed paths **unresolved**, because a bare sealed patch id resolves nothing (RFC 035 A1
+    /// F7, row 2). The earlier read's path is **not** carried over. The resulting screen is worse than
+    /// the one before it and tells the truth, which is the trade this project makes every time.
+    Queued {
+        /// The patch id to re-read.
+        patch_id: String,
+        /// The message the Queue read, carried for the re-render.
+        message: PatchMessageState,
+    },
+    /// Opened from Block detail, out of the block's own report. **`r` re-reads nothing**: a sealed
+    /// block's patches are fixed, the same reason an older block's detail is never refreshed (RFC 031
+    /// §7). `r` still re-reads Orientation, as it does on every screen.
+    InBlock,
 }
 
 /// What the shell should render in the body region — the top screen, or the Orientation root.
@@ -154,12 +197,14 @@ pub enum Focus<'a> {
     Loading(&'static str),
     /// A History screen and its selection cursor.
     History(&'a HistoryView, usize),
-    /// A Block-detail screen.
-    BlockDetail(&'a BlockDetailView),
+    /// A Block-detail screen and its selected patch.
+    BlockDetail(&'a BlockDetailView, usize),
     /// The Changes view, whether untracked entries are hidden, and whether the ref has published history.
     Changes(&'a ChangesView, bool, &'a RefHistory),
-    /// The Queue view and its scroll offset.
-    Queue(&'a QueueView, &'a std::cell::Cell<u16>),
+    /// The Queue view, its scroll offset and its selected patch.
+    Queue(&'a QueueView, &'a std::cell::Cell<u16>, usize),
+    /// One patch's detail, whether the raw view is showing, and its scroll offset.
+    PatchDetail(&'a PatchDetailView, bool, &'a std::cell::Cell<u16>),
 }
 
 /// One background operation the worker has answered or is still working on — display-only bookkeeping
@@ -396,6 +441,21 @@ impl App {
                 reff: view.reff.clone(),
             }),
             Some(Screen::Queue { .. }) => Some(RequestKind::Queue),
+            // RFC 035 §4.3: a queued patch can be sealed while its screen is open, so `r` re-reads the
+            // same patch id and renders what prikk now says. A patch opened from a block's report is
+            // not re-read at all — a sealed block's patches are fixed, the same reason an older
+            // block's detail is never refreshed (RFC 031 §7).
+            Some(Screen::PatchDetail {
+                source: PatchSource::Queued { patch_id, message },
+                ..
+            }) => Some(RequestKind::PatchDetail {
+                patch_id: patch_id.clone(),
+                message: message.clone(),
+            }),
+            Some(Screen::PatchDetail {
+                source: PatchSource::InBlock,
+                ..
+            }) => None,
             // RFC 031 §7: Changes re-reads the ref it shows.
             Some(Screen::Changes { view, .. }) => Some(RequestKind::Changes {
                 reff: view.reff.clone(),
@@ -418,6 +478,7 @@ impl App {
             Screen::History { refreshing, .. }
             | Screen::Queue { refreshing, .. }
             | Screen::Changes { refreshing, .. }
+            | Screen::PatchDetail { refreshing, .. }
             | Screen::BlockDetail { refreshing, .. },
         ) = self.screens.last_mut()
         {
@@ -571,6 +632,16 @@ impl App {
     pub fn toggle_untracked(&mut self) {
         if let Some(Screen::Changes { hide_untracked, .. }) = self.screens.last_mut() {
             *hide_untracked = !*hide_untracked;
+        }
+    }
+
+    /// Toggle Patch detail's raw view (the `v` key; RFC 035 decision 5) — prikk's own fields for each
+    /// operation instead of stikk's rendering of them. **A toggle, never a second read**: both sides
+    /// come out of the one report already in hand, which is also the only place an `unresolved_node_id`
+    /// is legible rather than apologised for (F6). A no-op on every other screen, as `u` is.
+    pub fn toggle_raw(&mut self) {
+        if let Some(Screen::PatchDetail { raw, .. }) = self.screens.last_mut() {
+            *raw = !*raw;
         }
     }
 
@@ -843,13 +914,47 @@ impl App {
                     });
                 }
             }
-            // Nothing to drill into further, and nothing to do while a load is pending.
-            Some(Screen::BlockDetail { .. } | Screen::Loading { .. }) => {}
+            // RFC 035 §4.1: one patch of this block, rendered **from the report Block detail already
+            // read**. No second read, and the label decision 3a may add comes from that same report's
+            // patch count — never from inspecting a later patch for a rename (§5 trap 3).
+            Some(Screen::BlockDetail { view, cursor, .. }) => {
+                let rows = view.patches.rows();
+                if let Some(row) = rows.get(*cursor) {
+                    let detail = stikk_core::patch_detail_in_block(
+                        &row.patch,
+                        &view.row.block_id,
+                        &row.message,
+                        rows.len(),
+                    );
+                    self.screens.push(Screen::PatchDetail {
+                        view: detail,
+                        raw: false,
+                        source: PatchSource::InBlock,
+                        refreshing: None,
+                        offset: std::cell::Cell::new(0),
+                    });
+                }
+            }
+            // Nothing to do while a load is pending.
+            Some(Screen::Loading { .. }) => {}
             // Enter on a Changes row would open a per-file content diff — deferred (UD-09); the view
             // states so. No drill-in.
             Some(Screen::Changes { .. }) => {}
-            // No drill-in: a queued patch's content is Patch detail's own increment (RFC 028).
-            Some(Screen::Queue { .. }) => {}
+            // RFC 035 §4.2: the selected queued patch, with one `show <patch-id>` read. A queued patch
+            // has no block to ask about (F2), so the patch id is the id that resolves the most.
+            Some(Screen::Queue { view, cursor, .. }) => {
+                if let Some(patch) = view.patches.get(*cursor) {
+                    let patch_id = patch.id.clone();
+                    let message = patch.detail_message.clone();
+                    let seq = self.dispatch(RequestKind::PatchDetail { patch_id, message });
+                    self.screens.push(Screen::Loading {
+                        what: "patch detail",
+                        seq,
+                    });
+                }
+            }
+            // Patch detail is the leaf: `v` toggles prikk's own fields, and there is nothing below it.
+            Some(Screen::PatchDetail { .. }) => {}
             None => self.open_history(),
         }
     }
@@ -981,8 +1086,14 @@ impl App {
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
-                // No selection: the Queue scrolls, the Glossary's idiom (RFC 028 A review v1 §2.1).
-                Some(Screen::Queue { offset, .. }) => offset.set(offset.get().saturating_sub(1)),
+                // RFC 035 §4.2: the Queue now has a selection, and the renderer scrolls to follow it.
+                Some(Screen::Queue { cursor, .. }) | Some(Screen::BlockDetail { cursor, .. }) => {
+                    *cursor = cursor.saturating_sub(1);
+                }
+                // Patch detail has no selection — it scrolls, the Glossary's idiom.
+                Some(Screen::PatchDetail { offset, .. }) => {
+                    offset.set(offset.get().saturating_sub(1));
+                }
                 _ => {}
             },
         }
@@ -1030,9 +1141,17 @@ impl App {
                 Some(Screen::History { view, cursor, .. }) => {
                     *cursor = next_index(*cursor, view.blocks.len());
                 }
+                Some(Screen::Queue { view, cursor, .. }) => {
+                    *cursor = next_index(*cursor, view.patches.len());
+                }
+                Some(Screen::BlockDetail { view, cursor, .. }) => {
+                    *cursor = next_index(*cursor, view.patches.rows().len());
+                }
                 // Deliberately unclamped here: only the renderer knows the wrapped height, so it clamps
                 // and writes the clamped value back, as the Glossary does.
-                Some(Screen::Queue { offset, .. }) => offset.set(offset.get().saturating_add(1)),
+                Some(Screen::PatchDetail { offset, .. }) => {
+                    offset.set(offset.get().saturating_add(1));
+                }
                 _ => {}
             },
         }
@@ -1089,6 +1208,7 @@ impl App {
             ResponseKind::Refs(r) => r.is_ok(),
             ResponseKind::Changes(r) => r.is_ok(),
             ResponseKind::Queue(r) => r.is_ok(),
+            ResponseKind::PatchDetail(r) => r.is_ok(),
             ResponseKind::CommitPreview(r) => r.is_ok(),
             ResponseKind::CommitConfirmExecute(r) => r.is_ok(),
             ResponseKind::SealPreview(r) => r.is_ok(),
@@ -1104,6 +1224,7 @@ impl App {
             ResponseKind::Refs(result) => self.apply_refs(seq, result),
             ResponseKind::Changes(result) => self.apply_changes(seq, result),
             ResponseKind::Queue(result) => self.apply_queue(seq, result),
+            ResponseKind::PatchDetail(result) => self.apply_patch_detail(seq, result),
             ResponseKind::CommitPreview(result) => self.apply_commit_preview(seq, result),
             ResponseKind::CommitConfirmExecute(result) => {
                 self.apply_commit_confirm_execute(seq, result);
@@ -1253,6 +1374,7 @@ impl App {
                         *slot = Screen::BlockDetail {
                             reff,
                             view: detail,
+                            cursor: 0,
                             refreshing: None,
                         };
                     }
@@ -1306,6 +1428,7 @@ impl App {
                             view,
                             refreshing: None,
                             offset: std::cell::Cell::new(0),
+                            cursor: 0,
                         };
                     }
                 }
@@ -1315,6 +1438,83 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Answers [`RequestKind::PatchDetail`] (RFC 035 §4.2/§4.3): the Queue's drill-in, or its own
+    /// `r` re-read.
+    ///
+    /// **A re-read replaces the view wholesale.** Nothing is merged forward from the earlier read —
+    /// not a path, not prikk's `queued` word — because a patch sealed since then reports both
+    /// differently, and carrying either over would show a state prikk no longer reports (RFC 035 A1 F7,
+    /// row 2). The raw toggle is the user's own and stays as they left it.
+    fn apply_patch_detail(&mut self, seq: u64, result: stikk_model::Result<PatchDetailView>) {
+        let is_top_refresh = matches!(
+            self.screens.last(),
+            Some(Screen::PatchDetail { refreshing: Some(s), .. }) if *s == seq
+        );
+        if is_top_refresh {
+            if let Some(Screen::PatchDetail { refreshing, .. }) = self.screens.last_mut() {
+                *refreshing = None;
+            }
+            match result {
+                Ok(detail) => {
+                    if let Some(Screen::PatchDetail { view, offset, .. }) = self.screens.last_mut()
+                    {
+                        *view = detail;
+                        // The content changed shape; the next render clamps this to it.
+                        offset.set(0);
+                    }
+                }
+                Err(error) => self.surface(&error, OperationContext::LoadPatch),
+            }
+            return;
+        }
+        let index = self
+            .screens
+            .iter()
+            .position(|s| matches!(s, Screen::Loading { seq: s, .. } if *s == seq));
+        if let Some(index) = index {
+            match result {
+                Ok(view) => {
+                    // Only a Queue drill-in reaches here, so the source is that patch id (§4.3).
+                    let source = PatchSource::Queued {
+                        patch_id: view.patch_id.clone(),
+                        message: self.queued_message(&view.patch_id),
+                    };
+                    if let Some(slot) = self.screens.get_mut(index) {
+                        *slot = Screen::PatchDetail {
+                            view,
+                            raw: false,
+                            source,
+                            refreshing: None,
+                            offset: std::cell::Cell::new(0),
+                        };
+                    }
+                }
+                Err(error) => {
+                    self.screens.remove(index);
+                    self.surface(&error, OperationContext::LoadPatch);
+                }
+            }
+        }
+    }
+
+    /// The message the Queue screen below holds for `patch_id`, for a later re-read to render with.
+    /// Falls back to *not reported* when the Queue has since been popped or no longer lists the patch —
+    /// which is absence, not an empty message (`C-T2c′`).
+    fn queued_message(&self, patch_id: &str) -> PatchMessageState {
+        self.screens
+            .iter()
+            .rev()
+            .find_map(|screen| match screen {
+                Screen::Queue { view, .. } => view
+                    .patches
+                    .iter()
+                    .find(|patch| patch.id == patch_id)
+                    .map(|patch| patch.detail_message.clone()),
+                _ => None,
+            })
+            .unwrap_or(PatchMessageState::NotReported)
     }
 
     fn apply_changes(&mut self, seq: u64, result: stikk_model::Result<ChangesRead>) {
@@ -1797,14 +1997,22 @@ impl App {
         match self.screens.last() {
             Some(Screen::Loading { what, .. }) => Focus::Loading(what),
             Some(Screen::History { view, cursor, .. }) => Focus::History(view, *cursor),
-            Some(Screen::BlockDetail { view, .. }) => Focus::BlockDetail(view),
+            Some(Screen::BlockDetail { view, cursor, .. }) => Focus::BlockDetail(view, *cursor),
             Some(Screen::Changes {
                 view,
                 hide_untracked,
                 history,
                 ..
             }) => Focus::Changes(view, *hide_untracked, history),
-            Some(Screen::Queue { view, offset, .. }) => Focus::Queue(view, offset),
+            Some(Screen::Queue {
+                view,
+                offset,
+                cursor,
+                ..
+            }) => Focus::Queue(view, offset, *cursor),
+            Some(Screen::PatchDetail {
+                view, raw, offset, ..
+            }) => Focus::PatchDetail(view, *raw, offset),
             None => Focus::Orientation(&self.state),
         }
     }

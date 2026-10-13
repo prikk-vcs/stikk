@@ -16,6 +16,16 @@ const BLOB_OLD: &str = "a04c7b5b1c1bb9c0b28bee2d5ab4dc5707c3583199301c5e3eb7a069
 const BLOB_NEW: &str = "8d71c569e89311208708dae4774995c92e9f15fd9ed2f026defa0db3ca45ba7d";
 const NODE: &str = "ab011b1bb05d2b0a527fe45c4fc20eba9604233dea617c1551031cf2fc01acd2";
 
+/// One operation's rendered rows as plain text, for the assertions that are about the words rather
+/// than about which rows are content. The ones that *are* about that compare `OperationRow` itself.
+fn texts(view: &PatchDetailView, at: usize) -> Vec<&str> {
+    view.operations[at]
+        .rows
+        .iter()
+        .map(OperationRow::text)
+        .collect()
+}
+
 fn operation(kind: &str, paths: Vec<QueuedPath>, content: OperationContent) -> PatchOperation {
     PatchOperation {
         kind: kind.to_string(),
@@ -134,17 +144,18 @@ fn every_kind_is_rendered_from_prikks_own_fields() {
         "prikk's kind word verbatim, and its own path"
     );
     assert_eq!(
-        view.operations[0].rows,
-        ["span replaced:", "two", "replacement:", "TWO"],
+        texts(&view, 0),
+        ["span replaced:", "\"two\"", "replacement:", "\"TWO\""],
         "spans, labelled as spans — no line numbers, no context, no line-diff (RFC 021 F2)"
     );
     assert_eq!(
-        view.operations[1].rows,
-        ["mode 100644", "content:", "new file"]
+        texts(&view, 1),
+        ["mode 100644", "content:", "\"new file\\n\""],
+        "the created file's own trailing newline is visible, inside the quotes"
     );
-    assert_eq!(view.operations[2].rows, ["removed content:", "gone"]);
+    assert_eq!(texts(&view, 2), ["removed content:", "\"gone\\n\""]);
     assert_eq!(
-        view.operations[3].rows,
+        texts(&view, 3),
         [
             "old blob — 6 byte(s)",
             BLOB_OLD,
@@ -154,14 +165,11 @@ fn every_kind_is_rendered_from_prikks_own_fields() {
         "blob ids and sizes, and never bytes"
     );
     assert_eq!(
-        view.operations[4].rows,
+        texts(&view, 4),
         ["mode 100644 → 100755"],
         "octal here; prikk's own integers are in the raw view"
     );
-    assert_eq!(
-        view.operations[5].rows,
-        ["asserted by (AUTHOR key id) author"]
-    );
+    assert_eq!(texts(&view, 5), ["asserted by (AUTHOR key id) author"]);
     // prikk's own integers, in the raw view, beside the octal above — never instead of it.
     assert!(view.operations.iter().all(|o| !o.raw.is_empty()));
 }
@@ -177,8 +185,8 @@ fn an_empty_span_says_it_is_empty() {
         1,
     );
     assert_eq!(
-        view.operations[0].rows,
-        ["span replaced: (empty)", "replacement:", "more"]
+        texts(&view, 0),
+        ["span replaced: (empty)", "replacement:", "\"more\\n\""]
     );
 }
 
@@ -266,27 +274,28 @@ fn an_unresolved_path_gets_one_sentence_and_no_reason() {
     );
     assert_eq!(view.operations[0].title, "edit-text", "no path to name");
     assert_eq!(
-        view.operations[0].rows,
+        texts(&view, 0),
         [
             NO_PATH_REPORTED.to_string(),
             format!("node {NODE}"),
             "span replaced:".to_string(),
-            "one".to_string(),
+            "\"one\"".to_string(),
             "replacement:".to_string(),
-            "two".to_string(),
+            "\"two\"".to_string(),
         ]
     );
     // No reason, at any version — and no label either: there is no name to label.
-    let rendered = view.operations[0].rows.join(" ");
+    let rendered = texts(&view, 0).join(" ");
     assert!(!rendered.contains("no block yet"), "{rendered}");
     assert!(!rendered.contains("deleted"), "{rendered}");
     assert!(!rendered.contains(AS_AT_BLOCK_END), "{rendered}");
 }
 
-/// A content kind stikk does not know is named with prikk's own word — **not dropped, not empty**
-/// (§3 rule 5). Measured at 0.51.0 for a preimage an earlier patch of the same block authored.
+/// **`unavailable` is prikk's own word for a blob it does not hold**, and the blob id is still shown —
+/// so a reader has the id prikk could not read (review v1 §2.4). Measured at 0.51.0 for a preimage an
+/// earlier patch of the same block authored; prikk's `DC-65` makes it deliberate, not a fault.
 #[test]
-fn a_content_kind_stikk_does_not_know_is_named() {
+fn an_unavailable_blob_is_named_with_the_id_prikk_could_not_read() {
     let view = patch_detail_in_block(
         &patch(
             PATCH_A,
@@ -296,7 +305,10 @@ fn a_content_kind_stikk_does_not_know_is_named() {
                 vec![path("d.txt")],
                 OperationContent::NodeDeleted {
                     node_kind: "file".to_string(),
-                    content: FileContent::Unrendered("unavailable".to_string()),
+                    content: FileContent::Unavailable(
+                        "0bd52da375c2211f015d1d740130d5e93f903cec906b1cbaf65b80e1d44a16e8"
+                            .to_string(),
+                    ),
                 },
             )],
         ),
@@ -305,8 +317,11 @@ fn a_content_kind_stikk_does_not_know_is_named() {
         2,
     );
     assert_eq!(
-        view.operations[0].rows,
-        ["removed content: prikk reports it as unavailable, with no content to show"]
+        texts(&view, 0),
+        [
+            "removed content: prikk reports the content as unavailable",
+            "blob 0bd52da375c2211f015d1d740130d5e93f903cec906b1cbaf65b80e1d44a16e8"
+        ]
     );
 }
 
@@ -330,7 +345,7 @@ fn an_operation_kind_stikk_does_not_render_still_appears() {
     );
     assert_eq!(view.operations[0].title, "rewrite-span a.txt");
     assert_eq!(
-        view.operations[0].rows,
+        texts(&view, 0),
         ["stikk does not render this operation kind — v shows prikk's own fields"]
     );
 }
@@ -362,7 +377,9 @@ fn content_is_bounded_and_the_cut_is_said_out_loud() {
         )
         .operations[0]
             .rows
-            .clone()
+            .iter()
+            .map(|row| row.text().to_string())
+            .collect::<Vec<_>>()
     };
 
     assert_eq!(
@@ -370,7 +387,7 @@ fn content_is_bounded_and_the_cut_is_said_out_loud() {
         [
             "mode 100644".to_string(),
             "content:".to_string(),
-            under.clone()
+            format!("\"{under}\"")
         ]
     );
     assert_eq!(
@@ -378,11 +395,15 @@ fn content_is_bounded_and_the_cut_is_said_out_loud() {
         [
             "mode 100644".to_string(),
             "content:".to_string(),
-            at.clone()
+            format!("\"{at}\"")
         ]
     );
     let cut = rows(&over);
-    assert_eq!(cut[2].len(), CONTENT_DISPLAY_BYTES, "cut at the bound");
+    assert_eq!(
+        cut[2],
+        format!("\"{at}\""),
+        "cut at the bound — and the quotes are stikk's, so the count below is of prikk's bytes"
+    );
     assert_eq!(cut[3], "… 10 more bytes not shown");
 
     // A multi-byte character astride the cut: the bound steps back to a `char` boundary, and the count
@@ -390,14 +411,229 @@ fn content_is_bounded_and_the_cut_is_said_out_loud() {
     let astride = format!("{}\u{1f600}tail", "x".repeat(CONTENT_DISPLAY_BYTES - 2));
     let cut = rows(&astride);
     assert_eq!(
-        cut[2].len(),
-        CONTENT_DISPLAY_BYTES - 2,
+        cut[2],
+        format!("\"{}\"", "x".repeat(CONTENT_DISPLAY_BYTES - 2)),
         "the emoji starts inside the bound and does not fit, so it is withheld whole"
     );
-    assert!(cut[2].is_char_boundary(cut[2].len()));
     assert_eq!(
         cut[3], "… 8 more bytes not shown",
         "4 for the emoji, 4 for `tail`"
+    );
+}
+
+/// **Every row of review v1 §2.1's table: a change that used to render as no change.**
+///
+/// Spans are where whitespace edits live, so each of these is the common case rather than an edge
+/// one — and each rendered identically on both sides until content rows became quoted and escaped.
+/// What is asserted is the invariant, not the spelling: **two spans that differ in any byte never
+/// render the same.**
+#[test]
+fn two_spans_that_differ_in_any_byte_never_render_identically() {
+    let rows = |old: &str, new: &str| -> Vec<String> {
+        patch_detail_in_block(
+            &patch(PATCH_A, false, vec![edit(path("a.txt"), old, new)]),
+            BLOCK,
+            &PatchMessageState::NotReported,
+            1,
+        )
+        .operations[0]
+            .rows
+            .iter()
+            .map(|row| row.text().to_string())
+            .collect()
+    };
+    let cases: [(&str, &str, &str); 6] = [
+        (
+            "a re-indent",
+            "  x
+",
+            "    x
+",
+        ),
+        (
+            "a trailing newline removed",
+            "x
+",
+            "x",
+        ),
+        ("a double space closed up", "a  b", "a b"),
+        ("a tab turned into spaces", "\tx", "    x"),
+        (
+            "trailing whitespace removed",
+            "x  
+",
+            "x
+",
+        ),
+        ("whitespace-only against empty-looking", "   ", " "),
+    ];
+    for (what, old, new) in cases {
+        let rendered = rows(old, new);
+        // Rows 1 and 3 are the two spans; rows 0 and 2 are stikk's labels.
+        assert_ne!(
+            rendered[1], rendered[3],
+            "{what}: prikk reported a change and stikk rendered none — {rendered:?}"
+        );
+        // And each row really is the span, byte for byte, inside the quotes.
+        for (span, row) in [(old, &rendered[1]), (new, &rendered[3])] {
+            assert_eq!(
+                row,
+                &quoted(span),
+                "{what}: the row is the span, escaped and quoted"
+            );
+        }
+    }
+}
+
+/// Indented source keeps its indentation, in a create and in a preimage — the other half of §2.1's
+/// table, where a whole file's structure used to go flush left.
+#[test]
+fn indented_file_content_keeps_its_indentation() {
+    let source = "fn main() {\n    let x = 1;\n\tlet y = 2;\n}\n";
+    let created = patch_detail_in_block(
+        &patch(
+            PATCH_A,
+            false,
+            vec![
+                operation(
+                    "create-file",
+                    vec![path("src/main.rs")],
+                    OperationContent::FileCreated {
+                        content: FileContent::Text(source.to_string()),
+                        mode: 33188,
+                    },
+                ),
+                operation(
+                    "delete-node",
+                    vec![path("old.rs")],
+                    OperationContent::NodeDeleted {
+                        node_kind: "file".to_string(),
+                        content: FileContent::Text(source.to_string()),
+                    },
+                ),
+            ],
+        ),
+        BLOCK,
+        &PatchMessageState::NotReported,
+        1,
+    );
+    let want = [
+        "\"fn main() {\\n\"",
+        "\"    let x = 1;\\n\"",
+        "\"\\tlet y = 2;\\n\"",
+        "\"}\\n\"",
+    ];
+    assert_eq!(
+        texts(&created, 0),
+        ["mode 100644", "content:"]
+            .iter()
+            .chain(want.iter())
+            .copied()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        texts(&created, 1),
+        ["removed content:"]
+            .iter()
+            .chain(want.iter())
+            .copied()
+            .collect::<Vec<_>>()
+    );
+    // Each content row is marked as content, so the frontend knows not to word-wrap it.
+    assert!(
+        created.operations[0].rows[2..]
+            .iter()
+            .all(OperationRow::is_content),
+        "{:?}",
+        created.operations[0].rows
+    );
+    assert!(
+        !created.operations[0].rows[1].is_content(),
+        "the `content:` label is stikk's own words"
+    );
+}
+
+/// **A binary create or delete shows what `replace-binary` shows** — identity and size, never bytes
+/// (review v1 §2.4). Measured at 0.51.0: `{kind: "binary", blob_id, size}`, queued and sealed alike.
+#[test]
+fn binary_file_content_shows_its_blob_and_size_and_never_bytes() {
+    let blob = BinaryBlob {
+        blob_id: BLOB_NEW.to_string(),
+        size: 12,
+    };
+    let view = patch_detail_in_block(
+        &patch(
+            PATCH_A,
+            false,
+            vec![
+                operation(
+                    "create-file",
+                    vec![path("new.bin")],
+                    OperationContent::FileCreated {
+                        content: FileContent::Binary(blob.clone()),
+                        mode: 33188,
+                    },
+                ),
+                operation(
+                    "delete-node",
+                    vec![path("old.bin")],
+                    OperationContent::NodeDeleted {
+                        node_kind: "file".to_string(),
+                        content: FileContent::Binary(BinaryBlob {
+                            blob_id: BLOB_OLD.to_string(),
+                            size: 8,
+                        }),
+                    },
+                ),
+            ],
+        ),
+        BLOCK,
+        &PatchMessageState::NotReported,
+        1,
+    );
+    assert_eq!(
+        texts(&view, 0),
+        ["mode 100644", "content — 12 byte(s)", BLOB_NEW]
+    );
+    assert_eq!(texts(&view, 1), ["removed content — 8 byte(s)", BLOB_OLD]);
+    // Nothing is claimed about what the bytes are, and no row is content to be wrapped verbatim.
+    assert!(
+        view.operations
+            .iter()
+            .flat_map(|o| &o.rows)
+            .all(|row| !row.is_content()),
+        "a blob has no content rows: {view:?}"
+    );
+}
+
+/// A content kind beyond prikk's three is named with prikk's word, and **claims nothing about whether
+/// it carries content** (review v1 §3) — stikk does not know that.
+#[test]
+fn a_content_kind_stikk_has_never_seen_claims_nothing_about_it() {
+    let view = patch_detail_in_block(
+        &patch(
+            PATCH_A,
+            false,
+            vec![operation(
+                "create-file",
+                vec![path("odd")],
+                OperationContent::FileCreated {
+                    content: FileContent::Unrendered("braille".to_string()),
+                    mode: 33188,
+                },
+            )],
+        ),
+        BLOCK,
+        &PatchMessageState::NotReported,
+        1,
+    );
+    assert_eq!(
+        texts(&view, 0),
+        [
+            "mode 100644",
+            "content: prikk reports it as braille, which stikk does not render; v shows prikk's own \
+             fields"
+        ]
     );
 }
 
@@ -497,12 +733,12 @@ fn a_re_read_of_a_sealed_patch_loses_the_path_it_used_to_name() {
         "prikk's own word, not stikk's memory"
     );
     assert_eq!(after.operations[0].title, "edit-text");
-    assert_eq!(after.operations[0].rows[0], NO_PATH_REPORTED);
+    assert_eq!(texts(&after, 0)[0], NO_PATH_REPORTED);
     assert!(
         !after.operations[0]
             .rows
             .iter()
-            .any(|row| row.contains("a.txt")),
+            .any(|row| row.text().contains("a.txt")),
         "nothing is carried over from the read before it: {:?}",
         after.operations[0].rows
     );

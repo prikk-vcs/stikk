@@ -307,3 +307,37 @@ fn a_patch_rows_message_is_rendered_inert() {
     assert!(!text.contains('\u{1b}'), "{text:?}");
     assert!(text.contains('\u{FFFD}'), "{text:?}");
 }
+
+/// **A failed `show` costs the Patches section and nothing else** (review v1 §2.3): the block's fields
+/// and the tip's state files are still on screen, and the section says what failed, in prikk's own
+/// words where the failure was prikk's.
+#[test]
+fn a_failed_patches_read_leaves_the_rest_of_the_block_on_screen() {
+    let detail = BlockDetailView {
+        row: row(),
+        is_tip: true,
+        state: Some(StateFiles {
+            target_block: "bbbbbbbbbbbbbbbb".into(),
+            files: vec!["readme.txt".into()],
+            total_bytes: 12,
+        }),
+        patches: BlockPatches::Failed(
+            "refusal: precondition not met: no object bbbb in the object store".to_string(),
+        ),
+    };
+    let text = draw_at(&detail, 0, 80);
+    println!(
+        "--- RFC 035 review v1 §2.3: Block detail with a failed patches read, 80 columns\n{text}"
+    );
+    assert!(
+        text.contains("bbbbbbbbbbbbbbbb"),
+        "the block itself: {text}"
+    );
+    assert!(text.contains("readme.txt"), "the tip's state files: {text}");
+    assert!(
+        text.contains("could not read this block's patches"),
+        "{text}"
+    );
+    assert!(text.contains("no object bbbb"), "prikk's own words: {text}");
+    assert!(!text.contains('▸'), "nothing to select: {text}");
+}

@@ -93,15 +93,16 @@ impl CliBackend {
     /// Whether this session's prikk offers `--format json` for `log`, `branch` and `tag` (RFC 026 §6).
     ///
     /// Reads the cached handshake, so the gate costs nothing after the first call. **The number lives
-    /// here and nowhere else**: a second copy in any of the three call sites is how `0.30` survived in
-    /// `stikk-tui`'s Orientation copy after the ceiling had moved twice (RFC 015).
+    /// in one place**, [`crate::JSON_REPORTS_FROM_MINOR`], which this gate and every view built on a
+    /// JSON-only report read: a second copy in any call site is how `0.30` survived in `stikk-tui`'s
+    /// Orientation copy after the ceiling had moved twice (RFC 015), and RFC 035 review v1 §2.2 caught
+    /// this very constant being copied into `stikk-core` three weeks after it was written down here.
     ///
     /// # Errors
     /// Propagates the handshake's own error — a version stikk cannot read is not a version it can
     /// choose a flag for.
     fn reads_json(&self) -> Result<bool> {
-        const JSON_REPORTS_FROM: u32 = 39;
-        Ok(Prikk::handshake(self)?.version.minor >= JSON_REPORTS_FROM)
+        Ok(Prikk::handshake(self)?.version.minor >= crate::JSON_REPORTS_FROM_MINOR)
     }
 
     /// Construct a backend using `prikk` on `PATH`, or the `STIKK_PRIKK_BIN` override if set.

@@ -9,6 +9,13 @@
 //! scrolls in the Queue view's idiom: the lines are wrapped here first, so their count is exact; the
 //! offset is clamped to `rows − viewport` and written back; and the title says where you are.
 //!
+//! **Two wraps, and the difference matters** (review v1 §2.1). stikk's own words — labels, paths,
+//! sentences — word-wrap through [`wrap_indented`]. **Repository content and prikk's raw JSON go
+//! through [`wrap_verbatim`]**, which changes nothing: `wrap_indented` rebuilds a line from its
+//! whitespace-separated words, so sending a span through it would render a re-indent, a tab turned into
+//! spaces or a removed trailing newline as *no change at all*. Core says which rows are content
+//! ([`OperationRow`]); this module honours it.
+//!
 //! **`v` toggles prikk's own fields** (RFC 035 decision 5). It is the same report either way — a
 //! toggle, never a second read — and it is where an `unresolved_node_id`, a blob id and a mode as
 //! prikk's own integer are legible rather than apologised for (F6).
@@ -21,9 +28,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use stikk_core::PatchDetailView;
+use stikk_core::{OperationRow, PatchDetailView};
 
-use crate::text::{inert, wrap_indented};
+use crate::text::{inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
 
 /// Indents, by level: the patch id and foot, the heading rows, an operation's title, and its rows.
@@ -78,6 +85,17 @@ pub fn render(
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 
+/// Push one **verbatim** row: repository content, or prikk's raw JSON. A function rather than a
+/// closure, because the closure that pushes stikk's own words holds `lines` mutably.
+///
+/// `inert` still applies (`C-T2a`), and costs nothing here: core quotes content with the escapes
+/// prikk's own JSON uses, so a control character is already spelled `\u001b` by the time it arrives.
+fn push_verbatim<'a>(lines: &mut Vec<Line<'a>>, width: usize, text: &str, style: Style) {
+    for row in wrap_verbatim(&inert(text), width, DETAIL) {
+        lines.push(Line::from(Span::styled(row, style)));
+    }
+}
+
 /// Every row of the view, already wrapped to `width`, so the caller's scroll clamp is exact.
 fn patch_lines<'a>(
     view: &PatchDetailView,
@@ -86,13 +104,17 @@ fn patch_lines<'a>(
     width: usize,
 ) -> Vec<Line<'a>> {
     let mut lines: Vec<Line> = Vec::new();
-    let mut push = |text: &str, indent: &str, style: Style| {
+    // Functions rather than closures over `lines`, so the verbatim half can push to the same vector —
+    // the Queue view's own renderer took this shape for the same reason.
+    fn push<'a>(lines: &mut Vec<Line<'a>>, width: usize, text: &str, indent: &str, style: Style) {
         for row in wrap_indented(&inert(text), width, indent) {
             lines.push(Line::from(Span::styled(row, style)));
         }
-    };
+    }
 
     push(
+        &mut lines,
+        width,
         &view.patch_id,
         TOP,
         Style::default()
@@ -100,38 +122,55 @@ fn patch_lines<'a>(
             .add_modifier(Modifier::BOLD),
     );
     for row in &view.heading {
-        push(row, HEADING, Style::default().fg(palette.fg));
+        push(
+            &mut lines,
+            width,
+            row,
+            HEADING,
+            Style::default().fg(palette.fg),
+        );
     }
     for operation in &view.operations {
-        push("", TOP, Style::default());
+        push(&mut lines, width, "", TOP, Style::default());
         push(
+            &mut lines,
+            width,
             &operation.title,
             OPERATION,
             Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
         );
         // The same operation, two ways, out of the one report: stikk's rendering, or prikk's fields.
         if raw {
+            // **prikk's JSON keeps its own nesting and its own whitespace** — the shape is part of
+            // what the raw view is for (decision 5), and a string value's spaces are prikk's bytes.
             for row in &operation.raw {
-                // **prikk's JSON keeps its own nesting.** `wrap_indented` word-wraps, which collapses
-                // runs of whitespace — right for a sentence, wrong for a report whose shape is part of
-                // what the raw view is for (decision 5). So each row's own leading spaces become part
-                // of its indent, and a long value still wraps under itself rather than clipping.
-                let lead: String = row.chars().take_while(|ch| *ch == ' ').collect();
-                push(
-                    row.trim_start(),
-                    &format!("{DETAIL}{lead}"),
-                    Style::default().fg(palette.fg),
-                );
+                push_verbatim(&mut lines, width, row, Style::default().fg(palette.fg));
             }
         } else {
             for row in &operation.rows {
-                push(row, DETAIL, Style::default().fg(palette.fg));
+                match row {
+                    OperationRow::Said(text) => {
+                        push(
+                            &mut lines,
+                            width,
+                            text,
+                            DETAIL,
+                            Style::default().fg(palette.fg),
+                        );
+                    }
+                    // Byte-faithful: quoted by core, hard-split here, nothing collapsed.
+                    OperationRow::Content(text) => {
+                        push_verbatim(&mut lines, width, text, Style::default().fg(palette.fg));
+                    }
+                }
             }
         }
     }
     if let Some(foot) = &view.foot {
-        push("", TOP, Style::default());
+        push(&mut lines, width, "", TOP, Style::default());
         push(
+            &mut lines,
+            width,
             foot,
             TOP,
             Style::default()

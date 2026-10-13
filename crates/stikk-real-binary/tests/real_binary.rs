@@ -4173,7 +4173,59 @@ fn rfc034_an_interrupted_materialization_is_shown_and_blocks_only_commit() {
 // =============================================================================================
 
 /// stikk's JSON floor, which is also Patch detail's band floor (RFC 035 A1, decision 1 as amended).
-const RFC035_CONTENT_FROM: u32 = 39;
+/// **Read from the seam, never written here** (review v1 §2.2).
+const RFC035_CONTENT_FROM: u32 = stikk_prikk::JSON_REPORTS_FROM_MINOR;
+
+/// One operation's rendered rows as one string. **Content rows arrive quoted and escaped** (review v1
+/// §2.1), so an assertion looking for prikk's own text looks for it inside the quotes.
+fn rfc035_rows(operation: &stikk_core::OperationView) -> String {
+    operation
+        .rows
+        .iter()
+        .map(stikk_core::OperationRow::text)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// What stikk shows for a file's content must be what prikk reported it to be (review v1 §2.4): a
+/// text file's own text, or a binary file's blob id and byte count — **never its bytes**, and never
+/// "no content to show" for a kind prikk named.
+fn rfc035_assert_file_content(bin: &PrikkBin, content: &stikk_prikk::FileContent, rendered: &str) {
+    match content {
+        stikk_prikk::FileContent::Text(text) => {
+            for line in text.lines() {
+                assert!(
+                    rendered.contains(line),
+                    "0.{}: prikk's text {line:?} is on screen: {rendered}",
+                    bin.minor
+                );
+            }
+        }
+        stikk_prikk::FileContent::Binary(blob) => {
+            assert!(
+                rendered.contains(&blob.blob_id)
+                    && rendered.contains(&format!("{} byte(s)", blob.size)),
+                "0.{}: prikk's blob id and size: {rendered}",
+                bin.minor
+            );
+            assert!(
+                !rendered.contains("no content to show"),
+                "0.{}: {rendered}",
+                bin.minor
+            );
+        }
+        stikk_prikk::FileContent::Unavailable(blob_id) => assert!(
+            rendered.contains(blob_id.as_str()),
+            "0.{}: the id prikk could not read is still shown: {rendered}",
+            bin.minor
+        ),
+        stikk_prikk::FileContent::Unrendered(kind) => assert!(
+            rendered.contains(kind.as_str()),
+            "0.{}: prikk's own kind word: {rendered}",
+            bin.minor
+        ),
+    }
+}
 
 fn rfc035_skip_below_the_band(bin: &PrikkBin, what: &str) -> bool {
     if bin.minor < RFC035_CONTENT_FROM {
@@ -4223,6 +4275,10 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
         rfc032_write(&repo, "mode.sh", "x\n");
         std::fs::write(repo.join("b.bin"), [0xff, 0xfe, 0x00, b'b', b'i', b'n'])
             .unwrap_or_else(|e| panic!("write b.bin: {e}"));
+        // Review v1 §2.4: a binary file to delete, so the patch below carries a binary preimage as
+        // well as a binary create — the content kind §2's table lacked.
+        std::fs::write(repo.join("old.bin"), [0xff, 0xfe, 0x00, 1, 2, 3, 4, 5])
+            .unwrap_or_else(|e| panic!("write old.bin: {e}"));
         fixture.set_author_env();
         backend
             .commit(&repo, "heads/main", "more kinds")
@@ -4238,6 +4294,12 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
         rfc032_write(&repo, "a.txt", "ALPHA\n");
         std::fs::remove_file(repo.join("del.txt")).unwrap_or_else(|e| panic!("remove: {e}"));
         rfc032_write(&repo, "created.txt", "new file\n");
+        std::fs::write(
+            repo.join("new.bin"),
+            [0x89, b'P', b'N', b'G', 13, 10, 26, 10],
+        )
+        .unwrap_or_else(|e| panic!("write new.bin: {e}"));
+        std::fs::remove_file(repo.join("old.bin")).unwrap_or_else(|e| panic!("remove: {e}"));
         std::fs::write(
             repo.join("b.bin"),
             [0xff, 0xfe, 0x00, b'B', b'I', b'N', b'2'],
@@ -4308,14 +4370,14 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
                         bin.minor, operation.paths
                     )
                 };
-                let whole = format!("{} {}", rendered.title, rendered.rows.join(" "));
+                let whole = format!("{} {}", rendered.title, rfc035_rows(rendered));
                 assert!(
                     whole.contains(path.as_str()),
                     "0.{}: prikk's path {path} is on screen: {whole}",
                     bin.minor
                 );
             }
-            let rendered_rows = rendered.rows.join(" ");
+            let rendered_rows = rfc035_rows(rendered);
             match &operation.content {
                 stikk_prikk::OperationContent::TextEdit {
                     old_span,
@@ -4331,16 +4393,22 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
                         }
                     }
                 }
-                stikk_prikk::OperationContent::FileCreated { mode, .. } => assert!(
-                    rendered_rows.contains(&format!("mode {mode:o}")),
-                    "0.{}: prikk's mode as octal: {rendered_rows}",
-                    bin.minor
-                ),
-                stikk_prikk::OperationContent::NodeDeleted { .. } => assert!(
-                    rendered_rows.contains("removed content"),
-                    "0.{}: the preimage is labelled as what was removed: {rendered_rows}",
-                    bin.minor
-                ),
+                stikk_prikk::OperationContent::FileCreated { content, mode } => {
+                    assert!(
+                        rendered_rows.contains(&format!("mode {mode:o}")),
+                        "0.{}: prikk's mode as octal: {rendered_rows}",
+                        bin.minor
+                    );
+                    rfc035_assert_file_content(&bin, content, &rendered_rows);
+                }
+                stikk_prikk::OperationContent::NodeDeleted { content, .. } => {
+                    assert!(
+                        rendered_rows.contains("removed content"),
+                        "0.{}: the preimage is labelled as what was removed: {rendered_rows}",
+                        bin.minor
+                    );
+                    rfc035_assert_file_content(&bin, content, &rendered_rows);
+                }
                 stikk_prikk::OperationContent::BinaryReplaced { old, new } => {
                     for blob in [old, new] {
                         assert!(
@@ -4374,6 +4442,9 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
             );
         }
         seen.sort_unstable();
+        // `create-file` and `delete-node` each appear twice now — once for a text file and once for a
+        // binary one (review v1 §2.4) — so the comparison is over the set of kinds.
+        seen.dedup();
         let mut want = vec![
             "edit-text",
             "create-file",
@@ -4533,7 +4604,7 @@ fn rfc035_a_sealed_blocks_patch_is_resolved_at_the_blocks_end_at_both_ends() {
             .find(|o| o.title == "edit-text")
             .unwrap_or_else(|| panic!("0.{}: {:?}", bin.minor, view.operations));
         assert_eq!(
-            shown.rows[0],
+            shown.rows[0].text(),
             stikk_core::NO_PATH_REPORTED,
             "0.{}: one sentence, and no reason — stikk cannot know which applies",
             bin.minor
@@ -4602,8 +4673,7 @@ fn rfc035_a_queued_patch_opens_from_the_queue_at_both_ends() {
         let rendered = view
             .operations
             .iter()
-            .flat_map(|o| o.rows.iter())
-            .cloned()
+            .map(rfc035_rows)
             .collect::<Vec<_>>()
             .join(" ");
         assert!(

@@ -10,7 +10,9 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
-use stikk_core::{AS_AT_BLOCK_END, NO_PATH_REPORTED, PatchDetailView, PatchMessageState};
+use stikk_core::{
+    AS_AT_BLOCK_END, NO_PATH_REPORTED, OperationRow, PatchDetailView, PatchMessageState,
+};
 use stikk_prikk::{
     BinaryBlob, FileContent, OperationContent, PatchOperation, QueuedPath, ShownPatch,
 };
@@ -43,6 +45,15 @@ fn draw_sized(view: &PatchDetailView, raw: bool, width: u16, height: u16) -> Str
         })
         .unwrap();
     buffer_text(terminal.backend().buffer())
+}
+
+/// Whether any single row of the screen contains `needle` **exactly**, whitespace and all.
+///
+/// **Content rows must be judged with this, never with [`joined`]**, which collapses runs of
+/// whitespace to match a wrapped sentence — the very thing a content row must not do (review v1 §2.1).
+/// It caught this test file's own first draft asserting a re-indent against the joined text.
+fn on_a_row(text: &str, needle: &str) -> bool {
+    text.lines().any(|line| line.contains(needle))
 }
 
 /// The screen's text with borders and all runs of whitespace collapsed, so a wrapped line matches whole.
@@ -162,12 +173,11 @@ fn all_six_kinds_render_whole_at_80_columns() {
     let text = draw_sized(&view, false, 80, 40);
     println!("--- RFC 035 §6: Patch detail, all six kinds, 80 columns\n{text}");
     let flat = joined(&text);
-    for row in view
-        .operations
-        .iter()
-        .flat_map(|o| std::iter::once(&o.title).chain(o.rows.iter()))
-    {
-        assert!(flat.contains(row.as_str()), "missing {row:?} in {flat}");
+    for row in view.operations.iter().flat_map(|o| {
+        std::iter::once(o.title.as_str()).chain(o.rows.iter().map(OperationRow::text))
+    }) {
+        // Row by row, whitespace and all: a content row's spaces are prikk's bytes.
+        assert!(on_a_row(&text, row), "missing {row:?} in {text}");
     }
     assert!(flat.contains("sealed · in block"), "{flat}");
     assert!(flat.contains("every kind"), "{flat}");
@@ -264,7 +274,7 @@ fn a_bounded_preimage_says_how_many_bytes_it_withheld() {
     );
     let rows = &view.operations[0].rows;
     assert_eq!(
-        rows.last().map(String::as_str),
+        rows.last().map(OperationRow::text),
         Some(format!("… {withheld} more bytes not shown").as_str()),
         "{rows:?}"
     );
@@ -357,4 +367,119 @@ fn hostile_content_is_rendered_inert_in_both_views() {
         assert!(!text.contains('\u{1b}'), "raw={raw}: {text:?}");
         assert!(text.contains('\u{FFFD}') || raw, "raw={raw}: {text:?}");
     }
+}
+
+/// **§2.1's capture: a re-indent edit at 80 columns** — the change that used to render as no change.
+///
+/// prikk reports a span of two spaces replaced by four. On screen the two spans differ, byte for byte,
+/// and a reader can see which is which.
+#[test]
+fn rfc035_a_re_indent_edit_renders_as_a_change_at_80_columns() {
+    let patch = ShownPatch {
+        patch_id: PATCH_A.to_string(),
+        queued: true,
+        operations: vec![
+            operation(
+                "edit-text",
+                vec![path("src/main.rs")],
+                OperationContent::TextEdit {
+                    old_span: "  let x = 1;\n".to_string(),
+                    replacement: "    let x = 1;\n".to_string(),
+                },
+            ),
+            operation(
+                "edit-text",
+                vec![path("notes.txt")],
+                OperationContent::TextEdit {
+                    old_span: "trailing  \n".to_string(),
+                    replacement: "trailing\n".to_string(),
+                },
+            ),
+            operation(
+                "edit-text",
+                vec![path("Makefile")],
+                OperationContent::TextEdit {
+                    old_span: "\tcargo test\n".to_string(),
+                    replacement: "    cargo test\n".to_string(),
+                },
+            ),
+        ],
+    };
+    let view = stikk_core::patch_detail_in_block(&patch, BLOCK, &PatchMessageState::Absent, 1);
+    let text = draw_sized(&view, false, 80, 30);
+    println!("--- RFC 035 review v1 §2.1: whitespace edits, 80 columns\n{text}");
+    for row in [
+        "\"  let x = 1;\\n\"",
+        "\"    let x = 1;\\n\"",
+        "\"trailing  \\n\"",
+        "\"trailing\\n\"",
+        "\"\\tcargo test\\n\"",
+        "\"    cargo test\\n\"",
+    ] {
+        assert!(on_a_row(&text, row), "missing {row:?} in {text}");
+    }
+    // The two spans of each edit are different rows on screen — that is the defect this fixes.
+    for operation in &view.operations {
+        let rows: Vec<&str> = operation.rows.iter().map(OperationRow::text).collect();
+        assert_ne!(rows[1], rows[3], "{rows:?}");
+    }
+}
+
+/// **Content rows are not word-wrapped**, so internal runs of whitespace survive the renderer too —
+/// core quoting them is only half the fix (review v1 §2.1).
+#[test]
+fn a_content_rows_internal_whitespace_survives_the_renderer() {
+    let patch = ShownPatch {
+        patch_id: PATCH_A.to_string(),
+        queued: true,
+        operations: vec![operation(
+            "edit-text",
+            vec![path("table.txt")],
+            OperationContent::TextEdit {
+                old_span: "a  b".to_string(),
+                replacement: "a b".to_string(),
+            },
+        )],
+    };
+    let view = stikk_core::patch_detail_in_block(&patch, BLOCK, &PatchMessageState::NotReported, 1);
+    let text = draw(&view, false);
+    assert!(
+        on_a_row(&text, "\"a  b\""),
+        "the double space is on screen: {text}"
+    );
+    assert!(on_a_row(&text, "\"a b\""), "{text}");
+}
+
+/// A binary create or delete shows its blob and size, and never claims to have no content to show
+/// (review v1 §2.4).
+#[test]
+fn rfc035_binary_content_shows_its_blob_at_80_columns() {
+    let patch = ShownPatch {
+        patch_id: PATCH_A.to_string(),
+        queued: false,
+        operations: vec![operation(
+            "create-file",
+            vec![path("logo.png")],
+            OperationContent::FileCreated {
+                content: FileContent::Binary(BinaryBlob {
+                    blob_id: BLOB_NEW.to_string(),
+                    size: 12,
+                }),
+                mode: 33188,
+            },
+        )],
+    };
+    let view = stikk_core::patch_detail_in_block(
+        &patch,
+        BLOCK,
+        &PatchMessageState::Text("add the logo".to_string()),
+        1,
+    );
+    let text = draw(&view, false);
+    println!("--- RFC 035 review v1 §2.4: a binary create, 80 columns\n{text}");
+    let flat = joined(&text);
+    assert!(flat.contains("create-file logo.png"), "{flat}");
+    assert!(flat.contains("content — 12 byte(s)"), "{flat}");
+    assert!(flat.contains(BLOB_NEW), "{flat}");
+    assert!(!flat.contains("no content to show"), "{flat}");
 }

@@ -864,9 +864,13 @@ fn operation_content(operation: &Json, kind: &str) -> Result<OperationContent> {
 
 /// A content object at `key`, read by **its own** `kind` (RFC 035 §3 rule 5).
 ///
-/// `text` is what §2 measured. `unavailable` turned up at 0.51.0 for a `delete-node` whose preimage an
-/// earlier patch of the same block had authored, carrying a `blob_id` and no text; it arrives here as
-/// [`FileContent::Unrendered`] with prikk's word, which is what rule 5 exists for.
+/// **All three of prikk's kinds are read** (review v1 §2.4), each strictly: `text` carries its text,
+/// `binary` carries an object id and a size — the same two facts `replace-binary` carries, read by the
+/// same function — and `unavailable` carries the blob id prikk does not hold. §2's table named only
+/// `text` because the measurement behind it created only text files; `binary` is any image in a
+/// repository, and arrived as "no content to show" until this was fixed.
+///
+/// A kind beyond those three is still carried as a word, which is what rule 5 exists for.
 fn file_content(value: &Json, key: &str) -> Result<FileContent> {
     let content = match value.get(key) {
         Some(content @ Json::Object(_)) => content,
@@ -879,10 +883,21 @@ fn file_content(value: &Json, key: &str) -> Result<FileContent> {
     };
     match content.str_field("kind")? {
         "text" => Ok(FileContent::Text(content.str_field("text")?.to_string())),
+        "binary" => Ok(FileContent::Binary(BinaryBlob {
+            blob_id: object_id_field(content, "blob_id")?.to_string(),
+            size: content.u64_field("size")?,
+        })),
+        "unavailable" => Ok(FileContent::Unavailable(
+            object_id_field(content, "blob_id")?.to_string(),
+        )),
         other => Ok(FileContent::Unrendered(other.to_string())),
     }
 }
 
+/// One blob, by identity and size. **The `{kind: "binary", blob_id, size}` shape is the same wherever
+/// prikk writes it** — `replace-binary`'s `old`/`new`, and a `create-file` or `delete-node` of a binary
+/// file (measured at 0.51.0) — so one set of rules reads all of them. `file_content` reads the same two
+/// fields directly, because there the `kind` tag has already been matched.
 fn binary_blob(content: &Json, key: &str) -> Result<BinaryBlob> {
     let blob = match content.get(key) {
         Some(blob @ Json::Object(_)) => blob,

@@ -25,6 +25,18 @@
 //! - **Content is bounded before it is rendered, and the cut is said out loud** (decision 7,
 //!   `C-T2c′`). A create or a preimage carries whole file content. [`CONTENT_DISPLAY_BYTES`] is the one
 //!   bound, in one place, and a silent truncation is the defect the rule exists to prevent.
+//! - **Content is rendered byte-faithfully: two spans that differ in any byte never render the same**
+//!   (review v1 §2.1). Spans are where whitespace edits live — a re-indent, a tab turned into spaces, a
+//!   trailing newline removed — so a renderer that collapsed whitespace would show the most common kind
+//!   of edit as *no edit at all*, which is `T-T4`'s confident-but-wrong picture in its purest form.
+//!   Every content row is therefore **quoted and escaped**, one row per source line, with the line's own
+//!   terminator inside the quotes: `"  a\n"`. The escaping is the same one prikk's JSON uses, so the
+//!   rendered view and the raw view spell content the same way, and it is injective — the quotes delimit,
+//!   and `\t`, `\n`, `\r`, `\"`, `\\` and `\u00XX` are each one byte spelled one way. No marker is
+//!   invented, so there is no new vocabulary for the Glossary to carry.
+//!
+//!   Rows carry which kind they are ([`OperationRow`]), because only the frontend knows the width to
+//!   wrap at, and a content row must be hard-split rather than word-wrapped.
 
 use std::path::Path;
 
@@ -55,10 +67,14 @@ pub const NO_PATH_REPORTED: &str = "prikk names no path for this operation";
 /// The label a node-addressed path carries in a block of more than one patch (RFC 035 decision 3a).
 pub const AS_AT_BLOCK_END: &str = "as at the end of this block";
 
-/// The first prikk minor whose patch content stikk reads — stikk's JSON floor, not `show-report-v1`'s
-/// own (RFC 035 A1, decision 1 as amended). `show-report-v1` exists from prikk 0.36, but stikk reads no
-/// JSON from prikk at all between 0.36 and 0.38.
-pub const CONTENT_FROM_MINOR: u32 = 39;
+/// The first prikk minor whose patch content stikk reads — **stikk's JSON floor**, not
+/// `show-report-v1`'s own (RFC 035 A1, decision 1 as amended): the schema exists from prikk 0.36, but
+/// stikk reads no JSON from prikk at all between 0.36 and 0.38.
+///
+/// **Re-exported, not re-declared** (review v1 §2.2). It was a second `39` here until the review
+/// caught it, which is exactly how RFC 015's stale `0.30` survived: two copies that agree are two
+/// copies, and only one of them moves.
+pub use stikk_prikk::JSON_REPORTS_FROM_MINOR as CONTENT_FROM_MINOR;
 
 /// One patch's detail, as rows in stikk's words (RFC 035 §4.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +93,36 @@ pub struct PatchDetailView {
     pub foot: Option<String>,
 }
 
+/// One row of an operation's detail, and **which kind of text it is** (review v1 §2.1).
+///
+/// The distinction is the frontend's to honour: stikk's own words wrap on whitespace like any prose,
+/// and repository content must not — a content row is hard-split at the width, with every space,
+/// tab and newline kept exactly as prikk reported it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OperationRow {
+    /// **stikk's own words**: a label, a path, a sentence, an id. Wraps like prose.
+    Said(String),
+    /// **Repository content**, already quoted and escaped, one row per source line, the line's own
+    /// terminator inside the quotes. Rendered verbatim: never re-wrapped on whitespace, never trimmed.
+    Content(String),
+}
+
+impl OperationRow {
+    /// The row's text, whichever kind it is.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Said(text) | Self::Content(text) => text,
+        }
+    }
+
+    /// Whether this row is repository content, and so must be rendered verbatim.
+    #[must_use]
+    pub fn is_content(&self) -> bool {
+        matches!(self, Self::Content(_))
+    }
+}
+
 /// One operation of a patch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperationView {
@@ -85,7 +131,7 @@ pub struct OperationView {
     pub title: String,
     /// stikk's rendering of what the operation did, as rows: spans, content, modes, blobs, the key
     /// that asserted a rename, or the one sentence for a path prikk did not resolve.
-    pub rows: Vec<String>,
+    pub rows: Vec<OperationRow>,
     /// **prikk's own fields for this operation**, as rows, for the raw view (`v`; decision 5): node
     /// ids, blob ids, modes as prikk's integers, spans as text. Bounded by the same
     /// [`CONTENT_DISPLAY_BYTES`], because `v` must not be the way around a bound that exists to keep a
@@ -264,8 +310,8 @@ fn operation_view(operation: &PatchOperation, label_paths: bool) -> OperationVie
         // One sentence, no reason (decision 3), and prikk's node id beside it — which the raw view
         // shows too, and is the only honest thing stikk has to name the node by (F6).
         [QueuedPath::UnresolvedNode(node)] => {
-            rows.push(NO_PATH_REPORTED.to_string());
-            rows.push(format!("node {node}"));
+            rows.push(OperationRow::Said(NO_PATH_REPORTED.to_string()));
+            rows.push(OperationRow::Said(format!("node {node}")));
             operation.kind.clone()
         }
         // Any other shape — several paths, a mix, none at all — is listed rather than reshaped, with
@@ -274,12 +320,12 @@ fn operation_view(operation: &PatchOperation, label_paths: bool) -> OperationVie
             for path in paths {
                 match path {
                     QueuedPath::Path(path) if labelled => {
-                        rows.push(format!("{path} — {AS_AT_BLOCK_END}"));
+                        rows.push(OperationRow::Said(format!("{path} — {AS_AT_BLOCK_END}")));
                     }
-                    QueuedPath::Path(path) => rows.push(path.clone()),
+                    QueuedPath::Path(path) => rows.push(OperationRow::Said(path.clone())),
                     QueuedPath::UnresolvedNode(node) => {
-                        rows.push(NO_PATH_REPORTED.to_string());
-                        rows.push(format!("node {node}"));
+                        rows.push(OperationRow::Said(NO_PATH_REPORTED.to_string()));
+                        rows.push(OperationRow::Said(format!("node {node}")));
                     }
                 }
             }
@@ -294,11 +340,11 @@ fn operation_view(operation: &PatchOperation, label_paths: bool) -> OperationVie
     }
 }
 
-fn content_rows(content: &OperationContent) -> Vec<String> {
+fn content_rows(content: &OperationContent) -> Vec<OperationRow> {
     match content {
         // Spans, labelled as spans: no line numbers, no context, no line-diff, at any prikk version
         // (RFC 021 F2, `T-T4`). prikk reports the text it replaced and the text it wrote, and that is
-        // what stikk shows.
+        // what stikk shows — **byte for byte**, because a span edit is very often a whitespace edit.
         OperationContent::TextEdit {
             old_span,
             replacement,
@@ -308,7 +354,7 @@ fn content_rows(content: &OperationContent) -> Vec<String> {
             rows
         }
         OperationContent::FileCreated { content, mode } => {
-            let mut rows = vec![format!("mode {}", octal(*mode))];
+            let mut rows = vec![OperationRow::Said(format!("mode {}", octal(*mode)))];
             rows.extend(file_content_rows("content", content));
             rows
         }
@@ -316,7 +362,9 @@ fn content_rows(content: &OperationContent) -> Vec<String> {
             let mut rows = Vec::new();
             // `file` at every measured state; anything else is named rather than assumed away.
             if node_kind != "file" {
-                rows.push(format!("prikk reports the removed node as {node_kind}"));
+                rows.push(OperationRow::Said(format!(
+                    "prikk reports the removed node as {node_kind}"
+                )));
             }
             rows.extend(file_content_rows("removed content", content));
             rows
@@ -328,14 +376,18 @@ fn content_rows(content: &OperationContent) -> Vec<String> {
             rows.extend(blob_rows("new blob", new));
             rows
         }
-        OperationContent::PermChanged { old_mode, new_mode } => {
-            vec![format!("mode {} → {}", octal(*old_mode), octal(*new_mode))]
-        }
+        OperationContent::PermChanged { old_mode, new_mode } => vec![OperationRow::Said(format!(
+            "mode {} → {}",
+            octal(*old_mode),
+            octal(*new_mode)
+        ))],
         OperationContent::PathRenamed {
             author_key_id,
             author_key_ids,
         } => {
-            let mut rows = vec![format!("asserted by (AUTHOR key id) {author_key_id}")];
+            let mut rows = vec![OperationRow::Said(format!(
+                "asserted by (AUTHOR key id) {author_key_id}"
+            ))];
             // Carried only when prikk names more than the one: a list repeating the id above it would
             // be noise, and dropping a second asserting key would be a fact withheld.
             let others: Vec<&String> = author_key_ids
@@ -343,66 +395,109 @@ fn content_rows(content: &OperationContent) -> Vec<String> {
                 .filter(|id| *id != author_key_id)
                 .collect();
             if !others.is_empty() {
-                rows.push(format!(
+                rows.push(OperationRow::Said(format!(
                     "prikk also lists {}",
                     others
                         .iter()
                         .map(|id| id.as_str())
                         .collect::<Vec<_>>()
                         .join(", ")
-                ));
+                )));
             }
             rows
         }
         // prikk's word is on the title row and its fields are in the raw view; what stikk adds is the
         // admission that it does not render this kind (RFC 035 §3 rule 3). **Never an empty operation.**
-        OperationContent::Unrendered => {
-            vec![
-                "stikk does not render this operation kind — v shows prikk's own fields"
-                    .to_string(),
-            ]
-        }
+        OperationContent::Unrendered => vec![OperationRow::Said(
+            "stikk does not render this operation kind — v shows prikk's own fields".to_string(),
+        )],
     }
 }
 
-fn file_content_rows(label: &str, content: &FileContent) -> Vec<String> {
+fn file_content_rows(label: &str, content: &FileContent) -> Vec<OperationRow> {
     match content {
         FileContent::Text(text) => block_rows(label, text),
-        // Named with prikk's own kind word, neither dropped nor shown as empty (§3 rule 5). Measured
-        // at 0.51.0: a `delete-node` whose preimage an earlier patch of the same block authored
-        // reports `unavailable`, because those bytes are not in the object store to report.
-        FileContent::Unrendered(kind) => {
-            vec![format!(
-                "{label}: prikk reports it as {kind}, with no content to show"
-            )]
-        }
+        // Bytes, so the same two facts `replace-binary` carries and nothing more — identity and size,
+        // **never the bytes** (`FR-030`; review v1 §2.4). This arrived as "no content to show" until
+        // the review pointed out that is every image in a repository.
+        FileContent::Binary(blob) => blob_rows(label, blob),
+        // prikk names the blob it does not hold, which is **by design**, not a fault: a text node's
+        // pre-edit blob is deliberately absent. The id is the one fact there is, so it is shown.
+        FileContent::Unavailable(blob_id) => vec![
+            OperationRow::Said(format!("{label}: prikk reports the content as unavailable")),
+            OperationRow::Said(format!("blob {blob_id}")),
+        ],
+        // A kind beyond prikk's three: named with prikk's own word, neither dropped nor shown as empty
+        // (§3 rule 5). **It does not claim the kind carries no content** (review v1 §3) — stikk does
+        // not know that, and saying so would be a claim about prikk's data (`C-T2b`).
+        FileContent::Unrendered(kind) => vec![OperationRow::Said(format!(
+            "{label}: prikk reports it as {kind}, which stikk does not render; v shows prikk's own \
+             fields"
+        ))],
     }
 }
 
-fn blob_rows(label: &str, blob: &BinaryBlob) -> Vec<String> {
+fn blob_rows(label: &str, blob: &BinaryBlob) -> Vec<OperationRow> {
     vec![
-        format!("{label} — {} byte(s)", blob.size),
-        blob.blob_id.clone(),
+        OperationRow::Said(format!("{label} — {} byte(s)", blob.size)),
+        OperationRow::Said(blob.blob_id.clone()),
     ]
 }
 
 /// A labelled block of repository text: one row for an empty value, saying it is **empty** rather than
-/// rendering a blank row that reads as a line of nothing (RFC 035 decision 2); the rows of the text
-/// otherwise, bounded.
-fn block_rows(label: &str, text: &str) -> Vec<String> {
+/// rendering a blank row that reads as a line of nothing (RFC 035 decision 2); otherwise one
+/// **quoted** row per source line, bounded.
+///
+/// **The quotes are what make the rendering faithful** (review v1 §2.1). Each row holds one line of
+/// prikk's text with its own terminator inside the quotes, so a re-indent, a tab against spaces, a
+/// double space, trailing whitespace and a removed trailing newline are all visible, and two spans
+/// that differ in any byte cannot render identically.
+fn block_rows(label: &str, text: &str) -> Vec<OperationRow> {
     if text.is_empty() {
-        return vec![format!("{label}: (empty)")];
+        return vec![OperationRow::Said(format!("{label}: (empty)"))];
     }
-    let mut rows = vec![format!("{label}:")];
-    rows.extend(bounded_rows(text));
+    let mut rows = vec![OperationRow::Said(format!("{label}:"))];
+    let (shown, withheld) = bounded(text);
+    // `split_inclusive` keeps each line's own `\n`, which is the only way a trailing newline present
+    // and absent can render differently — `lines()` drops it, and that was the defect.
+    rows.extend(
+        shown
+            .split_inclusive('\n')
+            .map(|line| OperationRow::Content(quoted(line))),
+    );
+    if withheld > 0 {
+        rows.push(OperationRow::Said(format!(
+            "… {withheld} more bytes not shown"
+        )));
+    }
     rows
 }
 
-/// `text`'s rows, bounded by [`CONTENT_DISPLAY_BYTES`], with the withheld byte count said out loud.
+/// `line` as a quoted, escaped string: the spelling prikk's own JSON uses, which is injective — the
+/// quotes delimit, and every escape is one byte spelled one way.
+fn quoted(line: &str) -> String {
+    let mut out = String::with_capacity(line.len() + 2);
+    out.push('"');
+    for ch in line.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            ch if ch.is_control() => out.push_str(&format!("\\u{:04x}", u32::from(ch))),
+            ch => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// prikk's raw JSON for one operation, as rows, bounded by the same [`CONTENT_DISPLAY_BYTES`] — `v`
+/// must not be the way around a bound that exists to keep a whole file off the screen.
 ///
-/// **Cut at a `char` boundary**, so the bound can never split a multi-byte character into something the
-/// terminal renders as a replacement glyph; the count is of the UTF-8 **bytes** withheld, which is what
-/// the reader would need to ask prikk for the rest.
+/// Rendered verbatim by the frontend, like a content row: prikk's JSON nesting and any whitespace
+/// inside its string values are part of what the raw view is for.
 fn bounded_rows(text: &str) -> Vec<String> {
     let (shown, withheld) = bounded(text);
     let mut rows: Vec<String> = shown.lines().map(str::to_string).collect();

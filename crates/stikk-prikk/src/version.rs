@@ -78,6 +78,21 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// constant named it.
 const VALIDATED_MAX_MINOR: u32 = 51;
 
+/// The first prikk minor whose reports stikk reads as **JSON** (prikk 0.39, where `log`, `branch` and
+/// `tag` gained `--format json`; RFC 026 §6).
+///
+/// **The number lives here and nowhere else.** `CliBackend::reads_json` gates every JSON read on it,
+/// and it is also the floor of every *view* built on a JSON-only report — Patch detail's content
+/// (`FR-030`, RFC 035) among them. A second copy is how `0.30` survived in `stikk-tui`'s Orientation
+/// copy after the ceiling had moved twice (RFC 015), and how this constant's own two copies agreed
+/// right up until one of them would have moved (RFC 035 review v1 §2.2).
+///
+/// **It is not every JSON report's own floor**, and must not be read as one: `status --format json`
+/// exists from prikk 0.35 and `show --format json` from 0.36. What this names is the floor *stikk*
+/// reads at, which the project owner has ruled is the only band that matters — no user is on
+/// 0.36–0.38, and stikk reads no JSON from prikk there at all.
+pub const JSON_REPORTS_FROM_MINOR: u32 = 39;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

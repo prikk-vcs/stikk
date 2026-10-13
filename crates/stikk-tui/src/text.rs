@@ -79,5 +79,43 @@ pub fn wrap_indented(text: &str, width: usize, indent: &str) -> Vec<String> {
     lines
 }
 
+/// Wrap `text` to `width` columns **without changing a single byte of it**, prefixing every produced
+/// line with `indent`.
+///
+/// **This is the wrap repository *content* needs** (RFC 035 review v1 §2.1). [`wrap_indented`]
+/// word-wraps, which means it rebuilds each line from `split_whitespace()` — and that is exactly right
+/// for a sentence stikk wrote and exactly wrong for a file's bytes: a re-indent, a tab turned into
+/// spaces, a double space collapsed to one, or a trailing newline removed would all render as *no
+/// change at all*, which is `T-T4`'s confident-but-wrong picture. Spans are where whitespace edits
+/// live, so that is the common case, not an edge case.
+///
+/// So this one never collapses, never trims, and never looks for a word boundary: it hard-splits at the
+/// available width, by `char`, which is what the terminal grid measures. A row that fits is returned
+/// unchanged. Returns at least one line, even for empty input, so a blank line stays a blank line.
+#[must_use]
+pub fn wrap_verbatim(text: &str, width: usize, indent: &str) -> Vec<String> {
+    let available = width.saturating_sub(indent.chars().count()).max(1);
+    let mut lines = Vec::new();
+    let mut rest = text;
+    while rest.chars().count() > available {
+        let cut = rest
+            .char_indices()
+            .nth(available)
+            .map_or(rest.len(), |(byte, _)| byte);
+        match (rest.get(..cut), rest.get(cut..)) {
+            (Some(head), Some(tail)) => {
+                lines.push(format!("{indent}{head}"));
+                rest = tail;
+            }
+            // Unreachable: `cut` is a `char` boundary at or below `rest.len()`. Emitting the remainder
+            // whole is the one fallback that cannot drop bytes; the row may overflow and the paragraph
+            // clips it, which is visible, where silently losing content would not be.
+            _ => break,
+        }
+    }
+    lines.push(format!("{indent}{rest}"));
+    lines
+}
+
 #[cfg(test)]
 mod tests;

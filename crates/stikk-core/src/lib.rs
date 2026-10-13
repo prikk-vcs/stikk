@@ -51,8 +51,8 @@ pub use history::{
 pub use orient::{OrientationView, orient};
 pub use palette::{Command, NO_FOCUSED_REF_REASON};
 pub use patch::{
-    AS_AT_BLOCK_END, CONTENT_DISPLAY_BYTES, CONTENT_FROM_MINOR, NO_PATH_REPORTED, OperationView,
-    PatchDetailView, PatchMessageState, patch_detail, patch_detail_in_block,
+    AS_AT_BLOCK_END, CONTENT_DISPLAY_BYTES, CONTENT_FROM_MINOR, NO_PATH_REPORTED, OperationRow,
+    OperationView, PatchDetailView, PatchMessageState, patch_detail, patch_detail_in_block,
 };
 pub use present::{
     NextStep, NextTarget, OperationContext, Presentation, RefusalCard, Target, present,

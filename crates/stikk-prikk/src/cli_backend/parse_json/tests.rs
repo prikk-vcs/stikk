@@ -2364,9 +2364,11 @@ fn an_edit_whose_file_is_deleted_later_in_the_block_loses_its_path() {
         delete.content,
         OperationContent::NodeDeleted {
             node_kind: "file".to_string(),
-            content: FileContent::Unrendered("unavailable".to_string()),
+            content: FileContent::Unavailable(
+                "0bd52da375c2211f015d1d740130d5e93f903cec906b1cbaf65b80e1d44a16e8".to_string()
+            ),
         },
-        "prikk's own kind word for content it cannot report"
+        "prikk names the blob it does not hold, and stikk keeps the id (review v1 §2.4)"
     );
 }
 
@@ -2557,4 +2559,124 @@ fn a_known_kind_with_no_content_is_refused_rather_than_shown_empty() {
     );
     let err = show(&text).expect_err("no content for a kind stikk reads");
     assert!(matches!(err, StikkError::Environment { .. }), "{err:?}");
+}
+
+/// **Review v1 §2.4, measured at 0.51.0 before it was built**: a `create-file` of a binary file and a
+/// `delete-node` of one, in a block of one patch. Both report `{"kind": "binary", "blob_id", "size"}`
+/// for their content, **byte-identical queued and sealed** — the shape RFC 035 §2's table lacked,
+/// because the measurement behind it created only text files.
+const SHOW_BINARY_CONTENT_0_51: &str = r#"{
+  "schema_version": "show-report-v1",
+  "patches": [
+    {
+      "patch_id": "75ee085f8a38cb23089fb07c316927c446a0f3cd38f16d7bc58e116c07123ee9",
+      "queued": false,
+      "operations": [
+        {
+          "kind": "delete-node",
+          "paths": [
+            {
+              "path": "old.bin"
+            }
+          ],
+          "content": {
+            "kind": "delete-node",
+            "preimage": {
+              "kind": "file",
+              "content": {
+                "kind": "binary",
+                "blob_id": "0bd1148654b45af78aa952cc749a972555a5e0e4c190cba188640f96a626c36a",
+                "size": 8
+              }
+            }
+          }
+        },
+        {
+          "kind": "create-file",
+          "paths": [
+            {
+              "path": "new.bin"
+            }
+          ],
+          "content": {
+            "kind": "create-file",
+            "content": {
+              "kind": "binary",
+              "blob_id": "4c80532eaf168c9f5e5899fbf871b07b76d14f462f1888b645c452a44ad55f38",
+              "size": 12
+            },
+            "mode": 33188
+          }
+        }
+      ]
+    }
+  ]
+}"#;
+
+/// **A binary file's content is read as a blob, not as an unknown kind** (review v1 §2.4). It carries
+/// the same two facts `replace-binary` carries, so it is read by the same rules: an object id validated
+/// at the boundary, and a size.
+#[test]
+fn binary_file_content_reads_as_a_blob() {
+    let patch = only_patch(SHOW_BINARY_CONTENT_0_51);
+    let kinds: Vec<&str> = patch.operations.iter().map(|o| o.kind.as_str()).collect();
+    assert_eq!(kinds, ["delete-node", "create-file"], "prikk's order");
+    assert_eq!(
+        patch.operations[0].content,
+        OperationContent::NodeDeleted {
+            node_kind: "file".to_string(),
+            content: FileContent::Binary(BinaryBlob {
+                blob_id: "0bd1148654b45af78aa952cc749a972555a5e0e4c190cba188640f96a626c36a"
+                    .to_string(),
+                size: 8,
+            }),
+        }
+    );
+    assert_eq!(
+        patch.operations[1].content,
+        OperationContent::FileCreated {
+            content: FileContent::Binary(BinaryBlob {
+                blob_id: "4c80532eaf168c9f5e5899fbf871b07b76d14f462f1888b645c452a44ad55f38"
+                    .to_string(),
+                size: 12,
+            }),
+            mode: 33188,
+        }
+    );
+}
+
+/// The two measured content kinds are read strictly, exactly as `replace-binary`'s blobs are: a blob
+/// id that is not an object id, or a missing size, is stikk's environment error rather than a blob
+/// with a short id travelling onward.
+#[test]
+fn binary_and_unavailable_content_are_validated_at_the_boundary() {
+    let cases: [(&str, String); 3] = [
+        (
+            "a binary content blob id that is not an object id",
+            variant(
+                SHOW_BINARY_CONTENT_0_51,
+                "4c80532eaf168c9f5e5899fbf871b07b76d14f462f1888b645c452a44ad55f38",
+                "4c80532e",
+            ),
+        ),
+        (
+            "binary content with no size",
+            variant(SHOW_BINARY_CONTENT_0_51, "\"size\": 12", "\"length\": 12"),
+        ),
+        (
+            "an unavailable blob id that is not an object id",
+            variant(
+                SHOW_BLOCK_EDIT_THEN_DELETE_0_51,
+                "0bd52da375c2211f015d1d740130d5e93f903cec906b1cbaf65b80e1d44a16e8",
+                "0bd52da3",
+            ),
+        ),
+    ];
+    for (what, text) in cases {
+        let err = show(&text).expect_err(what);
+        assert!(
+            matches!(err, StikkError::Environment { .. }),
+            "{what}: {err:?}"
+        );
+    }
 }

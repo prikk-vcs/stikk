@@ -83,10 +83,19 @@ binary or repository needed).
 `Enter` on one shows what it changed — a text edit's spans, a create's content and mode, a delete's
 preimage, a binary replacement's blob ids and sizes, a permission change's two modes, and a rename with
 the key that asserted it. `v` switches to prikk's own fields. The Queue opens a *queued* patch the same
-way. Two things it says rather than guesses: content past stikk's display bound is cut with the
-withheld byte count stated, and where prikk resolves no path for an operation it says so and names
-prikk's node id — which also happens for a sealed patch inside a block of several, where prikk resolves
-paths **at the block's end**, so a path there is labelled *as at the end of this block*.
+way.
+
+**File content is shown quoted**, one row per line, with the line's own newline inside the quotes:
+`"    let x = 1;\n"`. That is deliberate — a span edit is very often a whitespace edit, and a renderer
+that tidied the spacing would show a re-indent, a tab turned into spaces or a removed trailing newline
+as *no change at all*. A binary file's create or delete shows its blob id and byte count, never its
+bytes.
+
+Three more things it says rather than guesses: content past stikk's display bound is cut with the
+withheld byte count stated; where prikk resolves no path for an operation it says so and names prikk's
+node id — which also happens for a sealed patch inside a block of several, where prikk resolves paths
+**at the block's end**, so a path there is labelled *as at the end of this block*; and if the patch
+list itself cannot be read, the rest of the block is still shown with the reason in its place.
 
 **Compare** is not built yet, and is on the roadmap.
 

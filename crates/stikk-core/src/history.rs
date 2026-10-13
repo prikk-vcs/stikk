@@ -68,8 +68,9 @@ pub struct BlockDetailView {
 
 /// A block's patches, as Block detail lists them (RFC 035 §4.1).
 ///
-/// **Two variants, because below stikk's JSON floor the patches are not reported, not absent**
-/// (`C-T2c′`), the shape [`stikk_prikk::QueueReport`] takes for the same reason.
+/// **Three variants, because "not listed" has three different reasons and they are not the same fact**
+/// (`C-T2c′`): prikk reported them, this prikk reports none at all, or the read failed. The first two
+/// are the shape [`stikk_prikk::QueueReport`] takes, for the same reason.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlockPatches {
     /// prikk ≥ 0.39: one row per patch, in prikk's order.
@@ -78,10 +79,20 @@ pub enum BlockPatches {
     /// (`C-T4d`): it reads a patch's content from 0.39 on. *"prikk does not report it"* would be false
     /// at 0.36–0.38, where `show-report-v1` exists and stikk reads no JSON at all.
     Unreported(u32),
+    /// **The read failed, and the rest of Block detail is unaffected** (review v1 §2.3). The block's
+    /// own metadata and the tip's replayed state file set were readable before this section existed
+    /// and must not start depending on it: a strict reader's error about the *patches* is not a reason
+    /// to take away the block.
+    ///
+    /// The string is the error as [`stikk_model::StikkError`] spells it — its class, then prikk's
+    /// verbatim message for a refusal or stikk's own detail for an environment fault (`ER-02`), the
+    /// same one-line spelling `OrientationState::Failed` carries.
+    Failed(String),
 }
 
 impl BlockPatches {
-    /// The sentence for [`Self::Unreported`], or `None` when the patches are listed.
+    /// The sentence to show **instead of** a list, or `None` when the patches are listed: either this
+    /// prikk reports none, or the read failed.
     #[must_use]
     pub fn unreported_reason(&self) -> Option<String> {
         match self {
@@ -90,17 +101,20 @@ impl BlockPatches {
                 "stikk reads a patch's content from prikk 0.{CONTENT_FROM_MINOR} on; this is \
                  0.{minor}."
             )),
+            Self::Failed(error) => Some(format!(
+                "stikk could not read this block's patches — {error}"
+            )),
         }
     }
 
-    /// The listed rows, or an empty slice. **Never a stand-in for [`Self::Unreported`]** — the caller
-    /// asks [`Self::unreported_reason`] first, and the view shows the sentence rather than a list of
+    /// The listed rows, or an empty slice. **Never a stand-in for the other two** — the caller asks
+    /// [`Self::unreported_reason`] first, and the view shows the sentence rather than a list of
     /// nothing.
     #[must_use]
     pub fn rows(&self) -> &[BlockPatchRow] {
         match self {
             Self::Listed(rows) => rows,
-            Self::Unreported(_) => &[],
+            Self::Unreported(_) | Self::Failed(_) => &[],
         }
     }
 }
@@ -185,9 +199,14 @@ pub fn block_detail(
     // RFC 035 §4.1: the block's own patches, for **every** block. `show` takes a block id and resolves
     // against that block, so nothing here is tip-only — unlike the state read above, which is, because
     // prikk replays only to the tip.
-    let patches = match prikk.show(repo, &row.block_id)? {
-        ShowReport::Unreported => BlockPatches::Unreported(prikk.handshake()?.version.minor),
-        ShowReport::Listed(patches) => BlockPatches::Listed(
+    //
+    // **A failure here is carried, not propagated** (review v1 §2.3). Everything above — the block's
+    // metadata, and the tip's replayed state — worked before this read existed, and a strict reader
+    // refusing a report about the *patches* is not a reason to take the block away from the reader.
+    let patches = match prikk.show(repo, &row.block_id) {
+        Err(error) => BlockPatches::Failed(error.to_string()),
+        Ok(ShowReport::Unreported) => BlockPatches::Unreported(prikk.handshake()?.version.minor),
+        Ok(ShowReport::Listed(patches)) => BlockPatches::Listed(
             patches
                 .into_iter()
                 .map(|patch| BlockPatchRow {

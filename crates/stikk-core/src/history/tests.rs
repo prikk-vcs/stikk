@@ -321,3 +321,51 @@ fn an_older_blocks_patches_are_listed_while_its_state_is_not() {
     assert_eq!(older.patches.rows().len(), 1, "listed for an older block");
     assert!(older.state.is_none(), "prikk replays only to the tip");
 }
+
+/// **A failed `show` costs the Patches section and nothing else** (review v1 §2.3).
+///
+/// The block's metadata and the tip's replayed state file set were readable before this section
+/// existed, and a strict reader refusing a report about the *patches* must not take the block away
+/// from the reader. The section says what failed, in the error's own words.
+#[test]
+fn a_failed_show_leaves_the_rest_of_block_detail_intact() {
+    let mut row = block("bb", 2, "Normal", 1);
+    row.patches = 2;
+    let backend = NullBackend::supported()
+        .with_version(0, 51, 0)
+        .with_show_refusal(
+            "precondition not met: no object bbbb in the object store or the active WAL",
+        )
+        .with_state(StateFiles {
+            target_block: "bb".to_string(),
+            files: vec!["readme.txt".to_string(), "src/lib.rs".to_string()],
+            total_bytes: 200,
+        });
+
+    let detail = block_detail(&backend, Path::new("/repo"), "heads/main", row, true)
+        .expect("the block itself still reads");
+
+    // Everything that did not depend on the new read is still there.
+    assert_eq!(detail.row.block_id, "bb");
+    assert_eq!(detail.row.patches, 2);
+    assert_eq!(
+        detail.state.as_ref().map(|state| state.files.len()),
+        Some(2),
+        "the tip's state file set is unaffected"
+    );
+    // And the section carries the failure, with prikk's own message inside it (`ER-02`).
+    let BlockPatches::Failed(error) = &detail.patches else {
+        panic!("expected a carried failure, got {:?}", detail.patches)
+    };
+    assert!(error.contains("no object bbbb"), "{error}");
+    assert!(detail.patches.rows().is_empty());
+    let reason = detail
+        .patches
+        .unreported_reason()
+        .expect("a sentence instead of a list");
+    assert!(
+        reason.starts_with("stikk could not read this block's patches —"),
+        "{reason}"
+    );
+    assert!(reason.contains("no object bbbb"), "{reason}");
+}

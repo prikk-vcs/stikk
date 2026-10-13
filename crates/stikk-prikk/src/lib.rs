@@ -23,7 +23,7 @@ pub mod version;
 
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
-pub use version::{Version, validated_ceiling_display};
+pub use version::{JSON_REPORTS_FROM_MINOR, Version, validated_ceiling_display};
 
 use std::path::Path;
 
@@ -317,16 +317,33 @@ pub enum OperationContent {
     Unrendered,
 }
 
-/// A file's content as prikk reports it inside an operation (RFC 035 §3 rule 5).
+/// A file's content as prikk reports it inside an operation — a `create-file`'s `content`, or a
+/// `delete-node`'s `preimage.content` (RFC 035 §3 rule 5).
 ///
-/// **A kind stikk does not know is named, not dropped and not shown as empty.** Only `text` was in §2's
-/// measured table, and a second kind turned up the moment this was built: a `delete-node` whose preimage
-/// was authored by an **earlier patch of the same block** reports `{"kind": "unavailable", "blob_id": …}`
-/// — the content is not in the object store to report (measured at 0.51.0).
+/// **Three kinds, measured, and a fourth state for anything else.** RFC 035 §2's table named only
+/// `text`, because the measurement that produced it created only text files. prikk's own type has three
+/// variants (`ShowBlobContent`, `prikk-store/src/show.rs`), and both of the others turn up in an
+/// ordinary repository:
+/// - `binary` — **any binary file's create or delete** (measured at 0.51.0, queued and sealed alike:
+///   `{"kind": "binary", "blob_id", "size"}`). It carries the same two facts `replace-binary` carries,
+///   and is rendered the same way: identity and size, **never bytes**.
+/// - `unavailable` — a blob the object store does not hold, which is **by design**: a text node's
+///   pre-edit blob is deliberately absent, so a `delete-node` whose preimage an earlier patch of the
+///   same block authored reports `{"kind": "unavailable", "blob_id"}` and no content (measured at
+///   0.51.0; review v1 §2.4 cites prikk's `DC-65`). The blob id is still reported, and still shown.
+///
+/// A kind beyond those three is **named, not dropped and not shown as empty** (`C-T2c′`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileContent {
     /// `{"kind": "text", "text": …}`.
     Text(String),
+    /// `{"kind": "binary", "blob_id": …, "size": …}` — the content is bytes, so stikk shows what
+    /// `replace-binary` shows and nothing more.
+    Binary(BinaryBlob),
+    /// `{"kind": "unavailable", "blob_id": …}` — prikk names the blob it does not hold. **Not an
+    /// error**: it is how prikk reports a blob that was never stored, and the id is the one fact there
+    /// is to report.
+    Unavailable(String),
     /// Any other `kind`, carried verbatim. The raw view shows whatever fields came with it.
     Unrendered(String),
 }

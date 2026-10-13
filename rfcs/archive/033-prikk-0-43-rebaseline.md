@@ -139,7 +139,9 @@ corrupt — the half of this item the roadmap has carried since reply 013.
 **stikk 0.8.0 shows none of the first three.** A user sees an ordinary Orientation, then a commit that refuses.
 
 **And letter 012 itself is fixed:** the same checkout at 0.43 refuses with *"… 1 path(s) in the way: shared.txt …
-(nothing was written)"*, writes nothing, sets no marker, and the next commit behaves normally. **stikk runs no checkout**,
+(nothing was written)"*, writes nothing, sets no marker, and the next commit behaves normally. **stikk runs no checkout
+*write* mode** — *corrected 2026-10-13: this said "stikk runs no checkout", which is false. `block_state` runs
+`checkout --patch-plan` for Block detail; see RFC 034's corrected "What this RFC does not do"* —
 so nothing is built for it; RFC 030's carried note closes at 0.43.
 
 ### F7 — a provisional worktree: not reproduced

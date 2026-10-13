@@ -183,6 +183,11 @@ between stikk's rendering and prikk's fields, which is also the honest place to 
 - **(b) Wait for prikk 0.47.** The view arrives with no caveat at all. *Cost:* `FR-030` waits again — since 0.1.0 —
   for a gap that affects only unsealed work, on a release prikk has already handed off.
 
+**Overtaken by events, 2026-10-13: prikk 0.47 shipped three weeks ago, and prikk is now at 0.51.** The caveat
+therefore applies only to a user on prikk **0.36–0.46**, and not at all at the ceiling stikk is about to validate
+(0.51, measured: 37 of 37 suite cases pass). **(a) and (b) now differ only in what stikk says to someone on an older
+prikk**, which is the band stikk serves honestly everywhere else. The recommendation stands, with less at stake.
+
 **My recommendation is (a).** The caveat is one sentence, it is true, and it disappears twice over.
 
 ## Delivery

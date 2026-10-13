@@ -263,34 +263,41 @@ a fabricated worktree entry was fixed.
    when it names the ref that was asked for**; the ceiling is 46; a declaration's fate comes from prikk's own
    `resolution` at ≥ 0.44, a refused one makes commit unavailable, and a checkout that stopped part-way is shown.
    Letter 015 asks prikk to restore the unpublished-ref read, which would retire the retry. Ships in 0.9.0.
-2. **Patch detail** (`FR-030`) — [RFC 035](rfcs/proposed/035-patch-detail.md), proposed; Q1 open. **Measured at prikk
+2. **Raise the validated ceiling to 0.51** — small, and **already measured** (2026-10-13, prikk letter 021):
+   prikk 0.47–0.51 landed while stikk was idle, and the suite passes **37 of 37 at 0.28.0 and 0.51.0** with only
+   the constant raised. No schema stikk reads changed version. What remains is the constant, the fixtures, and the
+   `ASM-2`/README statements. **Two corrections came out of the check**: stikk *does* run `checkout --patch-plan`
+   (Block detail's tip state), which RFC 033 and RFC 034 both denied; and that call refuses for an unpublished ref
+   on prikk ≥ 0.45 — unreachable in the UI, and fixed upstream. Evidence:
+   `.git-exclude/reports/036-prikk-0-51-recheck/`.
+3. **Patch detail** (`FR-030`) — [RFC 035](rfcs/proposed/035-patch-detail.md), proposed; Q1 open. **Measured at prikk
    0.46**: `show --format json` carries every operation's content — a text edit's spans, a delete's preimage, a
    create's content and mode, a binary replacement's blob ids and sizes, both modes of a permission change, a
    rename's two paths — and `show <block-id>` enumerates a block's patches, which `log` does not. **Three operation
    kinds report a node id instead of a path**, which prikk's own prose resolves; letter 016 asks for it. Then
    **Compare** (`FR-033`), which shares this RFC's `show` reader and prikk 0.46's `diff`.
-3. **Offer an unpublished current branch in the ref picker** (prikk ≥ 0.47), a small increment. prikk ruled
+4. **Offer an unpublished current branch in the ref picker** (prikk ≥ 0.47), a small increment. prikk ruled
    `branch list --format json` gains a nullable top-level `unpublished_current_branch` — `branches[]` and
    `received[]` deliberately unchanged, because membership there is stikk's test for *published* and an unmarked row
    would have inverted RFC 032's claim silently (stikk's answer decided it; prikk reply 020). The picker cannot
    currently offer a branch that exists but has never been sealed — the state every new repository is in — and this
    closes that, with *published* read from prikk's word instead of inferred from absence.
-4. **Orientation on `status --format json`** (prikk ≥ 0.35), its own increment. Orientation is prose-parsed today,
+5. **Orientation on `status --format json`** (prikk ≥ 0.35), its own increment. Orientation is prose-parsed today,
    which is why RFC 034's interrupted-materialization marker is read from prikk's prose line rather than the JSON
    field beside the queue (ruled 2026-09-22: prose carries prikk's whole sentence, `ER-02`, and the JSON would have
    stikk compose one from a `routes` array). Moving Orientation onto JSON would unify the two reads and retire a
    parser — **the marker does not wait on it**, and nothing else does either.
-5. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
+6. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
    where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
    `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as
    prikk's refusal.
-6. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
+7. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
    about 64 characters clips on an entry row, and prikk 0.39–0.41 report unsupported paths absolute. prikk 0.42 reports them relative
    (RFC 029 A), so the absolute case stays open only on that band.
-7. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
+8. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
    and a source-level test holds that only in the two modules that name those variables. A guard
    over every shipped crate would let the sentence say *enforced by test* without a qualifier.
-8. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
+9. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
    to move to.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI

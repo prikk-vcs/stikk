@@ -285,7 +285,15 @@ and prikk's own sentence is both accurate and actionable. **Decision 4 loses its
 ## What this RFC does not do
 
 - **No new view**, and no Patch detail, Compare or per-file diff.
-- **No `format`, `bundle`, `sync` or `checkout` verb** in stikk.
+- **No `format`, `bundle` or `sync` verb** in stikk, and no `checkout` *write* mode.
+  **Corrected 2026-10-13:** this line, and RFC 033 F6, said stikk *"runs no checkout"*. **It does** — `block_state`
+  runs **`checkout --patch-plan --ref <ref>`** and parses its prose for Block detail's tip state file list (RFC 006).
+  The architect asserted the wider claim twice without grepping the seam's call sites. **Re-measured at prikk 0.51**:
+  the plan still carries the two fields that parser requires (`target block:`, `result content bytes:`) plus its
+  `file:` lines, so nothing broke — but prikk's 0.45/0.46 changes to checkout read-only modes were in stikk's path,
+  not outside it. **One consequence:** on prikk ≥ 0.45 that call refuses for an unpublished ref, and decision 1's
+  retry does **not** cover it (it covers `worktree_status` and `history`). It is **unreachable today** — Block detail
+  needs a block row, and an unpublished ref has none — and prikk's own fix (reply 018) resolves it upstream.
 - **No claim that prikk 0.43's FIFO hang exists** — prikk states it; stikk did not reproduce it (F5).
 - **No reading of an unpublished ref that is not prikk's current branch** — prikk offers no way, and stikk says so
   rather than showing an empty view.

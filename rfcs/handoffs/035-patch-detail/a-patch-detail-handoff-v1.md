@@ -2,6 +2,9 @@
 
 **Companion to:** [RFC 035](../../accepted/035-patch-detail.md), **accepted 2026-10-13, Q1 ruled (a), amended on
 acceptance (A1)**. Read **A1** before the body of the RFC: where they differ, A1 governs.
+**A2 (prikk reply 022):** 0.52.0 will resolve each patch in a block at that patch. **Build against 0.51 as written**:
+the block-end label is true there. Whether the label goes, or is banded, is decided when stikk validates 0.52.0, not
+in this increment.
 **Covers:** roadmap item 2, the 0.51 ceiling; RFC 035 decisions 1, 2, 3, 3a, 5, 6 and 7 as amended. **Decision 4 is
 not in this handoff**: A1 moved it to Compare.
 **Not a release.** 0.9.0 stays unreleased; nothing is tagged.
@@ -147,7 +150,8 @@ wherever the other keys are listed (help, palette, glossary), in the pattern the
 **`r` re-reads.** A queued patch can be sealed while it is open. Re-read the same patch id, and **render the result
 as prikk now reports it**: `queued: false`, and a path that is now unresolved, because a sealed patch id resolves
 nothing (§2). **Do not carry a path over from the earlier read.** The resulting screen tells the truth, and is
-worse than the one before it. That is A1 F7, which letter 020 asks prikk to fix.
+worse than the one before it. That is A1 F7's middle row. **It stays so in 0.52.0**: prikk keeps a bare sealed
+patch id unresolved, and we did not ask otherwise.
 
 ## 5. The traps
 

@@ -1,8 +1,8 @@
 # RFC 035 — Patch detail: what one patch changed, in prikk's own terms
 
-**Status.** **Proposed 2026-09-22** by the architect, the day RFC 034 closed. **Revised the same day after prikk's
-reply 019: F2's central claim was wrong, and the correction shrinks this RFC's only real gap** (see F2).
-**Accepted by the project owner 2026-10-13, Q1 ruled (a)**: *"No user on prikk 0.36–0.46. No problem."*
+**Status.** **Accepted by the project owner 2026-10-13, Q1 ruled (a)**: *"No user on prikk 0.36–0.46. No
+problem."* **Proposed 2026-09-22** by the architect, the day RFC 034 closed, and **revised the same day after
+prikk's reply 019: F2's central claim was wrong, and the correction shrinks this RFC's only real gap** (see F2).
 **Amended on acceptance (A1)**, from measurements taken at prikk 0.46.0 and 0.51.0 before the handoff relied on
 them. **A sealed patch in a block of several is resolved at the block's end, not at the patch**, so decisions 1 and
 3 changed, and the band moved to stikk's JSON floor. A1 is below the open question, and it governs where it differs

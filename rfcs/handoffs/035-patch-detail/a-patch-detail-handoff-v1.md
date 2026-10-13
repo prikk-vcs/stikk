@@ -66,7 +66,7 @@ Edit then delete in one block, at 0.51: queued gives `d.txt`; sealed `show <bloc
 stikk already reads them into `BlockRow.messages`. A patch with no message has **no entry**; it does not have an
 empty one.
 
-**Not measured: 0.39**, stikk's JSON floor and this view's band floor. See §7.
+**Not measured: 0.39**, stikk's JSON floor and this view's band floor. Ruled unnecessary; see §7.
 
 ## 3. Commit 2 — the seam: `show`, and its reader
 
@@ -174,10 +174,10 @@ below-0.39 sentence. The Queue with its selection.
   rendered words match prikk's fields. **F7's two two-patch cases**: the rename gives `z.txt` **with** the block-end
   label; edit-then-delete gives *prikk names no path for this operation*. A queued patch opened from the Queue.
 - **Suite leg at 0.28:** Block detail's below-0.39 sentence; the Queue unchanged.
-- **0.39 is the band floor and not in the suite's matrix. Measure it by hand through the suite's harness**, which
-  already supplies keys to old prikks the way 0.39 needs (the architect does not read seeds, which is why it was not
-  measured). Run the six-kind repository and F7's rename case. **If `show-report-v1` at 0.39 differs from §2's
-  table in any field stikk reads, stop and report**: the band floor would move.
+- **0.39 is the band floor, and it is not measured. Do not measure it** (ruled by the project owner 2026-10-13: no
+  user is on prikk 0.39–0.45). The reader's strictness is what makes that safe. A report that is not
+  `show-report-v1`, or not in §2's shape where stikk reads it, is stikk's environment error, never a wrong picture.
+  **Keep §3's rules 1, 4 and 5 strict for that reason.**
 - **Core tests with a stand-in backend:** the message join with a missing entry; the label at one patch (absent) and
   at two (present); the bound at, under and over the limit, including a multi-byte character at the cut; an
   unknown kind; a re-read that turns a resolved path unresolved.
@@ -192,7 +192,7 @@ gate, **all at one SHA**, every job and leg read, and the branch deleted before 
 
 Package to `.git-exclude/review-request/035-patch-detail/review-request-v1.md`.
 
-**Lead with the suite at the ceiling commit**, then the 0.39 hand measurement, then the captures. If §2's table or
+**Lead with the suite at the ceiling commit**, then the captures. If §2's table or
 F7's rows differ from what you measure, put that first of all.
 
 **Push your own commits once approved.** After this, Compare (`FR-033`) is next, with A1's decision 4 in it.

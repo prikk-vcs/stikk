@@ -233,7 +233,9 @@ new path in **every** form. That is prikk's granularity, which is the patch, and
 
 **`show-report-v1` is otherwise unchanged from 0.46 to 0.51**: the same fields for all six operation kinds,
 re-measured. **0.39 was not measured here.** At 0.39 a seed can only be supplied through an environment variable,
-which the architect does not read. The handoff asks for a hand measurement through the suite's harness.
+which the architect does not read. **The project owner ruled a measurement unnecessary, 2026-10-13: no user is on
+prikk 0.39–0.45.** It is safe because the reader is strict. A 0.39 report that is not `show-report-v1`'s measured
+shape becomes stikk's environment error, never a wrong picture.
 
 **Letter 020 reports F7 to prikk**, with these scripts, and asks for each sealed patch to be resolved at its own
 patch, as the queued form already is.

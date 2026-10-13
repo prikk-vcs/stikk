@@ -88,8 +88,12 @@ way.
 **File content is shown quoted**, one row per line, with the line's own newline inside the quotes:
 `"    let x = 1;\n"`. That is deliberate — a span edit is very often a whitespace edit, and a renderer
 that tidied the spacing would show a re-indent, a tab turned into spaces or a removed trailing newline
-as *no change at all*. A binary file's create or delete shows its blob id and byte count, never its
-bytes.
+as *no change at all*. Inside the quotes the spelling is prikk's own JSON, and it covers every
+character that does not show as itself: a tab is `\t`, a line ending `\n`, and anything invisible or
+direction-changing — a zero-width character, a non-breaking space, a bidirectional override — is
+written as `\uXXXX`. Visible text stays as itself. Two lines that differ in any byte never look
+alike, which is the whole point of showing content this way; the Glossary (`?`) names the notation. A
+binary file's create or delete shows its blob id and byte count, never its bytes.
 
 Three more things it says rather than guesses: content past stikk's display bound is cut with the
 withheld byte count stated; where prikk resolves no path for an operation it says so and names prikk's

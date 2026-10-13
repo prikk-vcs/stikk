@@ -4684,6 +4684,104 @@ fn rfc035_a_queued_patch_opens_from_the_queue_at_both_ends() {
     }
 }
 
+/// **RFC 035 review v2 §2: a real file whose content does not show as itself.**
+///
+/// prikk stores the bytes; stikk must show them and must not let a terminal act on them. The file
+/// committed here carries a bidi override ("Trojan Source", CVE-2021-42574), a zero-width space, a
+/// non-breaking space, a tab and a line of trailing whitespace — the four families the escape table
+/// was widened for. **Every one of them is checked twice**: once in the rendered rows and once in the
+/// raw view of prikk's own fields, because they used to share nothing but a coincidence.
+///
+/// Done against real binaries rather than only in a unit test because the claim spans prikk's writer
+/// and stikk's reader: a prikk that normalised or refused any of these would make stikk's escaping
+/// moot, and the only way to know is to ask one.
+#[test]
+#[ignore = "requires two real prikk binaries; see the module docs"]
+fn rfc035_content_that_does_not_show_as_itself_is_escaped_at_both_ends() {
+    // Written as escapes so this source file holds no override of its own — `rustc` denies one in a
+    // literal, which is the same lesson one layer down.
+    const OVERRIDE: char = '\u{202e}';
+    const ZERO_WIDTH: char = '\u{200b}';
+    const NO_BREAK: char = '\u{a0}';
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        if rfc035_skip_below_the_band(&bin, "content that does not show as itself") {
+            continue;
+        }
+        let body = format!(
+            "if level != \"user{OVERRIDE} // admin\" {{\n\tlet a{ZERO_WIDTH}b = 1;\nx{NO_BREAK}y   \n}}\n"
+        );
+        let (fixture, backend, repo) = rfc032_sealed_base(&bin);
+        rfc032_write(&repo, "auth.rs", &body);
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "content that lies about itself")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        Fixture::clear_env();
+
+        let queue = backend
+            .queue(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: queue: {e}", bin.minor));
+        let stikk_prikk::QueueReport::Listed(queue) = queue else {
+            panic!("0.{}: the queue is enumerated at this version", bin.minor)
+        };
+        let [queued] = queue.patches.as_slice() else {
+            panic!("0.{}: one queued patch, got {:?}", bin.minor, queue.patches)
+        };
+        let view = stikk_core::patch_detail(
+            &backend,
+            &repo,
+            &queued.patch_id,
+            &stikk_core::PatchMessageState::from_queued(&queued.message),
+        )
+        .unwrap_or_else(|e| panic!("0.{}: patch detail: {e}", bin.minor));
+
+        let rendered: String = view.operations.iter().map(rfc035_rows).collect();
+        let raw: String = view
+            .operations
+            .iter()
+            .flat_map(|operation| operation.raw.iter().cloned())
+            .collect();
+        assert!(
+            !rendered.is_empty(),
+            "0.{}: prikk reported this patch's content",
+            bin.minor
+        );
+        for (what, ch) in [
+            ("a bidi override", OVERRIDE),
+            ("a zero-width space", ZERO_WIDTH),
+            ("a non-breaking space", NO_BREAK),
+            ("a tab", '\t'),
+        ] {
+            for (where_, text) in [("the rendered rows", &rendered), ("the raw view", &raw)] {
+                assert!(
+                    !text.contains(ch),
+                    "0.{}: {what} (U+{:04X}) reached {where_} as itself",
+                    bin.minor,
+                    u32::from(ch)
+                );
+            }
+        }
+        for escape in ["\\u202e", "\\u200b", "\\u00a0", "\\t"] {
+            assert!(
+                rendered.contains(escape),
+                "0.{}: {escape} is how the rendered rows report it: {rendered}",
+                bin.minor
+            );
+            assert!(
+                raw.contains(escape),
+                "0.{}: and the raw view spells it the same way: {raw}",
+                bin.minor
+            );
+        }
+        // The trailing whitespace prikk stored is still there, inside the quotes.
+        assert!(
+            rendered.contains("y   "),
+            "0.{}: trailing whitespace survives: {rendered}",
+            bin.minor
+        );
+    }
+}
+
 /// **RFC 035 §7 at the floor: Block detail's below-0.39 sentence, and the Queue unchanged.**
 ///
 /// At stikk's JSON floor there is no patch content to read, and stikk says so **in its own voice** —

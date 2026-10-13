@@ -190,23 +190,15 @@ impl Json {
     }
 }
 
-/// Write `text` as a JSON string literal, escaping what JSON requires and every other control
-/// character as `\u00XX` — the same bytes prikk itself would have written.
+/// Write `text` as a JSON string literal, through the one escape table the workspace has
+/// ([`crate::escape`]) — the same bytes prikk itself would have written.
+///
+/// **Shared with Patch detail's quoted content rows on purpose** (review v2 §2): this function and
+/// `stikk-core`'s `quoted` used to hold two copies of the table, and the copies escaped category `Cc`
+/// alone, so a bidi override or a zero-width character reached the terminal from both.
 fn write_string(out: &mut String, text: &str) {
     out.push('"');
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            ch if ch.is_control() => out.push_str(&format!("\\u{:04x}", u32::from(ch))),
-            ch => out.push(ch),
-        }
-    }
+    crate::escape::escape_into(out, text);
     out.push('"');
 }
 

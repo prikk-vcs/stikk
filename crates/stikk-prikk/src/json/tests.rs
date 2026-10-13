@@ -161,3 +161,22 @@ fn render_escapes_what_json_requires_and_every_other_control_character() {
     // And it is JSON this very reader accepts again, which is the cheapest proof the escaping is right.
     assert_eq!(parse(&value.render()).ok(), Some(value));
 }
+
+/// Review v2 §2: the raw view escapes what does not show as itself, not only category `Cc` — and the
+/// result is still JSON **this reader** accepts, surrogate pairs included. Rendering and parsing are
+/// the two halves that have to agree for the raw view to be what it claims to be.
+#[test]
+fn render_escapes_every_character_that_does_not_show_as_itself() {
+    let value = Json::Object(vec![(
+        "text".to_string(),
+        Json::String("a\u{202e}b\u{200b}c\u{a0}d\u{e0001}e日本".to_string()),
+    )]);
+    assert_eq!(
+        value.render(),
+        "{\n  \"text\": \"a\\u202eb\\u200bc\\u00a0d\\udb40\\udc01e日本\"\n}",
+        "visible non-ASCII stays; a bidi override, a zero-width space, a non-breaking space and a \
+         tag character do not"
+    );
+    // The astral escape comes back as the one character it spells, not as two unpaired surrogates.
+    assert_eq!(parse(&value.render()).ok(), Some(value));
+}

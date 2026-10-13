@@ -483,3 +483,62 @@ fn rfc035_binary_content_shows_its_blob_at_80_columns() {
     assert!(flat.contains(BLOB_NEW), "{flat}");
     assert!(!flat.contains("no content to show"), "{flat}");
 }
+
+/// **Review v2 §2 on screen: content that lies about itself.** The span is the Trojan Source shape
+/// (CVE-2021-42574) with a zero-width space and a non-breaking space added — a line whose bytes and
+/// whose appearance disagree. stikk shows the bytes.
+///
+/// Printed at 80 columns because the point is what a reader sees: the escapes are legible, the row
+/// reads left to right in the order prikk reported, and the Glossary (`?`) names the notation.
+#[test]
+fn content_that_does_not_show_as_itself_is_escaped_on_screen() {
+    let span = "if level != \"user\u{202e} \u{2066}// Check if admin\u{2069}\" {\n\tlet a\u{200b}b = 1;\nx\u{a0}y   \n";
+    let view = stikk_core::patch_detail_in_block(
+        &ShownPatch {
+            patch_id: PATCH_A.to_string(),
+            queued: false,
+            operations: vec![PatchOperation {
+                kind: "create-file".to_string(),
+                paths: vec![QueuedPath::Path("src/auth.rs".to_string())],
+                content: OperationContent::FileCreated {
+                    content: FileContent::Text(span.to_string()),
+                    mode: 33188,
+                },
+                raw: format!(
+                    "{{\n  \"kind\": \"create-file\",\n  \"content\": {}\n}}",
+                    stikk_prikk::escape::quoted(span)
+                ),
+            }],
+        },
+        BLOCK,
+        &PatchMessageState::Text("harden the admin check".to_string()),
+        1,
+    );
+    let rendered = draw(&view, false);
+    println!("--- RFC 035 review v2 §2: a Trojan Source span, rendered, 80×24\n{rendered}");
+    let raw = draw(&view, true);
+    println!("--- the same operation's raw view — the same spelling\n{raw}");
+
+    for screen in [&rendered, &raw] {
+        for ch in ['\u{202e}', '\u{2066}', '\u{2069}', '\u{200b}', '\u{a0}'] {
+            assert!(
+                !screen.contains(ch),
+                "U+{:04X} reached the screen as itself:\n{screen}",
+                u32::from(ch)
+            );
+        }
+    }
+    // Each row is one source line, quoted, with its own terminator inside the quotes.
+    assert!(
+        on_a_row(
+            &rendered,
+            "\"if level != \\\"user\\u202e \\u2066// Check if admin\\u2069\\\" {\\n\""
+        ),
+        "{rendered}"
+    );
+    assert!(
+        on_a_row(&rendered, "\"\\tlet a\\u200bb = 1;\\n\""),
+        "{rendered}"
+    );
+    assert!(on_a_row(&rendered, "\"x\\u00a0y   \\n\""), "{rendered}");
+}

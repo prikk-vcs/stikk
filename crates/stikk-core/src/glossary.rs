@@ -38,6 +38,16 @@ pub struct TermMapping {
     pub note: &'static str,
 }
 
+/// One piece of **stikk's own notation** — a way stikk spells something that is not prikk's word and
+/// not a Git word, so the Glossary has to name it (RFC 035 review v2 §2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Notation {
+    /// What the notation is called.
+    pub title: &'static str,
+    /// What it means, in one paragraph.
+    pub note: &'static str,
+}
+
 /// The Git → prikk terminology mapping (external-design §0), seeded in full.
 static TERMS: &[TermMapping] = &[
     TermMapping {
@@ -221,6 +231,30 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
     },
 ];
 
+/// stikk's own notation, named here because a reader meets it on screen with nothing else to ask.
+///
+/// **The example is spelled with escapes, not with literal indentation**, because the Glossary panel
+/// wraps prose through `wrap_indented`, which collapses runs of whitespace — an entry that showed four
+/// real spaces to explain why four real spaces matter would lose them on the way to the screen.
+///
+/// **One entry, and it is the quoting Patch detail shows content with.** A marker scheme was the
+/// alternative (review v1 §2.1), and it was declined precisely because a marker is a word stikk
+/// invents; quoting borrows prikk's own JSON spelling instead. The escapes still have to be named,
+/// because `\u202e` on a row is not self-explanatory — and a reader who does not know what it is
+/// would be right to wonder whether stikk mangled the file.
+static NOTATIONS: &[Notation] = &[Notation {
+    title: "Quoted content rows (Patch detail)",
+    note: "A file's content is shown one quoted row per line — \"\\tlet x = 1;\\n\" — so \
+           indentation, a tab against spaces, a double space, trailing whitespace and a missing \
+           final newline are all part of what you read, instead of vanishing into the layout. \
+           Inside the quotes the spelling is prikk's own JSON: \\n a line ending, \\t a tab, \
+           \\\" a quote, \\\\ a backslash, and \\uXXXX any character that does not show as \
+           itself — a control character, a zero-width or bidirectional mark, or a space that is not \
+           the ordinary one. Visible text stays as itself, é and 日本 and an emoji included. Two \
+           lines that differ in any byte never look alike, which is the whole point: a change stikk \
+           cannot show you is worse than one it shows awkwardly.",
+}];
+
 /// Look up a code entry (witness kind or verify finding). `None` is the RR-5 degradation: the caller
 /// shows prikk's verbatim message and says no gloss exists yet — it never hides the message.
 #[must_use]
@@ -238,6 +272,12 @@ pub fn terminology() -> &'static [TermMapping] {
 #[must_use]
 pub fn code_entries() -> &'static [GlossaryEntry] {
     CODE_ENTRIES
+}
+
+/// stikk's own notation, for the Glossary panel.
+#[must_use]
+pub fn notations() -> &'static [Notation] {
+    NOTATIONS
 }
 
 /// Which shipped code entries are named in `message`, so a refusal card can link them (FR-111).

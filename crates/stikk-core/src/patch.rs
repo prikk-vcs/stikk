@@ -452,6 +452,10 @@ fn blob_rows(label: &str, blob: &BinaryBlob) -> Vec<OperationRow> {
 /// prikk's text with its own terminator inside the quotes, so a re-indent, a tab against spaces, a
 /// double space, trailing whitespace and a removed trailing newline are all visible, and two spans
 /// that differ in any byte cannot render identically.
+///
+/// **The quotes alone were not enough for that last claim** (review v2 §2): a bidi override, a
+/// zero-width character or a non-breaking space showed as nothing or as something else until
+/// [`quoted`] escaped them too. See [`stikk_prikk::escape`] for what is escaped and why.
 fn block_rows(label: &str, text: &str) -> Vec<OperationRow> {
     if text.is_empty() {
         return vec![OperationRow::Said(format!("{label}: (empty)"))];
@@ -474,23 +478,15 @@ fn block_rows(label: &str, text: &str) -> Vec<OperationRow> {
 }
 
 /// `line` as a quoted, escaped string: the spelling prikk's own JSON uses, which is injective — the
-/// quotes delimit, and every escape is one byte spelled one way.
+/// quotes delimit, and every character that does not show as itself is written one way.
+///
+/// **The table is [`stikk_prikk::escape`]'s, not this module's** (review v2 §2). This function held a
+/// second copy once, and both copies escaped [`char::is_control`] — Unicode category `Cc` — so a bidi
+/// override, a zero-width character or a non-breaking space passed through as itself and the
+/// invariant above was not true. One table, shared with the raw view, is what keeps the two spellings
+/// from drifting apart again.
 fn quoted(line: &str) -> String {
-    let mut out = String::with_capacity(line.len() + 2);
-    out.push('"');
-    for ch in line.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if ch.is_control() => out.push_str(&format!("\\u{:04x}", u32::from(ch))),
-            ch => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
+    stikk_prikk::escape::quoted(line)
 }
 
 /// prikk's raw JSON for one operation, as rows, bounded by the same [`CONTENT_DISPLAY_BYTES`] — `v`

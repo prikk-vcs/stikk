@@ -425,6 +425,21 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
         }
     }
 
+    // RFC 035 review v2 §2: quoted content rows are **stikk's own notation**, not prikk's word and
+    // not a Git word, so the Glossary names them. A reader meets `\u202e` on a row in Patch detail
+    // with nothing else to ask; without this section they would be right to suspect stikk mangled
+    // the file.
+    for notation in glossary::notations() {
+        lines.push(Line::from(""));
+        lines.push(section(palette, notation.title));
+        for line in wrap_indented(notation.note, text_width, "  ") {
+            lines.push(Line::from(Span::styled(
+                line,
+                Style::default().fg(palette.dim),
+            )));
+        }
+    }
+
     // RFC 023 F2: `code_entries()` had **zero call sites** outside `glossary.rs`. A refusal card's
     // `glossary: <code>` line named a code with nowhere to read it; this is the somewhere.
     lines.push(Line::from(""));

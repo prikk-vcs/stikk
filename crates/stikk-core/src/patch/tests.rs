@@ -485,6 +485,86 @@ fn two_spans_that_differ_in_any_byte_never_render_identically() {
     }
 }
 
+/// **Review v2 §2: the invariant above was not true yet.** Quoting made whitespace visible; it did
+/// nothing about characters that are invisible or that lie about which way the row reads, because
+/// the escape set was [`char::is_control`] — Unicode category `Cc` alone. Each pair here differs in
+/// a byte and looked identical on screen.
+#[test]
+fn an_invisible_character_never_renders_as_its_visible_look_alike() {
+    let row = |text: &str| -> String {
+        patch_detail_in_block(
+            &patch(PATCH_A, false, vec![edit(path("a.txt"), text, "unused")]),
+            BLOCK,
+            &PatchMessageState::NotReported,
+            1,
+        )
+        .operations[0]
+            .rows[1]
+            .text()
+            .to_string()
+    };
+    let cases: [(&str, &str, &str); 6] = [
+        ("a non-breaking space", "a b", "a\u{a0}b"),
+        ("a zero-width space", "x", "x\u{200b}"),
+        ("a zero-width joiner", "ab", "a\u{200d}b"),
+        ("a soft hyphen", "co-op", "co\u{ad}-op"),
+        ("an ideographic space", "a b", "a\u{3000}b"),
+        ("a tag character", "A", "A\u{e0041}"),
+    ];
+    for (what, visible, invisible) in cases {
+        assert_ne!(
+            row(visible),
+            row(invisible),
+            "{what}: two different spans render alike"
+        );
+    }
+}
+
+/// **A bidi override cannot make Patch detail show a line in a different order from its bytes**
+/// (review v2 §2; "Trojan Source", CVE-2021-42574). This is the first stikk view that renders whole
+/// files of code, so it is the one that has to resist this (`T-T2`, `T-T4`).
+#[test]
+fn a_bidi_override_in_a_span_renders_in_byte_order() {
+    let span = "if level != \"user\u{202e} \u{2066}// Check if admin\u{2069} \u{2066}\" {";
+    let detail = patch_detail_in_block(
+        &patch(
+            PATCH_A,
+            false,
+            vec![operation(
+                "create-file",
+                vec![path("src/auth.rs")],
+                OperationContent::FileCreated {
+                    content: FileContent::Text(span.to_string()),
+                    mode: 33188,
+                },
+            )],
+        ),
+        BLOCK,
+        &PatchMessageState::NotReported,
+        1,
+    );
+    let rendered: Vec<String> = detail.operations[0]
+        .rows
+        .iter()
+        .map(|row| row.text().to_string())
+        .collect();
+    assert!(
+        rendered
+            .iter()
+            .all(|row| !row.contains('\u{202e}') && !row.contains('\u{2066}')),
+        "no override may reach a row: {rendered:?}"
+    );
+    assert!(
+        rendered.iter().any(|row| row.contains("\\u202e")),
+        "and the override is still reported, as an escape: {rendered:?}"
+    );
+    // The content row is the span's own bytes, in the span's own order.
+    assert!(
+        rendered.contains(&quoted(span)),
+        "the content row is the span, escaped and quoted: {rendered:?}"
+    );
+}
+
 /// Indented source keeps its indentation, in a create and in a preimage — the other half of §2.1's
 /// table, where a whole file's structure used to go flush left.
 #[test]

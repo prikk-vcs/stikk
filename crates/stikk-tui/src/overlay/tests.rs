@@ -2548,3 +2548,35 @@ fn rfc034_a_refused_declaration_shows_prikks_whole_refusal_and_no_advice_of_stik
     );
     assert!(flat.contains("Esc: close"), "{text}");
 }
+
+/// **Review v2 §2's Glossary line, on screen.** Patch detail escapes a bidi override as a `\u`
+/// escape and a tab as `\t`; a reader who meets that with nowhere to look it up would be right to
+/// suspect stikk
+/// mangled the file. The notation is stikk's own, so the Glossary names it — and naming it in
+/// `glossary.rs` while rendering it nowhere is the RFC 023 F2 shape this project has already paid
+/// for once.
+#[test]
+fn the_glossary_names_the_quoting_patch_detail_shows_content_with() {
+    let notation = stikk_core::glossary::notations()
+        .first()
+        .expect("the content-row notation ships");
+    let (title, title_screen) =
+        scan_glossary_down(80, 24, |screen| flattened(screen).contains(notation.title));
+    assert!(
+        title.is_some(),
+        "the notation's title must be reachable at 80x24. Bottom of the panel:\n{title_screen}"
+    );
+    if let Some(screen) = &title {
+        println!("--- RFC 035 review v2 §2: the Glossary names the notation, 80×24\n{screen}");
+    }
+    // And the escape a reader is least likely to guess is actually spelled out, not just alluded to.
+    let (escapes, escapes_screen) =
+        scan_glossary_down(80, 24, |screen| flattened(screen).contains("\\uXXXX"));
+    assert!(
+        escapes.is_some(),
+        "the `\\uXXXX` spelling must be named. Bottom of the panel:\n{escapes_screen}"
+    );
+    if let Some(screen) = &escapes {
+        println!("--- …and spells out each escape, `\\uXXXX` included\n{screen}");
+    }
+}

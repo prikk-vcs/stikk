@@ -74,6 +74,10 @@ impl Prikk for SlowOrientation {
         self.0.queue(repo)
     }
 
+    fn show(&self, repo: &Path, id: &str) -> Result<stikk_prikk::ShowReport> {
+        self.0.show(repo, id)
+    }
+
     fn change_token(&self, repo: &Path) -> Result<ChangeToken> {
         self.0.change_token(repo)
     }

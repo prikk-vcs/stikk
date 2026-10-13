@@ -8,8 +8,14 @@
 //! add roughly eight crates, two of them proc-macros, to read three flat schemas.
 //!
 //! **This reader is scoped to exactly that job**: enough JSON to read `log-report-v1`,
-//! `branch-list-v1` and `tag-list-v1`, and nothing more. It has no `Serialize` half, no floats, no
-//! derive, and no configurability.
+//! `branch-list-v1` and `tag-list-v1`, and nothing more. It has no floats, no derive, and no
+//! configurability.
+//!
+//! It has **no `Serialize` half either** — nothing stikk sends prikk is JSON. What it does have, since
+//! RFC 035, is one *display* renderer ([`Json::render`]): Patch detail's raw view shows prikk's own
+//! fields for an operation, and the alternative was teaching the parser to record byte spans so the
+//! original text could be sliced back out. The renderer writes a parsed value as JSON text for a human
+//! to read, in prikk's key order, and is never read back by anything.
 //!
 //! **It cannot panic on any input.** Every entry point returns [`Result`], every index is bounds-checked
 //! through iterators, and depth is capped — the workspace lint set forbids `unwrap`/`expect`/indexing in
@@ -119,6 +125,89 @@ impl Json {
             ))),
         }
     }
+}
+
+impl Json {
+    /// This value as JSON text, indented for a terminal — **prikk's fields, in prikk's order**, for
+    /// Patch detail's raw view (RFC 035 decision 5).
+    ///
+    /// Object keys keep the order prikk wrote them, because [`Json::Object`] is a `Vec` of pairs rather
+    /// than a map: the raw view shows the report's own shape, not an alphabetised version of it. Strings
+    /// are re-escaped as JSON requires, so what comes back is readable JSON rather than a parsed value
+    /// printed loosely — and a control character in repository content cannot reach the terminal from
+    /// here even before `inert` sees it (`C-T2a`), since `\u001b` is written as an escape, not a byte.
+    ///
+    /// Not a round trip and not promised to be one: `007` renders as `7`, and whitespace is stikk's.
+    pub(crate) fn render(&self) -> String {
+        let mut out = String::new();
+        self.write(&mut out, 0);
+        out
+    }
+
+    fn write(&self, out: &mut String, depth: usize) {
+        let pad = |out: &mut String, depth: usize| {
+            for _ in 0..depth {
+                out.push_str("  ");
+            }
+        };
+        match self {
+            Json::Null => out.push_str("null"),
+            Json::Bool(true) => out.push_str("true"),
+            Json::Bool(false) => out.push_str("false"),
+            Json::Number(n) => out.push_str(&n.to_string()),
+            Json::String(s) => write_string(out, s),
+            Json::Array(items) if items.is_empty() => out.push_str("[]"),
+            Json::Array(items) => {
+                out.push_str("[\n");
+                for (at, item) in items.iter().enumerate() {
+                    pad(out, depth + 1);
+                    item.write(out, depth + 1);
+                    if at + 1 < items.len() {
+                        out.push(',');
+                    }
+                    out.push('\n');
+                }
+                pad(out, depth);
+                out.push(']');
+            }
+            Json::Object(fields) if fields.is_empty() => out.push_str("{}"),
+            Json::Object(fields) => {
+                out.push_str("{\n");
+                for (at, (key, value)) in fields.iter().enumerate() {
+                    pad(out, depth + 1);
+                    write_string(out, key);
+                    out.push_str(": ");
+                    value.write(out, depth + 1);
+                    if at + 1 < fields.len() {
+                        out.push(',');
+                    }
+                    out.push('\n');
+                }
+                pad(out, depth);
+                out.push('}');
+            }
+        }
+    }
+}
+
+/// Write `text` as a JSON string literal, escaping what JSON requires and every other control
+/// character as `\u00XX` — the same bytes prikk itself would have written.
+fn write_string(out: &mut String, text: &str) {
+    out.push('"');
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            ch if ch.is_control() => out.push_str(&format!("\\u{:04x}", u32::from(ch))),
+            ch => out.push(ch),
+        }
+    }
+    out.push('"');
 }
 
 fn kind_of(value: &Json) -> &'static str {

@@ -1649,3 +1649,912 @@ fn an_unmodelled_resolution_is_kept_verbatim_rather_than_dropped() {
         Some("teleport")
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 035 — `show-report-v1`, Patch detail's one read.
+//
+// **Every fixture below is captured from a real prikk 0.51.0 binary**, 2026-10-13, by
+// `.git-exclude/reports/035-patch-detail-impl/capture035.sh`, which re-measured RFC 035 §2's whole
+// table at the same time. `show-report-v1` carries no repository path, so nothing here is sanitised.
+// ---------------------------------------------------------------------------------------------
+
+/// `prikk show <block-id> --format json` at **0.51.0**, a block of **one** patch holding every operation
+/// kind prikk emits. Every path resolves, because the block's end is that one patch's end (RFC 035 A1 F7).
+const SHOW_BLOCK_ALL_KINDS_0_51: &str = r#"{
+  "schema_version": "show-report-v1",
+  "patches": [
+    {
+      "patch_id": "3a13fc9d6f581d1eda112d600b3aafdf1965fc4b0e940d0c0055077362ee7441",
+      "queued": false,
+      "operations": [
+        {
+          "kind": "delete-node",
+          "paths": [
+            {
+              "path": "del.txt"
+            }
+          ],
+          "content": {
+            "kind": "delete-node",
+            "preimage": {
+              "kind": "file",
+              "content": {
+                "kind": "text",
+                "text": "gone\n"
+              }
+            }
+          }
+        },
+        {
+          "kind": "create-file",
+          "paths": [
+            {
+              "path": "created.txt"
+            }
+          ],
+          "content": {
+            "kind": "create-file",
+            "content": {
+              "kind": "text",
+              "text": "new file\n"
+            },
+            "mode": 33188
+          }
+        },
+        {
+          "kind": "change-perm",
+          "paths": [
+            {
+              "path": "moved.sh"
+            }
+          ],
+          "content": {
+            "kind": "change-perm",
+            "old_mode": 33188,
+            "new_mode": 33261
+          }
+        },
+        {
+          "kind": "replace-binary",
+          "paths": [
+            {
+              "path": "b.bin"
+            }
+          ],
+          "content": {
+            "kind": "replace-binary",
+            "old": {
+              "kind": "binary",
+              "blob_id": "a04c7b5b1c1bb9c0b28bee2d5ab4dc5707c3583199301c5e3eb7a069cbb28dc2",
+              "size": 6
+            },
+            "new": {
+              "kind": "binary",
+              "blob_id": "8d71c569e89311208708dae4774995c92e9f15fd9ed2f026defa0db3ca45ba7d",
+              "size": 7
+            }
+          }
+        },
+        {
+          "kind": "edit-text",
+          "paths": [
+            {
+              "path": "a.txt"
+            }
+          ],
+          "content": {
+            "kind": "edit-text",
+            "old_span_text": "two",
+            "replacement_text": "TWO"
+          }
+        },
+        {
+          "kind": "rename-path",
+          "paths": [
+            {
+              "path": "mode.sh"
+            },
+            {
+              "path": "moved.sh"
+            }
+          ],
+          "content": {
+            "kind": "rename-path",
+            "author_key_id": "author",
+            "author_key_ids": [
+              "author"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}"#;
+
+/// **The same patch, same repository, asked about by its own patch id** — sealed. `edit-text`,
+/// `replace-binary` and `change-perm` report a node id instead of a path, at 0.46.0 and 0.51.0 alike:
+/// a bare sealed patch id carries no block context to resolve against (RFC 035 F1, A1 F7 row 2).
+///
+/// **The axis is the id, not the format** (F2, which corrected the architect's letter 016): both runs
+/// above are `--format json`, and the only thing that changed is which id `show` was given.
+const SHOW_PATCH_ALL_KINDS_0_51: &str = r#"{
+  "schema_version": "show-report-v1",
+  "patches": [
+    {
+      "patch_id": "3a13fc9d6f581d1eda112d600b3aafdf1965fc4b0e940d0c0055077362ee7441",
+      "queued": false,
+      "operations": [
+        {
+          "kind": "delete-node",
+          "paths": [
+            {
+              "path": "del.txt"
+            }
+          ],
+          "content": {
+            "kind": "delete-node",
+            "preimage": {
+              "kind": "file",
+              "content": {
+                "kind": "text",
+                "text": "gone\n"
+              }
+            }
+          }
+        },
+        {
+          "kind": "create-file",
+          "paths": [
+            {
+              "path": "created.txt"
+            }
+          ],
+          "content": {
+            "kind": "create-file",
+            "content": {
+              "kind": "text",
+              "text": "new file\n"
+            },
+            "mode": 33188
+          }
+        },
+        {
+          "kind": "change-perm",
+          "paths": [
+            {
+              "unresolved_node_id": "0049c120a610326a8f4006e8821a9cccfdbcc0e9aa2dcb6218788b183d785cb3"
+            }
+          ],
+          "content": {
+            "kind": "change-perm",
+            "old_mode": 33188,
+            "new_mode": 33261
+          }
+        },
+        {
+          "kind": "replace-binary",
+          "paths": [
+            {
+              "unresolved_node_id": "7cd2ab795c77f57e29912d1f8c812100ad0dcdc3866fd59ac049a20e2cb1e307"
+            }
+          ],
+          "content": {
+            "kind": "replace-binary",
+            "old": {
+              "kind": "binary",
+              "blob_id": "a04c7b5b1c1bb9c0b28bee2d5ab4dc5707c3583199301c5e3eb7a069cbb28dc2",
+              "size": 6
+            },
+            "new": {
+              "kind": "binary",
+              "blob_id": "8d71c569e89311208708dae4774995c92e9f15fd9ed2f026defa0db3ca45ba7d",
+              "size": 7
+            }
+          }
+        },
+        {
+          "kind": "edit-text",
+          "paths": [
+            {
+              "unresolved_node_id": "51f48120ab2e848ecd64519f54cacd5d96ae1a52ad6f6cf13e8308587de7f8e9"
+            }
+          ],
+          "content": {
+            "kind": "edit-text",
+            "old_span_text": "two",
+            "replacement_text": "TWO"
+          }
+        },
+        {
+          "kind": "rename-path",
+          "paths": [
+            {
+              "path": "mode.sh"
+            },
+            {
+              "path": "moved.sh"
+            }
+          ],
+          "content": {
+            "kind": "rename-path",
+            "author_key_id": "author",
+            "author_key_ids": [
+              "author"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}"#;
+
+/// **RFC 035 A1 F7, measured at 0.51.0**: two patches in **one** block, where patch 2 renames `a.txt`
+/// to `z.txt`. Patch 1's `edit-text` reports `z.txt` — **a name patch 1 never saw** — because a sealed
+/// block resolves its node-addressed operations against the state after *all* of its patches.
+const SHOW_BLOCK_TWO_PATCHES_0_51: &str = r#"{
+  "schema_version": "show-report-v1",
+  "patches": [
+    {
+      "patch_id": "4db1669a176b64136838975ef7e2724e2161ad78b89c6dabc4efa24cd6818f66",
+      "queued": false,
+      "operations": [
+        {
+          "kind": "change-perm",
+          "paths": [
+            {
+              "path": "m.sh"
+            }
+          ],
+          "content": {
+            "kind": "change-perm",
+            "old_mode": 33188,
+            "new_mode": 33261
+          }
+        },
+        {
+          "kind": "replace-binary",
+          "paths": [
+            {
+              "path": "b.bin"
+            }
+          ],
+          "content": {
+            "kind": "replace-binary",
+            "old": {
+              "kind": "binary",
+              "blob_id": "a04c7b5b1c1bb9c0b28bee2d5ab4dc5707c3583199301c5e3eb7a069cbb28dc2",
+              "size": 6
+            },
+            "new": {
+              "kind": "binary",
+              "blob_id": "8d71c569e89311208708dae4774995c92e9f15fd9ed2f026defa0db3ca45ba7d",
+              "size": 7
+            }
+          }
+        },
+        {
+          "kind": "edit-text",
+          "paths": [
+            {
+              "path": "z.txt"
+            }
+          ],
+          "content": {
+            "kind": "edit-text",
+            "old_span_text": "",
+            "replacement_text": "more\n"
+          }
+        }
+      ]
+    },
+    {
+      "patch_id": "c23a5d7d4d5d639b3e41e76806158e4bc475f113f3ed85858501010c2d830999",
+      "queued": false,
+      "operations": [
+        {
+          "kind": "edit-text",
+          "paths": [
+            {
+              "path": "z.txt"
+            }
+          ],
+          "content": {
+            "kind": "edit-text",
+            "old_span_text": "",
+            "replacement_text": "again\n"
+          }
+        },
+        {
+          "kind": "rename-path",
+          "paths": [
+            {
+              "path": "a.txt"
+            },
+            {
+              "path": "z.txt"
+            }
+          ],
+          "content": {
+            "kind": "rename-path",
+            "author_key_id": "author",
+            "author_key_ids": [
+              "author"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}"#;
+
+/// **F7 in the other direction, measured at 0.51.0**: patch 1 edits `d.txt`, patch 2 deletes it, both in
+/// one block. Sealing **removes** a path prikk had already given — patch 1's `edit-text` is unresolved,
+/// where the same patch queued named `d.txt`.
+///
+/// It also carries a content kind RFC 035 §2's table does not name: the delete's preimage was authored
+/// by an earlier patch of the same block, so its bytes are not in the object store and prikk reports
+/// `{"kind": "unavailable", "blob_id": …}` rather than text.
+const SHOW_BLOCK_EDIT_THEN_DELETE_0_51: &str = r#"{
+  "schema_version": "show-report-v1",
+  "patches": [
+    {
+      "patch_id": "d0928f07202932ce5c40b2dd862f00a14af66d8678ce52fffae83395c0454810",
+      "queued": false,
+      "operations": [
+        {
+          "kind": "edit-text",
+          "paths": [
+            {
+              "unresolved_node_id": "ab011b1bb05d2b0a527fe45c4fc20eba9604233dea617c1551031cf2fc01acd2"
+            }
+          ],
+          "content": {
+            "kind": "edit-text",
+            "old_span_text": "one",
+            "replacement_text": "two"
+          }
+        }
+      ]
+    },
+    {
+      "patch_id": "5f145b938b602102a2f0cedc27b95602ff15f3b5ad436a219ac770645122d8ae",
+      "queued": false,
+      "operations": [
+        {
+          "kind": "delete-node",
+          "paths": [
+            {
+              "path": "d.txt"
+            }
+          ],
+          "content": {
+            "kind": "delete-node",
+            "preimage": {
+              "kind": "file",
+              "content": {
+                "kind": "unavailable",
+                "blob_id": "0bd52da375c2211f015d1d740130d5e93f903cec906b1cbaf65b80e1d44a16e8"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}"#;
+
+/// The same every-kind patch **queued**, asked about by patch id at 0.51.0: `queued: true`, and every
+/// path resolved — which is prikk 0.47's change (`### Changed`), absent at 0.46 (RFC 035 F2).
+const SHOW_QUEUED_ALL_KINDS_0_51: &str = r#"{
+  "schema_version": "show-report-v1",
+  "patches": [
+    {
+      "patch_id": "3a13fc9d6f581d1eda112d600b3aafdf1965fc4b0e940d0c0055077362ee7441",
+      "queued": true,
+      "operations": [
+        {
+          "kind": "delete-node",
+          "paths": [
+            {
+              "path": "del.txt"
+            }
+          ],
+          "content": {
+            "kind": "delete-node",
+            "preimage": {
+              "kind": "file",
+              "content": {
+                "kind": "text",
+                "text": "gone\n"
+              }
+            }
+          }
+        },
+        {
+          "kind": "create-file",
+          "paths": [
+            {
+              "path": "created.txt"
+            }
+          ],
+          "content": {
+            "kind": "create-file",
+            "content": {
+              "kind": "text",
+              "text": "new file\n"
+            },
+            "mode": 33188
+          }
+        },
+        {
+          "kind": "change-perm",
+          "paths": [
+            {
+              "path": "moved.sh"
+            }
+          ],
+          "content": {
+            "kind": "change-perm",
+            "old_mode": 33188,
+            "new_mode": 33261
+          }
+        },
+        {
+          "kind": "replace-binary",
+          "paths": [
+            {
+              "path": "b.bin"
+            }
+          ],
+          "content": {
+            "kind": "replace-binary",
+            "old": {
+              "kind": "binary",
+              "blob_id": "a04c7b5b1c1bb9c0b28bee2d5ab4dc5707c3583199301c5e3eb7a069cbb28dc2",
+              "size": 6
+            },
+            "new": {
+              "kind": "binary",
+              "blob_id": "8d71c569e89311208708dae4774995c92e9f15fd9ed2f026defa0db3ca45ba7d",
+              "size": 7
+            }
+          }
+        },
+        {
+          "kind": "edit-text",
+          "paths": [
+            {
+              "path": "a.txt"
+            }
+          ],
+          "content": {
+            "kind": "edit-text",
+            "old_span_text": "two",
+            "replacement_text": "TWO"
+          }
+        },
+        {
+          "kind": "rename-path",
+          "paths": [
+            {
+              "path": "mode.sh"
+            },
+            {
+              "path": "moved.sh"
+            }
+          ],
+          "content": {
+            "kind": "rename-path",
+            "author_key_id": "author",
+            "author_key_ids": [
+              "author"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}"#;
+/// One patch of a report, by index, or a panic naming what was there instead.
+fn only_patch(text: &str) -> ShownPatch {
+    let mut patches = show(text).expect("captured 0.51 report");
+    assert_eq!(patches.len(), 1, "fixture holds one patch");
+    patches.remove(0)
+}
+
+/// Every operation kind prikk emits reads into prikk's own fields (RFC 035 decision 2, §2's table).
+#[test]
+fn every_operation_kind_reads_with_prikks_own_fields() {
+    let patch = only_patch(SHOW_BLOCK_ALL_KINDS_0_51);
+    assert!(!patch.queued, "prikk's word: this patch is sealed");
+    let kinds: Vec<&str> = patch.operations.iter().map(|o| o.kind.as_str()).collect();
+    assert_eq!(
+        kinds,
+        [
+            "delete-node",
+            "create-file",
+            "change-perm",
+            "replace-binary",
+            "edit-text",
+            "rename-path"
+        ],
+        "prikk's order, kept (§3 rule 7)"
+    );
+    let content: Vec<&OperationContent> = patch.operations.iter().map(|o| &o.content).collect();
+    assert_eq!(
+        content,
+        [
+            &OperationContent::NodeDeleted {
+                node_kind: "file".to_string(),
+                content: FileContent::Text("gone\n".to_string()),
+            },
+            &OperationContent::FileCreated {
+                content: FileContent::Text("new file\n".to_string()),
+                mode: 33188,
+            },
+            &OperationContent::PermChanged {
+                old_mode: 33188,
+                new_mode: 33261,
+            },
+            &OperationContent::BinaryReplaced {
+                old: BinaryBlob {
+                    blob_id: "a04c7b5b1c1bb9c0b28bee2d5ab4dc5707c3583199301c5e3eb7a069cbb28dc2"
+                        .to_string(),
+                    size: 6,
+                },
+                new: BinaryBlob {
+                    blob_id: "8d71c569e89311208708dae4774995c92e9f15fd9ed2f026defa0db3ca45ba7d"
+                        .to_string(),
+                    size: 7,
+                },
+            },
+            &OperationContent::TextEdit {
+                old_span: "two".to_string(),
+                replacement: "TWO".to_string(),
+            },
+            &OperationContent::PathRenamed {
+                author_key_id: "author".to_string(),
+                author_key_ids: vec!["author".to_string()],
+            },
+        ]
+    );
+    // `rename-path` carries two paths, old then new; every other kind here carries one.
+    let paths: Vec<&[QueuedPath]> = patch
+        .operations
+        .iter()
+        .map(|o| o.paths.as_slice())
+        .collect();
+    assert_eq!(paths[5].len(), 2, "old then new");
+    assert_eq!(
+        paths[5],
+        [
+            QueuedPath::Path("mode.sh".to_string()),
+            QueuedPath::Path("moved.sh".to_string())
+        ]
+    );
+    assert!(
+        paths[..5].iter().all(|p| p.len() == 1),
+        "one path each: {paths:?}"
+    );
+}
+
+/// **The id decides what resolves, not the format** (RFC 035 F2 — the finding that corrected the
+/// architect's letter 016, which had compared a prose run against a block id with a JSON run against a
+/// patch id and blamed the visible axis).
+///
+/// Both fixtures here are `--format json`, from the same repository, for the same patch. The *only*
+/// difference is the id `show` was given, and three operations lose their paths with it: `edit-text`,
+/// `replace-binary` and `change-perm` are node-addressed, and a bare sealed patch id carries no block
+/// to resolve against (A1 F7 row 2 — still true at 0.51, and prikk is not changing it).
+#[test]
+fn the_same_sealed_patch_resolves_by_block_id_and_not_by_patch_id() {
+    let by_block = only_patch(SHOW_BLOCK_ALL_KINDS_0_51);
+    let by_patch = only_patch(SHOW_PATCH_ALL_KINDS_0_51);
+    assert_eq!(by_block.patch_id, by_patch.patch_id, "the same patch");
+    assert!(
+        !by_block.queued && !by_patch.queued,
+        "sealed either way: `queued` is prikk's word, not an inference from the id asked with"
+    );
+
+    let resolution = |patch: &ShownPatch| -> Vec<(String, bool)> {
+        patch
+            .operations
+            .iter()
+            .map(|o| {
+                (
+                    o.kind.clone(),
+                    o.paths.iter().all(|p| matches!(p, QueuedPath::Path(_))),
+                )
+            })
+            .collect()
+    };
+    assert!(
+        resolution(&by_block).iter().all(|(_, resolved)| *resolved),
+        "asked with the block id, every path resolves"
+    );
+    assert_eq!(
+        resolution(&by_patch),
+        [
+            ("delete-node".to_string(), true),
+            ("create-file".to_string(), true),
+            ("change-perm".to_string(), false),
+            ("replace-binary".to_string(), false),
+            ("edit-text".to_string(), false),
+            ("rename-path".to_string(), true),
+        ],
+        "asked with the patch id, the three node-addressed kinds do not"
+    );
+    // The content is the same either way: only the paths differ (§2, measured).
+    let content = |patch: &ShownPatch| -> Vec<OperationContent> {
+        patch.operations.iter().map(|o| o.content.clone()).collect()
+    };
+    assert_eq!(content(&by_block), content(&by_patch));
+}
+
+/// **RFC 035 A1 F7**: in a block of more than one patch, a sealed patch's node-addressed path is
+/// resolved at the **block's** end. Patch 1's `edit-text` therefore names `z.txt`, which patch 2
+/// renamed it to and patch 1 never saw.
+///
+/// The reader renders prikk's value **as given** and corrects nothing (decision 3a): the label saying
+/// where the name comes from is the view's job, and inventing `a.txt` here from patch 2's rename would
+/// be stikk asserting a state prikk did not report.
+#[test]
+fn a_sealed_block_resolves_each_patch_at_the_blocks_end() {
+    let patches = show(SHOW_BLOCK_TWO_PATCHES_0_51).expect("captured 0.51 report");
+    let [first, second] = patches.as_slice() else {
+        panic!("fixture holds two patches: {patches:?}")
+    };
+    let edit = first
+        .operations
+        .iter()
+        .find(|o| o.kind == "edit-text")
+        .expect("patch 1 edits");
+    assert_eq!(
+        edit.paths,
+        [QueuedPath::Path("z.txt".to_string())],
+        "prikk's name for it at the block's end, not patch 1's own"
+    );
+    let rename = second
+        .operations
+        .iter()
+        .find(|o| o.kind == "rename-path")
+        .expect("patch 2 renames");
+    assert_eq!(
+        rename.paths,
+        [
+            QueuedPath::Path("a.txt".to_string()),
+            QueuedPath::Path("z.txt".to_string())
+        ],
+        "the rename itself still carries both of its own paths"
+    );
+}
+
+/// **F7's other direction**: sealing can *remove* a path prikk had already given. Patch 1 edits
+/// `d.txt`, patch 2 deletes it, and by the block's end there is no path to name.
+///
+/// The same fixture carries a content kind §2's table never saw — `unavailable`, for a preimage an
+/// earlier patch of the same block authored, whose bytes are not in the object store. **It is named,
+/// not dropped and not shown as empty** (§3 rule 5, `C-T2c′`), and it is not an error.
+#[test]
+fn an_edit_whose_file_is_deleted_later_in_the_block_loses_its_path() {
+    let patches = show(SHOW_BLOCK_EDIT_THEN_DELETE_0_51).expect("captured 0.51 report");
+    let [edited, deleted] = patches.as_slice() else {
+        panic!("fixture holds two patches")
+    };
+    let [edit] = edited.operations.as_slice() else {
+        panic!("patch 1 holds one operation")
+    };
+    assert!(
+        matches!(edit.paths.as_slice(), [QueuedPath::UnresolvedNode(_)]),
+        "unresolved at the block's end: {:?}",
+        edit.paths
+    );
+    assert_eq!(
+        edit.content,
+        OperationContent::TextEdit {
+            old_span: "one".to_string(),
+            replacement: "two".to_string()
+        },
+        "the content is reported in full; only the path is gone"
+    );
+    let [delete] = deleted.operations.as_slice() else {
+        panic!("patch 2 holds one operation")
+    };
+    assert_eq!(
+        delete.content,
+        OperationContent::NodeDeleted {
+            node_kind: "file".to_string(),
+            content: FileContent::Unrendered("unavailable".to_string()),
+        },
+        "prikk's own kind word for content it cannot report"
+    );
+}
+
+/// `queued` is prikk's word for whether the patch is still in the WAL (RFC 035 F0), and at 0.51 a
+/// queued patch's paths resolve — prikk 0.47's `### Changed`, which is why nothing keys on absence.
+#[test]
+fn a_queued_patch_says_so_in_prikks_own_word() {
+    let patch = only_patch(SHOW_QUEUED_ALL_KINDS_0_51);
+    assert!(patch.queued);
+    assert!(
+        patch
+            .operations
+            .iter()
+            .flat_map(|o| &o.paths)
+            .all(|p| matches!(p, QueuedPath::Path(_))),
+        "0.51 resolves a queued patch's paths against the baseline truncated at that patch"
+    );
+}
+
+/// **A kind stikk does not know does not fail the report** (§3 rule 3): it keeps prikk's word and its
+/// raw fields, and every other operation in the patch still reads.
+#[test]
+fn an_unknown_operation_kind_is_kept_not_refused() {
+    let text = variant(
+        SHOW_BLOCK_ALL_KINDS_0_51,
+        "\"kind\": \"edit-text\",\n          \"paths\"",
+        "\"kind\": \"rewrite-span\",\n          \"paths\"",
+    );
+    let patch = only_patch(&text);
+    let unknown = patch
+        .operations
+        .iter()
+        .find(|o| o.kind == "rewrite-span")
+        .expect("prikk's kind word survives");
+    assert_eq!(unknown.content, OperationContent::Unrendered);
+    assert!(
+        unknown.raw.contains("old_span_text"),
+        "its raw fields survive for the raw view: {}",
+        unknown.raw
+    );
+    assert_eq!(
+        patch.operations.len(),
+        6,
+        "and every other operation still reads"
+    );
+}
+
+/// **A content kind stikk does not know is named, not dropped** (§3 rule 5) — the constructed twin of
+/// the `unavailable` preimage prikk really emits.
+#[test]
+fn an_unknown_content_kind_is_named_not_dropped() {
+    let text = variant(
+        SHOW_BLOCK_ALL_KINDS_0_51,
+        "\"kind\": \"text\",\n                \"text\": \"gone\\n\"",
+        "\"kind\": \"braille\",\n                \"text\": \"gone\\n\"",
+    );
+    let patch = only_patch(&text);
+    assert_eq!(
+        patch.operations[0].content,
+        OperationContent::NodeDeleted {
+            node_kind: "file".to_string(),
+            content: FileContent::Unrendered("braille".to_string()),
+        }
+    );
+}
+
+/// The raw view's text is **prikk's fields in prikk's order** (decision 5), re-indented, with strings
+/// re-escaped as JSON — never reordered and never summarised.
+#[test]
+fn the_raw_text_holds_prikks_fields_in_prikks_order() {
+    let patch = only_patch(SHOW_BLOCK_ALL_KINDS_0_51);
+    let edit = patch
+        .operations
+        .iter()
+        .find(|o| o.kind == "edit-text")
+        .expect("edits");
+    assert_eq!(
+        edit.raw,
+        "{\n  \"kind\": \"edit-text\",\n  \"paths\": [\n    {\n      \"path\": \"a.txt\"\n    }\n  \
+         ],\n  \"content\": {\n    \"kind\": \"edit-text\",\n    \"old_span_text\": \"two\",\n    \
+         \"replacement_text\": \"TWO\"\n  }\n}"
+    );
+    // A node id is shown as prikk gave it, which is the raw view's whole point (RFC 035 F6).
+    let by_patch = only_patch(SHOW_PATCH_ALL_KINDS_0_51);
+    let perm = by_patch
+        .operations
+        .iter()
+        .find(|o| o.kind == "change-perm")
+        .expect("changes a mode");
+    assert!(
+        perm.raw.contains("\"unresolved_node_id\": \"0049c120a610326a8f4006e8821a9cccfdbcc0e9aa2dcb6218788b183d785cb3\""),
+        "{}",
+        perm.raw
+    );
+    // And prikk's integers, which the rendered view shows as octal *beside* these, never instead.
+    assert!(perm.raw.contains("\"old_mode\": 33188"), "{}", perm.raw);
+}
+
+/// Every rule the reader holds, broken one at a time. **Each is stikk's environment error** — stikk
+/// misread prikk, or prikk changed shape — never prikk's refusal (§3; RFC 027 B).
+#[test]
+fn a_show_report_that_breaks_a_rule_is_an_environment_error() {
+    let cases: [(&str, String); 8] = [
+        (
+            "another schema",
+            variant(
+                SHOW_BLOCK_ALL_KINDS_0_51,
+                "show-report-v1",
+                "show-report-v2",
+            ),
+        ),
+        (
+            "a patch id that is not an object id",
+            variant(
+                SHOW_BLOCK_ALL_KINDS_0_51,
+                "3a13fc9d6f581d1eda112d600b3aafdf1965fc4b0e940d0c0055077362ee7441",
+                "3a13fc9d",
+            ),
+        ),
+        (
+            "`queued` as a string",
+            variant(
+                SHOW_BLOCK_ALL_KINDS_0_51,
+                "\"queued\": false",
+                "\"queued\": \"no\"",
+            ),
+        ),
+        (
+            "a path element with neither field",
+            variant(
+                SHOW_BLOCK_ALL_KINDS_0_51,
+                "\"path\": \"del.txt\"",
+                "\"node\": \"del.txt\"",
+            ),
+        ),
+        (
+            "a path element with both",
+            variant(
+                SHOW_BLOCK_ALL_KINDS_0_51,
+                "\"path\": \"del.txt\"",
+                "\"path\": \"del.txt\", \"unresolved_node_id\": \
+                 \"ab011b1bb05d2b0a527fe45c4fc20eba9604233dea617c1551031cf2fc01acd2\"",
+            ),
+        ),
+        (
+            "content tagged with another kind",
+            variant(
+                SHOW_BLOCK_ALL_KINDS_0_51,
+                "\"kind\": \"edit-text\",\n            \"old_span_text\"",
+                "\"kind\": \"change-perm\",\n            \"old_span_text\"",
+            ),
+        ),
+        (
+            "a blob id that is not an object id",
+            variant(
+                SHOW_BLOCK_ALL_KINDS_0_51,
+                "a04c7b5b1c1bb9c0b28bee2d5ab4dc5707c3583199301c5e3eb7a069cbb28dc2",
+                "a04c7b5b",
+            ),
+        ),
+        (
+            "`author_key_ids` holding something other than a string",
+            variant(
+                SHOW_BLOCK_ALL_KINDS_0_51,
+                "\"author_key_ids\": [\n              \"author\"\n            ]",
+                "\"author_key_ids\": [\n              7\n            ]",
+            ),
+        ),
+    ];
+    for (what, text) in cases {
+        let err = show(&text).expect_err(what);
+        assert!(
+            matches!(err, StikkError::Environment { .. }),
+            "{what}: {err:?}"
+        );
+    }
+}
+
+/// A report whose `content` is missing for a kind stikk reads is a shape stikk has not seen — prikk
+/// writes one for all six, at 0.46.0 and 0.51.0 (§2). Refused rather than rendered as an empty edit.
+#[test]
+fn a_known_kind_with_no_content_is_refused_rather_than_shown_empty() {
+    let text = variant(
+        SHOW_BLOCK_ALL_KINDS_0_51,
+        "\"content\": {\n            \"kind\": \"edit-text\",\n            \"old_span_text\": \
+         \"two\",\n            \"replacement_text\": \"TWO\"\n          }",
+        "\"unrelated\": 1",
+    );
+    let err = show(&text).expect_err("no content for a kind stikk reads");
+    assert!(matches!(err, StikkError::Environment { .. }), "{err:?}");
+}

@@ -41,9 +41,10 @@ use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{
-    Authoring, BlockRow, DeclarationResolution, History, PatchMessage, Queue, QueueTarget,
-    QueueThreshold, QueuedElsewhere, QueuedMessage, QueuedOperation, QueuedPatch, QueuedPath,
-    RefEntry, RenameDeclaration, ThresholdStatus, WorktreeEntry, WorktreeStatus,
+    Authoring, BinaryBlob, BlockRow, DeclarationResolution, FileContent, History, OperationContent,
+    PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold, QueuedElsewhere,
+    QueuedMessage, QueuedOperation, QueuedPatch, QueuedPath, RefEntry, RenameDeclaration,
+    ShownPatch, ThresholdStatus, WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -53,6 +54,7 @@ const LOG_SCHEMA: &str = "log-report-v1";
 const BRANCH_SCHEMA: &str = "branch-list-v1";
 const TAG_SCHEMA: &str = "tag-list-v1";
 const STATUS_SCHEMA: &str = "status-report-v1";
+const SHOW_SCHEMA: &str = "show-report-v1";
 
 /// The first prikk minor whose queued patches carry `message` (prikk 0.42; RFC 028 as revised).
 const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
@@ -696,4 +698,204 @@ fn queued_path(path: &Json) -> Result<QueuedPath> {
             "a path object must carry exactly one of `path` and `unresolved_node_id`, as a string",
         )),
     }
+}
+
+/// A `show-report-v1` rule broken: stikk's environment error, naming the rule (RFC 035 §3).
+fn show_rule(detail: impl std::fmt::Display) -> StikkError {
+    StikkError::environment_msg(format!("prikk's show report breaks a rule: {detail}"))
+}
+
+/// `prikk show <block-id|patch-id> --format json` (`show-report-v1`), prikk ≥ 0.39 (RFC 035 decision 1).
+///
+/// **Measured at 0.46.0 and 0.51.0, identical at both** (RFC 035 §2; re-measured at 0.51.0 when this
+/// reader was written). Every rule below is stikk's, and breaking one is an environment error, never
+/// prikk's refusal:
+/// - the schema is checked first;
+/// - `patch_id` parses as an object id, and `queued` is a boolean — **prikk's word**, never inferred
+///   from which id stikk asked with (§5 trap 5);
+/// - each `paths[]` element carries **exactly one** of `path` and `unresolved_node_id`. Neither, or
+///   both, is an error. **Never keyed on a field's absence** (trap 2): prikk 0.47 started writing a
+///   `path` where there had been none, and filed it as `### Changed`;
+/// - content is read **per operation kind**, in §2's measured shape, and `content.kind` must agree with
+///   the operation's own `kind` (measured equal for all six kinds at both versions) — a disagreement is
+///   a shape stikk has not seen, not a tie to break;
+/// - **a kind stikk does not know is kept, not refused** (§3 rule 3): its content is
+///   [`OperationContent::Unrendered`], its kind word and raw fields survive, and the report reads fine;
+/// - **a `content`/`preimage` whose own `kind` is not one stikk knows is named, not dropped**
+///   ([`FileContent::Unrendered`]; §3 rule 5) — it is not an error and not empty (`C-T2c′`);
+/// - order is prikk's, for the patches and for their operations (§3 rule 7).
+///
+/// # Errors
+/// [`StikkError::Environment`] naming the broken rule or missing field.
+pub(super) fn show(text: &str) -> Result<Vec<ShownPatch>> {
+    let value = report(text, SHOW_SCHEMA)?;
+    value
+        .array_field("patches")?
+        .iter()
+        .map(shown_patch)
+        .collect()
+}
+
+fn shown_patch(patch: &Json) -> Result<ShownPatch> {
+    let patch_id = object_id_field(patch, "patch_id")?.to_string();
+    let queued = patch.bool_field("queued")?;
+    let operations = patch
+        .array_field("operations")?
+        .iter()
+        .map(patch_operation)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(ShownPatch {
+        patch_id,
+        queued,
+        operations,
+    })
+}
+
+fn patch_operation(operation: &Json) -> Result<PatchOperation> {
+    let kind = operation.str_field("kind")?.to_string();
+    let paths = operation
+        .array_field("paths")?
+        .iter()
+        .map(queued_path)
+        .collect::<Result<Vec<_>>>()?;
+    let content = operation_content(operation, &kind)?;
+    Ok(PatchOperation {
+        kind,
+        paths,
+        content,
+        raw: operation.render(),
+    })
+}
+
+/// The content for one operation, by prikk's kind word.
+///
+/// **An unknown kind returns before `content` is looked at at all.** It is not merely unread: prikk may
+/// pair a future kind with a shape stikk has never seen, and refusing it would turn a report stikk
+/// could still show most of into no report (§3 rule 3).
+fn operation_content(operation: &Json, kind: &str) -> Result<OperationContent> {
+    const KNOWN: [&str; 6] = [
+        "edit-text",
+        "create-file",
+        "delete-node",
+        "replace-binary",
+        "change-perm",
+        "rename-path",
+    ];
+    if !KNOWN.contains(&kind) {
+        return Ok(OperationContent::Unrendered);
+    }
+    let content = match operation.get("content") {
+        Some(content @ Json::Object(_)) => content,
+        Some(other) => {
+            return Err(show_rule(format!(
+                "a `{kind}` operation's `content` should be an object, got {other:?}"
+            )));
+        }
+        None => {
+            return Err(show_rule(format!(
+                "a `{kind}` operation carries no `content`, which prikk writes for every kind stikk \
+                 reads (measured at 0.46.0 and 0.51.0)"
+            )));
+        }
+    };
+    // prikk tags the content object with the operation's own kind. Held equal rather than ignored: the
+    // two disagreeing would mean stikk is reading one operation's content under another's name.
+    let tag = content.str_field("kind")?;
+    if tag != kind {
+        return Err(show_rule(format!(
+            "a `{kind}` operation's `content` is tagged `{tag}`"
+        )));
+    }
+    match kind {
+        "edit-text" => Ok(OperationContent::TextEdit {
+            old_span: content.str_field("old_span_text")?.to_string(),
+            replacement: content.str_field("replacement_text")?.to_string(),
+        }),
+        "create-file" => Ok(OperationContent::FileCreated {
+            content: file_content(content, "content")?,
+            mode: content.u64_field("mode")?,
+        }),
+        "delete-node" => {
+            let preimage = match content.get("preimage") {
+                Some(preimage @ Json::Object(_)) => preimage,
+                _ => {
+                    return Err(show_rule(
+                        "a `delete-node` operation has no `preimage` object",
+                    ));
+                }
+            };
+            Ok(OperationContent::NodeDeleted {
+                node_kind: preimage.str_field("kind")?.to_string(),
+                content: file_content(preimage, "content")?,
+            })
+        }
+        "replace-binary" => Ok(OperationContent::BinaryReplaced {
+            old: binary_blob(content, "old")?,
+            new: binary_blob(content, "new")?,
+        }),
+        "change-perm" => Ok(OperationContent::PermChanged {
+            old_mode: content.u64_field("old_mode")?,
+            new_mode: content.u64_field("new_mode")?,
+        }),
+        // `KNOWN`'s last member; kept exhaustive rather than `_` so adding a kind to `KNOWN` without a
+        // reader for it fails to compile instead of silently becoming `Unrendered`.
+        "rename-path" => {
+            let author_key_ids = content
+                .array_field("author_key_ids")?
+                .iter()
+                .map(|id| match id {
+                    Json::String(id) => Ok(id.clone()),
+                    other => Err(show_rule(format!(
+                        "`author_key_ids` should hold strings, got {other:?}"
+                    ))),
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(OperationContent::PathRenamed {
+                author_key_id: content.str_field("author_key_id")?.to_string(),
+                author_key_ids,
+            })
+        }
+        other => Err(show_rule(format!(
+            "stikk names `{other}` a kind it reads but has no reader for it — a stikk defect, not a \
+             report defect"
+        ))),
+    }
+}
+
+/// A content object at `key`, read by **its own** `kind` (RFC 035 §3 rule 5).
+///
+/// `text` is what §2 measured. `unavailable` turned up at 0.51.0 for a `delete-node` whose preimage an
+/// earlier patch of the same block had authored, carrying a `blob_id` and no text; it arrives here as
+/// [`FileContent::Unrendered`] with prikk's word, which is what rule 5 exists for.
+fn file_content(value: &Json, key: &str) -> Result<FileContent> {
+    let content = match value.get(key) {
+        Some(content @ Json::Object(_)) => content,
+        Some(other) => {
+            return Err(show_rule(format!(
+                "`{key}` should be an object, got {other:?}"
+            )));
+        }
+        None => return Err(show_rule(format!("missing field `{key}`"))),
+    };
+    match content.str_field("kind")? {
+        "text" => Ok(FileContent::Text(content.str_field("text")?.to_string())),
+        other => Ok(FileContent::Unrendered(other.to_string())),
+    }
+}
+
+fn binary_blob(content: &Json, key: &str) -> Result<BinaryBlob> {
+    let blob = match content.get(key) {
+        Some(blob @ Json::Object(_)) => blob,
+        _ => return Err(show_rule(format!("`{key}` should be an object"))),
+    };
+    let kind = blob.str_field("kind")?;
+    if kind != "binary" {
+        return Err(show_rule(format!(
+            "`{key}` is tagged `{kind}` where `replace-binary` reports `binary`"
+        )));
+    }
+    Ok(BinaryBlob {
+        blob_id: object_id_field(blob, "blob_id")?.to_string(),
+        size: blob.u64_field("size")?,
+    })
 }

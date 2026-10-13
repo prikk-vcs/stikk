@@ -189,13 +189,155 @@ pub struct QueuedOperation {
     pub author_key_id: Option<String>,
 }
 
-/// A path as a queued operation reports it — exactly one of the two.
+/// A path as prikk's reports give it — **exactly one of the two, read from the element's shape**.
+///
+/// Shared by `status-report-v1`'s queue (where it landed, hence the name) and `show-report-v1`'s
+/// operations (RFC 035), because it is one JSON shape with one reader.
+///
+/// **Never keyed on a field's absence** (RFC 035 decision 3). prikk 0.47 began writing a `path` where a
+/// queued patch's `show` had written none, and filed it as `### Changed` — a reader that treated "no
+/// `path`" as "unresolved" would have been reading a release note, not a report. An element carrying
+/// neither field, or both, is stikk's environment error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueuedPath {
     /// `{"path": …}`.
     Path(String),
-    /// `{"unresolved_node_id": …}` — a node no longer live in the baseline.
+    /// `{"unresolved_node_id": …}` — a node prikk did not resolve to a path.
+    ///
+    /// **stikk never says why, because it cannot know which reason applies** (RFC 035 A1 F7): a bare
+    /// sealed patch id resolves nothing at any measured version, a queued patch resolved nothing below
+    /// 0.47, and a sealed block resolves against its own end — where a file deleted later in the block
+    /// has no path left to name. All three arrive here identically.
     UnresolvedNode(String),
+}
+
+/// What `prikk show <block-id|patch-id> --format json` reports (`show-report-v1`; design `FR-030`;
+/// RFC 035 decision 1) — **the one read Patch detail is built on**.
+///
+/// **Two variants, because below prikk 0.39 the patches are not reported, not absent** (`C-T2c′`), the
+/// same shape [`QueueReport`] takes for the same reason. 0.39 is stikk's JSON floor (`reads_json`), not
+/// `show-report-v1`'s own: the schema exists from prikk 0.36, but stikk reads no JSON from prikk at all
+/// between 0.36 and 0.38, and the project owner ruled that band unoccupied (RFC 035 A1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShowReport {
+    /// prikk ≥ 0.39: every patch the report lists, in prikk's order.
+    Listed(Vec<ShownPatch>),
+    /// prikk < 0.39: stikk asked prikk nothing and has nothing to report. **Never an empty list** — the
+    /// view says, in stikk's own voice, that it reads a patch's content from prikk 0.39 on (`C-T4d`).
+    /// Saying *prikk does not report it* would be false at 0.36–0.38.
+    Unreported,
+}
+
+/// One patch, as `show-report-v1` reports it.
+///
+/// **A report asked about a block id carries every patch in that block** — that is how stikk enumerates
+/// them, since `log` reports `patch_count` and `patch_messages` but no patch ids (RFC 035 F0).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShownPatch {
+    /// The patch's object id, validated at the parse boundary.
+    pub patch_id: String,
+    /// **prikk's own word for whether this patch is still in the active WAL.** Never inferred from
+    /// which id stikk asked with: asking about a *patch* id does not make a patch queued, and a sealed
+    /// patch asked about by patch id answers `false` with its paths unresolved (RFC 035 A1 F7, row 2).
+    pub queued: bool,
+    /// The patch's operations, in prikk's order.
+    pub operations: Vec<PatchOperation>,
+}
+
+/// One operation of a patch, with the content `FR-030` asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchOperation {
+    /// prikk's operation kind, verbatim (`ER-02`) — `edit-text`, `create-file`, `delete-node`,
+    /// `replace-binary`, `change-perm`, `rename-path` at every measured version. **A kind stikk does
+    /// not know does not fail the report**: it arrives with [`OperationContent::Unrendered`] and keeps
+    /// both prikk's word and its raw fields (RFC 035 §3 rule 3).
+    pub kind: String,
+    /// The paths it touches, as prikk reports them: one for most kinds, two — old then new — for
+    /// `rename-path`.
+    pub paths: Vec<QueuedPath>,
+    /// The operation's content, read per kind as prikk's measured shape gives it.
+    pub content: OperationContent,
+    /// **prikk's own fields for this operation**, as JSON, for the raw view (RFC 035 decision 5). Keys
+    /// in prikk's order, values as prikk gave them, re-indented for a terminal; it costs no second read
+    /// because the report has already been parsed (§3 rule 6). The display bound is applied where it is
+    /// rendered, not here — the seam reports what prikk said.
+    pub raw: String,
+}
+
+/// An operation's content, by kind (RFC 035 §2's measured table, decision 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OperationContent {
+    /// `edit-text`: the replaced span and its replacement, **as spans** — not line ranges, at any
+    /// version (RFC 021 F2). Either may be empty, and empty is a measured state, not a missing one.
+    TextEdit {
+        /// `old_span_text`.
+        old_span: String,
+        /// `replacement_text`.
+        replacement: String,
+    },
+    /// `create-file`: the created content and its mode.
+    FileCreated {
+        /// `content`.
+        content: FileContent,
+        /// `mode`, as prikk's integer (e.g. `33188`).
+        mode: u64,
+    },
+    /// `delete-node`: the `preimage` — what the delete removed.
+    NodeDeleted {
+        /// `preimage.kind`, verbatim: `file` at every measured state. Anything else is carried as a
+        /// word, not read as a shape.
+        node_kind: String,
+        /// `preimage.content`.
+        content: FileContent,
+    },
+    /// `replace-binary`: both blobs, by id and size. **Never bytes.**
+    BinaryReplaced {
+        /// `old`.
+        old: BinaryBlob,
+        /// `new`.
+        new: BinaryBlob,
+    },
+    /// `change-perm`: both modes, as prikk's integers.
+    PermChanged {
+        /// `old_mode`.
+        old_mode: u64,
+        /// `new_mode`.
+        new_mode: u64,
+    },
+    /// `rename-path`: the key that asserted it. The two paths are in [`PatchOperation::paths`].
+    PathRenamed {
+        /// `author_key_id` — prikk cannot construct a rename without one (RFC 028 F1).
+        author_key_id: String,
+        /// `author_key_ids`, in prikk's order.
+        author_key_ids: Vec<String>,
+    },
+    /// A kind stikk does not render, carrying prikk's kind word (on [`PatchOperation::kind`]) and its
+    /// raw fields (`[PatchOperation::raw]`). **Not an error, and not empty** (`C-T2c′`; RFC 035 §3
+    /// rule 3): a report stikk half-understands still shows every operation prikk listed.
+    Unrendered,
+}
+
+/// A file's content as prikk reports it inside an operation (RFC 035 §3 rule 5).
+///
+/// **A kind stikk does not know is named, not dropped and not shown as empty.** Only `text` was in §2's
+/// measured table, and a second kind turned up the moment this was built: a `delete-node` whose preimage
+/// was authored by an **earlier patch of the same block** reports `{"kind": "unavailable", "blob_id": …}`
+/// — the content is not in the object store to report (measured at 0.51.0).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileContent {
+    /// `{"kind": "text", "text": …}`.
+    Text(String),
+    /// Any other `kind`, carried verbatim. The raw view shows whatever fields came with it.
+    Unrendered(String),
+}
+
+/// One binary blob, as `replace-binary` names it. stikk never renders a blob's bytes (`FR-030`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BinaryBlob {
+    /// `blob_id`, validated as an object id at the parse boundary.
+    pub blob_id: String,
+    /// `size`, in bytes, as prikk reports it.
+    pub size: u64,
 }
 
 /// One patch id and its message, as `prikk log` names it (design FR-011; RFC 015 F1). Only patches
@@ -671,6 +813,25 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError`]: a JSON report that breaks the queue's rules is stikk's environment
     /// error (RFC 027 B, C1); a genuine failure classifies as for [`Prikk::orientation`].
     fn queue(&self, repo: &Path) -> Result<QueueReport>;
+
+    /// Read what one patch, or every patch of one block, changed (design `FR-030`; category
+    /// `read-history`; RFC 035 decision 1) — `show <id> --format json`.
+    ///
+    /// **`id` is the id that resolves the most, and the caller chooses it, not this method**: a
+    /// **block** id for a sealed patch, whose report carries every patch in the block with their paths
+    /// resolved; a **patch** id for a queued patch, which has no block to resolve against (RFC 035 F2).
+    /// A bare *sealed* patch id resolves nothing at any measured version (A1 F7), which is why Block
+    /// detail asks with the block's id and renders one patch from that one report.
+    ///
+    /// **Version-banded behind this one method**, in [`Prikk::queue`]'s pattern. At prikk ≥ 0.39
+    /// (`reads_json`, where that number lives) it reads. **Below 0.39 it spawns nothing** and answers
+    /// [`ShowReport::Unreported`] — never an empty list (`C-T2c′`).
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: a report that breaks `show-report-v1`'s measured shape is stikk's
+    /// environment error (UD-02); a genuine failure — an id in no object store and no WAL — classifies
+    /// as for [`Prikk::orientation`].
+    fn show(&self, repo: &Path, id: &str) -> Result<ShowReport>;
 
     /// Compose a cheap "has anything changed?" signal from the ref pointers (branches **and** tags,
     /// merged and deduplicated by name — never `Prikk::refs` alone, since its tag coverage is

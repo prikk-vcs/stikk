@@ -166,6 +166,10 @@ impl Prikk for Recording {
         self.record("queue");
         self.inner.queue(repo)
     }
+    fn show(&self, repo: &Path, id: &str) -> Result<stikk_prikk::ShowReport> {
+        self.record("show");
+        self.inner.show(repo, id)
+    }
     fn change_token(&self, repo: &Path) -> Result<ChangeToken> {
         self.record("change_token");
         self.inner.change_token(repo)

@@ -13,7 +13,7 @@ use stikk_model::{ChangeToken, CurrentBranch, Result, StikkError};
 use crate::version::Version;
 use crate::{
     CommitResult, Handshake, History, Orientation, Prikk, QueueReport, RefEntry, SealResult,
-    StateFiles, WorktreeStatus,
+    ShowReport, StateFiles, WorktreeStatus,
 };
 
 type Scripted<T> = std::result::Result<T, String>;
@@ -70,6 +70,13 @@ pub struct NullBackend {
     /// 0.30, below the 0.39 enumeration band, so an unscripted backend never claims a list it could not
     /// have read.
     queue: Scripted<QueueReport>,
+    /// Scripted `show` report (RFC 035). Defaults to [`ShowReport::Unreported`], for the same reason
+    /// `queue` defaults to an unreported queue: at the version this backend reports, stikk reads no
+    /// JSON from prikk at all.
+    show: Scripted<ShowReport>,
+    /// How many times `show` has been asked — so a test can prove Patch detail opened from Block detail
+    /// spawns nothing (RFC 035 §5 trap 7). Shared across clones.
+    show_calls: Arc<AtomicUsize>,
 }
 
 impl NullBackend {
@@ -167,6 +174,8 @@ impl NullBackend {
                 count: 0,
                 target: None,
             }),
+            show: Ok(ShowReport::Unreported),
+            show_calls: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -182,6 +191,26 @@ impl NullBackend {
     pub fn with_queue_refusal(mut self, message: impl Into<String>) -> Self {
         self.queue = Err(message.into());
         self
+    }
+
+    /// Replace the `show` report this backend returns (RFC 035).
+    #[must_use]
+    pub fn with_show(mut self, show: ShowReport) -> Self {
+        self.show = Ok(show);
+        self
+    }
+
+    /// Make the `show` call fail with a refusal carrying `message`.
+    #[must_use]
+    pub fn with_show_refusal(mut self, message: impl Into<String>) -> Self {
+        self.show = Err(message.into());
+        self
+    }
+
+    /// How many times `show` has been asked (RFC 035 §5 trap 7: one read per screen).
+    #[must_use]
+    pub fn show_calls(&self) -> usize {
+        self.show_calls.load(Ordering::SeqCst)
     }
 
     /// Set the reported prikk version (for testing the version floor/ceiling — e.g. Changes needs
@@ -435,6 +464,11 @@ impl Prikk for NullBackend {
 
     fn queue(&self, _repo: &Path) -> Result<QueueReport> {
         deliver(&self.queue)
+    }
+
+    fn show(&self, _repo: &Path, _id: &str) -> Result<ShowReport> {
+        self.show_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.show)
     }
 
     fn block_state(&self, _repo: &Path, _reff: &str) -> Result<StateFiles> {

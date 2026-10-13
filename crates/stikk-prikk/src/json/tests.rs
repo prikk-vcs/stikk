@@ -134,3 +134,30 @@ fn empty_containers_are_values_not_errors() {
         Some(0)
     );
 }
+
+/// The display renderer (RFC 035 decision 5): prikk's keys in prikk's order, values as given, and
+/// control characters written as JSON escapes rather than passed through as bytes.
+#[test]
+fn render_writes_prikks_keys_in_prikks_order() {
+    let value = obj(r#"{"zebra": 1, "apple": {"inner": [true, null, "x"]}, "empty": {}}"#);
+    assert_eq!(
+        value.render(),
+        "{\n  \"zebra\": 1,\n  \"apple\": {\n    \"inner\": [\n      true,\n      null,\n      \
+         \"x\"\n    ]\n  },\n  \"empty\": {}\n}",
+        "`apple` must not sort above `zebra`: the raw view shows the report's own shape"
+    );
+}
+
+/// A string value with a newline, a quote, a backslash and an escape byte comes back as JSON — which
+/// is also why a control character in repository content cannot reach the terminal from here, before
+/// `inert` ever sees it (`C-T2a`).
+#[test]
+fn render_escapes_what_json_requires_and_every_other_control_character() {
+    let value = obj("{\"text\": \"a\\nb\\\"c\\\\d\\u001be\\tf\"}");
+    assert_eq!(
+        value.render(),
+        "{\n  \"text\": \"a\\nb\\\"c\\\\d\\u001be\\tf\"\n}"
+    );
+    // And it is JSON this very reader accepts again, which is the cheapest proof the escaping is right.
+    assert_eq!(parse(&value.render()).ok(), Some(value));
+}

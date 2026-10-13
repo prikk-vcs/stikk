@@ -1030,3 +1030,117 @@ fn history_keeps_prikks_refusal_when_the_retry_names_another_ref() {
         "{error}"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 035 — `show`'s band. The reader itself is tested in `parse_json/tests.rs`, against fixtures
+// captured from a real 0.51.0 binary; what is tested here is what `show` *spawns*.
+// ---------------------------------------------------------------------------------------------
+
+#[cfg(unix)]
+#[test]
+fn below_0_39_show_is_unreported_and_spawns_nothing() {
+    // RFC 035 §3: below stikk's JSON floor, `show` answers `Unreported` — never an empty patch list —
+    // and asks prikk for nothing at all. A fake `prikk` logs every call, so a `show` cannot slip in
+    // unseen; it answers `--version` and nothing else, which is also proof the band is read from the
+    // cached handshake rather than from a `show` attempt that failed.
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-show-unreported-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let log = dir.join("calls");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo \"$1 $2\" >> \"{log}\"\n\
+             case \"$1\" in\n\
+             --version)\n\
+             echo 'prikk 0.38.0'\n\
+             ;;\n\
+             esac\n",
+            log = log.display(),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+
+    let backend = CliBackend::with_program(&script);
+    let id = "a".repeat(64);
+    let report = retrying_transient_exec_busy(|| backend.show(&dir, &id)).expect("show succeeds");
+    let calls = std::fs::read_to_string(&log).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(report, crate::ShowReport::Unreported);
+    let lines: Vec<&str> = calls.lines().map(str::trim).collect();
+    assert_eq!(
+        lines,
+        vec!["--version"],
+        "below 0.39 nothing but the version probe may run"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn at_0_39_and_above_show_asks_for_json_with_the_id_it_was_given() {
+    // The other half: the band's upper side spawns exactly one `show <id> --format json`, with the id
+    // the caller chose — a block id for a sealed patch, a patch id for a queued one (RFC 035 F2). The
+    // id is never rewritten here, because only the caller knows which it has.
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-show-json-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let log = dir.join("calls");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo \"$*\" >> \"{log}\"\n\
+             case \"$1\" in\n\
+             --version)\n\
+             echo 'prikk 0.51.0'\n\
+             ;;\n\
+             show)\n\
+             printf '{{\"schema_version\":\"show-report-v1\",\"patches\":[{{\"patch_id\":\"%s\",\
+             \"queued\":true,\"operations\":[]}}]}}\\n' \"$2\"\n\
+             ;;\n\
+             esac\n",
+            log = log.display(),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+
+    let backend = CliBackend::with_program(&script);
+    let id = "b".repeat(64);
+    let report = retrying_transient_exec_busy(|| backend.show(&dir, &id)).expect("show succeeds");
+    let calls = std::fs::read_to_string(&log).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        report,
+        crate::ShowReport::Listed(vec![crate::ShownPatch {
+            patch_id: id.clone(),
+            queued: true,
+            operations: Vec::new(),
+        }]),
+        "prikk's own `queued`, and a patch with no operations is a patch, not a broken report"
+    );
+    let mut lines: Vec<&str> = calls.lines().map(str::trim).collect();
+    lines.sort_unstable();
+    assert_eq!(
+        lines,
+        vec!["--version", &format!("show {id} --format json")]
+    );
+}

@@ -29,8 +29,8 @@ use stikk_model::{Capability, ChangeToken, RequestCategory, Result, StikkError};
 use crate::env;
 use crate::version::Version;
 use crate::{
-    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, SealResult, StateFiles,
-    WorktreeStatus,
+    CommitResult, Handshake, History, Orientation, Prikk, RefEntry, SealResult, ShowReport,
+    StateFiles, WorktreeStatus,
 };
 
 mod classify;
@@ -542,6 +542,23 @@ impl Prikk for CliBackend {
             count: orientation.queued_patches,
             target: orientation.queued_target,
         })
+    }
+
+    fn show(&self, repo: &Path, id: &str) -> Result<ShowReport> {
+        // RFC 035 decision 1, in `queue`'s pattern: the JSON band stikk already reads, and the one
+        // place 0.39 is written down. `show-report-v1` exists from 0.36, but 0.36–0.38 is a band
+        // stikk reads no JSON in at all, and the owner ruled it unoccupied.
+        if !self.reads_json()? {
+            // Nothing is spawned: there is no enumeration to ask for, and the view says in stikk's own
+            // voice that it reads a patch's content from 0.39 on (`C-T4d`).
+            return Ok(ShowReport::Unreported);
+        }
+        let out = self.run(
+            Some(repo),
+            RequestCategory::ReadHistory,
+            ["show", id, "--format", "json"],
+        )?;
+        Ok(ShowReport::Listed(parse_json::show(&out)?))
     }
 
     fn commit(&self, repo: &Path, reff: &str, message: &str) -> Result<CommitResult> {

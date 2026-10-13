@@ -282,6 +282,17 @@ patch, as the queued form already is.
 
 **Letter 016 was withdrawn by letter 017** (F2). F7 goes out as **letter 020**; the design does not wait on it.
 
+## A2 — prikk's reply 022, 2026-10-13: fixed in 0.52.0
+
+**prikk confirmed F7 on their own probe and will fix it in 0.52.0.** `show <block-id>` will resolve each patch at
+that patch, using the same function as the queued form. Their guide's claim that a patch's answer is *"identical
+before and after `seal`"* was true only for a block of one patch. **No schema, field or key changes.** A bare sealed
+patch id still resolves nothing, and `unresolved_node_id` stays in the schema.
+
+**Handoff A is unchanged.** Decision 3a's label is true at 0.51, the ceiling being built against. **When stikk
+validates 0.52.0**, that re-baseline either bands the label to prikk < 0.52, or raises Patch detail's floor to 0.52,
+which removes the label altogether. That choice is made against the released binary, not against this reply.
+
 ## What this RFC does not do
 
 - **No Compare** (`FR-033`). It shares the new `show` reader and follows next.

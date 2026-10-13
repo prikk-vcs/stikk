@@ -263,6 +263,9 @@ a fabricated worktree entry was fixed.
    when it names the ref that was asked for**; the ceiling is 46; a declaration's fate comes from prikk's own
    `resolution` at ≥ 0.44, a refused one makes commit unavailable, and a checkout that stopped part-way is shown.
    Letter 015 asks prikk to restore the unpublished-ref read, which would retire the retry. Ships in 0.9.0.
+   **Restored upstream by 0.51** (measured 2026-10-13): `worktree-status`, `log` and `tree` all read a never-sealed
+   current branch by name. The retry now fires only on prikk 0.45 and 0.46, and it can go whenever the floor passes
+   them.
 2. **Raise the validated ceiling to 0.51** — **handed off as the first commit of RFC 035 Handoff A** (RFC 034 A1: the
    raise comes first). Already measured (2026-10-13, prikk letter 021): the suite passes **37 of 37 at 0.28.0 and
    0.51.0** with only the constant raised. **Two corrections came out of the check**: stikk *does* run

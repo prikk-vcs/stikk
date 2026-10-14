@@ -1,6 +1,6 @@
 # RFC 039 — Installation for everyone: one command, prikk included
 
-**Status.** **Accepted by the project owner 2026-10-14**, decision 4 included. **Proposed 2026-10-14** by the architect, after the project owner's direction the same day: *"Much
+**Status.** **Done 2026-10-14**: Handoffs A and B delivered on `main` (`a452553`, `9a523e4`; `c5e1b02`, `75bca86`, and test fixes `010628c`..`d0db80e`); in `## Unreleased` for 0.11.0. **The installers' first real publication is the 0.11.0 release run.** **Accepted by the project owner 2026-10-14**, decision 4 included. **Proposed 2026-10-14** by the architect, after the project owner's direction the same day: *"Much
 easier installation for unskilled users is required in the near future."* Its first handoff, the documentation, was
 already accepted by the owner in conversation that day. **No open question**, but decision 4 reaches into another
 project, and accepting this RFC accepts it.
@@ -101,3 +101,35 @@ Per release: `stikk-<ver>-<target>.tar.gz` (`.zip` on Windows) and `.sha256`, fo
 
 `### Added`: one-command installation on Linux, macOS and Windows, with prikk installed when missing; `cargo
 binstall stikk`. `### Changed`: the README and the guide lead with installing, not building.
+
+## Delivered
+
+**A, the documentation** (`a452553`, `9a523e4`). The README's `## Install` leads with prikk's installer and the
+prebuilt downloads, and building moved to `CONTRIBUTING.md`. A new guide page, `guide/install.html`. Measured on Linux
+as written; macOS and Windows derived from the real assets, and said so. Review found two beginner traps: a missing
+`~/.local/bin` on Intel Macs, and macOS refusing a browser download. Both are fixed, and the second is marked unmeasured.
+
+**B, the installers** (`c5e1b02`, `75bca86`).
+- `install.sh`/`uninstall.sh` and `install.ps1`/`uninstall.ps1` are templates filled by `release.yml` with the stikk
+  version and the prikk pin derived from `version.rs`. The archive and prikk's installer are each checksum-verified,
+  and nothing installs on a mismatch. Only the user's own `PATH` is touched, in one marked block. Re-running is safe,
+  and the uninstallers never remove prikk.
+- **Review v1 found the README's own one-liner never offered prikk** (`[ -t 0 ]` is false under `curl … | sh`). It now
+  asks through `/dev/tty`, measured in a pseudo-terminal with both answers.
+- **Linux x86_64 installs the static musl build**, measured in a bare chroot: the glibc build fails there with an error
+  that names the missing loader, not the file.
+- **One checksum format for all six archives** (the Windows `.sha256` had been a bare uppercase hash).
+- **`cargo binstall stikk`** metadata, measured with binstall's overrides. It takes effect from the 0.11.0 crate,
+  since binstall reads the manifest from crates.io.
+- **`installers.yml`** on Linux, macOS and Windows: the template refuses to run unfilled; install, re-run and
+  uninstall leave the startup file byte-identical; prikk is installed on yes and not on no; no-terminal never blocks;
+  and the tamper case must fail **for the checksum reason**. Its first runs found three faults in the tests, never in
+  the scripts. The worst was a tamper step passing on a download error, testing nothing.
+
+## Carried forward
+
+- **The installers are first published by the 0.11.0 release run.** Its prep and tag review check the four scripts
+  and their `.sha256` files, the six checksum files in one format, and `cargo binstall stikk` downloading.
+- **Package managers** (Homebrew, Scoop, winget) are the owner's decision, after the installers have been used.
+- **prikk's `uninstall.sh` ignores `--prefix`**, held for the next necessary letter
+  (`.git-exclude/upstream/prikk/hold-for-next-letter.md`).

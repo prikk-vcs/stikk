@@ -305,11 +305,12 @@ a fabricated worktree entry was fixed.
 **0.11.0: anyone can install stikk in one command, and stikk shows whether a repository is sound.** Scope:
 `.git-exclude/release/0-11-0-scope.md`.
 
-1. **Installation docs** ([RFC 039](rfcs/accepted/039-installation-for-everyone.md) A): the README and guide lead with
-   prebuilt binaries and prikk's installer, not with `cargo build`.
-2. **One-command installers** (RFC 039 B): `install.sh` and `install.ps1`, checksum-verified, with uninstallers; prikk
-   installed too when missing, through prikk's own installer pinned to the validated version; `cargo binstall stikk`.
-   **Package managers** (Homebrew, Scoop, winget) are the owner's decision, after the installers have been used.
+1. **Installation docs — landed on `main`** ([RFC 039](rfcs/done/039-installation-for-everyone.md) A, `a452553`,
+   `9a523e4`): the README and the guide lead with installing, not building.
+2. **One-command installers — landed on `main`** (RFC 039 B, `c5e1b02`, `75bca86`; tests `d0db80e`): `install.sh` and
+   `install.ps1`, checksum-verified, offering prikk through prikk's own verified installer, with the static build on
+   Linux x86_64; `cargo binstall stikk`. **First published by the 0.11.0 release run.** Package managers are the
+   owner's decision, after the installers have been used.
 3. **Polish:** History's and Block detail's column-0 wrap (RFC 037's carry); `queued_elsewhere_clauses` to `Piece`s
    (RFC 036's carry).
 4. **Verify** (`FR-100`, RFC 040): verdict, failing conditions and stages from `verify-report-v1`, on demand.

@@ -1,6 +1,6 @@
 # RFC 036 — Repository text renders as it is, everywhere
 
-**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`74a1436`, `341d024`); in `## Unreleased` for 0.10.0. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 1 of the authorized 0.10.0 scope
+**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`74a1436`, `341d024`); shipped in **0.10.0**. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 1 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Grounded in stikk's own code at `b29f997` and prikk's source in the clone (`prikk-object/src/path.rs`). The handoff
 measures the two things the source does not settle, at prikk 0.51.0 (§ Delivery).

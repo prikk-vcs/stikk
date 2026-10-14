@@ -55,8 +55,9 @@ prikk version and support, queue depth, signing readiness, and your derived capa
 with a status bar and a Help overlay (`?`). Run it piped or in CI and you get the same orientation as a
 one-shot print instead. The TUI is built on `ratatui` (RFC 001), and from there you can open History and
 Block detail, worktree Changes and the Queue view, **Patch detail** — what one patch changed, from
-prikk's own report, with content shown byte for byte — and commit or seal behind preview-first
-confirmation; Compare is not built yet. Try it with no repository: `cargo run -p stikk-tui --example
+prikk's own report, with content shown byte for byte — **Compare**, what changed between two points
+in prikk's own `diff` hunks (prikk ≥ 0.46), and commit or seal behind preview-first confirmation.
+Comparing two different refs is not built yet. Try it with no repository: `cargo run -p stikk-tui --example
 orientation_demo`.
 
 stikk never reads a seed's value. On prikk ≥ 0.41 it asks prikk for signing readiness (`prikk key

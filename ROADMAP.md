@@ -273,34 +273,45 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.10.0, scoped 2026-10-14 (authorized), in delivery order
+## Shipped — stikk compares any two points in history, and shows every repository string as it is (0.10.0, breaking)
 
-**0.10.0: stikk compares any two points in history, and every string it shows from a repository is shown as it
-is.** Scope: `.git-exclude/release/0-10-0-scope.md`. Every handoff asks for its own changelog entry.
+- **Compare** (`FR-033`), the last named view unbuilt: what changed between two points, in **prikk's own `diff`
+  hunks** — two marked blocks (`m`, then `d`) or a block and the previous block in its lineage, from History and
+  Block detail, and the worktree against **what `commit` would author** from Changes, at prikk ≥ 0.46. Every body
+  line is quoted with its own terminator inside the quotes, so a trailing space, a CRLF and a missing final newline
+  are each visible and two lines differing in any byte never render alike; prikk's `@@` header and its no-newline
+  note are prikk's words and are not quoted. **stikk computes no part of a comparison.** `UD-10` is retired, and
+  the Changes foot no longer says a per-file content diff *awaits prikk support*
+  ([RFC 038](rfcs/done/038-compare.md)).
+- **Repository text renders as it is, everywhere — a security fix.** Bidirectional overrides, zero-width
+  characters and look-alike spaces in paths, branch names, key ids and messages no longer reach the terminal in
+  any view, and **two different names never look alike**. Prose is escaped in place; an identifier is plain, or
+  quoted with every space as ` `. The one-shot printout wrote the repository root and prikk's version line
+  with **no filtering at all**; all four of its values now take the same two rules. 0.9.0's own notes named this
+  gap ([RFC 036](rfcs/done/036-repository-text-renders-as-it-is.md)).
+- **prikk's JSON, read where it now answers**: Block detail lists **any** block's files, with their modes, from
+  `tree` (prikk ≥ 0.46), where it listed only the ref tip's; and the ref picker offers **the branch you are on
+  before its first seal** (prikk ≥ 0.47), beside the refs and never among them, so the *published* test keeps its
+  meaning. History's queued tier wraps instead of clipping
+  ([RFC 037](rfcs/done/037-read-prikk-json-where-it-now-answers.md)).
+- **The workflows run on node24**, including the actions inside composites; mdBook is pinned by version and
+  SHA-256 where it was `latest`, and the Pages deploy runs from `main` only (under
+  [RFC 020](rfcs/done/020-msrv-1-88-consistency-and-a-supply-chain-gate.md)).
+- **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
+  cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-1. **Repository text renders as it is, everywhere — landed on `main`** ([RFC 036](rfcs/done/036-repository-text-renders-as-it-is.md),
-   `74a1436`, `341d024`). Prose is escaped in place; identifiers are plain or quoted, so two never look alike. A
-   Changes row no longer clips its path. `## Unreleased` carries a `### Security` entry. **Carried:**
-   - **History's queued tier is one unwrapped line**, so a long ref name in it clips at the border (predates 0.9.0;
-     the same class as RFC 036 F4). A small fix; it rides with RFC 037's Handoff A, which touches the same
-     neighbourhood.
-   - **`queued_elsewhere_clauses` still takes rendered text**; move it to `Piece`s when it is next touched.
-2. **Read prikk's JSON where it now answers — landed on `main`** ([RFC 037](rfcs/done/037-read-prikk-json-where-it-now-answers.md),
-   `af2fbc4`, `7f496a9`). Block detail lists **any** block's files, with modes, from `tree` (prikk ≥ 0.46). The ref
-   picker offers the branch you are on before its first seal (prikk ≥ 0.47), beside the refs, never among them.
-   History's queued tier wraps. **Carried:** Block detail's 64-hex id rows, and the below-0.46 sentence, wrap to
-   column 0 at 80 columns. That is cosmetic, and a small fix.
-3. **Compare — landed on `main`** ([RFC 038](rfcs/done/038-compare.md), `6869446`, `5bcd84c`, `44cc947`).
-   `FR-033`: two marked blocks or a block and its predecessor (History, Block detail), and the worktree against
-   what `commit` would author (Changes), all from prikk's own `diff-report-v1` hunks (prikk ≥ 0.46), quoted
-   byte-faithfully. `UD-10` retired. The Changes foot's false *"awaits prikk support"* is gone. **Comparing two
-   different refs** is Later.
-4. **The node20 actions — landed on `main`** (`b3dcade`, under RFC 020). Every action, including those inside
-   composites, now runs on node24. mdBook is pinned by version and SHA-256, where it was `latest`. The Pages deploy
-   runs from `main` only. **`release.yml`'s attestation step is first exercised by 0.10.0's release run**: watch it.
-5. **Conditional: the prikk 0.52.0 re-baseline — not met at the 0.10.0 cut.** prikk 0.52.0 was unpublished on
-   2026-10-14 (crates.io's latest: 0.51.0; prikk's `main` in 0.52's step 2). Carried to the next cycle: when 0.52.0
-   publishes, validate it, and the block-end label goes or is banded below 0.52 (RFC 035 A2).
+## Next — carried into 0.11.0, in order
+
+1. **The prikk 0.52.0 re-baseline — unconditional now; it waits only on prikk publishing.** prikk 0.52.0 was
+   unpublished at the 0.10.0 cut (crates.io's latest: 0.51.0; prikk's `main` in 0.52's step 2). When it publishes,
+   validate it, and Patch detail's *as at the end of this block* label goes or is banded below 0.52 (RFC 035 A2).
+2. **History's and Block detail's column-0 wrap.** A 64-hex id row, and the below-0.46 state sentence, wrap to
+   column 0 at 80 columns instead of to their own indent. Cosmetic — nothing is cut — and a small fix. Carried
+   from RFC 037.
+3. **`queued_elsewhere_clauses` still takes rendered text**; move it to `Piece`s when it is next touched. Carried
+   from RFC 036.
+4. **Comparing two different refs.** prikk's `diff` does it, and stikk's seam already expresses it; what is
+   missing is the picker that would choose two refs, which is its own design. Carried from RFC 038.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

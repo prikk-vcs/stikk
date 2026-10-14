@@ -20,7 +20,8 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.9.x shows what each patch changed.** The security-critical
+**0.10.x compares any two points in history, and shows every repository string as it is.**
+The security-critical
 layers (shared model, prikk seam, state layer), the interactive **TUI** (shell + Orientation, built on
 `ratatui` — RFC 001), **History** + Block detail (RFC 006), the refusal-explanation and glossary surfaces
 (RFC 007), **worktree Changes** (RFC 008) and the **Queue view** (RFC 028) are all implemented and
@@ -47,7 +48,13 @@ opens on prikk's current branch (RFC 029). **Patch detail** (`FR-030`) is built 
 one patch's operations — a text edit's spans, a create's content and mode, a delete's preimage, a
 binary replacement's blob ids and sizes, a permission change's two modes, and a rename with the key
 that asserted it — with `v` showing prikk's own fields, and content shown byte for byte: quoted, with
-everything that does not show as itself escaped. **Outside Patch detail, a path, a message or a ref
-name is not escaped**: `inert` neutralises control characters only. **Compare** (`FR-033`) is not
-built. Merge, sync, tag create, and branch create/close remain unbuilt; a **Trust & Keys** view is a
-named gap too.
+everything that does not show as itself escaped. **Every string stikk did not write is now rendered
+so that what you read is what prikk reported** (RFC 036): a bidirectional override, a zero-width
+character or a look-alike space in a path, message, ref name or key id is written as its escape, in
+every view and in the one-shot printout, and two different names never look alike. **Block detail
+lists the files at any block, with their modes**, and the ref picker offers the branch you are on
+before its first seal (RFC 037, prikk ≥ 0.46 and ≥ 0.47). **Compare** (`FR-033`) is built at prikk
+≥ 0.46 (RFC 038): `m` and `d` in History, `d` in Block detail and in Changes, showing what changed
+between two points in prikk's own `diff` hunks, quoted line by line, with stikk computing no
+difference of its own. **Comparing two different refs is not built.** Merge, sync, tag create, and
+branch create/close remain unbuilt; a **Trust & Keys** view is a named gap too.

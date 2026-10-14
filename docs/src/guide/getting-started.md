@@ -59,7 +59,8 @@ Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; 
 the patches waiting to be sealed; `C` commits worktree changes and `S` seals the queue, each after a
 preview and a confirmation; `:` opens the command palette; `R` shows the session's recent refusals; `o` lists background operations still in flight or
 recently finished (a listing only — there is no cancel action); `?` opens the glossary and full key
-reference; `v` toggles Patch detail's raw view of prikk's own fields; `r` refreshes Orientation and the
+reference; `m` marks a block in History and `d` compares — see *Compare* below; `v` toggles Patch
+detail's and Compare's raw view of prikk's own fields; `r` refreshes Orientation and the
 screen you are on — History, the Queue, Changes, the tip's Block detail, or a Patch detail opened from
 the Queue — **in place**, each view staying visible while its read runs, and **re-reading the ref that screen
 shows**, which need not be the ref you have focused; `Esc`/`q` steps back, and quits at the root.
@@ -110,7 +111,33 @@ node id — which also happens for a sealed patch inside a block of several, whe
 **at the block's end**, so a path there is labelled *as at the end of this block*; and if the patch
 list itself cannot be read, the rest of the block is still shown with the reason in its place.
 
-**Compare** is not built yet, and is on the roadmap.
+### Compare: what changed between two points
+
+**`d` opens Compare** (prikk ≥ 0.46), which shows what changed between two points in **prikk's own
+`diff` hunks**. What it compares depends on where you press it:
+
+- **In History**, `m` marks the selected block — the row shows a `●` and the title says a mark is
+  set — and `d` then compares the marked block with the selected one, **older first** whichever you
+  marked first. `m` on the marked block again clears the mark.
+- **In History or Block detail with nothing marked**, `d` compares the block with **the previous
+  block in this ref's history**: the next older row in the lineage you have loaded. On the oldest
+  row loaded, stikk says there is no previous block in view rather than fetching more.
+- **In Changes**, `d` compares the worktree with **what `commit` would author against** — the
+  sealed tip plus anything queued, and the heading says how many queued commits that is.
+
+Each differing path gets a section under prikk's own status word (`added`, `deleted`, `modified`,
+`renamed`, `mode`, `binary`), with the path as a name. **Every line of a hunk is quoted**, with the
+line's own ending inside the quotes, so a trailing space, a CRLF and a missing final newline are all
+visible — two lines that differ in any byte never look the same. prikk's `@@` header and its
+`\ No newline at end of file` note are prikk's words and are not quoted. A rename names both paths,
+a `mode` entry shows both modes, and a `binary` entry shows both sizes and content ids — never
+bytes. `↑`/`↓` move between entries and `v` shows prikk's own fields for the selected one.
+
+**stikk computes no part of a comparison**: it does not renumber, re-hunk or infer a rename. Where
+prikk says its hunks are not the shortest edit script, stikk says so too. Below prikk 0.46, Compare
+says that stikk compares from 0.46 on and asks prikk nothing.
+
+**Comparing two different refs is not built yet**, and is on the roadmap.
 
 ## Capability and signing
 

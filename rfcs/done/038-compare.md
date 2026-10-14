@@ -1,6 +1,6 @@
 # RFC 038 — Compare: what changed between two points, in prikk's own hunks
 
-**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`6869446`, `5bcd84c`, `44cc947`); in `## Unreleased` for 0.10.0. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 3 of the authorized 0.10.0 scope
+**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`6869446`, `5bcd84c`, `44cc947`); shipped in **0.10.0**. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 3 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Measured against real prikk **0.46.0** and **0.51.0** binaries, **identical in every case** once ids are normalised.
 Evidence: `.git-exclude/reports/038-compare/` (`measure038.sh`, `measure038-0.46.txt`, `measure038-0.51.txt`), and

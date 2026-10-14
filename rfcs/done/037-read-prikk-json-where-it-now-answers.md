@@ -1,6 +1,6 @@
 # RFC 037 — Read prikk's JSON where it now answers: every block's files, and an unpublished current branch
 
-**Status.** **Done 2026-10-14**: Handoffs A and B delivered on `main` (`af2fbc4`, `7f496a9`); in `## Unreleased` for 0.10.0. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 2 of the authorized 0.10.0 scope
+**Status.** **Done 2026-10-14**: Handoffs A and B delivered on `main` (`af2fbc4`, `7f496a9`); shipped in **0.10.0**. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 2 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Measured against real prikk **0.51.0** (and **0.46.0** for `tree`'s band floor) binaries. Evidence:
 `.git-exclude/reports/037-read-prikk-json/` (`measure037.sh`, with `measure037-0.51.txt` and `measure037-0.46.txt`),

@@ -33,7 +33,8 @@ prikk's own [install guide](https://github.com/prikk-vcs/prikk/blob/main/docs/sr
 
 ## 2. Install stikk
 
-Pick the file for your computer from the [latest release](https://github.com/prikk-vcs/stikk/releases/latest):
+Find the row for your computer — the commands below download that file for you, from the
+[latest release](https://github.com/prikk-vcs/stikk/releases/latest):
 
 | Your computer | File to download |
 |---|---|
@@ -45,7 +46,9 @@ Pick the file for your computer from the [latest release](https://github.com/pri
 | Windows | `stikk-0.10.0-x86_64-pc-windows-msvc.zip` |
 
 Each file has a second file beside it ending in `.sha256`. That is a *checksum*: a short fingerprint
-of the download, so you can tell the file arrived exactly as published. Download both.
+of the download, so you can tell the file arrived exactly as published. The commands below fetch
+both. **Use them rather than downloading in a browser** — on macOS a browser download is treated as
+untrusted and the program will be refused the first time you run it (see the macOS note below).
 
 **Linux**
 
@@ -70,15 +73,31 @@ download again — do not run the file.** Then unpack it and put it somewhere yo
 tar -xzf stikk-0.10.0-x86_64-unknown-linux-gnu.tar.gz
 ```
 
+Make the folder you are going to keep it in, in case it does not exist yet:
+
+```sh
+mkdir -p ~/.local/bin
+```
+
 ```sh
 install -m755 stikk-0.10.0-x86_64-unknown-linux-gnu/stikk ~/.local/bin/stikk
 ```
 
-**macOS** is the same, with the Mac file name and one different check command (replace
-`aarch64-apple-darwin` with `x86_64-apple-darwin` on an Intel Mac):
+**macOS** is the same — `curl`, check, `tar -xzf`, `mkdir -p ~/.local/bin`, `install` — with the Mac
+file name and one different check command (replace `aarch64-apple-darwin` with
+`x86_64-apple-darwin` on an Intel Mac):
 
 ```sh
 shasum -a 256 -c stikk-0.10.0-aarch64-apple-darwin.tar.gz.sha256
+```
+
+**Download with the `curl` commands above, not with a browser.** macOS marks anything a browser
+downloads as quarantined, and refuses to run a quarantined program that has not been notarized —
+stikk is not — with a warning there is no obvious way past. Files fetched with `curl` are not
+marked. If you already used a browser and macOS refuses to open stikk, clear the mark:
+
+```sh
+xattr -d com.apple.quarantine ~/.local/bin/stikk
 ```
 
 **Windows**, in PowerShell. Windows publishes its checksum as the fingerprint alone, so you compare

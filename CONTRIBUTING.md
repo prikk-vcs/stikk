@@ -3,6 +3,36 @@
 Thanks for your interest. stikk is a front-end for the prikk version control system, and it holds
 itself to prikk's own engineering discipline.
 
+## Building from source
+
+Most people do not need this — [the README](README.md#install) installs a prebuilt stikk and prikk
+in two commands. Build from source to work on stikk itself.
+
+stikk is Rust 2024 edition, MSRV **1.88**:
+
+```sh
+cargo build --release
+```
+
+The binary lands at `./target/release/stikk`. Run it against a repository:
+
+```sh
+./target/release/stikk /path/to/repo
+```
+
+stikk drives the external `prikk` binary at runtime; it is not a Cargo dependency. If prikk is not
+on your `PATH`, point stikk at it:
+
+```sh
+export STIKK_PRIKK_BIN=/path/to/prikk
+```
+
+To see the TUI with no repository at all:
+
+```sh
+cargo run -p stikk-tui --example orientation_demo
+```
+
 ## Workflow: design before implementation
 
 stikk follows a design-first workflow:

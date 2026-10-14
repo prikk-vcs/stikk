@@ -2,6 +2,22 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Changed
+
+- **The README and the guide lead with installing stikk, not building it.** The first thing a new
+  reader saw was `cargo build --release`, which needs a Rust toolchain and a clone of this
+  repository — while **every release since 0.1.0** has shipped ready-to-run binaries for six platforms,
+  each with a checksum, and nothing said so. `README.md` now opens with **Install**: prikk in one
+  line through prikk's own installer, then the right archive for your platform with the exact
+  download, checksum and extract commands for Linux, macOS and Windows separately — no step asks
+  you to translate one platform's command into another's. `cargo install` follows for people who
+  already have Rust, and `gh attestation verify` for anyone who wants to know who built the file
+  and not only that it arrived unaltered. **Quick start is now three lines**: `prikk init`, `stikk`,
+  and `?` for help. Building from source moved to `CONTRIBUTING.md`, and the guide gained an
+  [Install](docs/src/guide/install.md) page the rest of it starts from.
+
 ## 0.10.0 — 2026-10-14
 
 **stikk compares any two points in history, and every string it shows from a repository is shown as it

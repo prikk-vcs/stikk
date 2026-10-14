@@ -3,13 +3,14 @@
 stikk is a front-end for the prikk version control system. It does not replace prikk's own command
 line — VCS verbs stay prikk's — it helps you *read and work with* prikk history.
 
-## Build
+## Install
 
-stikk builds with a standard Rust toolchain (2024 edition, MSRV 1.88):
+[Install](./install.md) has the one-per-platform steps for getting a working `stikk` and `prikk`
+without a compiler. In short: run prikk's installer, download stikk's archive for your platform,
+check it against the published checksum, and put it on your `PATH`. Rust users can
+`cargo install stikk` instead.
 
-```sh
-cargo build --release
-```
+This page assumes both are installed and starts from there.
 
 ## Point stikk at prikk
 

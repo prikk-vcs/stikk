@@ -4,6 +4,7 @@
 
 # Guide
 
+- [Install](./guide/install.md)
 - [Getting started](./guide/getting-started.md)
 
 # Reference (design set)

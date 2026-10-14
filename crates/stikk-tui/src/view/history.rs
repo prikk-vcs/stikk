@@ -148,12 +148,19 @@ fn block_spans<'a>(
         Span::styled(marker, Style::default().fg(palette.accent)),
         Span::styled(mark, Style::default().fg(palette.warn)),
         Span::styled(short_id(&row.block_id), id_style),
+        // **The padding is a minimum, and the separator comes after it** (RFC 037 Handoff C review
+        // v1 §2). `{:<4}` and `{:<8}` pad a short value but add nothing to one that already fills
+        // its width, so a 6-digit update-seq and an 8-character kind used to run straight into
+        // what follows: `#123456ordinary9 patch(es)`, and `#4   ordinary1 patch(es)` one row down.
+        // A reader cannot see where one value ends and the next begins, which is a wrong picture
+        // rather than a narrow one. The trailing space is unconditional, so the columns separate
+        // whatever either value's width.
         Span::styled(
-            format!("  #{:<4}", row.update_seq),
+            format!("  #{:<4} ", row.update_seq),
             Style::default().fg(palette.dim),
         ),
         Span::styled(
-            format!("{:<8}", identifier(&row.kind)),
+            format!("{:<8} ", identifier(&row.kind)),
             Style::default().fg(palette.fg),
         ),
         Span::styled(

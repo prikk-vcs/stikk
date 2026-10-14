@@ -97,6 +97,12 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
   cursor** — it records where the selected row actually ends, which also keeps the whole of a
   wrapped selected row on screen rather than only its first line.
 
+- **History's columns no longer run together when a value fills its width.** The update-seq and the
+  kind were padded to a fixed width, which adds nothing to a value already that wide — so a 6-digit
+  update-seq beside an 8-character kind rendered as `#123456ordinary9 patch(es)`, and a reader
+  could not see where one value ended and the next began. The padding is now a minimum, with a
+  separator after it.
+
 ## 0.10.0 — 2026-10-14
 
 **stikk compares any two points in history, and every string it shows from a repository is shown as it

@@ -289,7 +289,7 @@ fn a_block_row_too_long_for_the_terminal_wraps_under_the_short_id() {
     );
     assert_eq!(
         rejoined,
-        "▶   4db1669a176b  #123456merge   9 patch(es)  [rollback]  needs 3 attestation(s)  ← tip"
+        "▶   4db1669a176b  #123456 merge    9 patch(es)  [rollback]  needs 3 attestation(s)  ← tip"
     );
 }
 
@@ -363,5 +363,53 @@ fn a_selected_wrapped_row_is_whole_on_screen_when_it_is_the_last() {
     assert!(
         continuation.starts_with("    ") && !continuation.trim().is_empty(),
         "both lines of the selected row: {text}"
+    );
+}
+
+/// **A value that fills its column still separates from the next** (RFC 037 Handoff C review v1
+/// §2). `{:<4}` and `{:<8}` pad a short value and add nothing to one that is already that wide, so
+/// a 6-digit update-seq and an 8-character kind used to render as `#123456ordinary9 patch(es)` —
+/// a reader cannot see where one value ends and the next begins. Both widths are at their limit
+/// here, on a row long enough to wrap, which is where the columns matter most.
+#[test]
+fn a_value_that_fills_its_column_is_still_separated_from_the_next() {
+    let mut filled = row("4db1669a176b1111", 123_456, "ordinary");
+    filled.rollback_block = true;
+    filled.required_attestations = 3;
+    filled.patches = 9;
+    let view = HistoryView {
+        reff: "heads/main".into(),
+        queued: 0,
+        queued_target: None,
+        // The second row pads both values instead, so one test covers the padded case too.
+        blocks: vec![filled, row("cccccccccccc3333", 4, "ordinary")],
+    };
+    let text = draw(&view, 0);
+    println!("--- RFC 037 Handoff C review §2: History's columns at 80 columns\n{text}");
+
+    // The row wraps, and neither join runs together on it.
+    let rows = inner_rows(&text);
+    let first = rows
+        .iter()
+        .position(|r| r.contains("4db1669a176b"))
+        .expect("the wrapped row is on screen");
+    assert!(
+        rows.get(first + 1).is_some_and(|r| r.starts_with("    ")),
+        "this row must wrap, or it is not testing the case: {text}"
+    );
+    assert!(
+        rows[first].contains("#123456 ordinary 9 patch(es)"),
+        "a full-width update-seq and kind must each be followed by a separator: {:?}",
+        rows[first]
+    );
+
+    // And the padded case keeps its separator too, after the padding rather than instead of it.
+    let padded = rows
+        .iter()
+        .find(|r| r.contains("cccccccccccc"))
+        .expect("the padded row is on screen");
+    assert!(
+        padded.contains("#4    ordinary 1 patch(es)"),
+        "padding is a minimum, with the separator after it: {padded:?}"
     );
 }

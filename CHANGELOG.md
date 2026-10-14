@@ -4,6 +4,17 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-prikk`, `stikk-state`, `stikk-tui` and the `stikk` launcher are unchanged.**
+
+| Crate | Change |
+|---|---|
+| `stikk-core` | **`queued_elsewhere_clauses` returns `[Vec<Piece>; 4]`** — one piece list per clause, with each of the two ref names a `Piece::Name` — instead of `[String; 4]`. It was the last place core took a string a frontend had already rendered: the caller handed in `identifier(queued_ref)`, deciding how a name is spelled in the one layer that cannot know how it will be drawn, so the same clauses could not be given to a GUI. **The words are unchanged** — flattening a clause gives back the sentence it gave before, and the clause-by-clause test against prikk's own captured sentence still holds every claim by name |
+
+**Additive:** none. **No public item was removed.** The MSRV is unchanged at 1.88.
+
 ### Added
 
 - **One-command installation on Linux, macOS and Windows.** A new reader no longer has to pick an
@@ -57,6 +68,34 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   and not only that it arrived unaltered. **Quick start is now three lines**: `prikk init`, `stikk`,
   and `?` for help. Building from source moved to `CONTRIBUTING.md`, and the guide gained an
   [Install](docs/src/guide/install.md) page the rest of it starts from.
+
+### Fixed
+
+- **A long row in Block detail and in History now wraps under its own value, instead of at the left
+  edge or off the screen.** The two views got this wrong in opposite directions, and both were
+  measured at 80 columns, the width this project reads every capture at.
+
+  **Block detail** wrapped through the terminal library, which continues a long line at **column 0**:
+  a full 64-character `block` or `ref-state` id, and the sentence explaining why an older block's
+  files are not listed below prikk 0.46, spilled under the labels. Nothing was cut, but a
+  continuation sat in the label column, where it reads as a field of its own rather than as the rest
+  of the one above.
+
+  **History** did the reverse — it wrapped nothing, so a row longer than the terminal was simply
+  **cut at the border**. A block row carrying every marker at once (a rollback merge that needs
+  attestations and is the ref tip) is 85 columns wide, so at 80 the attestation count was cut
+  mid-word and `← tip` was not on screen at all: the tip of the lineage looked like an ordinary
+  block. Wrapped, never clipped (RFC 024).
+
+  Both views now wrap their own rows, where the renderer is and the width is known. Block-detail
+  continuations start at the **value's own column**; History's start under the **short id**, past
+  the cursor and mark columns, so a wrapped row still reads as one block. An id or a path is
+  hard-split, never word-wrapped, so every character of it is on screen once and in order; stikk's
+  own sentences word-wrap.
+
+  Because a History row can now take two lines, **its scroll no longer counts rows to find the
+  cursor** — it records where the selected row actually ends, which also keeps the whole of a
+  wrapped selected row on screen rather than only its first line.
 
 ## 0.10.0 — 2026-10-14
 

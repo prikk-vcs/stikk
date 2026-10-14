@@ -1,6 +1,6 @@
 //! Tests for the Block-detail view (design TS-01).
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -535,7 +535,7 @@ fn a_failed_file_read_keeps_the_block_on_screen() {
 /// committed tree:
 ///
 /// ```text
-/// cargo test -p stikk-tui --lib capture_ -- --nocapture
+/// cargo test -p stikk-tui --lib capture_ — --nocapture
 /// ```
 #[test]
 fn capture_rfc037_block_detail_at_80_columns() {
@@ -599,4 +599,156 @@ fn capture_rfc037_block_detail_at_80_columns() {
     assert!(draw(&older).contains("state at this block"));
     assert!(draw(&tip).contains("state at tip"));
     assert!(draw(&below).contains("replays only to the ref tip"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 037 Handoff C §1: long rows wrap to their own column, and the line count stays exact.
+
+/// Each rendered row with the panel's side borders stripped, so a **column** can be asserted on.
+/// [`drawn_prose`] cannot be used here: it collapses exactly the spacing these tests are about.
+fn inner_rows(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|l| l.strip_prefix(SIDE))
+        .filter_map(|l| l.strip_suffix(SIDE))
+        .map(str::to_string)
+        .collect()
+}
+
+const SIDE: char = '│';
+
+/// The value column: two columns of margin plus the 15-wide label.
+const VALUE_COL: usize = 17;
+
+/// A block whose `block` and `ref-state` are full 64-hex ids, so both rows are far too long for an
+/// 80-column terminal, with two patches listed below them.
+fn wide_detail() -> BlockDetailView {
+    let mut r = row();
+    r.block_id = PATCH_ONE.to_string();
+    r.ref_state_id = PATCH_TWO.to_string();
+    r.patches = 2;
+    BlockDetailView {
+        row: r,
+        is_tip: false,
+        state: BlockState::Unreported(30),
+        patches: BlockPatches::Listed(vec![
+            stikk_core::BlockPatchRow {
+                patch: shown(PATCH_ONE, 3),
+                message: stikk_core::PatchMessageState::NotReported,
+            },
+            stikk_core::BlockPatchRow {
+                patch: shown(PATCH_TWO, 1),
+                message: stikk_core::PatchMessageState::Text("patch two".to_string()),
+            },
+        ]),
+    }
+}
+
+/// The rows of a field, from its label row through every continuation: the label row, then each
+/// following row that is blank up to the value column and holds text beyond it.
+fn field_block(rows: &[String], label: &str) -> Vec<String> {
+    let at = rows
+        .iter()
+        .position(|r| r.starts_with(&format!("  {label} ")))
+        .unwrap_or_else(|| panic!("no `{label}` row in {rows:#?}"));
+    let mut out = vec![rows[at].clone()];
+    for r in &rows[at + 1..] {
+        let (gutter, rest) = r.split_at(VALUE_COL.min(r.len()));
+        if gutter.trim().is_empty() && !rest.trim().is_empty() {
+            out.push(r.clone());
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+/// The value a field's rows carry, continuations joined on, each with its gutter removed.
+fn field_value(rows: &[String], label: &str) -> String {
+    field_block(rows, label)
+        .iter()
+        .map(|r| r[VALUE_COL.min(r.len())..].trim_end().to_string())
+        .collect()
+}
+
+#[test]
+fn a_64_hex_id_wraps_under_its_own_value_column() {
+    // **The defect RFC 037's review found.** ratatui's `Wrap` continued a long row at column 0, so
+    // the second half of a 64-hex id sat under the labels and a reader could not tell which field
+    // it belonged to. `Wrap` is gone; these rows are wrapped here, to the value's own column.
+    let text = draw_at(&wide_detail(), 0, 80);
+    println!("--- RFC 037 Handoff C §1: Block detail at 80 columns\n{text}");
+    let rows = inner_rows(&text);
+
+    for (label, id) in [("block", PATCH_ONE), ("ref-state", PATCH_TWO)] {
+        let field = field_block(&rows, label);
+        assert!(
+            field.len() > 1,
+            "`{label}` must wrap at 80 columns, got {field:#?}"
+        );
+        // Every continuation starts **at the value column**: blank before it, text at it.
+        for cont in &field[1..] {
+            assert_eq!(
+                &cont[..VALUE_COL],
+                &" ".repeat(VALUE_COL),
+                "a `{label}` continuation must be blank up to column {VALUE_COL}: {cont:?}"
+            );
+            assert!(
+                !cont[VALUE_COL..].starts_with(' '),
+                "a `{label}` continuation must start at column {VALUE_COL}: {cont:?}"
+            );
+        }
+        // Every character of the id, once and in order. Hex, so the identifier rule leaves it
+        // plain — the id on screen is the id prikk reported.
+        assert_eq!(field_value(&rows, label), id, "in {text}");
+    }
+}
+
+#[test]
+fn the_patch_cursor_still_selects_the_right_row_below_wrapped_fields() {
+    // **The line count has to be exact** (RFC 023 F2). The fields above the Patches section now
+    // occupy more lines than they have fields, so nothing downstream may count rows to find the
+    // cursor. Both cursor positions, over the same wrapped fields.
+    let detail = wide_detail();
+    for (cursor, short) in [(0, "4db1669a176b"), (1, "c23a5d7d4d5d")] {
+        let text = draw_at(&detail, cursor, 80);
+        let marked: Vec<&str> = text.lines().filter(|line| line.contains('▸')).collect();
+        let [marked] = marked.as_slice() else {
+            panic!("exactly one patch row marked at cursor {cursor}: {text}")
+        };
+        assert!(
+            marked.contains(short),
+            "cursor {cursor} must mark {short}, got {marked:?}"
+        );
+    }
+}
+
+#[test]
+fn the_below_0_46_state_sentence_wraps_under_itself() {
+    // The other row the review found at column 0. It is stikk's own sentence, so it word-wraps --
+    // and its continuations sit under the sentence, past the `state files: ` opening, not at the
+    // left edge.
+    let text = draw_at(&wide_detail(), 0, 80);
+    let rows = inner_rows(&text);
+    let at = rows
+        .iter()
+        .position(|r| r.contains("state files:"))
+        .unwrap_or_else(|| panic!("no state sentence in {text}"));
+    // It wraps, and every continuation is indented past the left margin rather than starting at it.
+    let mut continuations = 0;
+    for r in &rows[at + 1..] {
+        if r.trim().is_empty() || r.starts_with("  state") || r.starts_with("  patches") {
+            break;
+        }
+        assert!(
+            r.starts_with("               ") && !r.starts_with("                "),
+            "a state-sentence continuation must start at column 15: {r:?}"
+        );
+        continuations += 1;
+    }
+    assert!(continuations > 0, "the sentence must wrap at 80: {text}");
+    // Nothing is cut: the sentence ends in the words it ends in, and names the measured version.
+    assert!(
+        drawn_prose(&wide_detail()).contains("this is 0.30."),
+        "{text}"
+    );
 }

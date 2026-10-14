@@ -17,16 +17,24 @@
 //! the list alone would tell a user a block contains fewer patches than it does (`T-T4`). Every
 //! repository-sourced string (a message included) is routed through [`crate::text::inert`]
 //! (`C-T2a`) and is a display string only — never a next-step, never a glossary trigger (`C-T2b`).
+//!
+//! **Every row is wrapped here, not by `Paragraph`** (RFC 037's carried item). ratatui's own wrap
+//! continues a long line at **column 0**, so a 64-hex id and the below-0.46 state sentence used to
+//! spill under the labels: nothing was cut, but a reader could not tell which field a continuation
+//! belonged to. Rows are now wrapped to **their own value column**, which also makes the line count
+//! exact — and it has to be, because the patch cursor and the scroll are computed from it (RFC 023
+//! F2 is why this project wraps by hand). **Ids and paths are identifiers and are hard-split**
+//! ([`wrap_verbatim`]); stikk's own sentences word-wrap ([`wrap_indented`]).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 use stikk_core::BlockDetailView;
 
-use crate::text::{compose, identifier, inert};
+use crate::text::{compose, identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
 
 /// Render the Block-detail view for `detail` into `area`, with `cursor` selecting one of the block's
@@ -38,24 +46,63 @@ pub fn render(
     frame: &mut Frame,
     area: Rect,
 ) {
+    // Inside the border. Every row below is wrapped to this, so the count is exact.
+    let width = usize::from(area.width.saturating_sub(2));
+    let lines = block_lines(detail, cursor, palette, width);
+
+    let title = if detail.is_tip {
+        " Block · tip ".to_string()
+    } else {
+        " Block ".to_string()
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .style(Style::default().fg(palette.fg));
+    // **No `Wrap`**: the rows arrive already wrapped, to their own value column. See the module doc.
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// Every row of the view, already wrapped to `width`.
+fn block_lines<'a>(
+    detail: &BlockDetailView,
+    cursor: usize,
+    palette: &Palette,
+    width: usize,
+) -> Vec<Line<'a>> {
     let row = &detail.row;
-    let mut lines: Vec<Line> = vec![
-        field(palette, "block", identifier(&row.block_id)),
-        field(palette, "ref-state", identifier(&row.ref_state_id)),
-        field(palette, "update-seq", row.update_seq.to_string()),
-        field(palette, "kind", identifier(&row.kind)),
-        field(palette, "parents", row.parents.to_string()),
-        field(
-            palette,
-            "patches",
-            patches_summary(row.patches, row.messages.len()),
-        ),
-    ];
+    let mut lines: Vec<Line> = Vec::new();
+    field_id(&mut lines, palette, width, "block", &row.block_id);
+    field_id(&mut lines, palette, width, "ref-state", &row.ref_state_id);
+    field_said(
+        &mut lines,
+        palette,
+        width,
+        "update-seq",
+        &row.update_seq.to_string(),
+    );
+    field_id(&mut lines, palette, width, "kind", &row.kind);
+    field_said(
+        &mut lines,
+        palette,
+        width,
+        "parents",
+        &row.parents.to_string(),
+    );
+    field_said(
+        &mut lines,
+        palette,
+        width,
+        "patches",
+        &patches_summary(row.patches, row.messages.len()),
+    );
     if row.rollback_patches > 0 || row.rollback_block {
-        lines.push(field(
+        field_said(
+            &mut lines,
             palette,
+            width,
             "rollback",
-            format!(
+            &format!(
                 "{}{} rollback patch(es)",
                 if row.rollback_block {
                     "rollback block · "
@@ -64,20 +111,28 @@ pub fn render(
                 },
                 row.rollback_patches
             ),
-        ));
+        );
     }
     if row.required_attestations > 0 {
-        lines.push(field(
+        field_said(
+            &mut lines,
             palette,
+            width,
             "attestations",
-            format!("{} required", row.required_attestations),
-        ));
+            &format!("{} required", row.required_attestations),
+        );
     }
-    let prev = match &row.previous_ref_state {
-        Some(id) => identifier(id),
-        None => "<none — root>".to_string(),
-    };
-    lines.push(field(palette, "prev-ref-state", prev));
+    match &row.previous_ref_state {
+        Some(id) => field_id(&mut lines, palette, width, "prev-ref-state", id),
+        // stikk's own words, not an id.
+        None => field_said(
+            &mut lines,
+            palette,
+            width,
+            "prev-ref-state",
+            "<none — root>",
+        ),
+    }
 
     // The message list always travels with the count above it (RFC 015 decision 2) — never rendered
     // on its own, since on its own it would understate the block the moment any patch predates 0.32.
@@ -96,17 +151,18 @@ pub fn render(
             // The id and message are separate lines, not one — a 64-hex id plus a message routinely
             // exceeds a normal terminal's width, and wrapping one long line can split a message's own
             // text across two rows (caught while testing this exact rendering).
-            lines.push(Line::from(vec![
-                Span::styled("    ", Style::default()),
-                Span::styled(
-                    identifier(&patch.patch_id),
+            for wrapped in wrap_verbatim(&identifier(&patch.patch_id), width, "    ") {
+                lines.push(Line::from(Span::styled(
+                    wrapped,
                     Style::default().fg(palette.accent),
-                ),
-            ]));
-            lines.push(Line::from(vec![
-                Span::styled("      ", Style::default()),
-                Span::styled(inert(&patch.message), Style::default().fg(palette.fg)),
-            ]));
+                )));
+            }
+            for wrapped in wrap_indented(&inert(&patch.message), width, "      ") {
+                lines.push(Line::from(Span::styled(
+                    wrapped,
+                    Style::default().fg(palette.fg),
+                )));
+            }
         }
     }
 
@@ -118,17 +174,26 @@ pub fn render(
     // would be stikk mislabelling a correct answer.
     match detail.state.unreported_reason() {
         Some(reason) => {
-            lines.push(Line::from(Span::styled(
-                format!("  state files: {reason}"),
-                Style::default().fg(palette.dim),
-            )));
+            // **The row RFC 037's review found spilling to column 0.** Its continuations now sit
+            // under the sentence, not under the left edge.
+            said(
+                &mut lines,
+                palette,
+                width,
+                &format!("state files: {reason}"),
+                "  ",
+                "               ",
+            );
         }
         None => {
             let files = detail.state.listed().map_or(&[][..], |state| &state.files);
             let total = detail.state.listed().map_or(0, |state| state.total_bytes);
-            lines.push(Line::from(Span::styled(
-                format!(
-                    "  state {} — {} file(s), {} byte(s):",
+            said(
+                &mut lines,
+                palette,
+                width,
+                &format!(
+                    "state {} — {} file(s), {} byte(s):",
                     if detail.is_tip {
                         "at tip"
                     } else {
@@ -137,8 +202,9 @@ pub fn render(
                     files.len(),
                     total
                 ),
-                Style::default().fg(palette.dim),
-            )));
+                "  ",
+                "    ",
+            );
             if files.is_empty() {
                 lines.push(Line::from(Span::styled(
                     "    (empty state)",
@@ -185,19 +251,25 @@ pub fn render(
     lines.push(Line::from(""));
     match detail.patches.unreported_reason() {
         Some(reason) => {
-            lines.push(Line::from(Span::styled(
-                format!("  patches: {reason}"),
-                Style::default()
-                    .fg(palette.dim)
-                    .add_modifier(Modifier::ITALIC),
-            )));
+            for wrapped in wrap_indented(&format!("patches: {reason}"), width, "  ") {
+                lines.push(Line::from(Span::styled(
+                    wrapped,
+                    Style::default()
+                        .fg(palette.dim)
+                        .add_modifier(Modifier::ITALIC),
+                )));
+            }
         }
         None => {
             let rows = detail.patches.rows();
-            lines.push(Line::from(Span::styled(
-                format!("  patches — {} listed · Enter opens one:", rows.len()),
-                Style::default().fg(palette.dim),
-            )));
+            said(
+                &mut lines,
+                palette,
+                width,
+                &format!("patches — {} listed · Enter opens one:", rows.len()),
+                "  ",
+                "    ",
+            );
             for (at, row) in rows.iter().enumerate() {
                 // The selected row is marked the way History's own cursor marks one.
                 let selected = at == cursor;
@@ -209,35 +281,31 @@ pub fn render(
                 } else {
                     Style::default().fg(palette.fg)
                 };
+                // Core returns this as pieces (RFC 036 review v1 §2.3): the short id is a name,
+                // the message is prose, the count is stikk's. `compose` renders each under its own
+                // rule.
+                //
+                // **Hard-split, not word-wrapped.** The row's own separators are double spaces
+                // (`id␣␣message␣␣·␣␣N operation(s)`), and a word wrap rebuilds a line from its
+                // whitespace-separated words — which collapsed them and moved the columns. Caught
+                // by this section's own test on the first run.
+                let summary = compose(&row.summary());
+                let room = width.saturating_sub(6).max(1);
+                let mut wrapped = wrap_verbatim(&summary, room, "").into_iter();
+                let head = wrapped.next().unwrap_or_default();
                 lines.push(Line::from(vec![
                     Span::styled(format!("    {marker}"), Style::default()),
-                    // Core returns this as pieces (RFC 036 review v1 §2.3): the short id is a
-                    // name, the message is prose, the count is stikk's. `compose` renders each
-                    // under its own rule.
-                    Span::styled(compose(&row.summary()), style),
+                    Span::styled(head, style),
                 ]));
+                for rest in wrapped {
+                    // Under the summary, not under the marker.
+                    lines.push(Line::from(Span::styled(format!("      {rest}"), style)));
+                }
             }
         }
     }
 
-    let title = if detail.is_tip {
-        " Block · tip ".to_string()
-    } else {
-        " Block ".to_string()
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .style(Style::default().fg(palette.fg));
-    // Wrapped: a 64-hex patch id plus its message routinely exceeds a normal terminal's width on one
-    // line (caught while testing RFC 015's own message rendering) — every other field here is short
-    // enough never to need it, but a message is arbitrary-length repository content.
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false }),
-        area,
-    );
+    lines
 }
 
 /// The `patches` field's value: the count alone when it agrees with the message list, or the count
@@ -255,12 +323,99 @@ fn patches_summary(patches: u64, message_count: usize) -> String {
     }
 }
 
-/// A `label: value` line with the label dimmed and left-padded to a column.
-fn field<'a>(palette: &Palette, label: &'a str, value: String) -> Line<'a> {
-    Line::from(vec![
+/// The column a field's value starts at: two spaces of margin plus the 15-wide label.
+const VALUE_COLUMN: usize = 17;
+
+/// A `label: value` field whose value is an **identifier** — an object id, a ref name, prikk's kind
+/// word. Hard-split, never word-wrapped (RFC 036), and continued **at the value's own column** so a
+/// reader can see which field a continuation belongs to.
+fn field_id<'a>(
+    lines: &mut Vec<Line<'a>>,
+    palette: &Palette,
+    width: usize,
+    label: &str,
+    value: &str,
+) {
+    field_rows(lines, palette, width, label, &identifier(value), false);
+}
+
+/// A `label: value` field whose value is **stikk's own words** — a count, a sentence. Word-wrapped,
+/// and continued at the value's own column.
+fn field_said<'a>(
+    lines: &mut Vec<Line<'a>>,
+    palette: &Palette,
+    width: usize,
+    label: &str,
+    value: &str,
+) {
+    field_rows(lines, palette, width, label, value, true);
+}
+
+fn field_rows<'a>(
+    lines: &mut Vec<Line<'a>>,
+    palette: &Palette,
+    width: usize,
+    label: &str,
+    value: &str,
+    prose: bool,
+) {
+    let room = width.saturating_sub(VALUE_COLUMN).max(1);
+    let rows = if prose {
+        wrap_indented(value, room, "")
+    } else {
+        wrap_verbatim(value, room, "")
+    };
+    let mut rows = rows.into_iter();
+    let head = rows.next().unwrap_or_default();
+    lines.push(Line::from(vec![
         Span::styled(format!("  {label:<15}"), Style::default().fg(palette.dim)),
-        Span::styled(value, Style::default().fg(palette.fg)),
-    ])
+        Span::styled(head, Style::default().fg(palette.fg)),
+    ]));
+    for rest in rows {
+        lines.push(Line::from(vec![
+            Span::styled(" ".repeat(VALUE_COLUMN), Style::default()),
+            Span::styled(rest, Style::default().fg(palette.fg)),
+        ]));
+    }
+}
+
+/// One of stikk's own sentences, word-wrapped: the first row at `indent`, the rest at `hang`.
+fn said<'a>(
+    lines: &mut Vec<Line<'a>>,
+    palette: &Palette,
+    width: usize,
+    text: &str,
+    indent: &str,
+    hang: &str,
+) {
+    // **Each row gets the room its own indent leaves**, which is not the same number: the first row
+    // opens at `indent` and the rest hang at `hang`. Wrapping the whole sentence to one of the two
+    // is wrong in both directions — to the first row's room, and a continuation is laid out wider
+    // than it has and clips at the border (it did, on the first run); to the hanging room, and the
+    // first row stops short of the border for no reason a reader can see.
+    //
+    // So the first row is wrapped to its own room, and what is left over is wrapped again to the
+    // hanging one. Re-joining the leftover rows with single spaces loses nothing: `wrap_indented`
+    // has already collapsed this text's whitespace, and it is stikk's own prose either way.
+    let first_room = width.saturating_sub(indent.chars().count()).max(1);
+    let hang_room = width.saturating_sub(hang.chars().count()).max(1);
+
+    let mut first = wrap_indented(text, first_room, "").into_iter();
+    let head = first.next().unwrap_or_default();
+    lines.push(Line::from(Span::styled(
+        format!("{indent}{head}"),
+        Style::default().fg(palette.dim),
+    )));
+
+    let leftover = first.collect::<Vec<_>>().join(" ");
+    if !leftover.is_empty() {
+        for rest in wrap_indented(&leftover, hang_room, "") {
+            lines.push(Line::from(Span::styled(
+                format!("{hang}{rest}"),
+                Style::default().fg(palette.dim),
+            )));
+        }
+    }
 }
 
 #[cfg(test)]

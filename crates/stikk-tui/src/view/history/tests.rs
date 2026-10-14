@@ -1,6 +1,6 @@
 //! Tests for the History view (design TS-01).
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -213,7 +213,7 @@ fn a_wrapped_tier_does_not_move_the_block_rows_out_from_under_the_cursor() {
 
 /// **RFC 037 Handoff A §5's capture, at exactly 80 columns**: the queued tier wrapped, with a
 /// 60-character ref name. Reproduce with
-/// `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+/// `cargo test -p stikk-tui --lib capture_ — --nocapture`.
 #[test]
 fn capture_rfc037_queued_tier_at_80_columns() {
     let view = HistoryView {
@@ -228,4 +228,140 @@ fn capture_rfc037_queued_tier_at_80_columns() {
     let text = draw(&view, 0);
     println!("--- History's queued tier, wrapped (80 columns) ---\n{text}");
     assert!(text.contains("Q: Queue"));
+}
+
+/// A row carrying every marker at once: the widest a block row gets.
+fn maximal_row() -> BlockRow {
+    let mut r = row("4db1669a176b1111", 123_456, "merge");
+    r.rollback_block = true;
+    r.required_attestations = 3;
+    r.patches = 9;
+    r
+}
+
+/// Each rendered row's text with the borders stripped, so a column can be asserted on.
+fn inner_rows(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|l| l.strip_prefix(BORDER))
+        .filter_map(|l| l.strip_suffix(BORDER))
+        .map(str::to_string)
+        .collect()
+}
+
+const BORDER: char = '│';
+
+#[test]
+fn a_block_row_too_long_for_the_terminal_wraps_under_the_short_id() {
+    // **Measured at 80 columns** (RFC 037 Handoff C §1). This row is 85 columns, so it used to be
+    // cut at the border: `needs 3 attestation(` and no tip marker at all, which is a wrong picture
+    // of the lineage, not just a narrow one (RFC 024).
+    let view = HistoryView {
+        reff: "heads/main".into(),
+        queued: 0,
+        queued_target: None,
+        blocks: vec![maximal_row()],
+    };
+    let text = draw(&view, 0);
+    println!("--- RFC 037 Handoff C §1: a maximal History row at 80 columns\n{text}");
+    let rows = inner_rows(&text);
+
+    // Nothing is cut: the tip marker, the last field on the row, is on screen.
+    assert!(text.contains("← tip"), "{text}");
+
+    // The row wrapped, and its continuation starts at the short id's own column — four columns in,
+    // past the cursor and mark columns — not at the left edge.
+    let first = rows
+        .iter()
+        .position(|r| r.contains("4db1669a176b"))
+        .expect("the block row is on screen");
+    let continuation = &rows[first + 1];
+    assert!(
+        continuation.starts_with("    ") && !continuation.starts_with("     "),
+        "continuation must start at column 4, got {continuation:?}"
+    );
+
+    // Every character of the row is present once and in order: joining the rows back up, with each
+    // continuation's indent removed, gives exactly the fields in their order.
+    let rejoined = format!(
+        "{}{}",
+        rows[first].trim_end(),
+        continuation.trim_end().strip_prefix("    ").unwrap()
+    );
+    assert_eq!(
+        rejoined,
+        "▶   4db1669a176b  #123456merge   9 patch(es)  [rollback]  needs 3 attestation(s)  ← tip"
+    );
+}
+
+#[test]
+fn the_cursor_still_selects_the_right_row_below_a_wrapped_one() {
+    // **The scroll is no longer arithmetic on the cursor** (RFC 023 F2): a wrapped row occupies two
+    // lines, so a count of rows above the cursor no longer gives its line. Three maximal rows all
+    // wrap; the marker must sit on the one `cursor` names, and the row must be whole on screen.
+    let view = HistoryView {
+        reff: "heads/main".into(),
+        queued: 0,
+        queued_target: None,
+        blocks: vec![
+            row("aaaaaaaaaaaa1111", 3, "ordinary"),
+            maximal_row(),
+            row("cccccccccccc3333", 1, "ordinary"),
+        ],
+    };
+    for (cursor, id) in [
+        (0, "aaaaaaaaaaaa"),
+        (1, "4db1669a176b"),
+        (2, "cccccccccccc"),
+    ] {
+        let text = draw(&view, cursor);
+        let marked: Vec<&str> = text.lines().filter(|l| l.contains("▶ ")).collect();
+        assert_eq!(
+            marked.len(),
+            1,
+            "exactly one row carries the cursor: {text}"
+        );
+        assert!(
+            marked[0].contains(id),
+            "cursor {cursor} must mark {id}, got {:?}",
+            marked[0]
+        );
+    }
+}
+
+#[test]
+fn a_selected_wrapped_row_is_whole_on_screen_when_it_is_the_last() {
+    // The scroll pins the selected row's **last** line, so selecting a wrapped row at the bottom
+    // shows both of its lines rather than scrolling its continuation off.
+    let mut blocks: Vec<BlockRow> = (0..8)
+        .map(|i| {
+            row(
+                &format!("{i}{i}{i}{i}{i}{i}{i}{i}{i}{i}{i}{i}"),
+                8 - i,
+                "ordinary",
+            )
+        })
+        .collect();
+    blocks.push(maximal_row());
+    let last = blocks.len() - 1;
+    let view = HistoryView {
+        reff: "heads/main".into(),
+        queued: 0,
+        queued_target: None,
+        blocks,
+    };
+    // A short terminal, so the lineage cannot all fit and the view must scroll.
+    let text = draw_at(&view, last, 80, 8);
+    let rows = inner_rows(&text);
+    let first = rows
+        .iter()
+        .position(|r| r.contains("4db1669a176b"))
+        .expect("the selected row is on screen");
+    // Its continuation is on screen too, below it, rather than scrolled past the bottom border.
+    let continuation = rows
+        .get(first + 1)
+        .expect("the selected row's continuation is on screen");
+    assert!(
+        continuation.starts_with("    ") && !continuation.trim().is_empty(),
+        "both lines of the selected row: {text}"
+    );
 }

@@ -223,8 +223,11 @@ const PRIKK_QUEUED_ELSEWHERE_SENTENCE: &str = "note: the active WAL has queued (
 #[test]
 fn stikks_queued_elsewhere_wording_keeps_every_claim_prikks_sentence_makes() {
     let prikk = PRIKK_QUEUED_ELSEWHERE_SENTENCE;
+    // **The clauses are piece lists now** (RFC 037 Handoff C §2), so this reads the words through
+    // `flatten` — which is what the claim is about. That the two refs are *names* within them is
+    // `each_ref_in_the_sentence_is_a_name`'s job, below.
     let [queued, real_work, untracked, do_not_delete] =
-        queued_elsewhere_clauses("heads/main", "heads/other");
+        queued_elsewhere_clauses("heads/main", "heads/other").map(|c| crate::flatten(&c));
 
     // Clause 1 — queued, unsealed patches exist for *that* ref, not for this one.
     assert!(prikk.contains("queued (unsealed) patches for heads/main, not heads/other"));
@@ -265,6 +268,7 @@ fn stikks_queued_elsewhere_wording_keeps_every_claim_prikks_sentence_makes() {
 fn stikks_queued_elsewhere_wording_adds_no_claim() {
     // "Adds none": four clauses, each a single sentence. A fifth claim would be a fifth sentence.
     for clause in queued_elsewhere_clauses("heads/main", "heads/other") {
+        let clause = crate::flatten(&clause);
         assert_eq!(
             clause.matches(". ").count(),
             0,
@@ -272,6 +276,55 @@ fn stikks_queued_elsewhere_wording_adds_no_claim() {
         );
         assert!(clause.ends_with('.'), "{clause:?}");
     }
+}
+
+/// **Each ref in the sentence is a [`Piece::Name`]** (RFC 037 Handoff C §2): the last site where
+/// core took text a frontend had already rendered. Core now says *which* pieces are names and the
+/// frontend decides their spelling, so the same clauses can be drawn by a terminal and by a GUI.
+#[test]
+fn each_ref_in_the_sentence_is_a_name() {
+    let [queued, ..] = queued_elsewhere_clauses("heads/main", "heads/other");
+    let names: Vec<&str> = queued
+        .iter()
+        .filter_map(|p| match p {
+            Piece::Name(name) => Some(name.as_str()),
+            Piece::Said(_) => None,
+        })
+        .collect();
+    assert_eq!(names, ["heads/main", "heads/other"]);
+    // And no ref hides inside stikk's own words, where a frontend could not escape it.
+    for piece in &queued {
+        if let Piece::Said(said) = piece {
+            assert!(
+                !said.contains("heads/"),
+                "a ref must be its own piece: {said:?}"
+            );
+        }
+    }
+}
+
+/// **A ref carrying a double space and one carrying a bidi override** reach the frontend as names,
+/// unchanged and unescaped, with the whole sentence still around them. Core must neither mangle
+/// them nor pass them off as its own words — deciding their spelling is the renderer's job.
+#[test]
+fn a_hostile_ref_travels_as_a_name_inside_the_sentence() {
+    let queued_ref = "heads/two  spaces";
+    let focused_ref = "heads/\u{202e}hidden";
+    let [queued, ..] = queued_elsewhere_clauses(queued_ref, focused_ref);
+
+    assert!(
+        queued.contains(&Piece::name(queued_ref)),
+        "the double-space ref must arrive verbatim as a name: {queued:?}"
+    );
+    assert!(
+        queued.contains(&Piece::name(focused_ref)),
+        "the override ref must arrive verbatim as a name: {queued:?}"
+    );
+    // The sentence is unchanged around them — no claim gained or lost.
+    assert_eq!(
+        crate::flatten(&queued),
+        format!("The active queue holds unsealed patches for {queued_ref}, not for {focused_ref}.")
+    );
 }
 
 #[test]

@@ -16,11 +16,17 @@ use stikk_prikk::BlockRow;
 
 use crate::text::{compose, identifier, wrap_indented};
 use crate::theme::Palette;
+use crate::view::wrap_spans;
 
 /// The queued tier's label, and the indent its continuation rows line up under — the same columns,
 /// so a wrapped sentence reads as one tier rather than as a second row of the lineage.
 const TIER_LABEL: &str = "  queued   ";
 const TIER_INDENT: &str = "           ";
+
+/// The column a wrapped block row continues at: under the short id, past the two marker columns
+/// (RFC 038 decision 3), so a row too long for the terminal still reads as one block rather than as
+/// a second entry in the lineage.
+const ROW_INDENT: &str = "    ";
 
 /// Render the History view for `view`, with `cursor` marking the selected block, into `area`.
 pub fn render(
@@ -69,8 +75,12 @@ pub fn render(
         "  ─────────",
         Style::default().fg(palette.dim),
     )));
-    // Block rows start below the tier (when there is one) and the rule.
-    let header_rows = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+    // **The selected row's last line, not `cursor` plus a header count** (RFC 037 Handoff C §1).
+    // A block row used to be exactly one `Line`, so the scroll could be arithmetic on the cursor.
+    // Now that a long row wraps, the only thing that knows where a row sits is the loop that emits
+    // it — the same reason stikk wraps by hand at all (RFC 023 F2). Recording the end line keeps
+    // the whole of the selected row on screen, not just its first line.
+    let mut selected_end = u16::try_from(lines.len()).unwrap_or(u16::MAX);
 
     if view.blocks.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -80,7 +90,14 @@ pub fn render(
     } else {
         for (i, row) in view.blocks.iter().enumerate() {
             let is_marked = marked == Some(row.block_id.as_str());
-            lines.push(block_line(row, i == cursor, i == 0, is_marked, palette));
+            let spans = block_spans(row, i == cursor, i == 0, is_marked, palette);
+            // **Wrapped, never clipped** (RFC 024). A row carrying every marker at once — a
+            // rollback merge that needs attestations and is the tip — is 85 columns, so at 80 it
+            // lost `\u{2190} tip` entirely, and was cut mid-word before reaching it. Measured, not assumed.
+            lines.extend(wrap_spans(spans, text_width, ROW_INDENT));
+            if i == cursor {
+                selected_end = u16::try_from(lines.len().saturating_sub(1)).unwrap_or(u16::MAX);
+            }
         }
     }
 
@@ -97,22 +114,23 @@ pub fn render(
         .title(title)
         .style(Style::default().fg(palette.fg));
 
-    // Keep the selected row visible: rows start `header_rows` lines below the top.
+    // Keep the selected row visible, all of it: scroll so its last line is the bottom one.
     let inner_height = area.height.saturating_sub(2); // borders
-    let selected_line = (cursor as u16).saturating_add(header_rows);
-    let scroll = selected_line.saturating_sub(inner_height.saturating_sub(1));
+    let scroll = selected_end.saturating_sub(inner_height.saturating_sub(1));
 
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 
-/// One block row: a selection marker, short id, update-seq, kind, patch count, and lineage markers.
-fn block_line<'a>(
+/// One block row's fields: a selection marker, short id, update-seq, kind, patch count, and lineage
+/// markers. Returned as spans rather than a `Line` so the caller can wrap it ([`wrap_spans`]) --
+/// each field carries its own style, which a string wrap would flatten away.
+fn block_spans<'a>(
     row: &'a BlockRow,
     selected: bool,
     is_tip: bool,
     marked: bool,
     palette: &Palette,
-) -> Line<'a> {
+) -> Vec<Span<'a>> {
     // **Two different marks, in two columns** (RFC 038 decision 3): the cursor is where you are,
     // and `m`'s mark is what you set. One column could not show a row that is both, which is the
     // ordinary case right before `d`.
@@ -158,7 +176,7 @@ fn block_line<'a>(
     if is_tip {
         spans.push(Span::styled("  ← tip", Style::default().fg(palette.ok)));
     }
-    Line::from(spans)
+    spans
 }
 
 /// A short, display-only prefix of an object id (never fabricated — a plain prefix, rendered as the

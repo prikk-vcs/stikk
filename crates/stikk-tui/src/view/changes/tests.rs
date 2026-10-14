@@ -469,7 +469,10 @@ fn a_typed_queued_ref_renders_as_stikks_warning_outside_the_quote_band() {
     assert!(text.contains("stikk's warning"), "{text}");
     assert!(!text.contains("prikk reported"), "{text}");
     let flat = joined(&text);
+    // Core returns piece lists now (RFC 037 Handoff C §2); `compose` is what the view renders them
+    // with, so the test composes them the same way rather than reading core's words raw.
     for clause in stikk_core::queued_elsewhere_clauses("heads/main", "heads/other") {
+        let clause = compose(&clause);
         assert!(
             flat.contains(&clause),
             "clause {clause:?} is not on screen whole:\n{text}"
@@ -1060,4 +1063,42 @@ fn a_rename_annotations_other_path_is_an_identifier() {
         );
         assert!(!screen.contains('\u{202e}'), "{what}:\n{screen}");
     }
+}
+
+/// **The two refs in stikk's warning are identifiers** (RFC 037 Handoff C §2). Core hands the view
+/// names; the view spells them. A ref holding a double space and one holding a bidi override are the
+/// two cases the identifier rule exists for: one would lose a space to the word wrap if it were
+/// prose, and the other would reorder the sentence around it on screen.
+#[test]
+fn both_refs_in_stikks_warning_render_as_identifiers() {
+    let mut view = dirty_view();
+    view.reff = "heads/\u{202e}hidden".into();
+    view.refused = Some(0);
+    view.queued_elsewhere = Some(QueuedElsewhere::Ref("heads/two  spaces".into()));
+    let text = draw_80(&view, false);
+    println!("--- RFC 037 Handoff C §2: hostile refs in stikk's warning\n{text}");
+
+    // Neither ref reaches the screen raw: the override is gone and the double space is spelled.
+    assert!(!text.contains('\u{202e}'), "{text}");
+    assert!(!on_a_row(&text, "two  spaces"), "{text}");
+
+    // Each is on a row as the identifier rule spells it — quoted, with every space as `\u0020`,
+    // so the quoted form holds no whitespace for the wrap to collapse (RFC 036 decision 3).
+    let queued = identifier("heads/two  spaces");
+    let focused = identifier("heads/\u{202e}hidden");
+    assert!(on_a_row(&text, &queued), "{queued:?} not on a row:\n{text}");
+    assert!(
+        on_a_row(&text, &focused),
+        "{focused:?} not on a row:\n{text}"
+    );
+
+    // And the sentence is still whole around them, as stikk's warning rather than prikk's words.
+    assert!(text.contains("stikk's warning"), "{text}");
+    assert!(!text.contains("prikk reported"), "{text}");
+    let flat = joined(&text);
+    assert!(
+        flat.contains("The active queue holds unsealed patches for"),
+        "{text}"
+    );
+    assert!(flat.contains("not for"), "{text}");
 }

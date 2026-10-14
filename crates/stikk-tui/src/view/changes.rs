@@ -168,11 +168,17 @@ pub fn render(
                 "  stikk's warning, from prikk's queued-work report —",
                 dim,
             )));
-            for clause in stikk_core::queued_elsewhere_clauses(
-                &identifier(queued_ref),
-                &identifier(&view.reff),
-            ) {
-                for row in wrap_indented(&clause, text_width, "    ") {
+            // **Core returns pieces, and the two ref names are names** (RFC 037 Handoff C §2).
+            // This used to hand core `identifier(queued_ref)` — a frontend's rendering, decided
+            // one layer too early. `compose` applies the two rules here instead, where the
+            // renderer is, so a GUI front-end can draw a name as a name.
+            //
+            // Word-wrapping the composed sentence is safe for the reason the queued tier in
+            // History is: a name that needs escaping comes back quoted with every space spelled
+            // `\u0020`, so its rendered form holds no whitespace for a word wrap to collapse
+            // (RFC 036 decision 3).
+            for clause in stikk_core::queued_elsewhere_clauses(queued_ref, &view.reff).iter() {
+                for row in wrap_indented(&compose(clause), text_width, "    ") {
                     lines.push(Line::from(vec![
                         Span::styled("  ! ", Style::default().fg(palette.warn)),
                         Span::styled(

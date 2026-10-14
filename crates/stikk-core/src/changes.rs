@@ -634,14 +634,38 @@ fn classify(
 /// "prikk reported" quote band, which stays reserved for prikk's own text (`C-T2b`). The clause-by-clause
 /// test in `changes/tests.rs` holds each sentence to prikk's captured one, so an edit that drops a claim
 /// fails by name.
+///
+/// # Each clause is a piece list
+///
+/// Returned as [`Piece`]s, one list per clause (the shape [`crate::ComparedEntry::facts`] already
+/// uses), so the **two refs are [`Piece::Name`]** and the words around them are [`Piece::Said`].
+/// This was the last place core took text a frontend had already rendered — the caller used to
+/// hand in `identifier(queued_ref)` — which is the pattern RFC 036 review v1 §2.3 ruled out,
+/// because it decides an identifier's spelling in the one layer that cannot know how it will be
+/// drawn. A GUI renders a name as a name; it should not be given a terminal's escaping.
+///
+/// **The words do not change.** Flattening a clause's pieces ([`crate::flatten`]) gives exactly the
+/// sentence this function returned before, and the clause-by-clause test above runs over the
+/// flattened text for that reason.
 #[must_use]
-pub fn queued_elsewhere_clauses(queued_ref: &str, focused_ref: &str) -> [String; 4] {
+pub fn queued_elsewhere_clauses(queued_ref: &str, focused_ref: &str) -> [Vec<Piece>; 4] {
     [
-        format!("The active queue holds unsealed patches for {queued_ref}, not for {focused_ref}."),
-        "That is real, committed work, and it is not shown here.".to_string(),
-        "An untracked entry here may be exactly that work, seen from this ref's own baseline."
-            .to_string(),
-        "Do not delete anything on the strength of this view alone.".to_string(),
+        vec![
+            Piece::said("The active queue holds unsealed patches for "),
+            Piece::name(queued_ref),
+            Piece::said(", not for "),
+            Piece::name(focused_ref),
+            Piece::said("."),
+        ],
+        vec![Piece::said(
+            "That is real, committed work, and it is not shown here.",
+        )],
+        vec![Piece::said(
+            "An untracked entry here may be exactly that work, seen from this ref's own baseline.",
+        )],
+        vec![Piece::said(
+            "Do not delete anything on the strength of this view alone.",
+        )],
     ]
 }
 

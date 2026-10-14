@@ -1,6 +1,6 @@
 # RFC 038 — Compare: what changed between two points, in prikk's own hunks
 
-**Status.** **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 3 of the authorized 0.10.0 scope
+**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`6869446`, `5bcd84c`, `44cc947`); in `## Unreleased` for 0.10.0. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 3 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Measured against real prikk **0.46.0** and **0.51.0** binaries, **identical in every case** once ids are normalised.
 Evidence: `.git-exclude/reports/038-compare/` (`measure038.sh`, `measure038-0.46.txt`, `measure038-0.51.txt`), and
@@ -134,3 +134,36 @@ compared two refs at the same point), and stops if the shape differs.
 - **No syntax highlighting, intra-line highlighting or side-by-side layout.** prikk's unified hunks are what is
   shown.
 - **No stikk-computed difference**, at any version.
+
+## Delivered
+
+**One handoff, three commits, green on `main` at `44cc947`**: CI and Docs on push; the real-binary suite (full matrix,
+47 cases at prikk 0.28.0 and 0.51.0, identical evidence on Linux, macOS and Windows) and the supply-chain gate
+dispatched on `main`.
+
+- **The seam:** `Prikk::diff(repo, &Comparison)`, where `Comparison::{Points, WorktreeAgainstBaseline}` makes the
+  fourth shape prikk accepts (a named point against the worktree) unaskable by accident. `DIFF_FROM_MINOR = 46` sits
+  beside `TREE_FROM_MINOR`. **The queue is a type** (`QueuedOnSide`), so a two-point comparison never reads as
+  "0 queued".
+- **The reader** is strict per status and keeps an unmeasured status as prikk's word; twelve negative reports.
+- **The view:** per-entry selection; content quoted byte-faithfully with the terminator inside the quotes; the `@@`
+  header and prikk's no-newline line as prikk's words; *no differences* only with no entries **and** no unsupported
+  paths. **The raw view (`v`) shares Patch detail's `bounded_rows`** (fixed in review: it had flattened prikk's
+  multi-line JSON and was unbounded).
+- **Entry points:** `m` and `d` in History (a mark lives on `App`, carries its ref, and orders by `update_seq`), `d`
+  in Block detail, and `d` in Changes, whose false *"awaits prikk support"* foot is gone.
+- **`UD-10` retired** and **`FR-033` delivered** in `requirements.md`.
+
+## Corrected by measurement in delivery
+
+- **Renames pair across branches whenever the file is in the common base.** The declaration travels with the
+  patch, so the same rename is `renamed` along a lineage and between two branches. The handoff implied that an
+  unpaired delete-and-add across branches was the rule. It is only the case for a file the other side never had.
+- **At a merge block, "the previous block in this ref's history" is neither parent** (measured: a merge's previous
+  row was a third block). Decision 3's wording is exactly right, and the word "parent" would have been wrong.
+- **`minimal: false` is reachable cheaply**: a 20,000-line file reversed gave one 457 KB hunk, the concrete case for
+  the bound.
+
+## Carried forward
+
+- **Comparing two different refs** is not built (Later). prikk can, and the picker for two refs is its own design.

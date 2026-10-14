@@ -290,25 +290,17 @@ is.** Scope: `.git-exclude/release/0-10-0-scope.md`. Every handoff asks for its 
    picker offers the branch you are on before its first seal (prikk ≥ 0.47), beside the refs, never among them.
    History's queued tier wraps. **Carried:** Block detail's 64-hex id rows, and the below-0.46 sentence, wrap to
    column 0 at 80 columns. That is cosmetic, and a small fix.
-3. **Compare** (`FR-033`, RFC 038), the last named view still unbuilt. **Corrected 2026-10-14:** this item said
-   prikk refuses arbitrary-point comparison (RFC 021 F3). That predates prikk 0.46. **`prikk diff --from --to`
-   compares any two points** (refs, received refs, bare block ids), and `--from` alone compares a point with the
-   worktree, as *what `commit` would author*, with hunks (`diff-report-v1`). It takes **RFC 035's decision 4**:
-   prikk's block diff is a separate, labelled section, shown only where it is honest (a block of exactly one patch
-   in Patch detail, the block itself in Block detail), **never merged into the operation list**, and never for a
-   queued patch.
-   **It also owns the Changes foot's *"per-file content diff awaits prikk support (UD-09)"***, false at the ceiling
-   since prikk 0.46 (`C-T2b`, found in RFC 036's review): Compare either offers the worktree diff there, or the
-   sentence says what is true.
-   **And `UD-10` looks retired** (RFC 037 A's review §7): at prikk 0.51, `cat --path … --ref <block-id>` returns a
-   file's bytes at any block, which is the range case RFC 038 needs. Measure it there; do not retire it before.
+3. **Compare — landed on `main`** ([RFC 038](rfcs/done/038-compare.md), `6869446`, `5bcd84c`, `44cc947`).
+   `FR-033`: two marked blocks or a block and its predecessor (History, Block detail), and the worktree against
+   what `commit` would author (Changes), all from prikk's own `diff-report-v1` hunks (prikk ≥ 0.46), quoted
+   byte-faithfully. `UD-10` retired. The Changes foot's false *"awaits prikk support"* is gone. **Comparing two
+   different refs** is Later.
 4. **The node20 actions — landed on `main`** (`b3dcade`, under RFC 020). Every action, including those inside
    composites, now runs on node24. mdBook is pinned by version and SHA-256, where it was `latest`. The Pages deploy
    runs from `main` only. **`release.yml`'s attestation step is first exercised by 0.10.0's release run**: watch it.
-5. **Conditional: the prikk 0.52.0 re-baseline.** Only if prikk 0.52.0 publishes before the cut; the cut does not
-   wait for it. The block-end label goes, or is banded below 0.52 (RFC 035 A2). In a block of more than one patch, a
-   node-addressed path is labelled *as at the end of this block* because prikk 0.51 resolves it there. prikk has
-   said 0.52.0 will resolve each patch at that patch.
+5. **Conditional: the prikk 0.52.0 re-baseline — not met at the 0.10.0 cut.** prikk 0.52.0 was unpublished on
+   2026-10-14 (crates.io's latest: 0.51.0; prikk's `main` in 0.52's step 2). Carried to the next cycle: when 0.52.0
+   publishes, validate it, and the block-end label goes or is banded below 0.52 (RFC 035 A2).
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 038 | [Compare](./accepted/038-compare.md) | `FR-033`: what changed between two points, from prikk's own `diff-report-v1` hunks (prikk ≥ 0.46), from History (two marked blocks, or a block and its predecessor), Block detail, and Changes (the worktree against what `commit` would author). Retires `UD-10`. **Accepted 2026-10-14**; 0.10.0 increment 3 | [A: Compare](./handoffs/038-compare/a-compare-handoff-v1.md) |
+_None: RFC 038 delivered and closed 2026-10-14._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 038 | [Compare](./done/038-compare.md) | 0.10.0 candidate (on `main`) | comparing two different refs (Later) | [A: Compare](./handoffs/038-compare/a-compare-handoff-v1.md) |
 | 037 | [Read prikk's JSON where it now answers](./done/037-read-prikk-json-where-it-now-answers.md) | 0.10.0 candidate (on `main`) | `UD-10` looks retired (`cat` at a bare block id, prikk 0.51), to RFC 038; Block detail's long id rows wrap to column 0 | [A: every block's files](./handoffs/037-read-prikk-json-where-it-now-answers/a-every-blocks-files-handoff-v1.md) · [B: the unpublished current branch](./handoffs/037-read-prikk-json-where-it-now-answers/b-unpublished-current-branch-handoff-v1.md) |
 | 036 | [Repository text renders as it is, everywhere](./done/036-repository-text-renders-as-it-is.md) | 0.10.0 candidate (on `main`) | History's queued tier is one unwrapped line, so a long ref name clips; the Changes foot's *"per-file content diff awaits prikk support"* is false since prikk 0.46 (to RFC 038); `queued_elsewhere_clauses` still takes rendered text | [A: repository text](./handoffs/036-repository-text-renders-as-it-is/a-repository-text-handoff-v1.md) |
 | 035 | [Patch detail](./done/035-patch-detail.md) | **0.9.0** | the block-end label goes or is banded when stikk validates prikk 0.52.0 (A2); `inert`'s `Cc`-only rule in every other view; double spaces in paths collapse; prikk's block diff (decision 4) moves to Compare; Block detail's state files still come from prose `checkout --patch-plan` | [A: Patch detail, and the 0.51 ceiling](./handoffs/035-patch-detail/a-patch-detail-handoff-v1.md) |

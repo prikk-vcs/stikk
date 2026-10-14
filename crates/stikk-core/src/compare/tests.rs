@@ -361,3 +361,82 @@ fn below_the_band_the_view_says_so_in_stikks_voice() {
     );
     assert!(reason.contains("this is 0.28"), "{reason}");
 }
+
+/// A `raw` shaped exactly as `Json::render` writes one — multi-line and indented. The shape is
+/// pinned against a **real captured report** in `stikk-prikk`'s
+/// `an_entrys_raw_fields_are_multi_line_indented_json`; this is the same shape, here, so the
+/// splitting can be tested where the splitting happens.
+const RAW_MULTILINE: &str = r#"{
+  "path": "ws.txt",
+  "status": "modified",
+  "from": {
+    "kind": "file",
+    "encoding": "text",
+    "mode": 33188,
+    "size": 5
+  },
+  "minimal": true
+}"#;
+
+/// **prikk's raw fields arrive as rows, with their nesting intact** (review v1 §2). The defect this
+/// replaces handed the whole multi-line string to a prose escaper, which turned every newline into
+/// a literal `\n` and flattened the entry into one run of text.
+#[test]
+fn an_entrys_raw_fields_are_rows_that_keep_their_indent() {
+    let mut e = entry_with("modified", "ws.txt", &[]);
+    e.raw = RAW_MULTILINE.to_string();
+    let c = compared(diff_of(vec![e]));
+    let raw = &c.entries[0].raw;
+    assert_eq!(raw.len(), RAW_MULTILINE.lines().count());
+    assert_eq!(raw[0], "{");
+    assert_eq!(raw[1], r#"  "path": "ws.txt","#);
+    assert_eq!(raw[4], r#"    "kind": "file","#);
+    assert!(
+        raw.iter().all(|row| !row.contains('\n')),
+        "no row carries a newline of its own: {raw:?}"
+    );
+}
+
+/// **`v` is bounded by the same constant as the rows, and the arithmetic is honest** — a toggle
+/// must not be the way around a bound that exists to keep a whole file off the screen (RFC 035
+/// decision 5). The measured case is a 457 KB entry.
+#[test]
+fn an_entrys_raw_fields_are_bounded_like_its_rows() {
+    let big: String = std::iter::once("{\n".to_string())
+        .chain((0..20_000).map(|i| format!("  \"line{i}\": {i},\n")))
+        .chain(std::iter::once("}".to_string()))
+        .collect();
+    assert!(big.len() > 400_000, "a 457 KB-scale entry: {}", big.len());
+    let mut e = entry_with("modified", "big.txt", &[]);
+    e.raw = big.clone();
+    let c = compared(diff_of(vec![e]));
+    let raw = &c.entries[0].raw;
+
+    let last = raw.last().expect("rows");
+    assert!(
+        last.ends_with("more bytes not shown"),
+        "the cut is said out loud: {last}"
+    );
+    let withheld: usize = last
+        .split_whitespace()
+        .find_map(|n| n.parse().ok())
+        .expect("the count is a number");
+    // **Shown plus withheld is exactly what prikk sent** — the same arithmetic the hunk bound
+    // asserts, stated against the source bytes rather than the rendered ones.
+    let shown = big.len() - withheld;
+    assert!(
+        shown <= CONTENT_DISPLAY_BYTES,
+        "the source bytes shown stay within the bound: {shown}"
+    );
+    assert!(
+        shown > CONTENT_DISPLAY_BYTES - 32,
+        "and the bound is reached, not undershot: {shown}"
+    );
+    // And the rows really are only the shown part: nothing past the bound was laid out.
+    assert!(
+        raw.len() * 20 < big.lines().count(),
+        "a 457 KB entry lays out a small fraction of its {} lines, not all of them: {} rows",
+        big.lines().count(),
+        raw.len()
+    );
+}

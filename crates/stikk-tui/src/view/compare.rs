@@ -191,13 +191,18 @@ fn entry_lines<'a>(
     ]));
 
     if raw && selected {
-        // prikk's own fields for this entry, exactly as prikk gave them — verbatim, so the JSON's
-        // own spacing survives.
-        for row in wrap_verbatim(&inert(&entry.raw), width, DETAIL) {
-            lines.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.dim),
-            )));
+        // **One line per row, each wrapped verbatim** — Patch detail's own raw path, for the same
+        // reason: `Json::render` writes multi-line indented JSON, and prikk's nesting and the
+        // whitespace inside its string values are part of what the raw view is *for*. Passing the
+        // whole string through `inert` would turn every newline into the prose escape `\n` and
+        // flatten the entry into one run of text.
+        for row in &entry.raw {
+            for wrapped in wrap_verbatim(&inert(row), width, DETAIL) {
+                lines.push(Line::from(Span::styled(
+                    wrapped,
+                    Style::default().fg(palette.dim),
+                )));
+            }
         }
         lines.push(Line::from(""));
         return;

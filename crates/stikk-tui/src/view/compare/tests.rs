@@ -12,6 +12,23 @@ use super::*;
 use crate::app::CompareSource;
 use crate::test_util::buffer_text;
 
+/// prikk's own fields as `Json::render` writes them — multi-line and indented. Pinned against a
+/// **real captured report** in `stikk-prikk`'s `an_entrys_raw_fields_are_multi_line_indented_json`.
+const RAW_MULTILINE: &str = r#"{
+  "path": "ws.txt",
+  "status": "modified",
+  "from": {
+    "kind": "file",
+    "encoding": "text",
+    "mode": 33188,
+    "size": 5
+  },
+  "minimal": true,
+  "hunks": [
+    "@@ -1 +1 @@\n-keep\n+keep  \n"
+  ]
+}"#;
+
 fn block(hex: char) -> String {
     std::iter::repeat_n(hex, 64).collect()
 }
@@ -35,7 +52,7 @@ fn entry(status: &str, path: &str, hunks: &[&str]) -> DiffEntry {
         to: Some(text_file(0o100_644, 1)),
         minimal: true,
         hunks: hunks.iter().map(|h| (*h).to_string()).collect(),
-        raw: r#"{"path": "x", "status": "modified"}"#.into(),
+        raw: RAW_MULTILINE.into(),
     }
 }
 
@@ -202,17 +219,58 @@ fn below_the_band_the_view_says_stikks_own_sentence() {
     assert!(text.contains("this is 0.28"), "{text}");
 }
 
-/// `v` shows prikk's own fields **for the selected entry**, and only that one.
+/// `v` shows prikk's own fields **for the selected entry**, and only that one — **row by row,
+/// with prikk's nesting intact** (review v1 §2). The defect this replaces flattened the whole
+/// multi-line document into one run of text with literal `\n` sequences in it.
 #[test]
-fn the_raw_view_shows_prikks_fields_for_the_selected_entry() {
+fn the_raw_view_shows_prikks_fields_row_by_row_with_their_nesting() {
     let view = two_blocks(vec![
         entry("modified", "first.txt", &["@@ -1 +1 @@\n-a\n+b\n"]),
         entry("modified", "second.txt", &["@@ -1 +1 @@\n-c\n+d\n"]),
     ]);
-    let text = draw_at(&view, &CompareSource::MarkedPair, 1, true, 80, 24);
+    let text = draw_at(&view, &CompareSource::MarkedPair, 1, true, 80, 30);
     assert!(text.contains("\"status\""), "prikk's own fields: {text}");
     // The unselected entry still renders normally, so the screen is not blanked by the toggle.
     assert!(text.contains("first.txt"), "{text}");
+
+    // **Each field is on its own row**, at the depth prikk wrote it.
+    let rows: Vec<&str> = text
+        .lines()
+        .map(|l| l.trim_matches('\u{2502}').trim_end())
+        .collect();
+    assert!(
+        rows.iter().any(|r| r.ends_with(r#"  "path": "ws.txt","#)),
+        "{text}"
+    );
+    assert!(
+        rows.iter().any(|r| r.ends_with(r#"    "kind": "file","#)),
+        "deeper nesting keeps its extra indent: {text}"
+    );
+    // **And the document is not flattened**: no row carries two of prikk's fields at once.
+    assert!(
+        !rows
+            .iter()
+            .any(|r| r.contains(r#""path""#) && r.contains(r#""status""#)),
+        "{text}"
+    );
+    // The `\n` inside a *string value* is prikk's own escape and stays — it is content, not a row
+    // break, and the two must not be confused.
+    assert!(text.contains("@@ -1 +1 @@"), "{text}");
+}
+
+/// **`v` is bounded too** — a toggle must not be the way around a bound that keeps a whole file off
+/// the screen (RFC 035 decision 5).
+#[test]
+fn the_raw_view_is_bounded_and_says_what_it_withheld() {
+    let big: String = std::iter::once("{\n".to_string())
+        .chain((0..20_000).map(|i| format!("  \"line{i}\": {i},\n")))
+        .chain(std::iter::once("}".to_string()))
+        .collect();
+    let mut e = entry("modified", "big.txt", &[]);
+    e.raw = big;
+    let view = two_blocks(vec![e]);
+    let text = draw_at(&view, &CompareSource::MarkedPair, 0, true, 80, 300);
+    assert!(text.contains("more bytes not shown"), "{text}");
 }
 
 /// A long content line **wraps and is never clipped** (RFC 024), hard-split rather than word-wrapped
@@ -304,6 +362,31 @@ fn capture_rfc038_compare_at_80_columns() {
             80,
             10
         )
+    );
+
+    // **`v`, from a real multi-line entry** (review v1 §3): prikk's fields row by row.
+    println!(
+        "--- v: prikk's own fields for the selected entry (80 columns) ---\n{}",
+        draw_at(&text_entry, &CompareSource::MarkedPair, 0, true, 80, 24)
+    );
+
+    // **`v` on an entry past the bound**: the cut is said out loud, in the raw view too.
+    let big: String = std::iter::once("{\n".to_string())
+        .chain((0..20_000).map(|i| format!("  \"line{i}\": {i},\n")))
+        .chain(std::iter::once("}".to_string()))
+        .collect();
+    let mut huge = entry("modified", "big.txt", &[]);
+    huge.raw = big;
+    let bounded = two_blocks(vec![huge]);
+    let drawn = draw_at(&bounded, &CompareSource::MarkedPair, 0, true, 80, 300);
+    let rows: Vec<&str> = drawn.lines().collect();
+    println!(
+        "--- v: an entry past the bound — first rows and the last (80 columns) ---\n{}\n    […]\n{}",
+        rows[..8.min(rows.len())].join("\n"),
+        rows.iter()
+            .rev()
+            .find(|r| r.contains("more bytes not shown"))
+            .unwrap_or(&"")
     );
 
     assert!(draw(&text_entry, &CompareSource::MarkedPair).contains("100755"));

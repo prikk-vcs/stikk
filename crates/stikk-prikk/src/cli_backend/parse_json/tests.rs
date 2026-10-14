@@ -3433,3 +3433,39 @@ fn a_diff_report_that_breaks_the_measured_shape_is_refused() {
         );
     }
 }
+
+/// **An entry's `raw` is multi-line, indented JSON**, which is what the raw view is for — and the
+/// fact a consumer must not flatten. `Json::render` writes prikk's fields in prikk's order with a
+/// per-depth pad; a view that handed the whole string to a prose escaper would turn every newline
+/// into a literal `\n` and lose the nesting entirely (review v1 §2).
+#[test]
+fn an_entrys_raw_fields_are_multi_line_indented_json() {
+    let d = diff(DIFF_STATUSES_0_51, &two_points()).expect("parses");
+    let entry = d
+        .entries
+        .iter()
+        .find(|e| e.path == "ws.txt")
+        .expect("ws.txt");
+    let lines: Vec<&str> = entry.raw.lines().collect();
+    assert!(
+        lines.len() > 10,
+        "the raw fields span many lines, not one: {:?}",
+        entry.raw
+    );
+    assert_eq!(lines[0], "{");
+    assert!(
+        lines.iter().any(|l| l.starts_with("  \"path\"")),
+        "nesting is carried by leading spaces: {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| l.starts_with("    \"kind\"")),
+        "and deeper nesting by more of them: {lines:?}"
+    );
+    // The hunk inside it keeps JSON's own escapes, so a content newline is `\n` **inside a string
+    // value** — distinct from the newlines that separate the rows.
+    assert!(
+        entry.raw.contains(r#""@@ -1 +1 @@\n-keep\n+keep  \n""#),
+        "{}",
+        entry.raw
+    );
+}

@@ -19,9 +19,11 @@
 //!   or dropped them would show the most common kind of edit as *no edit at all*. prikk's own `@@`
 //!   header and its `\ No newline at end of file` line are **prikk's words, not content**, so they
 //!   are not quoted (§7 trap 4).
-//! - **The bound.** One entry's hunks can be the whole file: a 20 000-line reversal measures at
-//!   457 KB in a single hunk. [`crate::CONTENT_DISPLAY_BYTES`] bounds each entry, and the withheld
-//!   byte count is said out loud, never silently cut.
+//! - **The bound, on both views of an entry.** One entry's hunks can be the whole file: a
+//!   20 000-line reversal measures at 457 KB in a single hunk. [`crate::CONTENT_DISPLAY_BYTES`]
+//!   bounds each entry's rows, and the withheld byte count is said out loud, never silently cut.
+//!   **`v`'s raw JSON is bounded by the same constant and the same helper** Patch detail uses:
+//!   a toggle must not be the way around a bound that exists to keep a whole file off the screen.
 //! - **Structure, not composed text** (RFC 036 decision 8): a status word and a path come back as
 //!   [`Piece`]s, so the frontend renders each under its own rule.
 
@@ -33,7 +35,7 @@ use stikk_prikk::{
     UnsupportedPath,
 };
 
-use crate::patch::CONTENT_DISPLAY_BYTES;
+use crate::patch::{CONTENT_DISPLAY_BYTES, bounded_rows};
 use crate::piece::Piece;
 
 /// The first prikk minor that compares, re-exported so a view says the same number the seam gates
@@ -155,8 +157,14 @@ pub struct ComparedEntry {
     pub minimal_note: Option<String>,
     /// The hunks, as rows.
     pub rows: Vec<HunkRow>,
-    /// prikk's own fields for this entry, for the raw view (`v`).
-    pub raw: String,
+    /// prikk's own fields for this entry, **as rows and bounded** (`v`), by the same helper and
+    /// the same [`crate::CONTENT_DISPLAY_BYTES`] Patch detail's raw view uses.
+    ///
+    /// **Rows, because `Json::render` writes multi-line indented JSON**: handing the frontend one
+    /// string would make it choose between losing the nesting and inventing a split. **Bounded,
+    /// because `v` must not be the way around a bound that exists to keep a whole file off the
+    /// screen** (RFC 035 decision 5) — and one measured entry's hunks are 457 KB.
+    pub raw: Vec<String>,
 }
 
 /// One row of a rendered hunk (RFC 038 decision 5).
@@ -262,7 +270,8 @@ fn entry(entry: DiffEntry) -> ComparedEntry {
         rows: rows(&hunks),
         status,
         title,
-        raw,
+        // The same bound, by the same helper, as Patch detail's `v` (decision 5).
+        raw: bounded_rows(&raw),
     }
 }
 

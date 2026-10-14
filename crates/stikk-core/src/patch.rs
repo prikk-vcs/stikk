@@ -528,7 +528,11 @@ fn quoted(line: &str) -> String {
 ///
 /// Rendered verbatim by the frontend, like a content row: prikk's JSON nesting and any whitespace
 /// inside its string values are part of what the raw view is for.
-fn bounded_rows(text: &str) -> Vec<String> {
+///
+/// **Shared with Compare** (`crate::compare`), whose `v` shows the same kind of thing for the same
+/// reason and must not escape the bound either — one helper, so the two raw views cannot drift in
+/// how much of a large entry they are willing to lay out.
+pub(crate) fn bounded_rows(text: &str) -> Vec<String> {
     let (shown, withheld) = bounded(text);
     let mut rows: Vec<String> = shown.lines().map(str::to_string).collect();
     if rows.is_empty() {

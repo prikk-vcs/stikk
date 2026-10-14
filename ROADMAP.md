@@ -318,7 +318,8 @@ a fabricated worktree entry was fixed.
    and a source-level test holds that only in the two modules that name those variables. A guard
    over every shipped crate would let the sentence say *enforced by test* without a qualifier.
 10. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
-   to move to.
+   to move to — **and `release.yml`'s attestation actions** (`actions/attest-build-provenance`, `actions/attest`),
+   which the 0.9.0 release run (`38487394190`) reported as node20, forced onto node24.
 11. **Double spaces in paths collapse** wherever a path is word-wrapped through `wrap_indented` (RFC 035 review v1
    §2.1, found while fixing content). A path is not prose; it wants `wrap_verbatim`.
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI

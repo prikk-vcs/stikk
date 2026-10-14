@@ -51,6 +51,7 @@ pub struct NullBackend {
     orientation: Scripted<Orientation>,
     history: Scripted<History>,
     state: Scripted<StateReport>,
+    diff: Scripted<crate::DiffReport>,
     refs: Scripted<Vec<RefEntry>>,
     /// The unpublished current branch this backend reports beside the list (RFC 037 decision 3).
     unpublished_current: UnpublishedBranch,
@@ -117,6 +118,8 @@ impl NullBackend {
                 reff: "heads/main".to_string(),
                 blocks: Vec::new(),
             }),
+            // The default is the band below 0.46, matching this backend's default version.
+            diff: Ok(crate::DiffReport::Unreported),
             state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
@@ -333,6 +336,20 @@ impl NullBackend {
         self
     }
 
+    /// Replace the comparison this backend returns from [`Prikk::diff`] (RFC 038).
+    #[must_use]
+    pub fn with_diff(mut self, diff: crate::Diff) -> Self {
+        self.diff = Ok(crate::DiffReport::Listed(diff));
+        self
+    }
+
+    /// Fail [`Prikk::diff`], so a test can show a refusal reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_diff_refusal(mut self, message: impl Into<String>) -> Self {
+        self.diff = Err(message.into());
+        self
+    }
+
     /// Answer [`Prikk::block_state`] as **not reported** — the band below
     /// [`crate::TREE_FROM_MINOR`] for a block that is not the ref's tip (RFC 037 decision 2).
     #[must_use]
@@ -497,6 +514,10 @@ impl Prikk for NullBackend {
     fn show(&self, _repo: &Path, _id: &str) -> Result<ShowReport> {
         self.show_calls.fetch_add(1, Ordering::SeqCst);
         deliver(&self.show)
+    }
+
+    fn diff(&self, _repo: &Path, _comparison: &crate::Comparison) -> Result<crate::DiffReport> {
+        deliver(&self.diff)
     }
 
     fn block_state(

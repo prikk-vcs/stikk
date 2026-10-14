@@ -41,11 +41,11 @@ use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{
-    Authoring, BinaryBlob, BlockRow, DeclarationResolution, FileContent, History, OperationContent,
-    PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold, QueuedElsewhere,
-    QueuedMessage, QueuedOperation, QueuedPatch, QueuedPath, RefEntry, RenameDeclaration,
-    ShownPatch, StateFile, StateFiles, ThresholdStatus, UnpublishedBranch, WorktreeEntry,
-    WorktreeStatus,
+    Authoring, BinaryBlob, BlockRow, Comparison, DeclarationResolution, Diff, DiffEntry, DiffFile,
+    DiffSide, DiffTarget, FileContent, History, OperationContent, PatchMessage, PatchOperation,
+    Queue, QueueTarget, QueueThreshold, QueuedElsewhere, QueuedMessage, QueuedOnSide,
+    QueuedOperation, QueuedPatch, QueuedPath, RefEntry, RenameDeclaration, ShownPatch, StateFile,
+    StateFiles, ThresholdStatus, UnpublishedBranch, UnsupportedPath, WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -57,6 +57,7 @@ const TAG_SCHEMA: &str = "tag-list-v1";
 const STATUS_SCHEMA: &str = "status-report-v1";
 const SHOW_SCHEMA: &str = "show-report-v1";
 const TREE_SCHEMA: &str = "tree-listing-v1";
+const DIFF_SCHEMA: &str = "diff-report-v1";
 
 /// The first prikk minor whose queued patches carry `message` (prikk 0.42; RFC 028 as revised).
 const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
@@ -315,6 +316,186 @@ pub(super) fn tree(text: &str, asked: &str) -> Result<StateFiles> {
         target_block: target.to_string(),
         files,
         total_bytes,
+    })
+}
+
+/// `prikk diff [--from <a>] [--to <b>] --format json` (`diff-report-v1`), prikk ≥ 0.46 — one
+/// comparison (RFC 038 decision 2).
+///
+/// # Strict where stikk relies on the shape, prikk's word where it does not
+///
+/// - each side's `target_block_id` is a **64-hex id**, or the literal `worktree` **exactly where
+///   `point` is `worktree`** (§7 trap 3): a side claiming to be the worktree while naming a point
+///   is a report stikk has misread, not a comparison to render;
+/// - each entry's side objects **agree with its status**: `added` has `to` and no `from`,
+///   `deleted` has `from` and no `to`, `renamed` carries `from_path`, and the rest have both.
+///   **Absence is read per status, never as a general rule** — the rule RFC 035 learned when prikk
+///   0.47 began writing a `path` where it had written none;
+/// - `minimal` is a boolean and `hunks` a list of strings.
+///
+/// **A status stikk has not measured is kept as prikk's word, with its hunks** — only its side
+/// objects go unchecked, since stikk does not know which ones that status should have. prikk's
+/// schema already names one it says it does not produce today (`symlink`), so this is a case that
+/// exists on paper and will one day exist in a report.
+///
+/// `comparison` is passed because **`queued_patches`'s absence means "none queued" on exactly one
+/// side of one comparison** (§7 trap 2) — the bare `diff`'s left side — and nothing anywhere else.
+/// The shape of the request is the only thing that distinguishes them.
+///
+/// # Errors
+/// As [`history`], plus every rule above.
+pub(super) fn diff(text: &str, comparison: &Comparison) -> Result<Diff> {
+    let value = report(text, DIFF_SCHEMA)?;
+    let bare = matches!(comparison, Comparison::WorktreeAgainstBaseline);
+    Ok(Diff {
+        // Only a bare `diff`'s **left** side folds a queue in. The right side of one is the
+        // worktree, and neither side of a two-point comparison has a queue at all.
+        from: diff_side(value.get("from").ok_or_else(|| missing("from"))?, bare)?,
+        to: diff_side(value.get("to").ok_or_else(|| missing("to"))?, false)?,
+        entries: value
+            .array_field("entries")?
+            .iter()
+            .map(diff_entry)
+            .collect::<Result<Vec<_>>>()?,
+        unsupported_paths: value
+            .array_field("unsupported_paths")?
+            .iter()
+            .map(|entry| {
+                Ok(UnsupportedPath {
+                    path: non_empty_path(entry, "path")?.to_string(),
+                    refusal: entry.str_field("refusal")?.to_string(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+fn missing(key: &str) -> StikkError {
+    StikkError::environment_msg(format!("prikk's diff report has no `{key}`"))
+}
+
+/// A required, non-empty path field.
+fn non_empty_path<'a>(value: &'a Json, key: &str) -> Result<&'a str> {
+    let path = value.str_field(key)?;
+    if path.is_empty() {
+        return Err(StikkError::environment_msg(format!(
+            "prikk's diff report has an entry whose `{key}` is empty"
+        )));
+    }
+    Ok(path)
+}
+
+/// One side of a comparison. `folds_a_queue` is true only for a bare `diff`'s left side.
+fn diff_side(side: &Json, folds_a_queue: bool) -> Result<DiffSide> {
+    const WORKTREE: &str = "worktree";
+    let point = side.str_field("point")?.to_string();
+    let target = side.str_field("target_block_id")?;
+    let target = if target == WORKTREE {
+        // **The word, and only where the point says so.** `worktree` is not an object id, and a
+        // side that named a point while claiming the worktree as its target would be a report
+        // stikk does not understand — which is not the same as a comparison it can render.
+        if point != WORKTREE {
+            return Err(StikkError::environment_msg(format!(
+                "prikk's diff report has a side whose target is {WORKTREE:?} while its point is \
+                 {point:?}"
+            )));
+        }
+        DiffTarget::Worktree
+    } else {
+        if point == WORKTREE {
+            return Err(StikkError::environment_msg(format!(
+                "prikk's diff report has a {WORKTREE:?} side whose target is an id: {target:?}"
+            )));
+        }
+        DiffTarget::Block(object_id_field(side, "target_block_id")?.to_string())
+    };
+    let queued = if folds_a_queue {
+        // Absent here, and only here, means none queued (§7 trap 2).
+        QueuedOnSide::Queued(match side.get("queued_patches") {
+            None => 0,
+            Some(_) => side.u64_field("queued_patches")?,
+        })
+    } else {
+        QueuedOnSide::NotApplicable
+    };
+    Ok(DiffSide {
+        point,
+        target,
+        queued,
+    })
+}
+
+/// One differing path, with its side objects checked against its status.
+fn diff_entry(entry: &Json) -> Result<DiffEntry> {
+    let path = non_empty_path(entry, "path")?.to_string();
+    let status = entry.str_field("status")?.to_string();
+    let from_path = match entry.get("from_path") {
+        None => None,
+        Some(_) => Some(non_empty_path(entry, "from_path")?.to_string()),
+    };
+    let from = entry.get("from").map(diff_file).transpose()?;
+    let to = entry.get("to").map(diff_file).transpose()?;
+
+    // **Per status, never as a general rule** (RFC 038 decision 2). A status stikk has not
+    // measured is skipped here rather than guessed at: stikk does not know which sides it should
+    // have, and refusing the whole report over a field it cannot predict would lose every other
+    // entry prikk listed.
+    let wrong = |what: &str| -> Result<()> {
+        Err(StikkError::environment_msg(format!(
+            "prikk's diff report has an entry for {path:?} with status {status:?} that {what}"
+        )))
+    };
+    match status.as_str() {
+        "added" if from.is_some() => wrong("carries a `from` side")?,
+        "added" if to.is_none() => wrong("carries no `to` side")?,
+        "deleted" if to.is_some() => wrong("carries a `to` side")?,
+        "deleted" if from.is_none() => wrong("carries no `from` side")?,
+        "renamed" if from_path.is_none() => wrong("carries no `from_path`")?,
+        "modified" | "mode" | "binary" | "renamed" if from.is_none() || to.is_none() => {
+            wrong("is missing a side")?;
+        }
+        _ => {}
+    }
+
+    Ok(DiffEntry {
+        path,
+        status,
+        from_path,
+        from,
+        to,
+        minimal: entry.bool_field("minimal")?,
+        hunks: entry
+            .array_field("hunks")?
+            .iter()
+            .map(|hunk| match hunk {
+                Json::String(text) => Ok(text.clone()),
+                other => Err(StikkError::environment_msg(format!(
+                    "prikk's diff report has a hunk that is not a string: {}",
+                    other.render()
+                ))),
+            })
+            .collect::<Result<Vec<_>>>()?,
+        raw: entry.render(),
+    })
+}
+
+/// One side's file metadata.
+fn diff_file(side: &Json) -> Result<DiffFile> {
+    let mode = side.u64_field("mode")?;
+    Ok(DiffFile {
+        kind: side.str_field("kind")?.to_string(),
+        encoding: side.str_field("encoding")?.to_string(),
+        mode: u32::try_from(mode).map_err(|_| {
+            StikkError::environment_msg(format!(
+                "prikk's diff report has a file mode stikk cannot hold: {mode}"
+            ))
+        })?,
+        size: side.u64_field("size")?,
+        // **On a binary side only**, measured — so it is read where present and never required.
+        content_id: match side.get("content_id") {
+            None => None,
+            Some(_) => Some(object_id_field(side, "content_id")?.to_string()),
+        },
     })
 }
 

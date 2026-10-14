@@ -454,6 +454,25 @@ impl Prikk for CliBackend {
         parse::state_files(&out).map(StateReport::Listed)
     }
 
+    fn diff(&self, repo: &Path, comparison: &crate::Comparison) -> Result<crate::DiffReport> {
+        // RFC 038 decision 1. The gate is here, beside the command it chooses, as every other
+        // banded read in this file puts it.
+        if Prikk::handshake(self)?.version.minor < crate::DIFF_FROM_MINOR {
+            return Ok(crate::DiffReport::Unreported);
+        }
+        // **The bare form is the bare command.** `diff` with no `--from` and no `--to` is the one
+        // way to ask for "the worktree against what `commit` would author against" — the sealed tip
+        // plus the queue, a state no point names, so there is nothing to spell instead.
+        let args: Vec<&str> = match comparison {
+            crate::Comparison::WorktreeAgainstBaseline => vec!["diff", "--format", "json"],
+            crate::Comparison::Points { from, to } => {
+                vec!["diff", "--from", from, "--to", to, "--format", "json"]
+            }
+        };
+        let out = self.run(Some(repo), RequestCategory::ReadState, args)?;
+        parse_json::diff(&out, comparison).map(crate::DiffReport::Listed)
+    }
+
     fn refs(&self, repo: &Path) -> Result<crate::BranchList> {
         if self.reads_json()? {
             let out = self.run(

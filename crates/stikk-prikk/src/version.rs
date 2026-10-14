@@ -107,6 +107,18 @@ pub const JSON_REPORTS_FROM_MINOR: u32 = 39;
 /// sentence it shows below the band.
 pub const TREE_FROM_MINOR: u32 = 46;
 
+/// The first prikk minor that compares two points: prikk 0.46, where `diff [--from <a>] [--to <b>]
+/// [--format json]` arrived with the `diff-report-v1` schema (RFC 038 decision 1).
+///
+/// **The same release as [`TREE_FROM_MINOR`], and a separate constant on purpose**: they are two
+/// surfaces that happen to have shipped together, and folding them into one number would make a
+/// later divergence silent. Measured at 0.46.0 and 0.51.0, **identical in every case once ids are
+/// normalised**.
+///
+/// Below it, Compare is unavailable and stikk says so in its own voice (`C-T4d`) — **no prose
+/// `diff` is parsed, at any version**.
+pub const DIFF_FROM_MINOR: u32 = 46;
+
 /// The first prikk minor that names an **unpublished current branch**: prikk 0.47, where
 /// `branch-list-v1` gained the nullable top-level `unpublished_current_branch` field (RFC 037 F3).
 ///

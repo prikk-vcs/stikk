@@ -156,6 +156,15 @@ impl Prikk for Recording {
         self.record("block_state");
         self.inner.block_state(repo, reff, block_id, is_tip)
     }
+    fn diff(
+        &self,
+        repo: &Path,
+        comparison: &stikk_prikk::Comparison,
+    ) -> Result<stikk_prikk::DiffReport> {
+        self.record("diff");
+        self.inner.diff(repo, comparison)
+    }
+
     fn refs(&self, repo: &Path) -> Result<stikk_prikk::BranchList> {
         self.record("refs");
         self.inner.refs(repo)

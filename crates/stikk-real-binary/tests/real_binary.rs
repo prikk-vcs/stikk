@@ -5256,3 +5256,150 @@ fn rfc037_the_picker_offers_the_unpublished_current_branch_on_a_fresh_repository
         );
     }
 }
+
+/// **RFC 038 commit 1: `prikk diff` reads at the ceiling and is unreported at the floor.**
+///
+/// The seam's own leg: every status F1 measured, from a real binary, plus the bare `diff`'s
+/// worktree side and its queue. The view-model's legs are separate; this one is about the reader.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc038_diff_reads_every_measured_status_at_the_ceiling() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+        let write = |name: &str, body: &str| {
+            std::fs::write(repo.join(name), body)
+                .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+        };
+        let seal = |message: &str| {
+            fixture.set_author_env();
+            backend
+                .commit(&repo, "heads/main", message)
+                .unwrap_or_else(|e| panic!("0.{}: commit {message}: {e}", bin.minor));
+            fixture.set_maintainer_env();
+            let sealed = backend
+                .seal(&repo, "heads/main")
+                .unwrap_or_else(|e| panic!("0.{}: seal {message}: {e}", bin.minor));
+            Fixture::clear_env();
+            sealed
+        };
+
+        write("text.txt", "one\ntwo\nthree\n");
+        write("ws.txt", "keep\n");
+        write("del.txt", "gone\n");
+        let base = seal("base");
+        write("text.txt", "one\nTWO\nthree\n");
+        write("ws.txt", "keep  \n");
+        std::fs::remove_file(repo.join("del.txt"))
+            .unwrap_or_else(|e| panic!("0.{}: remove: {e}", bin.minor));
+        write("added.txt", "new\n");
+        let tip = seal("second");
+
+        let comparison = stikk_prikk::Comparison::Points {
+            from: base.block_id.clone(),
+            to: tip.block_id.clone(),
+        };
+        let report = backend
+            .diff(&repo, &comparison)
+            .unwrap_or_else(|e| panic!("0.{}: diff: {e}", bin.minor));
+
+        if bin.minor < stikk_prikk::DIFF_FROM_MINOR {
+            assert_eq!(
+                report,
+                stikk_prikk::DiffReport::Unreported,
+                "0.{}: below 0.{} stikk spawns nothing and reports nothing",
+                bin.minor,
+                stikk_prikk::DIFF_FROM_MINOR
+            );
+            println!(
+                "RFC 038: 0.{} does not compare — unreported, never an empty comparison",
+                bin.minor
+            );
+            continue;
+        }
+
+        let stikk_prikk::DiffReport::Listed(d) = report else {
+            panic!("0.{}: at the ceiling the comparison is listed", bin.minor)
+        };
+        assert_eq!(
+            d.from.target,
+            stikk_prikk::DiffTarget::Block(base.block_id.clone()),
+            "0.{}: the left side is the block stikk asked for",
+            bin.minor
+        );
+        assert_eq!(
+            d.to.target,
+            stikk_prikk::DiffTarget::Block(tip.block_id.clone()),
+            "0.{}",
+            bin.minor
+        );
+        let mut got: Vec<(&str, &str)> = d
+            .entries
+            .iter()
+            .map(|e| (e.status.as_str(), e.path.as_str()))
+            .collect();
+        got.sort_unstable();
+        assert_eq!(
+            got,
+            [
+                ("added", "added.txt"),
+                ("deleted", "del.txt"),
+                ("modified", "text.txt"),
+                ("modified", "ws.txt"),
+            ],
+            "0.{}",
+            bin.minor
+        );
+        // **The whitespace-only edit keeps its trailing spaces** all the way through the seam —
+        // the case a renderer that collapsed whitespace would show as no change at all.
+        let ws = d
+            .entries
+            .iter()
+            .find(|e| e.path == "ws.txt")
+            .unwrap_or_else(|| panic!("0.{}: no ws.txt entry", bin.minor));
+        assert_eq!(
+            ws.hunks,
+            ["@@ -1 +1 @@\n-keep\n+keep  \n"],
+            "0.{}: prikk's hunk, byte for byte",
+            bin.minor
+        );
+
+        // The bare `diff`: the worktree against the tip plus the queue.
+        write("queued.txt", "q\n");
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "queued")
+            .unwrap_or_else(|e| panic!("0.{}: queued commit: {e}", bin.minor));
+        Fixture::clear_env();
+        write("wt.txt", "wt\n");
+        let stikk_prikk::DiffReport::Listed(bare) = backend
+            .diff(&repo, &stikk_prikk::Comparison::WorktreeAgainstBaseline)
+            .unwrap_or_else(|e| panic!("0.{}: bare diff: {e}", bin.minor))
+        else {
+            panic!("0.{}: listed", bin.minor)
+        };
+        assert_eq!(
+            bare.to.target,
+            stikk_prikk::DiffTarget::Worktree,
+            "0.{}",
+            bin.minor
+        );
+        assert_eq!(
+            bare.from.queued,
+            stikk_prikk::QueuedOnSide::Queued(1),
+            "0.{}: the left side folds the queue in",
+            bin.minor
+        );
+        assert_eq!(
+            bare.to.queued,
+            stikk_prikk::QueuedOnSide::NotApplicable,
+            "0.{}",
+            bin.minor
+        );
+        println!(
+            "RFC 038: 0.{} two blocks -> {got:?}; bare diff left={:?} queued={:?} right={:?}",
+            bin.minor, bare.from.point, bare.from.queued, bare.to.target
+        );
+    }
+}

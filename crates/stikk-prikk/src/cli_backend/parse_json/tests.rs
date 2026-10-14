@@ -3034,3 +3034,402 @@ fn the_field_is_not_required_below_the_band() {
     let list = refs(&text, 46).expect("0.46 reports no such field, and that is not an error");
     assert_eq!(list.unpublished_current, UnpublishedBranch::NotReported);
 }
+
+// ---------------------------------------------------------------------------------------------
+// `diff-report-v1` (RFC 038) — prikk 0.51.0, captured 2026-10-14 by
+// `.git-exclude/reports/038-compare/capture038.sh`. **Captured, never written.**
+// ---------------------------------------------------------------------------------------------
+
+/// Two blocks, carrying **every status F1 measured**: `added`, `binary`, `deleted`, `mode`,
+/// `modified` (three of them: a CRLF change, a missing final newline, a trailing-space edit) and
+/// `renamed`.
+const DIFF_STATUSES_0_51: &str = r#"{
+  "schema_version": "diff-report-v1",
+  "from": {"point": "40603b7d9636b15537fa2468621231e91a327da6efc70cb758aac05d86da6d2b", "target_block_id": "40603b7d9636b15537fa2468621231e91a327da6efc70cb758aac05d86da6d2b"},
+  "to": {"point": "05736a4b384b2c0bd106cea0f6dfc2aeb08658477dec543e61bd846f3bf5e3db", "target_block_id": "05736a4b384b2c0bd106cea0f6dfc2aeb08658477dec543e61bd846f3bf5e3db"},
+  "entries": [
+    {
+      "path": "added.txt",
+      "status": "added",
+      "to": {"kind": "file", "encoding": "text", "mode": 33188, "size": 4},
+      "minimal": true,
+      "hunks": ["@@ -0,0 +1 @@\n+new\n"]
+    },
+    {
+      "path": "b.bin",
+      "status": "binary",
+      "from": {"kind": "file", "encoding": "binary", "mode": 33188, "size": 6, "content_id": "a04c7b5b1c1bb9c0b28bee2d5ab4dc5707c3583199301c5e3eb7a069cbb28dc2"},
+      "to": {"kind": "file", "encoding": "binary", "mode": 33188, "size": 7, "content_id": "8d71c569e89311208708dae4774995c92e9f15fd9ed2f026defa0db3ca45ba7d"},
+      "minimal": true,
+      "hunks": []
+    },
+    {
+      "path": "crlf.txt",
+      "status": "modified",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 5},
+      "to": {"kind": "file", "encoding": "text", "mode": 33188, "size": 6},
+      "minimal": true,
+      "hunks": ["@@ -1 +1 @@\n-crlf\n+crlf\r\n"]
+    },
+    {
+      "path": "del.txt",
+      "status": "deleted",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 5},
+      "minimal": true,
+      "hunks": ["@@ -1 +0,0 @@\n-gone\n"]
+    },
+    {
+      "path": "mode.sh",
+      "status": "mode",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 2},
+      "to": {"kind": "file", "encoding": "text", "mode": 33261, "size": 2},
+      "minimal": true,
+      "hunks": []
+    },
+    {
+      "path": "new.md",
+      "status": "renamed",
+      "from_path": "old.md",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 8},
+      "to": {"kind": "file", "encoding": "text", "mode": 33188, "size": 8},
+      "minimal": true,
+      "hunks": []
+    },
+    {
+      "path": "nl.txt",
+      "status": "modified",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 3},
+      "to": {"kind": "file", "encoding": "text", "mode": 33188, "size": 2},
+      "minimal": true,
+      "hunks": ["@@ -1 +1 @@\n-nl\n+nl\n\\ No newline at end of file\n"]
+    },
+    {
+      "path": "text.txt",
+      "status": "modified",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 14},
+      "to": {"kind": "file", "encoding": "text", "mode": 33188, "size": 14},
+      "minimal": true,
+      "hunks": ["@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n"]
+    },
+    {
+      "path": "ws.txt",
+      "status": "modified",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 5},
+      "to": {"kind": "file", "encoding": "text", "mode": 33188, "size": 7},
+      "minimal": true,
+      "hunks": ["@@ -1 +1 @@\n-keep\n+keep  \n"]
+    }
+  ],
+  "unsupported_paths": []
+}"#;
+
+/// Two points that are the same block: **no entries, and that is a real answer**, not an
+/// unreported one.
+const DIFF_IDENTICAL_0_51: &str = r#"{
+  "schema_version": "diff-report-v1",
+  "from": {"point": "heads/main", "target_block_id": "05736a4b384b2c0bd106cea0f6dfc2aeb08658477dec543e61bd846f3bf5e3db"},
+  "to": {"point": "05736a4b384b2c0bd106cea0f6dfc2aeb08658477dec543e61bd846f3bf5e3db", "target_block_id": "05736a4b384b2c0bd106cea0f6dfc2aeb08658477dec543e61bd846f3bf5e3db"},
+  "entries": [],
+  "unsupported_paths": []
+}"#;
+
+/// **The bare `diff`**: the worktree against the tip plus a queue of 1, with an unsupported path.
+const DIFF_WORKTREE_0_51: &str = r#"{
+  "schema_version": "diff-report-v1",
+  "from": {"point": "heads/main", "target_block_id": "05736a4b384b2c0bd106cea0f6dfc2aeb08658477dec543e61bd846f3bf5e3db", "queued_patches": 1},
+  "to": {"point": "worktree", "target_block_id": "worktree"},
+  "entries": [
+    {
+      "path": "wt.txt",
+      "status": "added",
+      "to": {"kind": "file", "encoding": "text", "mode": 33188, "size": 3},
+      "minimal": true,
+      "hunks": ["@@ -0,0 +1 @@\n+wt\n"]
+    }
+  ],
+  "unsupported_paths": [{"path": "link", "refusal": "precondition not met: link: worktree symlink authoring is out of scope"}]
+}"#;
+
+fn two_points() -> Comparison {
+    Comparison::Points {
+        from: "a".repeat(64),
+        to: "b".repeat(64),
+    }
+}
+
+/// Every status reads, with its side objects where its status says they are — and **prikk's hunks
+/// arrive whole and unaltered**, which is the one thing stikk must not touch (§7 trap 1).
+#[test]
+fn every_measured_status_reads_with_its_own_sides() {
+    let d = diff(DIFF_STATUSES_0_51, &two_points()).expect("the captured report");
+    let got: Vec<(&str, &str)> = d
+        .entries
+        .iter()
+        .map(|e| (e.status.as_str(), e.path.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("added", "added.txt"),
+            ("binary", "b.bin"),
+            ("modified", "crlf.txt"),
+            ("deleted", "del.txt"),
+            ("mode", "mode.sh"),
+            ("renamed", "new.md"),
+            ("modified", "nl.txt"),
+            ("modified", "text.txt"),
+            ("modified", "ws.txt"),
+        ]
+    );
+
+    let by_path = |path: &str| -> &crate::DiffEntry {
+        d.entries
+            .iter()
+            .find(|e| e.path == path)
+            .unwrap_or_else(|| panic!("no entry for {path}"))
+    };
+
+    // `added` has a right side and no left; `deleted` the reverse.
+    assert!(by_path("added.txt").from.is_none() && by_path("added.txt").to.is_some());
+    assert!(by_path("del.txt").to.is_none() && by_path("del.txt").from.is_some());
+    // `renamed` names the old path, and has both sides.
+    assert_eq!(by_path("new.md").from_path.as_deref(), Some("old.md"));
+    // `mode` carries both modes and no hunks.
+    let mode = by_path("mode.sh");
+    assert_eq!(mode.from.as_ref().map(|f| f.mode), Some(0o100_644));
+    assert_eq!(mode.to.as_ref().map(|f| f.mode), Some(0o100_755));
+    assert!(mode.hunks.is_empty());
+    // `binary` carries both ids and sizes, and no hunks — never bytes.
+    let bin = by_path("b.bin");
+    assert_eq!(
+        bin.from.as_ref().map(|f| f.encoding.as_str()),
+        Some("binary")
+    );
+    assert!(bin.from.as_ref().is_some_and(|f| f.content_id.is_some()));
+    assert!(bin.to.as_ref().is_some_and(|f| f.content_id.is_some()));
+    assert!(bin.hunks.is_empty());
+    // A text side carries no `content_id` at all.
+    assert!(
+        by_path("text.txt")
+            .from
+            .as_ref()
+            .is_some_and(|f| f.content_id.is_none())
+    );
+}
+
+/// **prikk's hunks arrive byte for byte**, including the three cases a whitespace-blind renderer
+/// would lose: a CRLF line, a trailing-space edit, and a missing final newline with prikk's own
+/// note after it.
+#[test]
+fn prikks_hunks_arrive_exactly_as_prikk_wrote_them() {
+    let d = diff(DIFF_STATUSES_0_51, &two_points()).expect("parses");
+    let hunks = |path: &str| -> Vec<String> {
+        d.entries
+            .iter()
+            .find(|e| e.path == path)
+            .map(|e| e.hunks.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        hunks("text.txt"),
+        ["@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n"]
+    );
+    assert_eq!(hunks("crlf.txt"), ["@@ -1 +1 @@\n-crlf\n+crlf\r\n"]);
+    assert_eq!(hunks("ws.txt"), ["@@ -1 +1 @@\n-keep\n+keep  \n"]);
+    assert_eq!(
+        hunks("nl.txt"),
+        ["@@ -1 +1 @@\n-nl\n+nl\n\\ No newline at end of file\n"]
+    );
+}
+
+/// **Two identical points are an empty comparison, and an empty comparison is an answer.** It must
+/// never be confused with the band below 0.46, where stikk asked nothing.
+#[test]
+fn identical_points_read_as_an_empty_comparison() {
+    let d = diff(DIFF_IDENTICAL_0_51, &two_points()).expect("parses");
+    assert!(d.entries.is_empty());
+    assert!(d.unsupported_paths.is_empty());
+    assert_eq!(d.from.queued, QueuedOnSide::NotApplicable);
+}
+
+/// The worktree form: **the word `worktree` as a target, a queue on the left side, and an
+/// unsupported path with `commit`'s own refusal.**
+#[test]
+fn the_bare_diffs_sides_carry_the_worktree_and_the_queue() {
+    let d = diff(DIFF_WORKTREE_0_51, &Comparison::WorktreeAgainstBaseline).expect("parses");
+    assert_eq!(d.to.point, "worktree");
+    assert_eq!(d.to.target, DiffTarget::Worktree);
+    assert!(matches!(d.from.target, DiffTarget::Block(_)));
+    assert_eq!(d.from.queued, QueuedOnSide::Queued(1));
+    assert_eq!(
+        d.to.queued,
+        QueuedOnSide::NotApplicable,
+        "only the left side of a bare diff folds a queue"
+    );
+    assert_eq!(d.unsupported_paths.len(), 1);
+    assert_eq!(d.unsupported_paths[0].path, "link");
+    assert!(
+        d.unsupported_paths[0]
+            .refusal
+            .contains("worktree symlink authoring is out of scope"),
+        "prikk's own words (`ER-02`)"
+    );
+}
+
+/// **`queued_patches` absent means none queued on a bare `diff`'s left side, and nothing at all
+/// anywhere else** (§7 trap 2). Both halves, because collapsing them would make every two-point
+/// comparison read as "0 queued" — a claim prikk never made.
+#[test]
+fn an_absent_queue_count_means_none_only_on_a_bare_diffs_left_side() {
+    let without = variant(DIFF_WORKTREE_0_51, r#", "queued_patches": 1"#, "");
+    let d = diff(&without, &Comparison::WorktreeAgainstBaseline).expect("parses");
+    assert_eq!(
+        d.from.queued,
+        QueuedOnSide::Queued(0),
+        "absent here is none queued"
+    );
+
+    let two = diff(DIFF_STATUSES_0_51, &two_points()).expect("parses");
+    assert_eq!(two.from.queued, QueuedOnSide::NotApplicable);
+    assert_eq!(two.to.queued, QueuedOnSide::NotApplicable);
+}
+
+/// **A status stikk has not measured is kept with its hunks**, not refused. prikk's own schema
+/// already names one it says it does not produce today.
+#[test]
+fn an_unmeasured_status_is_kept_as_prikks_word() {
+    let text = variant(
+        DIFF_STATUSES_0_51,
+        r#""status": "modified""#,
+        r#""status": "symlink""#,
+    );
+    let d = diff(&text, &two_points()).expect("an unknown status does not cost the comparison");
+    assert!(
+        d.entries.iter().any(|e| e.status == "symlink"),
+        "prikk's word survives"
+    );
+    assert_eq!(d.entries.len(), 9, "and every other entry is still there");
+}
+
+/// Everything the reader **does** require, one broken report each.
+#[test]
+fn a_diff_report_that_breaks_the_measured_shape_is_refused() {
+    let cases: Vec<(&str, String, Comparison)> = vec![
+        (
+            "another schema entirely",
+            variant(DIFF_STATUSES_0_51, "diff-report-v1", "diff-report-v2"),
+            two_points(),
+        ),
+        (
+            "a target that is neither an id nor `worktree`",
+            variant(
+                DIFF_STATUSES_0_51,
+                r#""target_block_id": "05"#,
+                r#""target_block_id": "zz"#,
+            ),
+            two_points(),
+        ),
+        (
+            // §7 trap 3: the word is only a target where the point says so.
+            "a `worktree` target on a side whose point is a ref",
+            variant(
+                DIFF_WORKTREE_0_51,
+                r#""point": "worktree", "target_block_id": "worktree""#,
+                r#""point": "heads/other", "target_block_id": "worktree""#,
+            ),
+            Comparison::WorktreeAgainstBaseline,
+        ),
+        (
+            "a `worktree` point whose target is an id",
+            variant(
+                DIFF_WORKTREE_0_51,
+                r#""point": "worktree", "target_block_id": "worktree""#,
+                &format!(
+                    r#""point": "worktree", "target_block_id": "{}""#,
+                    "c".repeat(64)
+                ),
+            ),
+            Comparison::WorktreeAgainstBaseline,
+        ),
+        (
+            "an `added` entry carrying a `from` side",
+            variant(
+                DIFF_STATUSES_0_51,
+                r#""path": "added.txt",
+      "status": "added","#,
+                r#""path": "added.txt",
+      "status": "added",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 4},"#,
+            ),
+            two_points(),
+        ),
+        (
+            "a `deleted` entry carrying a `to` side",
+            variant(
+                DIFF_STATUSES_0_51,
+                r#""path": "del.txt",
+      "status": "deleted","#,
+                r#""path": "del.txt",
+      "status": "deleted",
+      "to": {"kind": "file", "encoding": "text", "mode": 33188, "size": 5},"#,
+            ),
+            two_points(),
+        ),
+        (
+            "a `renamed` entry with no `from_path`",
+            variant(DIFF_STATUSES_0_51, r#""from_path": "old.md","#, ""),
+            two_points(),
+        ),
+        (
+            "a `modified` entry missing a side",
+            variant(
+                DIFF_STATUSES_0_51,
+                r#""path": "ws.txt",
+      "status": "modified",
+      "from": {"kind": "file", "encoding": "text", "mode": 33188, "size": 5},"#,
+                r#""path": "ws.txt",
+      "status": "modified","#,
+            ),
+            two_points(),
+        ),
+        (
+            "an entry with an empty path",
+            variant(DIFF_STATUSES_0_51, r#""path": "ws.txt""#, r#""path": """#),
+            two_points(),
+        ),
+        (
+            "a `minimal` that is not a boolean",
+            variant(
+                DIFF_STATUSES_0_51,
+                r#""minimal": true"#,
+                r#""minimal": "true""#,
+            ),
+            two_points(),
+        ),
+        (
+            "a hunk that is not a string",
+            variant(
+                DIFF_STATUSES_0_51,
+                r#""hunks": ["@@ -0,0 +1 @@\n+new\n"]"#,
+                r#""hunks": [42]"#,
+            ),
+            two_points(),
+        ),
+        (
+            "no `unsupported_paths` at all",
+            variant(
+                DIFF_STATUSES_0_51,
+                r#""unsupported_paths""#,
+                r#""unsupported""#,
+            ),
+            two_points(),
+        ),
+    ];
+    for (what, text, comparison) in cases {
+        let err = diff(&text, &comparison).expect_err(what);
+        assert!(
+            matches!(err, StikkError::Environment { .. }),
+            "{what}: {err:?}"
+        );
+    }
+}

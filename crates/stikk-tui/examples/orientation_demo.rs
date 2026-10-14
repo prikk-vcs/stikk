@@ -68,6 +68,14 @@ impl Prikk for SlowOrientation {
         self.0.tags(repo)
     }
 
+    fn diff(
+        &self,
+        repo: &Path,
+        comparison: &stikk_prikk::Comparison,
+    ) -> Result<stikk_prikk::DiffReport> {
+        self.0.diff(repo, comparison)
+    }
+
     fn refs(&self, repo: &Path) -> Result<stikk_prikk::BranchList> {
         self.0.refs(repo)
     }

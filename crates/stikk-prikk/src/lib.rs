@@ -25,8 +25,8 @@ pub mod version;
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
 pub use version::{
-    JSON_REPORTS_FROM_MINOR, TREE_FROM_MINOR, UNPUBLISHED_BRANCH_FROM_MINOR, Version,
-    validated_ceiling_display,
+    DIFF_FROM_MINOR, JSON_REPORTS_FROM_MINOR, TREE_FROM_MINOR, UNPUBLISHED_BRANCH_FROM_MINOR,
+    Version, validated_ceiling_display,
 };
 
 use std::path::Path;
@@ -499,6 +499,146 @@ impl StateFile {
             mode: Some(mode),
         }
     }
+}
+
+/// Which two things [`Prikk::diff`] compares (RFC 038 decision 1).
+///
+/// **Three comparisons are expressible and no others**, because those are the three RFC 038 decision
+/// 3 offers and the fourth shape prikk accepts — one named point against the worktree — belongs to
+/// no entry point stikk has. A pair of `Option<&str>` would have let a caller ask for it by
+/// accident, and the bare form is not "both sides omitted" in any sense a caller should have to
+/// know.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Comparison {
+    /// `diff --from <a> --to <b>`: two points, each a **block id** or a **ref name**.
+    Points {
+        /// The left side, shown first and older by the caller's ordering.
+        from: String,
+        /// The right side.
+        to: String,
+    },
+    /// **The bare `diff`**, with no `--from` and no `--to`: the worktree against what `commit`
+    /// would author against, which is the sealed tip **plus any queued patches** — a state no block
+    /// id names, and the reason this is a variant rather than a point someone could spell.
+    WorktreeAgainstBaseline,
+}
+
+/// What [`Prikk::diff`] can say (RFC 038 decision 1).
+///
+/// **Two variants, because below prikk 0.46 a comparison is not reported, not empty** (`C-T2c′`) —
+/// the shape [`QueueReport`], [`ShowReport`] and [`StateReport`] all take, for the same reason. An
+/// empty [`Diff`] means prikk compared the two points and found nothing; [`Self::Unreported`] means
+/// stikk never asked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiffReport {
+    /// prikk ≥ [`crate::DIFF_FROM_MINOR`]: the comparison, as prikk computed it.
+    Listed(Diff),
+    /// Below the band. stikk spawns nothing and says so in its own voice (`C-T4d`).
+    Unreported,
+}
+
+/// One comparison, as `diff-report-v1` reports it. **stikk computes no part of this** (RFC 038 §7
+/// trap 1): no renumbering, no re-hunking, no rename inference.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Diff {
+    /// The left side.
+    pub from: DiffSide,
+    /// The right side.
+    pub to: DiffSide,
+    /// Every differing path, in prikk's order.
+    pub entries: Vec<DiffEntry>,
+    /// Paths `commit` would refuse, with prikk's own refusal (`ER-02`). **The worktree form only**;
+    /// always empty between two points, measured.
+    pub unsupported_paths: Vec<UnsupportedPath>,
+}
+
+/// One side of a comparison.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffSide {
+    /// `point`, **as the caller gave it** — a block id, a ref name, or the word `worktree`.
+    pub point: String,
+    /// What that point resolved to.
+    pub target: DiffTarget,
+    /// The queue folded into this side.
+    pub queued: QueuedOnSide,
+}
+
+/// A side's `target_block_id`: an id, **or the word `worktree`, which is not one** (RFC 038 §7
+/// trap 3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiffTarget {
+    /// A 64-hex block id, validated at the parse boundary.
+    Block(String),
+    /// The literal `worktree`, accepted **only** where `point` is also `worktree`.
+    Worktree,
+}
+
+/// What a side says about queued patches (RFC 038 §7 trap 2).
+///
+/// **The absence of `queued_patches` means "none queued" on exactly one side of one comparison** —
+/// a bare `diff`'s left side, where prikk omits the key when the queue is empty. Anywhere else the
+/// key never appears and its absence says nothing at all, so stikk says nothing. Collapsing the two
+/// into `Option<u64>` would have made every other side read as "0 queued", which is a claim prikk
+/// never made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueuedOnSide {
+    /// Not a bare `diff`'s left side: prikk reports no queue here and stikk shows none.
+    NotApplicable,
+    /// A bare `diff`'s left side: how many patches are folded in, `0` where prikk omitted the key.
+    Queued(u64),
+}
+
+/// One differing path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffEntry {
+    /// The path on the right side (the new path, for a rename). Repository text (`C-T2a`).
+    pub path: String,
+    /// prikk's status word, **verbatim** (`ER-02`): `added`, `deleted`, `modified`, `renamed`,
+    /// `mode`, `binary` at every measured version; prikk's schema also names `symlink`, which it
+    /// says is *"not produced today"*. **A word stikk has not measured is kept and shown with its
+    /// hunks**, never refused and never interpreted (RFC 038 decision 2).
+    pub status: String,
+    /// The left-side path, present exactly on a `renamed` entry.
+    pub from_path: Option<String>,
+    /// The left side's file metadata. **Absent on an `added` entry** — absence is read per status,
+    /// never as a general rule.
+    pub from: Option<DiffFile>,
+    /// The right side's file metadata. **Absent on a `deleted` entry.**
+    pub to: Option<DiffFile>,
+    /// prikk's own word for whether the line diff reached the shortest edit script. `false` means
+    /// the hunks are larger than they need to be and **still correct** — prikk's guide: *"You are
+    /// always told."*
+    pub minimal: bool,
+    /// prikk's unified hunks, **each one whole and exactly as prikk wrote it**. stikk splits them
+    /// into rows for display and changes no byte.
+    pub hunks: Vec<String>,
+    /// prikk's own fields for this entry, as JSON, for the raw view — the same thing
+    /// [`PatchOperation::raw`] carries, built the same way and for the same reason.
+    pub raw: String,
+}
+
+/// One side's file metadata, as `diff-report-v1` gives it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffFile {
+    /// `kind`, verbatim (`file` at every measured state).
+    pub kind: String,
+    /// `encoding`: `text` or `binary`, verbatim.
+    pub encoding: String,
+    /// The full file mode as prikk's integer (`33188`), the spelling `tree` and `create-file` use.
+    pub mode: u32,
+    /// The content's size in bytes.
+    pub size: u64,
+    /// `content_id`, **on a binary side only**. stikk shows it and never the bytes (`FR-030`).
+    pub content_id: Option<String>,
+}
+
+/// A worktree path `commit` would refuse, with prikk's reason verbatim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedPath {
+    /// The path, as prikk reports it.
+    pub path: String,
+    /// `commit`'s own refusal — never stikk's paraphrase (`ER-02`).
+    pub refusal: String,
 }
 
 /// What [`Prikk::block_state`] can say about a block's files (RFC 037 decision 2).
@@ -1019,6 +1159,26 @@ pub trait Prikk: Send + Sync {
     /// environment error (UD-02); a genuine failure — an id in no object store and no WAL — classifies
     /// as for [`Prikk::orientation`].
     fn show(&self, repo: &Path, id: &str) -> Result<ShowReport>;
+
+    /// Compare two points, or the worktree with what `commit` would author against (design
+    /// `FR-033`; category `read-state`; RFC 038 decision 1) — `diff [--from <a>] [--to <b>]
+    /// --format json`.
+    ///
+    /// **prikk computes the difference and its hunks; stikk shows them** and computes no part of
+    /// it (§7 trap 1). `prikk diff` is what retired RFC 021 F3's "arbitrary-point comparison is
+    /// refused, not deferred": that finding predates the command.
+    ///
+    /// **Version-banded behind this one method**, in [`Prikk::queue`]'s pattern. At prikk ≥
+    /// [`crate::DIFF_FROM_MINOR`] it reads. **Below it nothing is spawned** and the answer is
+    /// [`DiffReport::Unreported`] — never an empty comparison, which would say the two points are
+    /// the same (`C-T2c′`). **No prose `diff` is parsed, at any version.**
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: a report that breaks `diff-report-v1`'s measured shape is
+    /// stikk's environment error (UD-02). A refusal — an absent ref, or a live `prikk mv` that
+    /// `commit` would refuse — classifies as for [`Prikk::orientation`] and carries prikk's words
+    /// verbatim (decision 6), never an empty comparison.
+    fn diff(&self, repo: &Path, comparison: &Comparison) -> Result<DiffReport>;
 
     /// Compose a cheap "has anything changed?" signal from the ref pointers (branches **and** tags,
     /// merged and deduplicated by name — never `Prikk::refs` alone, since its tag coverage is

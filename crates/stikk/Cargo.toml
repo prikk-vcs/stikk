@@ -11,6 +11,22 @@ authors.workspace       = true
 repository.workspace    = true
 homepage.workspace      = true
 
+# `cargo binstall stikk` downloads the release archive instead of compiling it (RFC 039 decision 5).
+#
+# The pattern matches what `release.yml` publishes: the tag is the bare version with **no `v`**, the
+# archive is `stikk-<version>-<target>.<ext>`, and the binary sits one directory down, named after
+# the archive. `pkg-fmt` is `tgz` for the five Unix targets and `zip` for Windows, which the
+# override below sets.
+[package.metadata.binstall]
+# `{ archive-suffix }` already carries its leading dot, so there is none before it here --
+# writing one produced `…-gnu..tar.gz` and every download 404ed (measured).
+pkg-url = "{ repo }/releases/download/{ version }/{ name }-{ version }-{ target }{ archive-suffix }"
+pkg-fmt = "tgz"
+bin-dir = "{ name }-{ version }-{ target }/{ bin }{ binary-ext }"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
 [dependencies]
 stikk-model = { workspace = true }
 stikk-prikk = { workspace = true }

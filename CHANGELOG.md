@@ -4,7 +4,47 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Added
+
+- **One-command installation on Linux, macOS and Windows.** A new reader no longer has to pick an
+  archive, find its checksum and work out where to put the binary:
+
+  ```sh
+  curl -fsSL https://github.com/prikk-vcs/stikk/releases/latest/download/install.sh | sh
+  ```
+
+  ```powershell
+  irm https://github.com/prikk-vcs/stikk/releases/latest/download/install.ps1 | iex
+  ```
+
+  Each script downloads the release it was published with, **checks it against the checksum
+  published beside it, and installs nothing if that check fails**; installs into a directory you own
+  (`~/.local/bin`, or `%LOCALAPPDATA%\Programs\stikk`); adds that directory to your own `PATH`
+  once, never the machine-wide one; and ends by telling you what to type next. Re-running is safe,
+  and `--version`, `--prefix` and `--base-url` (for a mirror) are there if you want them. **Each is
+  one self-contained file**, so it can be read before it is run, and each says what a checksum does
+  and does not prove.
+
+  **When prikk is missing, the installer offers to install it** — through **prikk's own installer**,
+  whose download prikk verifies itself, pinned to the prikk version this stikk was tested against,
+  so a newer untested prikk cannot arrive by surprise. It asks first, and `--with-prikk` /
+  `--no-prikk` answer in advance so nothing ever blocks; with no terminal to ask on, the answer is
+  no and it says so. **Where prikk has no installer — Windows, and Intel Macs — stikk does not
+  improvise one**: it says so and prints the exact alternative. stikk never re-hosts or re-packages
+  prikk.
+
+  **Matching uninstallers** (`uninstall.sh`, `uninstall.ps1`) remove the binary and the `PATH` entry
+  the installer added, and nothing else. **They never remove prikk**, which has its own uninstaller.
+
+- **`cargo binstall stikk`** downloads the same prebuilt binary instead of compiling it.
+
 ### Changed
+
+- **Every release's checksum files now share one format.** The five Unix archives published
+  `<lowercase hash>  <file name>`; the Windows one published an uppercase hash alone, with no file
+  name and a CRLF, so `sha256sum -c` could not be used on Windows and anything reading them needed
+  two parsers. All six now use the Unix shape. The documented Windows check reads the first field,
+  which works on this format and on the older one, so the 0.10.0 instructions keep working.
 
 - **The README and the guide lead with installing stikk, not building it.** The first thing a new
   reader saw was `cargo build --release`, which needs a Rust toolchain and a clone of this

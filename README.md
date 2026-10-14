@@ -36,7 +36,39 @@ program, which shows you what is in a prikk repository). Neither needs a compile
 ready-to-run files. A *terminal* is the window where you type commands; everything below is typed
 there.
 
-### 1. Install prikk
+**One command.** On **Linux and macOS**:
+
+```sh
+curl -fsSL https://github.com/prikk-vcs/stikk/releases/latest/download/install.sh | sh
+```
+
+On **Windows**, in PowerShell:
+
+```powershell
+irm https://github.com/prikk-vcs/stikk/releases/latest/download/install.ps1 | iex
+```
+
+It downloads stikk, checks it against the checksum published beside it, installs nothing if that
+check fails, and puts stikk somewhere your terminal can find it. **If prikk is missing it offers to
+install it too**, using prikk's own installer and the prikk version this stikk was tested against —
+answer `n` to skip, or pass `--with-prikk` / `--no-prikk` to decide in advance. Run it again any
+time to upgrade. On Windows, prikk has no installer of its own, so the script tells you where to
+get it rather than guessing.
+
+To remove stikk later:
+
+```sh
+curl -fsSL https://github.com/prikk-vcs/stikk/releases/latest/download/uninstall.sh | sh
+```
+
+It removes stikk and the `PATH` entry it added, and nothing else. It never removes prikk.
+
+The script is one file and is meant to be read before it is run — open the URL in a browser first
+if you would rather see it. The rest of this section is the same thing by hand.
+
+### Or, by hand
+
+#### 1. Install prikk
 
 prikk publishes its own installer. One line:
 
@@ -62,7 +94,7 @@ curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.s
 **prikk's installer covers Linux and Apple-Silicon Macs only.** On Windows, or on an Intel Mac, use
 prikk's own [install guide](https://github.com/prikk-vcs/prikk/blob/main/docs/src/guide/install.md).
 
-### 2. Install stikk
+#### 2. Install stikk
 
 Find the row for your computer — the commands below download that file for you, from the
 [latest release](https://github.com/prikk-vcs/stikk/releases/latest):
@@ -131,8 +163,7 @@ marked. If you already used a browser and macOS refuses to open stikk, clear the
 xattr -d com.apple.quarantine ~/.local/bin/stikk
 ```
 
-**Windows**, in PowerShell. Windows publishes its checksum as the fingerprint alone, so you compare
-it yourself rather than running a check command:
+**Windows**, in PowerShell. There is no `sha256sum` here, so you compare the fingerprint yourself:
 
 ```powershell
 Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/download/0.10.0/stikk-0.10.0-x86_64-pc-windows-msvc.zip -OutFile stikk.zip
@@ -143,7 +174,7 @@ Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/download/0.10
 ```
 
 ```powershell
-if ((Get-FileHash stikk.zip -Algorithm SHA256).Hash -eq (Get-Content stikk.zip.sha256).Trim()) { "OK" } else { "FAILED - do not use this file" }
+if ((Get-FileHash stikk.zip -Algorithm SHA256).Hash -eq (((Get-Content stikk.zip.sha256 -Raw).Trim() -split '\s+')[0])) { "OK" } else { "FAILED - do not use this file" }
 ```
 
 ```powershell
@@ -164,7 +195,7 @@ stikk --version
 
 It prints `stikk 0.10.0`.
 
-### Optional: check who built it
+#### Optional: check who built it
 
 The checksum proves the file was not altered on the way to you. It does **not** prove who built it.
 If you want that too, and you have [GitHub CLI](https://cli.github.com/):
@@ -183,7 +214,14 @@ cargo install stikk
 ```
 
 This compiles stikk from source, so it takes a few minutes and needs a Rust toolchain
-(2024 edition, MSRV 1.88). The downloads above need neither.
+(2024 edition, MSRV 1.88). To download the same prebuilt binary the installer uses, without
+compiling:
+
+```sh
+cargo binstall stikk
+```
+
+The one-line installers above need neither.
 
 ## Quick start
 

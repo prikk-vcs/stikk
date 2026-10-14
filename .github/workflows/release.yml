@@ -235,7 +235,13 @@ jobs:
           Copy-Item "target/$env:TARGET/release/stikk.exe" $dist/
           Copy-Item README.md, LICENSE, CHANGELOG.md $dist/
           Compress-Archive -Path $dist -DestinationPath "$dist.zip"
-          (Get-FileHash "$dist.zip" -Algorithm SHA256).Hash | Out-File -Encoding ascii "$dist.zip.sha256"
+          # The same shape the five Unix targets publish: "<lowercase hash><two spaces><file name>",
+          # LF-terminated. It used to be the bare uppercase hash with a CRLF and no file name, which
+          # meant `sha256sum -c` could not be used on Windows and every consumer needed two parsers
+          # (RFC 039 Handoff A's review found it).
+          $hash = (Get-FileHash "$dist.zip" -Algorithm SHA256).Hash.ToLower()
+          $line = "$hash  $dist.zip`n"
+          [System.IO.File]::WriteAllText("$dist.zip.sha256", $line, (New-Object System.Text.UTF8Encoding $false))
           "ASSET=$dist.zip"          | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
           "ASSET_SHA=$dist.zip.sha256" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
 
@@ -255,3 +261,61 @@ jobs:
           files: |
             ${{ env.ASSET }}
             ${{ env.ASSET_SHA }}
+
+  # The one-command installers (RFC 039 decision 2 and 3). They are versioned with the release they
+  # install: `scripts/*` in the repository are templates with two placeholders, filled here, so
+  # `…/releases/latest/download/install.sh` always means "the latest stikk, with the prikk it was
+  # validated against".
+  installers:
+    name: Installers
+    needs: [guard, binaries]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.guard.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust (derived MSRV)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Read the validated prikk ceiling from stikk-prikk::version, never hardcode it here
+        id: prikk
+        # The same derivation the real-binary suite uses (RFC 019 §6): the number lives in
+        # `version.rs` and nowhere else, so raising the ceiling re-pins the installers automatically.
+        run: |
+          set -euo pipefail
+          read -r _floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
+          echo "version=0.${ceiling}.0" >> "$GITHUB_OUTPUT"
+      - name: Fill the placeholders and checksum each script
+        env:
+          PRIKK_VERSION: ${{ steps.prikk.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for f in install.sh uninstall.sh install.ps1 uninstall.ps1; do
+            sed -e "s/@STIKK_VERSION@/${VERSION}/g" \
+                -e "s/@PRIKK_VERSION@/${PRIKK_VERSION}/g" \
+                "scripts/$f" > "dist/$f"
+            # No placeholder may survive into a published script.
+            if grep -q '@STIKK_VERSION@\|@PRIKK_VERSION@' "dist/$f"; then
+              echo "::error::$f still holds a placeholder after substitution"
+              exit 1
+            fi
+            # The same checksum shape every other asset uses.
+            ( cd dist && sha256sum "$f" > "$f.sha256" )
+          done
+          echo "== filled for stikk ${VERSION}, prikk ${PRIKK_VERSION}"
+          grep -h 'STIKK_VERSION=\|PRIKK_PINNED_VERSION=\|StikkVersion \|PrikkPinnedVersion ' dist/* || true
+      - name: Upload the installers to the release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist/install.sh
+            dist/install.sh.sha256
+            dist/uninstall.sh
+            dist/uninstall.sh.sha256
+            dist/install.ps1
+            dist/install.ps1.sha256
+            dist/uninstall.ps1
+            dist/uninstall.ps1.sha256

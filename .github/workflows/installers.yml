@@ -1,0 +1,203 @@
+name: Installers
+
+# RFC 039 decision 3: the installer scripts are tested by installing a real release with the
+# scripts from the commit under test, on all three platforms. Until the first release that carries
+# them, that is the **latest published** release; from then on it is the one they ship with.
+#
+# Not on every push: these legs download from GitHub releases, and an upstream hiccup must not
+# redden a PR for a reason stikk did not cause. They run when the scripts themselves change.
+on:
+  push:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/installers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  derive:
+    name: derive the versions under test
+    runs-on: ubuntu-latest
+    outputs:
+      stikk: ${{ steps.v.outputs.stikk }}
+      prikk: ${{ steps.v.outputs.prikk }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: The latest published stikk, and the prikk version.rs validates
+        id: v
+        # Both derived, never written here: the prikk pin comes from `version.rs` the way the
+        # real-binary suite's matrix does, so raising the ceiling re-pins the installers too.
+        run: |
+          set -euo pipefail
+          stikk="$(gh release view --repo ${{ github.repository }} --json tagName --jq .tagName)"
+          read -r _floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
+          echo "stikk=${stikk}"      >> "$GITHUB_OUTPUT"
+          echo "prikk=0.${ceiling}.0" >> "$GITHUB_OUTPUT"
+          echo "testing the installers against stikk ${stikk}, prikk pinned to 0.${ceiling}.0"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  unix:
+    name: install.sh (${{ matrix.os }})
+    needs: derive
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      STIKK_VER: ${{ needs.derive.outputs.stikk }}
+      PRIKK_VER: ${{ needs.derive.outputs.prikk }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fill the placeholders the way release.yml does
+        run: |
+          set -euo pipefail
+          mkdir -p filled
+          for f in install.sh uninstall.sh; do
+            sed -e "s/@STIKK_VERSION@/${STIKK_VER}/g" -e "s/@PRIKK_VERSION@/${PRIKK_VER}/g" \
+              "scripts/$f" > "filled/$f"
+            chmod +x "filled/$f"
+          done
+          ! grep -q '@STIKK_VERSION@\|@PRIKK_VERSION@' filled/* || { echo "::error::placeholder survived"; exit 1; }
+
+      - name: The unfilled template refuses to run
+        run: |
+          set -euo pipefail
+          if sh scripts/install.sh --prefix "$RUNNER_TEMP/never" --no-prikk; then
+            echo "::error::the template installed something; it must refuse"
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/never/stikk"
+
+      - name: Install, and check the version
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          printf '# test shell config\n' > "$HOME/.zshrc"
+          cp "$HOME/.zshrc" "$RUNNER_TEMP/zshrc.before"
+          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" --no-prikk
+          "$RUNNER_TEMP/bin/stikk" --version
+          "$RUNNER_TEMP/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+
+      - name: Re-running is safe
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" --no-prikk
+          "$RUNNER_TEMP/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+
+      - name: The uninstaller leaves things as it found them
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          sh filled/uninstall.sh --prefix "$RUNNER_TEMP/bin"
+          test ! -e "$RUNNER_TEMP/bin/stikk"
+          # Byte-identical, including the blank line the installer writes before its PATH block.
+          diff "$HOME/.zshrc" "$RUNNER_TEMP/zshrc.before"
+
+      - name: A wrong checksum installs nothing
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          mirror="$RUNNER_TEMP/mirror"; mkdir -p "$mirror"
+          case "$RUNNER_OS" in
+            Linux) target=x86_64-unknown-linux-gnu ;;
+            macOS) target=aarch64-apple-darwin ;;
+          esac
+          archive="stikk-${STIKK_VER}-${target}.tar.gz"
+          base="https://github.com/${{ github.repository }}/releases/download/${STIKK_VER}"
+          curl -fsSL -o "$mirror/$archive"        "$base/$archive"
+          curl -fsSL -o "$mirror/$archive.sha256" "$base/$archive.sha256"
+          # The real checksum, a tampered archive.
+          printf 'this is not the real archive' > "$mirror/$archive"
+          if sh filled/install.sh --prefix "$RUNNER_TEMP/tampered" --no-prikk --base-url "file://$mirror"; then
+            echo "::error::the installer accepted a file that failed its checksum"
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/tampered/stikk"
+
+      - name: --with-prikk installs the pinned prikk through prikk's own installer
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home2"; mkdir -p "$HOME"
+          sh filled/install.sh --prefix "$RUNNER_TEMP/both" --with-prikk
+          "$RUNNER_TEMP/both/prikk" --version | grep -qx "prikk ${PRIKK_VER}"
+          "$RUNNER_TEMP/both/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+
+  windows:
+    name: install.ps1 (windows-latest)
+    needs: derive
+    runs-on: windows-latest
+    env:
+      STIKK_VER: ${{ needs.derive.outputs.stikk }}
+      PRIKK_VER: ${{ needs.derive.outputs.prikk }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fill the placeholders the way release.yml does
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p filled
+          for f in install.ps1 uninstall.ps1; do
+            sed -e "s/@STIKK_VERSION@/${STIKK_VER}/g" -e "s/@PRIKK_VERSION@/${PRIKK_VER}/g" \
+              "scripts/$f" > "filled/$f"
+          done
+          ! grep -q '@STIKK_VERSION@\|@PRIKK_VERSION@' filled/* || { echo "::error::placeholder survived"; exit 1; }
+
+      - name: The unfilled template refuses to run
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & ./scripts/install.ps1 -Prefix "$env:RUNNER_TEMP\never" -NoPrikk
+          if ($LASTEXITCODE -eq 0) { Write-Error 'the template installed something; it must refuse'; exit 1 }
+          if (Test-Path "$env:RUNNER_TEMP\never\stikk.exe") { Write-Error 'it installed anyway'; exit 1 }
+
+      - name: Install, and check the version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\bin" -NoPrikk
+          $v = & "$env:RUNNER_TEMP\bin\stikk.exe" --version
+          if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
+
+      - name: Re-running is safe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\bin" -NoPrikk
+          $v = & "$env:RUNNER_TEMP\bin\stikk.exe" --version
+          if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
+
+      - name: The uninstaller removes what it added
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./filled/uninstall.ps1 -Prefix "$env:RUNNER_TEMP\bin"
+          if (Test-Path "$env:RUNNER_TEMP\bin\stikk.exe") { Write-Error 'stikk.exe survived'; exit 1 }
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if ($userPath -and ($userPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ieq "$env:RUNNER_TEMP\bin") })) {
+            Write-Error 'the PATH entry survived'; exit 1
+          }
+
+      - name: A wrong checksum installs nothing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $mirror = "$env:RUNNER_TEMP\mirror"
+          New-Item -ItemType Directory -Path $mirror -Force | Out-Null
+          $archive = "stikk-$env:STIKK_VER-x86_64-pc-windows-msvc.zip"
+          $base = "https://github.com/${{ github.repository }}/releases/download/$env:STIKK_VER"
+          Invoke-WebRequest -Uri "$base/$archive"        -OutFile "$mirror\$archive"        -UseBasicParsing
+          Invoke-WebRequest -Uri "$base/$archive.sha256" -OutFile "$mirror\$archive.sha256" -UseBasicParsing
+          # The real checksum, a tampered archive.
+          Set-Content -Path "$mirror\$archive" -Value 'this is not the real archive' -NoNewline
+          $uri = ([System.Uri]("file:///" + $mirror.Replace('\','/'))).AbsoluteUri
+          & ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\tampered" -NoPrikk -BaseUrl $uri
+          if ($LASTEXITCODE -eq 0) { Write-Error 'the installer accepted a file that failed its checksum'; exit 1 }
+          if (Test-Path "$env:RUNNER_TEMP\tampered\stikk.exe") { Write-Error 'it installed anyway'; exit 1 }

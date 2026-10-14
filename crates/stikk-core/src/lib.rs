@@ -46,8 +46,8 @@ pub use confirm::{
 };
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{
-    BlockDetailView, BlockPatchRow, BlockPatches, HistoryView, block_detail, history_view,
-    list_refs,
+    BlockDetailView, BlockPatchRow, BlockPatches, BlockState, HistoryView, block_detail,
+    history_view, list_refs,
 };
 pub use orient::{OrientationView, orient};
 pub use palette::{Command, NO_FOCUSED_REF_REASON};

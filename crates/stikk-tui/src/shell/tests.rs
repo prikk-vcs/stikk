@@ -226,7 +226,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
 
 #[test]
 fn block_detail_screen_shows_tip_state_and_where_patch_content_comes_from() {
-    use stikk_prikk::{BlockRow, History, StateFiles};
+    use stikk_prikk::{BlockRow, History, StateFile, StateFiles};
     let backend = NullBackend::supported()
         .with_orientation(orientation_naming_heads_main())
         .with_history(History {
@@ -247,7 +247,10 @@ fn block_detail_screen_shows_tip_state_and_where_patch_content_comes_from() {
         })
         .with_state(StateFiles {
             target_block: "bbbbbbbbbbbbbbbb".into(),
-            files: vec!["readme.txt".into(), "src/main.rs".into()],
+            files: vec![
+                StateFile::file("readme.txt", 0o100_644),
+                StateFile::file("src/main.rs", 0o100_755),
+            ],
             total_bytes: 128,
         });
     let (mut app, rx) = open("/repo", &Config::default());

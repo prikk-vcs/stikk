@@ -94,6 +94,19 @@ const VALIDATED_MAX_MINOR: u32 = 51;
 /// 0.36–0.38, and stikk reads no JSON from prikk there at all.
 pub const JSON_REPORTS_FROM_MINOR: u32 = 39;
 
+/// The first prikk minor that lists **any block's** files: prikk 0.46, where `tree [--ref
+/// <ref|block-id>] [--format json]` arrived with the `tree-listing-v1` schema (RFC 037 F1).
+///
+/// **Measured, not read from a changelog**: 0.45.0 answers `error: unknown command: tree`, and 0.46.0
+/// and 0.51.0 both report the same shape for the same two-block lineage. Below this, prikk replays
+/// only to a ref's tip, so an older block's files are **not reported** — never an empty list
+/// (`C-T2c′`).
+///
+/// **The number lives here and nowhere else**, for the reason [`JSON_REPORTS_FROM_MINOR`] gives: the
+/// seam gates its command on it, and the one view built on that report says the same number in the
+/// sentence it shows below the band.
+pub const TREE_FROM_MINOR: u32 = 46;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

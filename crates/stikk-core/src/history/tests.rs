@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use stikk_prikk::{BlockRow, History, NullBackend, Orientation, RefEntry, StateFiles};
+use stikk_prikk::{BlockRow, History, NullBackend, Orientation, RefEntry, StateFile, StateFiles};
 
 use super::*;
 
@@ -47,35 +47,119 @@ fn history_view_composes_lineage_and_queue_count() {
     assert_eq!(view.blocks[0].update_seq, 2); // tip first
 }
 
+/// **An older block lists its own files at prikk ≥ 0.46** (RFC 037 decision 1) — the behaviour this
+/// increment exists to add. The test it replaces asserted the opposite,
+/// `block_detail_fetches_state_only_for_the_tip`, and was right until prikk's `tree` arrived.
 #[test]
-fn block_detail_fetches_state_only_for_the_tip() {
-    let backend = NullBackend::supported().with_state(StateFiles {
-        target_block: "bb".into(),
-        files: vec!["readme.txt".into()],
-        total_bytes: 12,
-    });
-    // Tip: state present.
-    let tip = block_detail(
-        &backend,
-        Path::new("/r"),
-        "heads/main",
-        block("bb", 2, "Normal", 1),
-        true,
-    )
-    .expect("tip detail");
-    assert!(tip.is_tip);
-    assert_eq!(tip.state.as_ref().map(|s| s.files.len()), Some(1));
-    // Non-tip: no state fetched.
-    let old = block_detail(
+fn every_block_lists_its_files_when_the_seam_reports_them() {
+    let backend = NullBackend::supported()
+        .with_version(0, 51, 0)
+        .with_state(StateFiles {
+            target_block: "bb".into(),
+            files: vec![StateFile::file("readme.txt", 0o100_644)],
+            total_bytes: 12,
+        });
+    for (id, is_tip) in [("bb", true), ("aa", false)] {
+        let detail = block_detail(
+            &backend,
+            Path::new("/r"),
+            "heads/main",
+            block(id, 2, "Normal", 1),
+            is_tip,
+        )
+        .expect("detail");
+        assert_eq!(detail.is_tip, is_tip);
+        assert_eq!(
+            detail.state.listed().map(|s| s.files.len()),
+            Some(1),
+            "the files are listed whether or not {id} is the tip"
+        );
+        assert!(detail.state.unreported_reason().is_none());
+    }
+}
+
+/// **Below prikk 0.46 an older block's files are *not reported*, which is not an empty list**
+/// (`C-T2c′`; RFC 037 decision 2). The sentence is stikk's own, and it names both numbers: the band
+/// stikk lists from, and the prikk actually running.
+#[test]
+fn below_the_band_an_older_blocks_files_are_unreported_not_empty() {
+    let backend = NullBackend::supported()
+        .with_version(0, 45, 0)
+        .with_state_unreported();
+    let detail = block_detail(
         &backend,
         Path::new("/r"),
         "heads/main",
         block("aa", 1, "Root", 0),
         false,
     )
-    .expect("old detail");
-    assert!(!old.is_tip);
-    assert!(old.state.is_none());
+    .expect("detail");
+    assert_eq!(detail.state.listed(), None, "never an empty file list");
+    let reason = detail
+        .state
+        .unreported_reason()
+        .expect("a sentence instead of a list");
+    assert!(
+        reason.contains("prikk replays only to the ref tip"),
+        "prikk's limit, where it is still true: {reason}"
+    );
+    assert!(
+        reason.contains("from prikk 0.46 on") && reason.contains("this is 0.45"),
+        "both numbers, so the reader knows what would change: {reason}"
+    );
+}
+
+/// **The sentence about replaying to the tip is never shown at prikk ≥ 0.46**, where it would be
+/// false (`C-T2b`; RFC 037 §3). This is the assertion that keeps the two bands from drifting into
+/// one: a frontend that printed the old sentence beside a correct file list would be contradicting
+/// itself on screen.
+#[test]
+fn the_tip_only_sentence_is_never_shown_where_it_would_be_false() {
+    let backend = NullBackend::supported()
+        .with_version(0, 51, 0)
+        .with_state(StateFiles {
+            target_block: "aa".into(),
+            files: vec![StateFile::file("old.txt", 0o100_644)],
+            total_bytes: 3,
+        });
+    let detail = block_detail(
+        &backend,
+        Path::new("/r"),
+        "heads/main",
+        block("aa", 1, "Root", 0),
+        false,
+    )
+    .expect("detail");
+    assert_eq!(detail.state.unreported_reason(), None);
+}
+
+/// **A failed file read costs Block detail its file list and nothing else** (RFC 037 decision 5,
+/// which is RFC 035 A3's rule applied to the second read in this view). The block's own fields and
+/// its patch list were readable before this read existed.
+#[test]
+fn a_failed_file_read_leaves_the_block_and_its_patches_intact() {
+    let mut row = block("bb", 2, "Normal", 1);
+    row.patches = 1;
+    let backend = NullBackend::supported()
+        .with_version(0, 51, 0)
+        .with_state_refusal("precondition not met: block bb is not in this repository");
+    let detail = block_detail(&backend, Path::new("/r"), "heads/main", row, true)
+        .expect("the block itself still reads");
+    assert_eq!(detail.row.block_id, "bb");
+    assert_eq!(detail.row.patches, 1);
+    assert!(
+        !matches!(detail.patches, BlockPatches::Failed(_)),
+        "the patches section carries no failure of the *file* read: {:?}",
+        detail.patches
+    );
+    let reason = detail
+        .state
+        .unreported_reason()
+        .expect("the files section says what failed");
+    assert!(
+        reason.contains("block bb is not in this repository"),
+        "prikk's own words, carried (`ER-02`): {reason}"
+    );
 }
 
 #[test]
@@ -325,7 +409,10 @@ fn an_older_blocks_patches_are_listed_while_its_state_is_not() {
     )
     .expect("block detail reads");
     assert_eq!(older.patches.rows().len(), 1, "listed for an older block");
-    assert!(older.state.is_none(), "prikk replays only to the tip");
+    assert!(
+        older.state.listed().is_some(),
+        "at 0.51 an older block lists its own files (RFC 037 decision 1)"
+    );
 }
 
 /// **A failed `show` costs the Patches section and nothing else** (review v1 §2.3).
@@ -344,7 +431,10 @@ fn a_failed_show_leaves_the_rest_of_block_detail_intact() {
         )
         .with_state(StateFiles {
             target_block: "bb".to_string(),
-            files: vec!["readme.txt".to_string(), "src/lib.rs".to_string()],
+            files: vec![
+                StateFile::file("readme.txt", 0o100_644),
+                StateFile::file("src/lib.rs", 0o100_644),
+            ],
             total_bytes: 200,
         });
 
@@ -355,7 +445,7 @@ fn a_failed_show_leaves_the_rest_of_block_detail_intact() {
     assert_eq!(detail.row.block_id, "bb");
     assert_eq!(detail.row.patches, 2);
     assert_eq!(
-        detail.state.as_ref().map(|state| state.files.len()),
+        detail.state.listed().map(|state| state.files.len()),
         Some(2),
         "the tip's state file set is unaffected"
     );

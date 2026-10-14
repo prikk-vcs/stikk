@@ -5,8 +5,8 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
-use stikk_core::{BlockDetailView, BlockPatches};
-use stikk_prikk::{BlockRow, PatchMessage, StateFiles};
+use stikk_core::{BlockDetailView, BlockPatches, BlockState};
+use stikk_prikk::{BlockRow, PatchMessage, StateFile, StateFiles};
 
 use super::*;
 use crate::test_util::buffer_text;
@@ -27,8 +27,24 @@ fn row() -> BlockRow {
     }
 }
 
+/// **80 columns, the width the handoffs name** (RFC 036 review v2's note 1). It was 90, which is
+/// wider than the terminal every capture in this project is read at.
+/// The drawn buffer with every run of whitespace — the row padding and the newlines between rows
+/// included — collapsed to one space, so a test can assert on a sentence that wraps. **Only for
+/// prose**: a test about a path, a mode or a layout reads [`draw`] itself, since this would hide
+/// exactly the spacing those tests are about.
+fn drawn_prose(detail: &BlockDetailView) -> String {
+    draw(detail)
+        // The panel's own side borders sit between the end of one row and the start of the next,
+        // so they have to go before the rows can be joined into a sentence.
+        .replace('\u{2502}', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn draw(detail: &BlockDetailView) -> String {
-    let backend = TestBackend::new(90, 24);
+    let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| render(detail, 0, &Palette::default(), f, f.area()))
@@ -41,9 +57,12 @@ fn tip_detail_lists_state_files() {
     let detail = BlockDetailView {
         row: row(),
         is_tip: true,
-        state: Some(StateFiles {
+        state: BlockState::Listed(StateFiles {
             target_block: "bbbbbbbbbbbbbbbb".into(),
-            files: vec!["readme.txt".into(), "src/lib.rs".into()],
+            files: vec![
+                StateFile::file("readme.txt", 0o100_644),
+                StateFile::file("src/lib.rs", 0o100_755),
+            ],
             total_bytes: 200,
         }),
         patches: BlockPatches::Unreported(30),
@@ -62,12 +81,15 @@ fn tip_detail_lists_state_files() {
     assert!(!text.contains("UD-09"), "the retired note is gone: {text}");
 }
 
+/// **Below prikk 0.46**, where prikk really does replay only to a tip. At or above it this view
+/// lists an older block's files instead, and `the_older_block_sentence_is_gone_at_the_band` is the
+/// other half of that pair.
 #[test]
 fn non_tip_detail_explains_the_missing_state() {
     let detail = BlockDetailView {
         row: row(),
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Unreported(30),
     };
     let text = draw(&detail);
@@ -82,13 +104,13 @@ fn a_disagreeing_patch_count_and_message_list_is_explained_in_the_rendered_buffe
     let detail = BlockDetailView {
         row: row(),
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Unreported(30),
     };
-    let text = draw(&detail);
+    let text = drawn_prose(&detail);
     assert!(text.contains("4"));
     assert!(text.contains("0 with a message"));
-    assert!(text.contains("before prikk 0.32 carry"));
+    assert!(text.contains("before prikk 0.32 carry"), "{text}");
 }
 
 #[test]
@@ -102,7 +124,7 @@ fn an_agreeing_patch_count_and_message_list_shows_the_bare_count() {
     let detail = BlockDetailView {
         row: agreeing,
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Unreported(30),
     };
     let text = draw(&detail);
@@ -124,7 +146,7 @@ fn messages_never_render_without_the_count_beside_them() {
     let detail = BlockDetailView {
         row: with_messages,
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Unreported(30),
     };
     let text = draw(&detail);
@@ -144,7 +166,7 @@ fn a_hostile_message_renders_inert_and_forges_no_field() {
     let detail = BlockDetailView {
         row: hostile,
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Unreported(30),
     };
     let text = draw(&detail);
@@ -166,7 +188,7 @@ fn a_message_with_a_colon_renders_intact() {
     let detail = BlockDetailView {
         row: with_colon,
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Unreported(30),
     };
     let text = draw(&detail);
@@ -178,9 +200,9 @@ fn hostile_file_path_is_rendered_inert() {
     let detail = BlockDetailView {
         row: row(),
         is_tip: true,
-        state: Some(StateFiles {
+        state: BlockState::Listed(StateFiles {
             target_block: "bbbbbbbbbbbbbbbb".into(),
-            files: vec!["evil\u{1b}[2Jfile.txt".into()],
+            files: vec![StateFile::file("evil\u{1b}[2Jfile.txt", 0o100_644)],
             total_bytes: 10,
         }),
         patches: BlockPatches::Unreported(30),
@@ -239,7 +261,7 @@ fn the_patches_section_lists_each_patch_with_its_joined_message() {
     let detail = BlockDetailView {
         row: r,
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Listed(vec![
             stikk_core::BlockPatchRow {
                 patch: shown(PATCH_ONE, 3),
@@ -284,7 +306,7 @@ fn below_the_json_floor_the_section_names_stikks_own_limit() {
     let detail = BlockDetailView {
         row: row(),
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Unreported(30),
     };
     let text = draw_at(&detail, 0, 80);
@@ -303,7 +325,7 @@ fn a_patch_rows_message_is_rendered_inert() {
     let detail = BlockDetailView {
         row: row(),
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Listed(vec![stikk_core::BlockPatchRow {
             patch: shown(PATCH_ONE, 1),
             message: stikk_core::PatchMessageState::Text("evil\u{1b}[2Jmessage".to_string()),
@@ -325,9 +347,9 @@ fn a_failed_patches_read_leaves_the_rest_of_the_block_on_screen() {
     let detail = BlockDetailView {
         row: row(),
         is_tip: true,
-        state: Some(StateFiles {
+        state: BlockState::Listed(StateFiles {
             target_block: "bbbbbbbbbbbbbbbb".into(),
-            files: vec!["readme.txt".into()],
+            files: vec![StateFile::file("readme.txt", 0o100_644)],
             total_bytes: 12,
         }),
         patches: BlockPatches::Failed(
@@ -359,7 +381,7 @@ fn a_patch_summarys_id_is_rendered_as_an_identifier() {
     let detail = BlockDetailView {
         row: row(),
         is_tip: false,
-        state: None,
+        state: BlockState::Unreported(30),
         patches: BlockPatches::Listed(vec![stikk_core::BlockPatchRow {
             patch: shown(PATCH_ONE, 1),
             message: stikk_core::PatchMessageState::Text("a  message".to_string()),
@@ -377,4 +399,204 @@ fn a_patch_summarys_id_is_rendered_as_an_identifier() {
             .any(|r| r.contains("a  message") || r.contains("a message")),
         "and the message is prose beside it: {text}"
     );
+}
+
+/// **An older block lists its own files, and the heading says which block** (RFC 037 §3). The
+/// heading used to say "state at tip" for the only block it could show; saying that over an older
+/// block's correct file list would be stikk mislabelling a right answer.
+#[test]
+fn an_older_block_lists_its_files_under_its_own_heading() {
+    let detail = BlockDetailView {
+        row: row(),
+        is_tip: false,
+        state: BlockState::Listed(StateFiles {
+            target_block: "bbbbbbbbbbbbbbbb".into(),
+            files: vec![
+                StateFile::file("a.txt", 0o100_644),
+                StateFile::file("src/bin/tool.rs", 0o100_755),
+            ],
+            total_bytes: 9,
+        }),
+        patches: BlockPatches::Unreported(30),
+    };
+    let text = draw(&detail);
+    assert!(text.contains("state at this block"), "{text}");
+    assert!(!text.contains("state at tip"), "{text}");
+    assert!(text.contains("2 file(s), 9 byte(s)"), "{text}");
+    assert!(
+        text.contains("a.txt") && text.contains("src/bin/tool.rs"),
+        "{text}"
+    );
+    // **And the sentence that is now false is gone** (`C-T2b`).
+    assert!(!text.contains("replays only to the ref tip"), "{text}");
+}
+
+/// Each row shows its mode, in the octal Patch detail already uses — so `100644` and `100755` read
+/// as the same spelling a `create-file` operation shows, not as prikk's `33188`.
+#[test]
+fn each_file_row_shows_its_mode_as_octal() {
+    let detail = BlockDetailView {
+        row: row(),
+        is_tip: true,
+        state: BlockState::Listed(StateFiles {
+            target_block: "bbbbbbbbbbbbbbbb".into(),
+            files: vec![
+                StateFile::file("plain.txt", 0o100_644),
+                StateFile::file("run.sh", 0o100_755),
+            ],
+            total_bytes: 2,
+        }),
+        patches: BlockPatches::Unreported(30),
+    };
+    let text = draw(&detail);
+    assert!(text.contains("100644  plain.txt"), "{text}");
+    assert!(text.contains("100755  run.sh"), "{text}");
+    assert!(
+        !text.contains("33188"),
+        "prikk's integer is not shown: {text}"
+    );
+}
+
+/// **"Not reported" is not `0`** (RFC 037 §7 trap 2). On the prose band prikk names a path and
+/// nothing else, and a `0` rendered as `000000` would be a mode no file has and prikk never claimed.
+#[test]
+fn a_file_with_no_reported_mode_says_so_rather_than_showing_zero() {
+    let detail = BlockDetailView {
+        row: row(),
+        is_tip: true,
+        state: BlockState::Listed(StateFiles {
+            target_block: "bbbbbbbbbbbbbbbb".into(),
+            files: vec![StateFile::path_only("readme.txt")],
+            total_bytes: 3,
+        }),
+        patches: BlockPatches::Unreported(30),
+    };
+    let text = draw(&detail);
+    assert!(text.contains("(no mode)"), "{text}");
+    assert!(!text.contains("000000"), "{text}");
+}
+
+/// A `kind` stikk has not measured is **shown**, not silently rendered as an ordinary file. prikk
+/// has never emitted one — it refuses to author a symlink at 0.51 — which is exactly why a reader
+/// must not be shown one as though it were a file.
+#[test]
+fn an_unmeasured_kind_is_shown_beside_the_path() {
+    let detail = BlockDetailView {
+        row: row(),
+        is_tip: true,
+        state: BlockState::Listed(StateFiles {
+            target_block: "bbbbbbbbbbbbbbbb".into(),
+            files: vec![
+                StateFile::file("plain.txt", 0o100_644),
+                StateFile {
+                    path: "link.txt".into(),
+                    kind: Some("symlink".into()),
+                    mode: Some(0o120_777),
+                },
+            ],
+            total_bytes: 4,
+        }),
+        patches: BlockPatches::Unreported(30),
+    };
+    let text = draw(&detail);
+    assert!(text.contains("link.txt  (symlink)"), "{text}");
+    assert!(
+        !text.contains("plain.txt  (file)"),
+        "the one measured kind is not labelled on every row: {text}"
+    );
+}
+
+/// **A failed file read costs the file list and nothing else** (RFC 037 decision 5): the block's
+/// own fields are still on screen, with prikk's words for what went wrong.
+#[test]
+fn a_failed_file_read_keeps_the_block_on_screen() {
+    let detail = BlockDetailView {
+        row: row(),
+        is_tip: false,
+        state: BlockState::Failed(
+            "prikk refused: precondition not met: block bb is not in this repository".into(),
+        ),
+        patches: BlockPatches::Unreported(30),
+    };
+    let text = drawn_prose(&detail);
+    assert!(
+        text.contains("bbbbbbbbbbbbbbbb"),
+        "the block is still here: {text}"
+    );
+    assert!(text.contains("update-seq 2"), "{text}");
+    assert!(
+        text.contains("block bb is not in this repository"),
+        "prikk's own words (`ER-02`): {text}"
+    );
+}
+
+/// **RFC 037 Handoff A's captures, at exactly 80 columns** (§4). Asserts the three facts the review
+/// package shows, and prints each screen so the package's captures can be reproduced from the
+/// committed tree:
+///
+/// ```text
+/// cargo test -p stikk-tui --lib capture_ -- --nocapture
+/// ```
+#[test]
+fn capture_rfc037_block_detail_at_80_columns() {
+    let ids = [
+        "2b35728e3550eda58d9eaf4a3290eabbe874acb8a36382f607f3e4d68b021389",
+        "56e95d7b76573762a3624a99504a858756f6d954c9ccf3d7013572f6b6904e20",
+    ];
+    let mut older_row = row();
+    older_row.block_id = ids[0].into();
+    older_row.ref_state_id = format!("rs{}", &ids[0][2..]);
+    older_row.update_seq = 1;
+    older_row.kind = "Root".into();
+    older_row.patches = 1;
+    let mut tip_row = older_row.clone();
+    tip_row.block_id = ids[1].into();
+    tip_row.ref_state_id = format!("rs{}", &ids[1][2..]);
+    tip_row.update_seq = 2;
+    tip_row.kind = "Normal".into();
+
+    let older = BlockDetailView {
+        row: older_row,
+        is_tip: false,
+        state: BlockState::Listed(StateFiles {
+            target_block: ids[0].into(),
+            files: vec![
+                StateFile::file("a.txt", 0o100_644),
+                StateFile::file("scripts/release.sh", 0o100_755),
+            ],
+            total_bytes: 212,
+        }),
+        patches: BlockPatches::Unreported(30),
+    };
+    let tip = BlockDetailView {
+        row: tip_row,
+        is_tip: true,
+        state: BlockState::Listed(StateFiles {
+            target_block: ids[1].into(),
+            files: vec![
+                StateFile::file("b.txt", 0o100_755),
+                StateFile::file("blob.bin", 0o100_644),
+                StateFile::file("nested/deep.txt", 0o100_644),
+            ],
+            total_bytes: 14,
+        }),
+        patches: BlockPatches::Unreported(30),
+    };
+    let below = BlockDetailView {
+        state: BlockState::Unreported(28),
+        ..older.clone()
+    };
+
+    for (label, detail) in [
+        ("an older block's files, at prikk 0.51", &older),
+        ("the tip's files, at prikk 0.51", &tip),
+        ("the same older block, at prikk 0.28", &below),
+    ] {
+        let text = draw(detail);
+        println!("--- {label} (80 columns) ---\n{text}");
+    }
+
+    assert!(draw(&older).contains("state at this block"));
+    assert!(draw(&tip).contains("state at tip"));
+    assert!(draw(&below).contains("replays only to the ref tip"));
 }

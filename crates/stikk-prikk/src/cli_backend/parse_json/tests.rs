@@ -2680,3 +2680,195 @@ fn binary_and_unavailable_content_are_validated_at_the_boundary() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// `tree-listing-v1` (RFC 037 decision 1) — prikk 0.51.0, captured 2026-10-14 by
+// `.git-exclude/reports/037-read-prikk-json/capture037.sh`: a two-block lineage whose first block
+// holds `a.txt`, and whose tip deletes it and adds an executable, a binary and a nested file.
+// **Captured, never written**, including the field order and the one-line entry formatting.
+// ---------------------------------------------------------------------------------------------
+
+/// The lineage's **tip**: an executable (`33261`), a binary (which carries `content_id`), and a
+/// nested path.
+const TREE_TIP_0_51: &str = r#"{
+  "schema_version": "tree-listing-v1",
+  "point": "56e95d7b76573762a3624a99504a858756f6d954c9ccf3d7013572f6b6904e20",
+  "target_block_id": "56e95d7b76573762a3624a99504a858756f6d954c9ccf3d7013572f6b6904e20",
+  "prefix": null,
+  "entries": [
+    {"path": "b.txt", "kind": "file", "encoding": "text", "mode": 33261, "size": 4},
+    {"path": "blob.bin", "kind": "file", "encoding": "binary", "mode": 33188, "size": 5, "content_id": "2ceff9242eda5254494b7e179764cccd1c544f41df9e8bf2ed3cb39b2d498538"},
+    {"path": "nested/deep.txt", "kind": "file", "encoding": "text", "mode": 33188, "size": 5}
+  ]
+}"#;
+
+/// The **older** block of the same lineage: it lists `a.txt`, which the tip deleted. This one
+/// capture is the whole increment — prikk answering about a block that is not a tip.
+const TREE_OLDER_0_51: &str = r#"{
+  "schema_version": "tree-listing-v1",
+  "point": "2b35728e3550eda58d9eaf4a3290eabbe874acb8a36382f607f3e4d68b021389",
+  "target_block_id": "2b35728e3550eda58d9eaf4a3290eabbe874acb8a36382f607f3e4d68b021389",
+  "prefix": null,
+  "entries": [
+    {"path": "a.txt", "kind": "file", "encoding": "text", "mode": 33188, "size": 4}
+  ]
+}"#;
+
+/// **An unpublished current branch**: `target_block_id: null`, no entries, and **exit 0**. The one
+/// report that would make a lax reader say "0 files" about a block that has files.
+const TREE_UNPUBLISHED_0_51: &str = r#"{
+  "schema_version": "tree-listing-v1",
+  "point": "heads/main",
+  "target_block_id": null,
+  "prefix": null,
+  "entries": []
+}"#;
+
+/// The tip block's id, as the capture carries it.
+const TREE_TIP_ID: &str = "56e95d7b76573762a3624a99504a858756f6d954c9ccf3d7013572f6b6904e20";
+/// The older block's id.
+const TREE_OLDER_ID: &str = "2b35728e3550eda58d9eaf4a3290eabbe874acb8a36382f607f3e4d68b021389";
+
+/// **Each block answers about itself.** This is RFC 037 F1, and the reason the whole increment
+/// exists: the older block lists the file the tip deleted, and the tip does not list it.
+#[test]
+fn each_block_lists_its_own_files() {
+    let tip = tree(TREE_TIP_0_51, TREE_TIP_ID).expect("the tip's listing");
+    let older = tree(TREE_OLDER_0_51, TREE_OLDER_ID).expect("the older block's listing");
+
+    assert_eq!(tip.target_block, TREE_TIP_ID);
+    assert_eq!(older.target_block, TREE_OLDER_ID);
+
+    let paths = |state: &crate::StateFiles| -> Vec<String> {
+        state.files.iter().map(|f| f.path.clone()).collect()
+    };
+    assert_eq!(paths(&tip), ["b.txt", "blob.bin", "nested/deep.txt"]);
+    assert_eq!(
+        paths(&older),
+        ["a.txt"],
+        "the older block still holds the file its successor deleted"
+    );
+}
+
+/// Every file carries **its own mode**, in prikk's integer spelling, and the executable bit is not
+/// lost on the way through (`33261` is `100755`).
+#[test]
+fn each_file_carries_its_mode_and_prikks_kind() {
+    let tip = tree(TREE_TIP_0_51, TREE_TIP_ID).expect("parses");
+    assert_eq!(tip.files[0].mode, Some(0o100_755), "b.txt is executable");
+    assert_eq!(tip.files[1].mode, Some(0o100_644));
+    for file in &tip.files {
+        assert_eq!(file.kind.as_deref(), Some("file"));
+    }
+}
+
+/// **Total bytes is the sum of the entries' `size`** — computed from what prikk listed, never from
+/// a separate field prikk might report about a different set of files.
+#[test]
+fn total_bytes_is_the_sum_of_the_entries() {
+    let tip = tree(TREE_TIP_0_51, TREE_TIP_ID).expect("parses");
+    assert_eq!(tip.total_bytes, 4 + 5 + 5);
+    let older = tree(TREE_OLDER_0_51, TREE_OLDER_ID).expect("parses");
+    assert_eq!(older.total_bytes, 4);
+}
+
+/// **A report about another block is refused, not rendered** (RFC 037 decision 1). Without this
+/// check the view would show the tip's files under an older block's heading and look entirely
+/// correct doing it (`T-T2`/`T-T4`).
+#[test]
+fn a_listing_about_another_block_is_an_environment_error() {
+    let err = tree(TREE_TIP_0_51, TREE_OLDER_ID)
+        .expect_err("the tip's report, asked for under the older block's id");
+    assert!(matches!(err, StikkError::Environment { .. }), "{err:?}");
+    let message = err.to_string();
+    assert!(
+        message.contains(TREE_OLDER_ID) && message.contains(TREE_TIP_ID),
+        "the error names both ids, so the reader can see the mismatch: {message}"
+    );
+}
+
+/// **A `null` `target_block_id` is refused too**, which `opt_str_field` would have read as "no
+/// value" and waved through. This is the one prikk really emits — for an unpublished current
+/// branch, with `entries: []` and exit 0 — so a lax reader would have shown "0 file(s)" for a block
+/// that has files.
+#[test]
+fn an_unpublished_branch_listing_is_never_read_as_an_empty_block() {
+    let err = tree(TREE_UNPUBLISHED_0_51, TREE_TIP_ID).expect_err("null target_block_id");
+    assert!(matches!(err, StikkError::Environment { .. }), "{err:?}");
+}
+
+/// A `kind` stikk has not measured is **kept as prikk's word**, not refused (RFC 037 §2): the file
+/// list is not worth losing over a field whose only measured value is `file`.
+#[test]
+fn an_unmeasured_kind_is_kept_rather_than_refused() {
+    let text = variant(TREE_OLDER_0_51, r#""kind": "file""#, r#""kind": "symlink""#);
+    let state = tree(&text, TREE_OLDER_ID).expect("an unknown kind does not cost the file list");
+    assert_eq!(state.files[0].kind.as_deref(), Some("symlink"));
+}
+
+/// Everything the reader **does** require (RFC 037 §2), one broken report each. Every one of these
+/// is an environment error: stikk misread prikk, and a short or wrong file list is the one outcome
+/// this view must never produce.
+#[test]
+fn a_tree_listing_that_breaks_the_measured_shape_is_refused() {
+    let cases = [
+        (
+            "another schema entirely",
+            variant(TREE_OLDER_0_51, "tree-listing-v1", "tree-listing-v2"),
+        ),
+        (
+            "no target_block_id at all",
+            variant(TREE_OLDER_0_51, r#""target_block_id""#, r#""target_block""#),
+        ),
+        (
+            // Replacing the whole field, not just the id: the same id also appears as `point`,
+            // which this reader does not check, and a narrower replacement would have left the
+            // field intact and quietly tested nothing.
+            "a target_block_id that is not an object id",
+            variant(
+                TREE_OLDER_0_51,
+                &format!(r#""target_block_id": "{TREE_OLDER_ID}""#),
+                r#""target_block_id": "2b35728e""#,
+            ),
+        ),
+        (
+            "an entry with no path",
+            variant(
+                TREE_OLDER_0_51,
+                r#""path": "a.txt""#,
+                r#""pathname": "a.txt""#,
+            ),
+        ),
+        (
+            "an entry with an empty path",
+            variant(TREE_OLDER_0_51, r#""path": "a.txt""#, r#""path": """#),
+        ),
+        (
+            "an entry with no kind",
+            variant(TREE_OLDER_0_51, r#""kind": "file""#, r#""type": "file""#),
+        ),
+        (
+            "an entry with no mode",
+            variant(TREE_OLDER_0_51, r#""mode": 33188"#, r#""perm": 33188"#),
+        ),
+        (
+            "an entry with no size",
+            variant(TREE_OLDER_0_51, r#""size": 4"#, r#""length": 4"#),
+        ),
+        (
+            "a mode that is not a number",
+            variant(TREE_OLDER_0_51, r#""mode": 33188"#, r#""mode": "33188""#),
+        ),
+        (
+            "entries that are not an array",
+            variant(TREE_OLDER_0_51, "\"entries\": [", "\"entries\": {\"0\": ["),
+        ),
+    ];
+    for (what, text) in cases {
+        let err = tree(&text, TREE_OLDER_ID).expect_err(what);
+        assert!(
+            matches!(err, StikkError::Environment { .. }),
+            "{what}: {err:?}"
+        );
+    }
+}

@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use stikk_model::Result;
-use stikk_prikk::{BlockRow, Prikk, RefEntry, ShowReport, ShownPatch, StateFiles};
+use stikk_prikk::{BlockRow, Prikk, RefEntry, ShowReport, ShownPatch, StateFiles, StateReport};
 
 use crate::patch::{CONTENT_FROM_MINOR, PatchMessageState};
 use crate::piece::Piece;
@@ -61,14 +61,68 @@ impl HistoryView {
 pub struct BlockDetailView {
     /// The block's metadata, from the history listing.
     pub row: BlockRow,
-    /// Whether this block is the ref's tip (the only block prikk can show state for).
+    /// Whether this block is the ref's tip.
     pub is_tip: bool,
-    /// The replayed state file set — present only for the tip; `None` for older blocks, where prikk
-    /// exposes no per-block state (RFC 006, UD-09).
-    pub state: Option<StateFiles>,
+    /// The files present **at this block** (RFC 037 decision 1), in the three states they can be in.
+    pub state: BlockState,
     /// The block's patches, from its own `show <block-id>` report (`FR-030`; RFC 035 §4.1) — **for
     /// every block, not only the tip**, since `show` takes a block id and needs no replay.
     pub patches: BlockPatches,
+}
+
+/// The files present at one block, as Block detail has them (RFC 037 decisions 1, 2 and 5).
+///
+/// **Three variants, and the first two are not the same fact** (`C-T2c′`). This used to be an
+/// `Option<StateFiles>` that was `Some` for the tip and `None` for every older block, which was the
+/// truth until prikk 0.46: `checkout --patch-plan` replays to a tip and nowhere else. `tree` takes a
+/// block id, so from [`stikk_prikk::TREE_FROM_MINOR`] every block has an answer — and `None` would
+/// now mean two different things, one of them false.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockState {
+    /// prikk listed this block's files.
+    Listed(StateFiles),
+    /// **Below prikk 0.46, and this block is not the ref's tip.** Carries that prikk's minor for the
+    /// sentence the view shows, the shape [`BlockPatches::Unreported`] takes for the same reason.
+    Unreported(u32),
+    /// **The read failed, and the rest of Block detail is unaffected** (RFC 037 decision 5, which is
+    /// RFC 035 A3's rule applied again): the block's own fields and its patch list were readable
+    /// before this read existed and must not start depending on it.
+    Failed(String),
+}
+
+impl BlockState {
+    /// The listed files, or `None` — the caller asks [`Self::unreported_reason`] for what to say
+    /// instead. **Never an empty list as a stand-in**: a block with no files and a block whose files
+    /// were not reported are different, and only one of them is empty.
+    #[must_use]
+    pub fn listed(&self) -> Option<&StateFiles> {
+        match self {
+            Self::Listed(state) => Some(state),
+            Self::Unreported(_) | Self::Failed(_) => None,
+        }
+    }
+
+    /// The sentence to show **instead of** a file list, or `None` when the files are listed.
+    ///
+    /// The first is stikk's own voice about stikk's own band (`C-T4d`); the second carries prikk's
+    /// words for a refusal, as every failed read does (`ER-02`).
+    #[must_use]
+    pub fn unreported_reason(&self) -> Option<String> {
+        match self {
+            Self::Listed(_) => None,
+            // **Only true below the band** (RFC 037 decision 2, `C-T2b`): at prikk ≥ 0.46 stikk
+            // lists an older block's files, so saying prikk replays only to the tip would be stikk
+            // repeating a limit that has been lifted.
+            Self::Unreported(minor) => Some(format!(
+                "prikk replays only to the ref tip — not shown for an older block. stikk lists any \
+                 block's files from prikk 0.{} on; this is 0.{minor}.",
+                stikk_prikk::TREE_FROM_MINOR
+            )),
+            Self::Failed(error) => {
+                Some(format!("stikk could not read this block's files — {error}"))
+            }
+        }
+    }
 }
 
 /// A block's patches, as Block detail lists them (RFC 035 §4.1).
@@ -200,11 +254,15 @@ pub fn history_view(
     })
 }
 
-/// Assemble a block's detail. `is_tip` says whether `row` is `reff`'s tip; only then is the replayed
-/// state file set fetched (prikk cannot replay to an older block — RFC 006).
+/// Assemble a block's detail: its metadata, the files present at it, and its patches.
+///
+/// `is_tip` says whether `row` is `reff`'s tip. **It no longer decides whether the files are read**
+/// (RFC 037 decision 1) — prikk 0.46's `tree` answers for any block — only which command the seam
+/// can use below that band, where a tip is still the only thing prikk replays to.
 ///
 /// # Errors
-/// Propagates any [`stikk_model::StikkError`] the seam raises while reading tip state.
+/// Propagates any [`stikk_model::StikkError`] the seam raises **from the handshake**. Neither the
+/// file read nor the patch read propagates: each is carried as its own failed section (decision 5).
 pub fn block_detail(
     prikk: &impl Prikk,
     repo: &Path,
@@ -212,10 +270,17 @@ pub fn block_detail(
     row: BlockRow,
     is_tip: bool,
 ) -> Result<BlockDetailView> {
-    let state = if is_tip {
-        Some(prikk.block_state(repo, reff)?)
-    } else {
-        None
+    // RFC 037 decision 1: **every** block's files at prikk ≥ 0.46, the tip's alone below. The band
+    // is the seam's, not this function's — all `block_detail` passes is which block, and whether it
+    // is the tip (the one fact only this layer knows).
+    //
+    // **A failure here is carried, not propagated** (decision 5), on the same terms as the patches
+    // below: this read did not exist when the block's own fields did, and a report stikk refuses to
+    // read about the *files* is not a reason to take the block away from the reader.
+    let state = match prikk.block_state(repo, reff, &row.block_id, is_tip) {
+        Ok(StateReport::Listed(files)) => BlockState::Listed(files),
+        Ok(StateReport::Unreported) => BlockState::Unreported(prikk.handshake()?.version.minor),
+        Err(error) => BlockState::Failed(error.to_string()),
     };
     // RFC 035 §4.1: the block's own patches, for **every** block. `show` takes a block id and resolves
     // against that block, so nothing here is tip-only — unlike the state read above, which is, because

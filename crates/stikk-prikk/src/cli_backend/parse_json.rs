@@ -44,7 +44,7 @@ use crate::{
     Authoring, BinaryBlob, BlockRow, DeclarationResolution, FileContent, History, OperationContent,
     PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold, QueuedElsewhere,
     QueuedMessage, QueuedOperation, QueuedPatch, QueuedPath, RefEntry, RenameDeclaration,
-    ShownPatch, ThresholdStatus, WorktreeEntry, WorktreeStatus,
+    ShownPatch, StateFile, StateFiles, ThresholdStatus, WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -55,6 +55,7 @@ const BRANCH_SCHEMA: &str = "branch-list-v1";
 const TAG_SCHEMA: &str = "tag-list-v1";
 const STATUS_SCHEMA: &str = "status-report-v1";
 const SHOW_SCHEMA: &str = "show-report-v1";
+const TREE_SCHEMA: &str = "tree-listing-v1";
 
 /// The first prikk minor whose queued patches carry `message` (prikk 0.42; RFC 028 as revised).
 const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
@@ -205,6 +206,79 @@ pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
         }
     }
     Ok(out)
+}
+
+/// `prikk tree --ref <block-id> --format json` (`tree-listing-v1`), prikk ≥ 0.46 — the files present
+/// at one block (RFC 037 decision 1).
+///
+/// # The reader is strict, and this is the one read where that is the whole point
+///
+/// Every other report stikk reads is *about* something stikk named; this one could silently be about
+/// a **different block** and still parse. prikk answers `tree` for a ref name as readily as for a
+/// block id, and for an unpublished current branch it answers `target_block_id: null` with
+/// `entries: []` and **exit 0** (measured at 0.51.0). A lax reader handed that would render "0
+/// files" for a block that has files — a confident, wrong picture of history (`T-T2`/`T-T4`), which
+/// is the one thing this view must never produce. So:
+///
+/// - the schema must be `tree-listing-v1`;
+/// - `target_block_id` must be present, non-null, a valid object id, and **equal to `asked`**;
+/// - every entry must carry `path`, `kind`, `mode` and `size`, and `path` must not be empty.
+///
+/// Anything else is stikk's environment error (UD-02) — never a short file list.
+///
+/// **An entry's `kind` is kept, not checked.** `file` is the only value prikk has ever emitted
+/// (`PointEntryKind` has one variant, and 0.51 refuses to author a symlink at all — measured), and
+/// prikk marked the type `#[non_exhaustive]`. Refusing a word stikk has not seen would take the file
+/// list away over a field that is carried for honesty, not read for meaning (RFC 037 §2).
+///
+/// `encoding` and `content_id` are measured and deliberately **not** carried: `tree` reports them,
+/// and nothing in Block detail shows them. They are named here so the next reader knows they were
+/// seen and skipped rather than missed.
+///
+/// # Errors
+/// As [`history`], plus the three checks above.
+pub(super) fn tree(text: &str, asked: &str) -> Result<StateFiles> {
+    let value = report(text, TREE_SCHEMA)?;
+    // Not `opt_object_id_field`: `null` must fail here, and it reads as `None` there. prikk writes
+    // `null` for an unpublished current branch, and stikk asked with a block id.
+    let target = object_id_field(&value, "target_block_id")?;
+    if target != asked {
+        return Err(StikkError::environment_msg(format!(
+            "stikk asked prikk for the files at block {asked:?} and prikk's report is about \
+             {target:?}. stikk does not show one block's files under another block's name."
+        )));
+    }
+    let mut files = Vec::new();
+    let mut total_bytes: u64 = 0;
+    for entry in value.array_field("entries")? {
+        let path = entry.str_field("path")?;
+        if path.is_empty() {
+            return Err(StikkError::environment_msg(
+                "prikk's tree listing has an entry with an empty path".to_string(),
+            ));
+        }
+        let kind = entry.str_field("kind")?.to_string();
+        let mode = entry.u64_field("mode")?;
+        let mode = u32::try_from(mode).map_err(|_| {
+            StikkError::environment_msg(format!(
+                "prikk's tree listing has a file mode stikk cannot hold: {mode} for {path:?}"
+            ))
+        })?;
+        // Saturating, not wrapping: a total that silently wrapped past `u64::MAX` would be a number
+        // stikk made up. It cannot happen with real sizes, and the alternative is an arithmetic
+        // panic in a read.
+        total_bytes = total_bytes.saturating_add(entry.u64_field("size")?);
+        files.push(StateFile {
+            path: path.to_string(),
+            kind: Some(kind),
+            mode: Some(mode),
+        });
+    }
+    Ok(StateFiles {
+        target_block: target.to_string(),
+        files,
+        total_bytes,
+    })
 }
 
 /// `prikk tag list --format json` (`tag-list-v1`), prikk ≥ 0.39.

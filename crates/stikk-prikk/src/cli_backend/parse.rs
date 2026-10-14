@@ -290,6 +290,11 @@ fn parse_patch_messages(text: &str) -> Result<Vec<PatchMessage>> {
 
 /// Parse `prikk checkout --patch-plan` into the tip state file set (RFC 006). File paths are the
 /// indented `file: <path>` lines.
+///
+/// **This is the band below [`crate::TREE_FROM_MINOR`], and it is the whole reason
+/// [`crate::StateFile`]'s `kind` and `mode` are optional**: the plan prints a bare `file: <path>`
+/// and says nothing else about it. They come back `None` — *not reported* — and never a `0` mode,
+/// which would be a claim prikk never made (`C-T2c′`).
 pub(super) fn state_files(text: &str) -> Result<StateFiles> {
     let target_block = required_field(text, "target block:")?;
     let total_bytes = required_u64(text, "result content bytes:")?;
@@ -298,7 +303,11 @@ pub(super) fn state_files(text: &str) -> Result<StateFiles> {
         .filter_map(|line| {
             line.trim_start()
                 .strip_prefix("file:")
-                .map(|p| p.trim().to_string())
+                .map(|path| crate::StateFile {
+                    path: path.trim().to_string(),
+                    kind: None,
+                    mode: None,
+                })
         })
         .collect();
     Ok(StateFiles {

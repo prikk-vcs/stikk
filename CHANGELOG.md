@@ -7,15 +7,20 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 ### Breaking
 
 Per RFC 011, for a `0.x` crate the minor version is the breaking position. `stikk-model`,
-`stikk-state` and the `stikk` launcher are unchanged, and `stikk-prikk` is additive only.
+`stikk-state` and the `stikk` launcher are unchanged.
 
 | Crate | Change |
 |---|---|
 | `stikk-core` | **`OperationView::title` becomes `Vec<Piece>`** — prikk's kind word and each path are names the repository chose, and only a frontend can decide how a name is rendered. A `String` forced one rule on the whole sentence |
 | `stikk-core` | **`OperationRow` gains `Named(Vec<Piece>)`** — breaking for an exhaustive `match` — and **`OperationRow::text` returns `Option<&str>`**, `None` for that variant: a caller that flattened one would have lost the distinction the row exists to carry |
 | `stikk-core` | **`BlockPatchRow::summary`, `HistoryView::queued_tier` and `RenameHalf::annotation` return pieces** (`Vec<Piece>`, and `Option<Vec<Piece>>` for the tier) instead of a composed `String`, for the same reason |
+| `stikk-prikk` | **`Prikk::block_state` takes the block and whether it is the tip** — `block_state(&self, repo, reff, block_id, is_tip)` — and returns `StateReport`, which is `Listed` or `Unreported`. It asks prikk with the **block's own id**, so the answer is about the block the reader opened rather than wherever the ref now points |
+| `stikk-prikk` | **`StateFiles::files` becomes `Vec<StateFile>`** — a path, prikk's `kind`, and the file's `mode`. The mode is `Option<u32>`: `None` is *not reported*, never `0`, which would be a mode (`000000`) prikk never claimed |
+| `stikk-core` | **`BlockDetailView::state` becomes `BlockState`** (`Listed` / `Unreported(minor)` / `Failed`) instead of `Option<StateFiles>`. `None` used to mean "an older block, which prikk cannot replay to"; from prikk 0.46 every block has an answer, and `None` would now mean two things, one of them false |
 
-**Additive:** `stikk_core::Piece` and `stikk_core::flatten`; `stikk_tui::text::identifier` and
+**Additive:** `stikk_core::Piece`, `stikk_core::flatten` and `stikk_core::BlockState`;
+`stikk_prikk::StateFile`, `stikk_prikk::StateReport` and `stikk_prikk::TREE_FROM_MINOR`;
+`stikk_tui::text::identifier` and
 `stikk_tui::text::compose`; `stikk_prikk::escape::escape_invisible_into`. **`stikk_tui::text::inert`
 keeps its signature** and changes only what it produces (see *Changed*). No public item was removed.
 
@@ -67,6 +72,16 @@ keeps its signature** and changes only what it produces (see *Changed*). No publ
   substitutes it for filename bytes it cannot show, so a `�` on screen means prikk put it there —
   which is what makes commit's *"a name shown with `�` is not the file's real name"* step exact.
 - **The Glossary** (`?`) names the quoted-name convention beside the quoted-content one.
+- **Block detail lists any block's files, with each file's mode, at prikk ≥ 0.46.** It listed only
+  the ref tip's, and said *"prikk replays only to the ref tip — not shown for an older block"* for
+  every older one. That stopped being true when prikk 0.46 added `tree`, which lists the files at a
+  bare block id and needs no replay. stikk now asks with the **block's own id**, so the answer is
+  about the block you opened rather than wherever the ref has since moved, and the heading says
+  *state at this block* where it is not the tip. Each row carries its mode in the same octal Patch
+  detail shows (`100644`). **Below 0.46 nothing changes**, and the old sentence is shown only there,
+  where it is still true. A file whose mode prikk did not report says so; it is never shown as `0`.
+  **A failed read costs Block detail its file list alone** — the block's fields and its patch list
+  stay.
 
 ### Fixed
 
@@ -76,6 +91,10 @@ keeps its signature** and changes only what it produces (see *Changed*). No publ
 - **A double space in a path no longer collapses**, and neither does a leading or trailing one. Word
   wrapping rebuilt every row from whitespace-separated words, which silently rewrote the three path
   shapes prikk accepts — `a  b.txt`, ` lead.txt` and `say"hi.txt`.
+- **History's queued tier no longer clips.** It was one unwrapped row, so at 80 columns its sentence
+  was cut at the border mid-word — *"…not this ref's hist"* — and a long ref name in it was cut with
+  it. It now wraps, with continuation rows at the tier's own indent; a 60-character ref name appears
+  whole, in order. (The same class of defect as the Changes row above, in the view beside it.)
 
 ## 0.9.0 — 2026-10-14
 

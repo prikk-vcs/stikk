@@ -566,7 +566,11 @@ fn parses_the_tip_state_file_set() {
     assert_eq!(s.total_bytes, 30);
     assert_eq!(
         s.files,
-        vec!["main.rs".to_string(), "readme.txt".to_string()]
+        vec![
+            crate::StateFile::path_only("main.rs"),
+            crate::StateFile::path_only("readme.txt"),
+        ],
+        "the prose band reports a path and no attributes: a mode of `None`, never `0`"
     );
 }
 

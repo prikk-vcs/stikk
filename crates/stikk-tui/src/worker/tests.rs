@@ -146,9 +146,15 @@ impl Prikk for Recording {
         self.record("history");
         self.inner.history(repo, reff, limit)
     }
-    fn block_state(&self, repo: &Path, reff: &str) -> Result<stikk_prikk::StateFiles> {
+    fn block_state(
+        &self,
+        repo: &Path,
+        reff: &str,
+        block_id: &str,
+        is_tip: bool,
+    ) -> Result<stikk_prikk::StateReport> {
         self.record("block_state");
-        self.inner.block_state(repo, reff)
+        self.inner.block_state(repo, reff, block_id, is_tip)
     }
     fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {
         self.record("refs");

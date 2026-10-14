@@ -421,9 +421,9 @@ fn select_from_orientation_opens_history_then_a_block() {
     let detail = BlockDetailView {
         row: block("bbbb", 2),
         is_tip: true,
-        state: Some(StateFiles {
+        state: stikk_core::BlockState::Listed(StateFiles {
             target_block: "bbbb".into(),
-            files: vec!["readme.txt".into()],
+            files: vec![stikk_prikk::StateFile::file("readme.txt", 0o100_644)],
             total_bytes: 12,
         }),
         patches: BlockPatches::Unreported(30),
@@ -438,7 +438,7 @@ fn select_from_orientation_opens_history_then_a_block() {
     match app.focus() {
         Focus::BlockDetail(detail, _) => {
             assert!(detail.is_tip);
-            assert_eq!(detail.state.as_ref().map(|s| s.files.len()), Some(1));
+            assert_eq!(detail.state.listed().map(|s| s.files.len()), Some(1));
         }
         other => panic!("expected BlockDetail, got {other:?}"),
     }
@@ -467,7 +467,7 @@ fn nav_down_then_select_opens_a_non_tip_block_without_state() {
     let detail = BlockDetailView {
         row: row.clone(),
         is_tip: false,
-        state: None,
+        state: stikk_core::BlockState::Unreported(30),
         patches: BlockPatches::Unreported(30),
     };
     app.apply(Response {
@@ -480,7 +480,8 @@ fn nav_down_then_select_opens_a_non_tip_block_without_state() {
     match app.focus() {
         Focus::BlockDetail(detail, _) => {
             assert!(!detail.is_tip);
-            assert!(detail.state.is_none()); // prikk replays only to the tip (RFC 006)
+            // Below prikk 0.46 an older block's files are not reported (RFC 037 decision 2).
+            assert!(detail.state.listed().is_none());
             assert_eq!(detail.row.update_seq, 1);
         }
         other => panic!("expected BlockDetail, got {other:?}"),
@@ -2149,7 +2150,7 @@ fn rfc035_block_detail() -> BlockDetailView {
     BlockDetailView {
         row,
         is_tip: true,
-        state: None,
+        state: stikk_core::BlockState::Unreported(30),
         patches: BlockPatches::Listed(vec![
             stikk_core::BlockPatchRow {
                 patch: rfc035_shown(RFC035_PATCH_ONE, "z.txt"),

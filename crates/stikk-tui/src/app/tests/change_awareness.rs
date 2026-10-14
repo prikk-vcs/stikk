@@ -628,7 +628,7 @@ fn block_detail_screen(is_tip: bool) -> Screen {
         view: BlockDetailView {
             row: block("bbbb", 2),
             is_tip,
-            state: None,
+            state: stikk_core::BlockState::Unreported(30),
             patches: BlockPatches::Unreported(30),
         },
         refreshing: None,
@@ -660,7 +660,7 @@ fn r_refreshes_the_tips_block_detail_in_place() {
             result: Ok(BlockDetailView {
                 row: block("cccc", 3),
                 is_tip: true,
-                state: None,
+                state: stikk_core::BlockState::Unreported(30),
                 patches: BlockPatches::Unreported(30),
             }),
         },
@@ -773,7 +773,7 @@ fn tip_detail(reff: &str, id: &str, seq: u64) -> ResponseKind {
         result: Ok(BlockDetailView {
             row: block(id, seq),
             is_tip: true,
-            state: None,
+            state: stikk_core::BlockState::Unreported(30),
             patches: BlockPatches::Unreported(30),
         }),
     }

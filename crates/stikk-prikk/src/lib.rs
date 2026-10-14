@@ -24,7 +24,7 @@ pub mod version;
 
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
-pub use version::{JSON_REPORTS_FROM_MINOR, Version, validated_ceiling_display};
+pub use version::{JSON_REPORTS_FROM_MINOR, TREE_FROM_MINOR, Version, validated_ceiling_display};
 
 use std::path::Path;
 
@@ -422,17 +422,95 @@ pub struct History {
     pub blocks: Vec<BlockRow>,
 }
 
-/// The replayed state at a ref's tip, from `prikk checkout --patch-plan` (design FR-032 at tip
-/// granularity; RFC 006). prikk replays to the ref tip, not to an arbitrary historical block, so this
-/// describes the tip only.
+/// The files present at one block, from `prikk tree --ref <block-id> --format json` at prikk ≥ 0.46
+/// and from `prikk checkout --patch-plan` below it (design FR-032; RFC 006, widened by RFC 037
+/// decision 1).
+///
+/// **It used to describe a ref's tip only**, because that is all `checkout --patch-plan` can replay
+/// to. `tree` takes a block id and needs no replay, so from [`crate::TREE_FROM_MINOR`] this describes
+/// whichever block was asked about.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateFiles {
-    /// The block the state was replayed to (the ref tip).
+    /// The block the files belong to: `target_block_id` from `tree`, or the replay's `target block:`
+    /// on the prose band. **The reader checks it against the id that was asked for** (RFC 037
+    /// decision 1) — a report about another block is stikk's environment error, never a wrong file
+    /// list.
     pub target_block: String,
-    /// Repo-relative file paths present in the replayed state.
-    pub files: Vec<String>,
-    /// Total content bytes across those files, as prikk reports.
+    /// Every file present at that block, in prikk's order.
+    pub files: Vec<StateFile>,
+    /// Total content bytes: the sum of the entries' `size` from `tree`, and prikk's own `result
+    /// content bytes:` on the prose band.
     pub total_bytes: u64,
+}
+
+/// One file at a block, as [`StateFiles`] lists it.
+///
+/// **Two of the three fields are banded, and `None` is "not reported", never a zero or a guess**
+/// (`C-T2c′`): `checkout --patch-plan` prints a bare `file: <path>` line and nothing else, so below
+/// [`crate::TREE_FROM_MINOR`] stikk has a path and no more. A `0` mode would be a claim — `0o000`,
+/// a file nobody may read — that prikk never made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateFile {
+    /// The repo-relative path, as prikk reports it. Repository text (`C-T2a`): render it inert, or
+    /// as the identifier it is.
+    pub path: String,
+    /// prikk's `kind`, **verbatim** (`ER-02`) — `file` at every measured state, and prikk's own type
+    /// is `#[non_exhaustive]` with that one variant today. **A kind stikk has not measured is kept,
+    /// not refused** (RFC 037 §2): a reader that rejected an unknown word would take the whole file
+    /// list away over a field it does not even render for the only value it has seen.
+    ///
+    /// `None` on the prose band, which reports no kind at all.
+    pub kind: Option<String>,
+    /// The full file mode as prikk's integer (`33188` for `100644`, `33261` for `100755`) — the same
+    /// spelling `create-file` and `change-perm` carry in a patch.
+    ///
+    /// `None` on the prose band. **Also expect `33188` for a file committed on Windows**, which has
+    /// no executable bit for prikk to record; history committed on Linux or macOS keeps `33261` on
+    /// every platform (prikk's own 0.46 changelog, and why no test may assert a mode it did not
+    /// create on the platform it runs on).
+    pub mode: Option<u32>,
+}
+
+impl StateFile {
+    /// A file prikk named and said nothing else about — **the prose band's shape**, where
+    /// `checkout --patch-plan` prints a path and no attributes.
+    ///
+    /// Deliberately not a `From<&str>` impl: a conversion that costs nothing to write is a
+    /// conversion a caller reaches for without deciding, and the decision here is the whole point —
+    /// this says prikk reported no mode, which is a different claim from any mode at all.
+    #[must_use]
+    pub fn path_only(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            kind: None,
+            mode: None,
+        }
+    }
+
+    /// An ordinary file as `tree` reports one: `kind: "file"`, and its full mode.
+    #[must_use]
+    pub fn file(path: impl Into<String>, mode: u32) -> Self {
+        Self {
+            path: path.into(),
+            kind: Some("file".to_string()),
+            mode: Some(mode),
+        }
+    }
+}
+
+/// What [`Prikk::block_state`] can say about a block's files (RFC 037 decision 2).
+///
+/// **Two variants, because below prikk 0.46 an older block's files are not reported, not absent**
+/// (`C-T2c′`) — the shape [`QueueReport`] and [`ShowReport`] take, for the same reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StateReport {
+    /// The files at the block asked about: from `tree` at prikk ≥ 0.46, and from the tip's prose
+    /// replay below it.
+    Listed(StateFiles),
+    /// **Below prikk 0.46, for a block that is not the ref's tip.** prikk replays only to a tip
+    /// there, so there is no answer to be had and stikk spawns nothing to look for one. The view
+    /// says so in stikk's own voice (`C-T4d`); an empty file list would say the block is empty.
+    Unreported,
 }
 
 /// One ref pointer — a branch (open, closed, or received) or a tag. `branch list --all` does not
@@ -789,11 +867,35 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
     fn history(&self, repo: &Path, reff: &str, limit: usize) -> Result<History>;
 
-    /// Read the replayed state file set at a ref's tip (design FR-032; category `read-state`).
+    /// Read the files present at one block (design FR-032; category `read-state`; RFC 037
+    /// decision 1).
+    ///
+    /// **Version-banded behind this one method**, in [`Prikk::queue`]'s and [`Prikk::show`]'s
+    /// pattern:
+    /// - **At prikk ≥ [`crate::TREE_FROM_MINOR`]** it runs `tree --ref <block_id> --format json`,
+    ///   with the **block's own id, never `reff`** (RFC 037 §7 trap 1): a ref moves, and the block
+    ///   the user opened does not. Every block answers, tip or not, and the reader checks the report
+    ///   names the block it asked about.
+    /// - **Below it**, only the tip has an answer: `checkout --patch-plan --ref <reff>`, which is
+    ///   the one thing prikk can replay to there. For any other block it **spawns nothing** and
+    ///   returns [`StateReport::Unreported`] — never an empty list (`C-T2c′`).
+    ///
+    /// `is_tip` is the caller's, not this method's to infer: it is the same fact
+    /// `stikk_core::block_detail` is already given, and only above the seam is a block known to be a
+    /// ref's tip.
     ///
     /// # Errors
-    /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
-    fn block_state(&self, repo: &Path, reff: &str) -> Result<StateFiles>;
+    /// [`stikk_model::StikkError`]: a `tree-listing-v1` report that breaks the measured shape — a
+    /// wrong schema, a `target_block_id` that is not the id asked for, an entry missing a field or
+    /// carrying an empty path — is stikk's environment error (UD-02). A genuine failure classifies
+    /// as for [`Prikk::orientation`].
+    fn block_state(
+        &self,
+        repo: &Path,
+        reff: &str,
+        block_id: &str,
+        is_tip: bool,
+    ) -> Result<StateReport>;
 
     /// List every branch ref pointer in the repository (design FR-014; category `read-history`).
     ///

@@ -13,7 +13,7 @@ use stikk_model::{ChangeToken, CurrentBranch, Result, StikkError};
 use crate::version::Version;
 use crate::{
     CommitResult, Handshake, History, Orientation, Prikk, QueueReport, RefEntry, SealResult,
-    ShowReport, StateFiles, WorktreeStatus,
+    ShowReport, StateFiles, StateReport, WorktreeStatus,
 };
 
 type Scripted<T> = std::result::Result<T, String>;
@@ -50,7 +50,7 @@ pub struct NullBackend {
     readiness: Scripted<crate::ReadinessReport>,
     orientation: Scripted<Orientation>,
     history: Scripted<History>,
-    state: Scripted<StateFiles>,
+    state: Scripted<StateReport>,
     refs: Scripted<Vec<RefEntry>>,
     tags: Scripted<Vec<RefEntry>>,
     worktree: Scripted<WorktreeStatus>,
@@ -115,11 +115,11 @@ impl NullBackend {
                 reff: "heads/main".to_string(),
                 blocks: Vec::new(),
             }),
-            state: Ok(StateFiles {
+            state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
                 total_bytes: 0,
-            }),
+            })),
             refs: Ok(vec![RefEntry {
                 name: "heads/main".to_string(),
                 id: "0".repeat(64),
@@ -322,10 +322,26 @@ impl NullBackend {
         self
     }
 
-    /// Replace the tip state file set this backend returns.
+    /// Replace the block state file set this backend returns, as a listed report.
     #[must_use]
     pub fn with_state(mut self, state: StateFiles) -> Self {
-        self.state = Ok(state);
+        self.state = Ok(StateReport::Listed(state));
+        self
+    }
+
+    /// Answer [`Prikk::block_state`] as **not reported** — the band below
+    /// [`crate::TREE_FROM_MINOR`] for a block that is not the ref's tip (RFC 037 decision 2).
+    #[must_use]
+    pub fn with_state_unreported(mut self) -> Self {
+        self.state = Ok(StateReport::Unreported);
+        self
+    }
+
+    /// Fail [`Prikk::block_state`], so a test can show that a block keeps its fields and its patch
+    /// list when only the file read breaks (RFC 037 decision 5).
+    #[must_use]
+    pub fn with_state_refusal(mut self, message: impl Into<String>) -> Self {
+        self.state = Err(message.into());
         self
     }
 
@@ -471,7 +487,13 @@ impl Prikk for NullBackend {
         deliver(&self.show)
     }
 
-    fn block_state(&self, _repo: &Path, _reff: &str) -> Result<StateFiles> {
+    fn block_state(
+        &self,
+        _repo: &Path,
+        _reff: &str,
+        _block_id: &str,
+        _is_tip: bool,
+    ) -> Result<StateReport> {
         deliver(&self.state)
     }
 

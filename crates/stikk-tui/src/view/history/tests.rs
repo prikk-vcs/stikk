@@ -27,8 +27,15 @@ fn row(id: &str, seq: u64, kind: &str) -> BlockRow {
     }
 }
 
+/// **80 columns, the width the handoffs name** (RFC 036 review v2's note 1). It was 90 — wider than
+/// the terminal every capture in this project is read at, which is how the queued tier's clip went
+/// unnoticed here while the same clip in Changes was caught.
 fn draw(view: &HistoryView, cursor: usize) -> String {
-    let backend = TestBackend::new(90, 20);
+    draw_at(view, cursor, 80, 20)
+}
+
+fn draw_at(view: &HistoryView, cursor: usize, width: u16, height: u16) -> String {
+    let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|f| render(view, cursor, &Palette::default(), f, f.area()))
@@ -130,4 +137,85 @@ fn the_queued_tiers_target_ref_is_an_identifier() {
             .any(|r| r.contains("the active WAL holds 2 patch(es) for")),
         "and core's words are unchanged: {text}"
     );
+}
+
+/// **The queued tier wraps; it never clips** (RFC 024, carried into RFC 037 Handoff A §5 from
+/// RFC 036's review). The tier was one unwrapped `Line`, so at 80 columns the sentence was cut at
+/// the border mid-word — *"…not this ref's hist"* — and a long ref name in it was cut with it.
+///
+/// The assertion is the strong one the handoff asks for: **every character of a 60-character ref
+/// name is on screen, once, in order.**
+#[test]
+fn the_queued_tier_wraps_and_a_long_ref_name_survives_whole() {
+    // 60 characters, and a valid ref name. Spelled out rather than generated, so the assertion
+    // below is comparing against something a reader can see.
+    let long_ref = "heads/a-very-long-branch-name-that-does-not-fit-on-one-row-x".to_string();
+    assert_eq!(long_ref.chars().count(), 60, "{long_ref}");
+
+    let view = HistoryView {
+        reff: "heads/main".into(),
+        queued: 7,
+        queued_target: Some(long_ref.clone()),
+        blocks: vec![row("bbbb0000", 2, "Normal")],
+    };
+    let text = draw(&view, 0);
+
+    // Nothing is cut at the border: the sentence's own last words are present.
+    assert!(
+        text.contains("Q: Queue"),
+        "the tier's tail is on screen: {text}"
+    );
+
+    // The name, whole and in order, across however many rows it took. The panel's side borders and
+    // the row padding come out first; what is left is the name's characters in the order drawn.
+    let drawn: String = text
+        .lines()
+        .map(|line| line.trim_matches(|c| c == '\u{2502}' || c == ' '))
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(
+        drawn.contains(&long_ref),
+        "every character of the 60-character ref name, once and in order.\nname: {long_ref}\n{text}"
+    );
+}
+
+/// The wrapped tier still leaves the cursor arithmetic exact: block rows begin below however many
+/// rows the tier took, so a selected row is not scrolled to the wrong line (Handoff A §5).
+#[test]
+fn a_wrapped_tier_does_not_move_the_block_rows_out_from_under_the_cursor() {
+    let view = HistoryView {
+        reff: "heads/main".into(),
+        queued: 7,
+        queued_target: Some(format!("heads/{}", "x".repeat(54))),
+        blocks: vec![
+            row("bbbb0000", 3, "Normal"),
+            row("aaaa0000", 2, "Normal"),
+            row("9999dddd", 1, "Root"),
+        ],
+    };
+    // A short panel, so the scroll is doing real work: the selected row must still be visible.
+    let text = draw_at(&view, 2, 80, 10);
+    assert!(
+        text.contains("9999dddd"),
+        "the selected row is on screen below the wrapped tier: {text}"
+    );
+}
+
+/// **RFC 037 Handoff A §5's capture, at exactly 80 columns**: the queued tier wrapped, with a
+/// 60-character ref name. Reproduce with
+/// `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+#[test]
+fn capture_rfc037_queued_tier_at_80_columns() {
+    let view = HistoryView {
+        reff: "heads/main".into(),
+        queued: 7,
+        queued_target: Some("heads/a-very-long-branch-name-that-does-not-fit-on-one-row-x".into()),
+        blocks: vec![
+            row("56e95d7b7657", 2, "Normal"),
+            row("2b35728e3550", 1, "Root"),
+        ],
+    };
+    let text = draw(&view, 0);
+    println!("--- History's queued tier, wrapped (80 columns) ---\n{text}");
+    assert!(text.contains("Q: Queue"));
 }

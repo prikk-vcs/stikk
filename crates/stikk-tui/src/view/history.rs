@@ -14,8 +14,13 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use stikk_core::HistoryView;
 use stikk_prikk::BlockRow;
 
-use crate::text::{compose, identifier};
+use crate::text::{compose, identifier, wrap_indented};
 use crate::theme::Palette;
+
+/// The queued tier's label, and the indent its continuation rows line up under — the same columns,
+/// so a wrapped sentence reads as one tier rather than as a second row of the lineage.
+const TIER_LABEL: &str = "  queued   ";
+const TIER_INDENT: &str = "           ";
 
 /// Render the History view for `view`, with `cursor` marking the selected block, into `area`.
 pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut Frame, area: Rect) {
@@ -25,11 +30,33 @@ pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut 
     // nothing is queued (RFC 028 decision 5). Core composes a ref name into its own sentence, so this
     // is a string of both kinds and takes **prose** — the rule that cannot drop a character (RFC 036
     // decision 4). The same ref is an identifier in this view's title.
+    let text_width = usize::from(area.width.saturating_sub(2));
     if let Some(tier) = view.queued_tier() {
+        // **Wrapped, never clipped** (RFC 024; carried into RFC 037 Handoff A §5 from RFC 036's
+        // review). This was one `Line`, so at 80 columns the sentence was cut at the border
+        // mid-word — and a long ref name in it was cut with it, which is the same defect RFC 036
+        // fixed one view over in Changes.
+        //
+        // `wrap_indented` is the word wrap, and it is safe for this string even though it collapses
+        // runs of whitespace: the prose around the name is stikk's own and holds single spaces, and
+        // the name itself comes through the identifier rule, whose quoted form spells every space
+        // ` ` precisely so that it survives a wrap (RFC 036 decision 3). A name too long for a
+        // row is hard-split by `wrap_indented` rather than dropped, so every character of it is on
+        // screen, in order.
+        let sentence = compose(&tier);
+        let first_row_room = text_width.saturating_sub(TIER_LABEL.chars().count()).max(1);
+        let mut rows = wrap_indented(&sentence, first_row_room, "").into_iter();
+        let head = rows.next().unwrap_or_default();
         lines.push(Line::from(vec![
-            Span::styled("  queued   ", Style::default().fg(palette.dim)),
-            Span::styled(compose(&tier), Style::default().fg(palette.warn)),
+            Span::styled(TIER_LABEL, Style::default().fg(palette.dim)),
+            Span::styled(head, Style::default().fg(palette.warn)),
         ]));
+        for row in rows {
+            lines.push(Line::from(Span::styled(
+                format!("{TIER_INDENT}{row}"),
+                Style::default().fg(palette.warn),
+            )));
+        }
     }
     lines.push(Line::from(Span::styled(
         "  ─────────",

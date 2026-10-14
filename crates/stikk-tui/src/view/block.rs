@@ -112,36 +112,70 @@ pub fn render(
 
     lines.push(Line::from(""));
 
-    // State files: prikk can replay only to the tip (RFC 006), so older blocks show no file set.
-    match &detail.state {
-        Some(state) if detail.is_tip => {
+    // The files at this block (RFC 037 decision 1). **The heading says which block**, because from
+    // prikk 0.46 this is no longer the tip's file set reached through the tip's name: `tree` answers
+    // for the block the user opened, and a heading still saying "at tip" over an older block's files
+    // would be stikk mislabelling a correct answer.
+    match detail.state.unreported_reason() {
+        Some(reason) => {
+            lines.push(Line::from(Span::styled(
+                format!("  state files: {reason}"),
+                Style::default().fg(palette.dim),
+            )));
+        }
+        None => {
+            let files = detail.state.listed().map_or(&[][..], |state| &state.files);
+            let total = detail.state.listed().map_or(0, |state| state.total_bytes);
             lines.push(Line::from(Span::styled(
                 format!(
-                    "  state at tip — {} file(s), {} byte(s):",
-                    state.files.len(),
-                    state.total_bytes
+                    "  state {} — {} file(s), {} byte(s):",
+                    if detail.is_tip {
+                        "at tip"
+                    } else {
+                        "at this block"
+                    },
+                    files.len(),
+                    total
                 ),
                 Style::default().fg(palette.dim),
             )));
-            if state.files.is_empty() {
+            if files.is_empty() {
                 lines.push(Line::from(Span::styled(
                     "    (empty state)",
                     Style::default().fg(palette.dim),
                 )));
             } else {
-                for file in &state.files {
-                    lines.push(Line::from(vec![
+                for file in files {
+                    let mut spans = vec![
                         Span::styled("    ", Style::default()),
-                        Span::styled(identifier(file), Style::default().fg(palette.fg)),
-                    ]));
+                        // The mode first, in the fixed-width octal Patch detail already shows
+                        // (`100644`), so the paths below it line up whatever their length. Not
+                        // reported is said, never shown as `0`, which would read as `000000` — a
+                        // mode prikk never reported and no file ever has.
+                        Span::styled(
+                            match file.mode {
+                                Some(mode) => format!("{mode:06o}  "),
+                                None => "  (no mode)  ".to_string(),
+                            },
+                            Style::default().fg(palette.dim),
+                        ),
+                        Span::styled(identifier(&file.path), Style::default().fg(palette.fg)),
+                    ];
+                    // prikk's own word for what the path is, shown **only when it is not `file`**
+                    // (RFC 037 §2). Every entry prikk has ever emitted is a `file`, so labelling
+                    // each one would be noise; a kind stikk has not measured is exactly the thing a
+                    // reader must not be shown as an ordinary file.
+                    if let Some(kind) = file.kind.as_deref()
+                        && kind != "file"
+                    {
+                        spans.push(Span::styled(
+                            format!("  ({})", identifier(kind)),
+                            Style::default().fg(palette.warn),
+                        ));
+                    }
+                    lines.push(Line::from(spans));
                 }
             }
-        }
-        _ => {
-            lines.push(Line::from(Span::styled(
-                "  state files: prikk replays only to the ref tip — not shown for an older block",
-                Style::default().fg(palette.dim),
-            )));
         }
     }
 

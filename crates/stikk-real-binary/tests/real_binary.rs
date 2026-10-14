@@ -510,9 +510,15 @@ fn block_state_lists_the_files_the_suite_itself_committed() {
             .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
         Fixture::clear_env();
 
-        let state = backend
-            .block_state(fixture.repo(), "heads/main")
-            .unwrap_or_else(|e| panic!("0.{}: block_state: {e}", bin.minor));
+        let stikk_prikk::StateReport::Listed(state) = backend
+            .block_state(fixture.repo(), "heads/main", &seal.block_id, true)
+            .unwrap_or_else(|e| panic!("0.{}: block_state: {e}", bin.minor))
+        else {
+            panic!(
+                "0.{}: the tip's files are listed at every supported version",
+                bin.minor
+            )
+        };
 
         // The replayed state is the block this test just sealed, not some other tip.
         assert_eq!(
@@ -520,7 +526,7 @@ fn block_state_lists_the_files_the_suite_itself_committed() {
             "0.{}: block_state replayed a different block than seal reported",
             bin.minor
         );
-        let mut files = state.files.clone();
+        let mut files: Vec<String> = state.files.iter().map(|f| f.path.clone()).collect();
         files.sort();
         let expected = if subdirectory_committable {
             vec!["readme.txt".to_string(), "src/main.rs".to_string()]
@@ -4964,5 +4970,166 @@ fn rfc035_below_the_json_floor_the_patches_section_names_stikks_own_limit() {
             "0.{}: {queue:?}",
             bin.minor
         );
+    }
+}
+
+/// **RFC 037 Handoff A: Block detail lists the files at the block it was opened on, not the tip's.**
+///
+/// The claim spans prikk's `tree` and stikk's reader, and it is the whole increment: a two-block
+/// lineage whose first block holds a file its successor deletes. Block detail for the **older**
+/// block must list that file and not the tip's, and the ids must match the block asked about.
+///
+/// At the floor — below `TREE_FROM_MINOR`, where prikk has no `tree` at all — the same older block
+/// must say so in stikk's own voice rather than show an empty list (`C-T2c′`), and the tip must
+/// still list its files from the prose replay.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc037_block_detail_lists_the_files_at_the_block_it_was_opened_on() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+
+        // Block one: `only-in-the-first.txt`.
+        std::fs::write(repo.join("only-in-the-first.txt"), "first\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "one")
+            .unwrap_or_else(|e| panic!("0.{}: commit one: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        let first = backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal one: {e}", bin.minor));
+        Fixture::clear_env();
+
+        // Block two: delete it, add another.
+        std::fs::remove_file(repo.join("only-in-the-first.txt"))
+            .unwrap_or_else(|e| panic!("0.{}: remove: {e}", bin.minor));
+        std::fs::write(repo.join("only-in-the-tip.txt"), "second\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "two")
+            .unwrap_or_else(|e| panic!("0.{}: commit two: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        let tip = backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal two: {e}", bin.minor));
+        Fixture::clear_env();
+
+        let history = stikk_core::history_view(&backend, &repo, "heads/main", 10)
+            .unwrap_or_else(|e| panic!("0.{}: history: {e}", bin.minor));
+        assert_eq!(history.blocks.len(), 2, "0.{}: two blocks", bin.minor);
+        let tip_row = history.blocks[0].clone();
+        let older_row = history.blocks[1].clone();
+        assert_eq!(tip_row.block_id, tip.block_id, "0.{}", bin.minor);
+        assert_eq!(older_row.block_id, first.block_id, "0.{}", bin.minor);
+
+        let older = stikk_core::block_detail(&backend, &repo, "heads/main", older_row, false)
+            .unwrap_or_else(|e| panic!("0.{}: older block detail: {e}", bin.minor));
+        let at_tip = stikk_core::block_detail(&backend, &repo, "heads/main", tip_row, true)
+            .unwrap_or_else(|e| panic!("0.{}: tip block detail: {e}", bin.minor));
+
+        // The tip answers at every supported version — from `tree` above the band, from the prose
+        // replay below it.
+        let tip_state = at_tip
+            .state
+            .listed()
+            .unwrap_or_else(|| panic!("0.{}: the tip's files are always listed", bin.minor));
+        // Membership, not an exact set: the fixture ships its own files, and this leg's claim is
+        // about *which block* answers, not about what else the repository holds.
+        let tip_paths: Vec<&str> = tip_state.files.iter().map(|f| f.path.as_str()).collect();
+        assert!(
+            tip_paths.contains(&"only-in-the-tip.txt")
+                && !tip_paths.contains(&"only-in-the-first.txt"),
+            "0.{}: the tip lists the tip's files, got {tip_paths:?}",
+            bin.minor
+        );
+
+        if bin.minor >= stikk_prikk::TREE_FROM_MINOR {
+            let state = older.state.listed().unwrap_or_else(|| {
+                panic!(
+                    "0.{}: at or above 0.{} every block lists its files",
+                    bin.minor,
+                    stikk_prikk::TREE_FROM_MINOR
+                )
+            });
+            assert_eq!(
+                state.target_block, first.block_id,
+                "0.{}: the listing is about the block stikk asked for",
+                bin.minor
+            );
+            let paths: Vec<&str> = state.files.iter().map(|f| f.path.as_str()).collect();
+            assert!(
+                paths.contains(&"only-in-the-first.txt") && !paths.contains(&"only-in-the-tip.txt"),
+                "0.{}: the older block holds the file the tip deleted and not the tip's, \
+                 got {paths:?}",
+                bin.minor
+            );
+            // **Each file carries its mode**, and it is prikk's own integer. The value itself is
+            // not asserted: prikk records no executable bit on Windows, so a mode pinned here would
+            // fail on one platform for a reason that is prikk's design, not a defect (prikk's 0.46
+            // changelog).
+            for file in &state.files {
+                assert!(
+                    file.mode.is_some(),
+                    "0.{}: {} carries no mode",
+                    bin.minor,
+                    file.path
+                );
+                assert_eq!(file.kind.as_deref(), Some("file"), "0.{}", bin.minor);
+            }
+            assert!(
+                state.total_bytes > 0,
+                "0.{}: files replayed to zero bytes",
+                bin.minor
+            );
+            assert!(
+                older.state.unreported_reason().is_none(),
+                "0.{}: nothing is said instead of a list that exists",
+                bin.minor
+            );
+            println!(
+                "RFC 037: 0.{} older block {} lists {:?}, total {} byte(s), modes {:?}",
+                bin.minor,
+                &state.target_block[..12],
+                paths,
+                state.total_bytes,
+                state
+                    .files
+                    .iter()
+                    .map(|f| f.mode.map(|m| format!("{m:06o}")))
+                    .collect::<Vec<_>>()
+            );
+        } else {
+            assert!(
+                older.state.listed().is_none(),
+                "0.{}: below 0.{} prikk replays only to a tip",
+                bin.minor,
+                stikk_prikk::TREE_FROM_MINOR
+            );
+            let reason = older
+                .state
+                .unreported_reason()
+                .unwrap_or_else(|| panic!("0.{}: a sentence instead of an empty list", bin.minor));
+            assert!(
+                reason.contains("replays only to the ref tip"),
+                "0.{}: {reason}",
+                bin.minor
+            );
+            println!("RFC 037: 0.{} older block says — {reason}", bin.minor);
+        }
+
+        // **The prose band's files carry no mode, and that is said, not shown as zero.**
+        if bin.minor < stikk_prikk::TREE_FROM_MINOR {
+            for file in &tip_state.files {
+                assert_eq!(
+                    file.mode, None,
+                    "0.{}: the prose replay reports no mode for {}",
+                    bin.minor, file.path
+                );
+            }
+        }
     }
 }

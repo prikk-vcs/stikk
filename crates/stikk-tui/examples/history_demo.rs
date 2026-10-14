@@ -21,7 +21,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use stikk_prikk::{BlockRow, History, NullBackend, Orientation, RefEntry, StateFiles};
+use stikk_prikk::{BlockRow, History, NullBackend, Orientation, RefEntry, StateFile, StateFiles};
 use stikk_state::Config;
 
 fn block(
@@ -98,9 +98,9 @@ fn main() -> ExitCode {
             target_block: "76cee1dc985406f931a2bbeb217653e509183c2d5280fdf933b5ebac78f4cbc0"
                 .to_string(),
             files: vec![
-                "readme.txt".to_string(),
-                "src/main.rs".to_string(),
-                "docs/guide.md".to_string(),
+                StateFile::file("readme.txt", 0o100_644),
+                StateFile::file("src/main.rs", 0o100_755),
+                StateFile::file("docs/guide.md", 0o100_644),
             ],
             total_bytes: 4_213,
         })

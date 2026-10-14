@@ -30,7 +30,7 @@ use crate::env;
 use crate::version::Version;
 use crate::{
     CommitResult, Handshake, History, Orientation, Prikk, RefEntry, SealResult, ShowReport,
-    StateFiles, WorktreeStatus,
+    StateReport, WorktreeStatus,
 };
 
 mod classify;
@@ -419,13 +419,39 @@ impl Prikk for CliBackend {
         parse::history(&out)
     }
 
-    fn block_state(&self, repo: &Path, reff: &str) -> Result<StateFiles> {
+    fn block_state(
+        &self,
+        repo: &Path,
+        reff: &str,
+        block_id: &str,
+        is_tip: bool,
+    ) -> Result<StateReport> {
+        // RFC 037 decision 1. The gate is here, beside the command it chooses, exactly as
+        // `history` and `queue` put theirs — a parser that had to know the version would be two
+        // parsers in one function.
+        if Prikk::handshake(self)?.version.minor >= crate::TREE_FROM_MINOR {
+            // **The block's own id, never `reff`** (§7 trap 1). A ref moves between the moment the
+            // user opened a block and this read; the block does not. Asking with `reff` would
+            // answer about the tip for every row in the lineage, which is the defect this whole
+            // increment exists to remove — and it would do it silently, since the report would
+            // parse.
+            let out = self.run(
+                Some(repo),
+                RequestCategory::ReadState,
+                ["tree", "--ref", block_id, "--format", "json"],
+            )?;
+            return parse_json::tree(&out, block_id).map(StateReport::Listed);
+        }
+        // Below the band prikk can replay only to a tip, so that is the only block with an answer.
+        if !is_tip {
+            return Ok(StateReport::Unreported);
+        }
         let out = self.run(
             Some(repo),
             RequestCategory::ReadState,
             ["checkout", "--patch-plan", "--ref", reff],
         )?;
-        parse::state_files(&out)
+        parse::state_files(&out).map(StateReport::Listed)
     }
 
     fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {

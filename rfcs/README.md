@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 036 | [Repository text renders as it is, everywhere](./proposed/036-repository-text-renders-as-it-is.md) | `T-T2`: `inert` passes bidi and zero-width characters through in every view but Patch detail's content. Two rules on 0.9.0's one table: prose is escaped in place; identifiers are plain or quoted, so two never look alike and layout cannot change them. A long path in a Changes row stops clipping. 0.10.0 increment 1 |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

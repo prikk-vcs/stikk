@@ -273,57 +273,49 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — carried into 0.10.0, in order
+## Next — 0.10.0, scoped 2026-10-14 (authorized), in delivery order
 
-1. **Compare** (`FR-033`), the one named view still unbuilt. It shares RFC 035's `show` reader and reads prikk's
-   `diff`, and it takes **RFC 035's decision 4**: prikk's block diff is a separate, labelled section — *"what this
-   block changed, from `prikk diff`"* — shown only where it is honest, which is a block holding exactly one patch
-   in Patch detail and the block itself in Block detail where it holds more. **Never merged into the operation
-   list**, and never for a queued patch. prikk has refused arbitrary-point comparison (RFC 021 F3), so Compare is
-   what prikk can answer, not what Git would.
-2. **`inert` escapes only `Cc`**: paths, messages and ref names in every view still pass bidi overrides and
-   zero-width characters through to the terminal (`T-T2`). Patch detail's content does not (RFC 035 A3), and its
-   public predicate, `stikk_prikk::escape::needs_unicode_escape`, is what this increment reuses. **Do not write a
-   second table.**
-3. **The block-end label goes, or is banded below 0.52** (RFC 035 A2) — **waiting on prikk 0.52.0's release,
-   which is not published.** In a block of more than one patch, a node-addressed path is labelled *as at the end
-   of this block* because prikk 0.51 resolves it there; prikk has said it will resolve each patch at that patch.
-   When stikk validates that version, the label goes above it and is banded below.
-4. **Offer an unpublished current branch in the ref picker** (prikk ≥ 0.47), a small increment. prikk ruled
-   `branch list --format json` gains a nullable top-level `unpublished_current_branch` — `branches[]` and
-   `received[]` deliberately unchanged, because membership there is stikk's test for *published* and an unmarked row
-   would have inverted RFC 032's claim silently (stikk's answer decided it; prikk reply 020). The picker cannot
-   currently offer a branch that exists but has never been sealed — the state every new repository is in — and this
-   closes that, with *published* read from prikk's word instead of inferred from absence.
-5. **Orientation on `status --format json`** (prikk ≥ 0.35), its own increment. Orientation is prose-parsed today,
-   which is why RFC 034's interrupted-materialization marker is read from prikk's prose line rather than the JSON
-   field beside the queue (ruled 2026-09-22: prose carries prikk's whole sentence, `ER-02`, and the JSON would have
-   stikk compose one from a `routes` array). Moving Orientation onto JSON would unify the two reads and retire a
-   parser — **the marker does not wait on it**, and nothing else does either.
-6. **Block detail's file list on `tree --format json`** (prikk ≥ 0.46), its own increment. `block_state` parses
-   `checkout --patch-plan`'s prose, the one prose report letter 019 asked prikk to warn us about — when
-   `tree-listing-v1` already answers the same question in JSON. **Measured 2026-10-13 at 0.46 and 0.51:** the same
-   block id (`target_block_id`), the same paths, per-file `size` summing to the plan's `result content bytes`, plus
-   each file's mode. At 0.51 `tree` also answers for a never-sealed current branch (`target_block_id: null`, no
-   entries) where `--patch-plan` still refuses. The prose parse stays for prikk < 0.46. Once this lands, letter
-   019's warning request lapses for every binary the JSON path reads; say so in the next letter, no letter of its own.
-7. **The prose `worktree-status` path's parse failures** (prikk < 0.39) still reach the refusal classifier,
-   where the JSON path now reports stikk's own error. At prikk 0.38 that now includes a report missing its
-   `live rename declarations:` section, which RFC 030 made a parse error: it fails, as it should, but reads as
-   prikk's refusal.
-8. **The would-refuse overlay scrolls, and long paths get a row budget** — carried from RFC 027: a path past
-   about 64 characters clips on an entry row, and prikk 0.39–0.41 report unsupported paths absolute. prikk 0.42 reports them relative
-   (RFC 029 A), so the absolute case stays open only on that band.
-9. **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk,
-   and a source-level test holds that only in the two modules that name those variables. A guard
-   over every shipped crate would let the sentence say *enforced by test* without a qualifier.
-10. `docs.yml`'s three node20 actions — including `peaceiris/actions-mdbook`, which has no node24 release
-   to move to — **and `release.yml`'s attestation actions** (`actions/attest-build-provenance`, `actions/attest`),
-   which the 0.9.0 release run (`38487394190`) reported as node20, forced onto node24.
-11. **Double spaces in paths collapse** wherever a path is word-wrapped through `wrap_indented` (RFC 035 review v1
-   §2.1, found while fixing content). A path is not prose; it wants `wrap_verbatim`.
+**0.10.0: stikk compares any two points in history, and every string it shows from a repository is shown as it
+is.** Scope: `.git-exclude/release/0-10-0-scope.md`. Every handoff asks for its own changelog entry.
+
+1. **Repository text renders as it is, everywhere** (RFC 036). `inert` escapes only `Cc`, so paths, messages and ref
+   names in every view still pass bidi overrides and zero-width characters through to the terminal (`T-T2`). It is
+   to reuse `stikk_prikk::escape::needs_unicode_escape`; **do not write a second table**. Paths keep their double
+   spaces, and **a long path in a Changes entry row stops clipping** at the border (the ceiling half of RFC 027's
+   carried row budget). First, because Compare renders paths in bulk.
+2. **Read prikk's JSON where it now answers** (RFC 037, two handoffs).
+   - **Block detail's files from `tree --format json`**, for **every** block, not only the tip: `tree` takes a bare
+     block id from prikk 0.46. Measured 2026-10-13 at 0.46 and 0.51: the same block id, the same paths, sizes
+     summing to the plan's byte count, plus modes. This retires the prose `checkout --patch-plan` parse at the
+     ceiling. Letter 019's warning request lapses with it; say so in the next necessary letter.
+   - **The ref picker offers an unpublished current branch** (prikk ≥ 0.47): `branch list --format json`'s nullable
+     `unpublished_current_branch`, read as prikk's word for *published*, not inferred from absence (prikk reply
+     020). Every new repository is in this state.
+3. **Compare** (`FR-033`, RFC 038), the last named view still unbuilt. **Corrected 2026-10-14:** this item said
+   prikk refuses arbitrary-point comparison (RFC 021 F3). That predates prikk 0.46. **`prikk diff --from --to`
+   compares any two points** (refs, received refs, bare block ids), and `--from` alone compares a point with the
+   worktree, as *what `commit` would author*, with hunks (`diff-report-v1`). It takes **RFC 035's decision 4**:
+   prikk's block diff is a separate, labelled section, shown only where it is honest (a block of exactly one patch
+   in Patch detail, the block itself in Block detail), **never merged into the operation list**, and never for a
+   queued patch.
+4. **The node20 actions**: `docs.yml`'s three (including `peaceiris/actions-mdbook`, which has no node24 release
+   and is replaced, not bumped) and `release.yml`'s attestation actions (`actions/attest-build-provenance`,
+   `actions/attest`), reported by the 0.9.0 release run `38487394190`. A workflow chore, handed off without an RFC.
+5. **Conditional: the prikk 0.52.0 re-baseline.** Only if prikk 0.52.0 publishes before the cut; the cut does not
+   wait for it. The block-end label goes, or is banded below 0.52 (RFC 035 A2). In a block of more than one patch, a
+   node-addressed path is labelled *as at the end of this block* because prikk 0.51 resolves it there. prikk has
+   said 0.52.0 will resolve each patch at that patch.
+
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 
+- **Orientation on `status --format json`** (prikk ≥ 0.35). A refactor with no visible change: it would unify
+  Orientation's read with the queue's and retire a prose parser. RFC 034's interrupted-materialization marker is read
+  from prikk's prose line, by ruling (2026-09-22: prose carries prikk's whole sentence, `ER-02`). Nothing waits on it.
+- **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk, and a source-level
+  test holds that only in the two modules that name those variables. A guard over every shipped crate would let the
+  sentence say *enforced by test* without a qualifier.
+- *Dropped 2026-10-14 (scope 0.10.0; no user is on those bands):* the prose `worktree-status` parse-failure
+  attribution (prikk < 0.39), and the would-refuse overlay's absolute-path case (prikk 0.39–0.41).
 - **Verify report browser and doctor/recovery** (`FR-100/101/102`), with the three-valued
   author-signature outcome rendered precisely (Sound / Unverifiable / a blocking failure) and locks
   never auto-cleared.

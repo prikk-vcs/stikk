@@ -1,6 +1,6 @@
 # RFC 036 — Repository text renders as it is, everywhere
 
-**Status.** **Proposed 2026-10-14** by the architect, as increment 1 of the authorized 0.10.0 scope
+**Status.** **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 1 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Grounded in stikk's own code at `b29f997` and prikk's source in the clone (`prikk-object/src/path.rs`). The handoff
 measures the two things the source does not settle, at prikk 0.51.0 (§ Delivery).
@@ -105,7 +105,7 @@ budget. The would-refuse overlay already hard-wraps its paths, so it is not affe
 
 ## Delivery
 
-**One handoff, on acceptance.** It **measures first**, at prikk 0.51.0:
+**One handoff, issued on acceptance:** [Handoff A](../handoffs/036-repository-text-renders-as-it-is/a-repository-text-handoff-v1.md). It **measures first**, at prikk 0.51.0:
 (a) what `worktree-status --format json` reports for on-disk filenames carrying a bidi override, a zero-width
 space, a non-breaking space, a double space, a leading space and a `"`;
 (b) whether prikk accepts a branch name carrying a bidi override or a zero-width space, and what `branch list`

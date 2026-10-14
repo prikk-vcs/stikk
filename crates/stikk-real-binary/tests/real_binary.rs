@@ -407,7 +407,8 @@ fn refs_and_tags_report_what_the_repository_actually_has() {
 
         let refs = backend
             .refs(fixture.repo())
-            .unwrap_or_else(|e| panic!("0.{}: refs: {e}", bin.minor));
+            .unwrap_or_else(|e| panic!("0.{}: refs: {e}", bin.minor))
+            .refs;
         let named = |n: &str| refs.iter().find(|r| r.name == n).cloned();
 
         assert!(
@@ -1442,7 +1443,8 @@ fn the_three_reports_parse_at_both_ends_json_above_prose_below() {
         // `branch` — and the tag-leak difference between the two eras, asserted rather than assumed.
         let refs = backend
             .refs(fixture.repo())
-            .unwrap_or_else(|e| panic!("0.{}: refs: {e}", bin.minor));
+            .unwrap_or_else(|e| panic!("0.{}: refs: {e}", bin.minor))
+            .refs;
         for wanted in ["heads/main", "heads/feature"] {
             assert!(
                 refs.iter().any(|r| r.name == wanted),
@@ -5131,5 +5133,126 @@ fn rfc037_block_detail_lists_the_files_at_the_block_it_was_opened_on() {
                 );
             }
         }
+    }
+}
+
+/// **RFC 037 Handoff B: a fresh repository's picker offers the branch you are on.**
+///
+/// The claim spans prikk's `branch list` and stikk's reader, and the state it is about is the one
+/// every repository starts in: nothing sealed, so nothing published, so — until prikk 0.47 — no ref
+/// the picker could offer at all.
+///
+/// At the ceiling the branch must be named, must **not** be in the ref list (RFC 032's *published*
+/// test, F4), and must keep being named after a commit is queued and stop being named after the
+/// first seal. At the floor there is no such row, and that is *not reported*, not "none".
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc037_the_picker_offers_the_unpublished_current_branch_on_a_fresh_repository() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+        let reports = bin.minor >= stikk_prikk::UNPUBLISHED_BRANCH_FROM_MINOR;
+
+        let fresh = stikk_core::list_refs(&backend, &repo)
+            .unwrap_or_else(|e| panic!("0.{}: list_refs on a fresh repository: {e}", bin.minor));
+        assert!(
+            fresh.refs.is_empty(),
+            "0.{}: nothing is published yet, got {:?}",
+            bin.minor,
+            fresh.refs
+        );
+
+        if !reports {
+            assert_eq!(
+                fresh.unpublished_current,
+                stikk_prikk::UnpublishedBranch::NotReported,
+                "0.{}: below 0.{} prikk cannot say, which is not 'none'",
+                bin.minor,
+                stikk_prikk::UNPUBLISHED_BRANCH_FROM_MINOR
+            );
+            println!(
+                "RFC 037: 0.{} reports no unpublished current branch at all — the picker is as it was",
+                bin.minor
+            );
+            continue;
+        }
+
+        assert_eq!(
+            fresh.unpublished_current.name(),
+            Some("heads/main"),
+            "0.{}: prikk names the branch you are on",
+            bin.minor
+        );
+
+        // **Changes still says the ref has no published history**, with the field present — RFC 032
+        // decision 5 reads membership in the list, and the branch is beside it, never in it (F4).
+        let read = stikk_core::changes_view(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: changes: {e}", bin.minor));
+        let headline = read.history.changes_headline("heads/main", read.view.clean);
+        assert!(
+            headline
+                .as_deref()
+                .is_some_and(|line| line.contains("no published history")),
+            "0.{}: RFC 032's sentence is unchanged, got {headline:?}",
+            bin.minor
+        );
+
+        // History on that ref opens, with its queued tier and no sealed blocks.
+        let history = stikk_core::history_view(&backend, &repo, "heads/main", 10)
+            .unwrap_or_else(|e| panic!("0.{}: history on an unpublished ref: {e}", bin.minor));
+        assert!(
+            history.blocks.is_empty(),
+            "0.{}: nothing is sealed, got {} block(s)",
+            bin.minor,
+            history.blocks.len()
+        );
+
+        // Still named with a commit queued and nothing sealed.
+        std::fs::write(repo.join("first.txt"), "first\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "one")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        Fixture::clear_env();
+        let queued = stikk_core::list_refs(&backend, &repo)
+            .unwrap_or_else(|e| panic!("0.{}: list_refs with a queued commit: {e}", bin.minor));
+        assert_eq!(
+            queued.unpublished_current.name(),
+            Some("heads/main"),
+            "0.{}: a queued commit publishes nothing",
+            bin.minor
+        );
+        assert!(queued.refs.is_empty(), "0.{}", bin.minor);
+
+        // And the first seal publishes it: into the list, out of the field.
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+        let sealed = stikk_core::list_refs(&backend, &repo)
+            .unwrap_or_else(|e| panic!("0.{}: list_refs after the seal: {e}", bin.minor));
+        assert_eq!(
+            sealed.unpublished_current,
+            stikk_prikk::UnpublishedBranch::None,
+            "0.{}: prikk answers 'none' once it is published",
+            bin.minor
+        );
+        assert!(
+            sealed.refs.iter().any(|r| r.name == "heads/main"),
+            "0.{}: and it is in the list instead, got {:?}",
+            bin.minor,
+            sealed.refs
+        );
+        println!(
+            "RFC 037: 0.{} fresh={:?} queued={:?} sealed={:?} (list after the seal: {:?})",
+            bin.minor,
+            fresh.unpublished_current.name(),
+            queued.unpublished_current.name(),
+            sealed.unpublished_current.name(),
+            sealed.refs.iter().map(|r| &r.name).collect::<Vec<_>>()
+        );
     }
 }

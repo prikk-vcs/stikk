@@ -325,7 +325,8 @@ fn compute(
     // `CommitPreview::changes` and the view the token owns carry nothing from this read, so the re-read at
     // Enter still builds an equal view (handoff §4, trap 1). A failed read fails the preview. The race over
     // these reads is the one `changes::changes_view` documents.
-    let refs = prikk.refs(repo)?;
+    // `.refs` alone: membership in the list is the published test, unchanged by RFC 037.
+    let refs = prikk.refs(repo)?.refs;
     let history = changes::history_from(reff, &refs, &orientation);
     let mut counts = vec![
         ("modified", view.modified),

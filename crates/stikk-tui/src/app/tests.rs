@@ -523,7 +523,7 @@ fn ref_picker_selects_a_ref_and_reopens_history() {
     assert!(matches!(refs_req.kind, RequestKind::Refs));
     app.apply(Response {
         seq: refs_req.seq,
-        kind: ResponseKind::Refs(Ok(vec![
+        kind: ResponseKind::Refs(Ok(ref_list(vec![
             stikk_prikk::RefEntry {
                 name: "heads/main".into(),
                 id: "x".into(),
@@ -536,7 +536,7 @@ fn ref_picker_selects_a_ref_and_reopens_history() {
                 closed: false,
                 received: false,
             },
-        ])),
+        ]))),
     });
     assert!(matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })));
 
@@ -1748,6 +1748,15 @@ fn top_overlay_text(app: &App) -> String {
     crate::test_util::buffer_text(terminal.backend().buffer())
 }
 
+/// A `RefList` with no unpublished current branch reported — the shape every test here used
+/// before RFC 037, so each one keeps asserting exactly what it asserted.
+fn ref_list(refs: Vec<stikk_prikk::RefEntry>) -> stikk_core::RefList {
+    stikk_core::RefList {
+        refs,
+        unpublished_current: stikk_prikk::UnpublishedBranch::NotReported,
+    }
+}
+
 fn ref_entry(name: &str) -> stikk_prikk::RefEntry {
     stikk_prikk::RefEntry {
         name: name.into(),
@@ -1835,7 +1844,7 @@ fn a_pick_made_while_pending_survives_the_first_read() {
     let refs_req = next_request(&rx);
     app.apply(Response {
         seq: refs_req.seq,
-        kind: ResponseKind::Refs(Ok(vec![ref_entry("tags/v1")])),
+        kind: ResponseKind::Refs(Ok(ref_list(vec![ref_entry("tags/v1")]))),
     });
     app.select();
     assert_eq!(app.focused_ref(), Some("tags/v1"));
@@ -1934,7 +1943,7 @@ fn an_empty_ref_list_offers_an_unpublished_heads_main_and_picking_it_focuses_it(
     let refs_req = next_request(&rx);
     app.apply(Response {
         seq: refs_req.seq,
-        kind: ResponseKind::Refs(Ok(Vec::new())),
+        kind: ResponseKind::Refs(Ok(ref_list(Vec::new()))),
     });
     assert!(matches!(
         app.top_overlay(),
@@ -1971,7 +1980,7 @@ fn a_non_empty_ref_list_offers_no_unpublished_row() {
     let refs_req = next_request(&rx);
     app.apply(Response {
         seq: refs_req.seq,
-        kind: ResponseKind::Refs(Ok(vec![ref_entry("heads/dev")])),
+        kind: ResponseKind::Refs(Ok(ref_list(vec![ref_entry("heads/dev")]))),
     });
     assert!(matches!(
         app.top_overlay(),
@@ -2335,3 +2344,135 @@ fn opening_a_patch_from_the_queue_reads_once_and_r_re_reads_the_same_id() {
 }
 
 mod change_awareness;
+
+/// **The ref picker offers the branch you are on before its first seal** (RFC 037 decision 4), as
+/// its own row, first, and selecting it focuses that ref like any other — which is the whole point:
+/// a brand-new repository can be opened, committed in and sealed without the picker pretending the
+/// branch does not exist.
+#[test]
+fn the_picker_offers_the_unpublished_current_branch_and_selecting_it_focuses_that_ref() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(stikk_core::RefList {
+            refs: Vec::new(),
+            unpublished_current: stikk_prikk::UnpublishedBranch::Branch("heads/main".into()),
+        })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::RefPicker {
+            refs,
+            unpublished_current,
+            unpublished_main,
+            ..
+        }) => {
+            assert_eq!(refs, &["heads/main".to_string()]);
+            assert!(unpublished_current, "the row is marked as the branch");
+            assert!(
+                !unpublished_main,
+                "and RFC 029's guess is off, because prikk answered"
+            );
+        }
+        other => panic!("expected a RefPicker, got {other:?}"),
+    }
+    app.select();
+    assert!(!app.has_overlay());
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+}
+
+/// **The branch goes first, above the published refs**, so in a repository that has both, the row
+/// for the branch you are standing on is the one at the top.
+#[test]
+fn the_unpublished_branch_is_the_first_row() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(stikk_core::RefList {
+            refs: vec![ref_entry("heads/dev"), ref_entry("tags/v1")],
+            unpublished_current: stikk_prikk::UnpublishedBranch::Branch("heads/new".into()),
+        })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::RefPicker { refs, .. }) => {
+            assert_eq!(refs, &["heads/new", "heads/dev", "tags/v1"]);
+        }
+        other => panic!("expected a RefPicker, got {other:?}"),
+    }
+}
+
+/// **Where prikk reports none, nothing says "none"** — the picker is exactly as it is today, and
+/// RFC 029's `heads/main (not published)` guess does **not** appear, because prikk has just denied
+/// it (Handoff B §3).
+#[test]
+fn a_reported_none_offers_no_row_and_silences_the_older_guess() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(stikk_core::RefList {
+            refs: Vec::new(),
+            unpublished_current: stikk_prikk::UnpublishedBranch::None,
+        })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::RefPicker {
+            refs,
+            unpublished_current,
+            unpublished_main,
+            ..
+        }) => {
+            assert!(refs.is_empty());
+            assert!(!unpublished_current);
+            assert!(
+                !unpublished_main,
+                "stikk does not guess at a branch prikk just said is not there"
+            );
+        }
+        other => panic!("expected a RefPicker, got {other:?}"),
+    }
+}
+
+/// **Below the band the picker is exactly as it was**, RFC 029's one-row fallback included: that
+/// row exists because prikk would not answer, and below 0.47 it still will not.
+#[test]
+fn below_the_band_the_picker_is_unchanged() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(ref_list(Vec::new()))),
+    });
+    match app.top_overlay() {
+        Some(Overlay::RefPicker {
+            unpublished_main,
+            unpublished_current,
+            ..
+        }) => {
+            assert!(unpublished_main, "RFC 029 Handoff B §4's one row");
+            assert!(!unpublished_current);
+        }
+        other => panic!("expected a RefPicker, got {other:?}"),
+    }
+}

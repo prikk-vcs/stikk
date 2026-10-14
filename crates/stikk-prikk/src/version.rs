@@ -107,6 +107,19 @@ pub const JSON_REPORTS_FROM_MINOR: u32 = 39;
 /// sentence it shows below the band.
 pub const TREE_FROM_MINOR: u32 = 46;
 
+/// The first prikk minor that names an **unpublished current branch**: prikk 0.47, where
+/// `branch-list-v1` gained the nullable top-level `unpublished_current_branch` field (RFC 037 F3).
+///
+/// **Measured**: at 0.46.0 the field is absent from the report entirely; at 0.51.0 it is
+/// `"heads/main"` in a fresh repository and still after a commit is queued, and `null` once the
+/// first seal publishes the branch into `branches[]`.
+///
+/// Below this band the field is **not reported**, which is not the same fact as `null` — one says
+/// this prikk cannot answer, the other says prikk answered "none" (`C-T2c′`). A reader that keyed on
+/// the field's absence would read the two as one, which is why the band decides and absence never
+/// does.
+pub const UNPUBLISHED_BRANCH_FROM_MINOR: u32 = 47;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

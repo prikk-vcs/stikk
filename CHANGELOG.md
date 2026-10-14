@@ -17,12 +17,15 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. `stik
 | `stikk-prikk` | **`Prikk::block_state` takes the block and whether it is the tip** — `block_state(&self, repo, reff, block_id, is_tip)` — and returns `StateReport`, which is `Listed` or `Unreported`. It asks prikk with the **block's own id**, so the answer is about the block the reader opened rather than wherever the ref now points |
 | `stikk-prikk` | **`StateFiles::files` becomes `Vec<StateFile>`** — a path, prikk's `kind`, and the file's `mode`. The mode is `Option<u32>`: `None` is *not reported*, never `0`, which would be a mode (`000000`) prikk never claimed |
 | `stikk-core` | **`BlockDetailView::state` becomes `BlockState`** (`Listed` / `Unreported(minor)` / `Failed`) instead of `Option<StateFiles>`. `None` used to mean "an older block, which prikk cannot replay to"; from prikk 0.46 every block has an answer, and `None` would now mean two things, one of them false |
+| `stikk-prikk` | **`Prikk::refs` returns `BranchList`** — the ref pointers **and** the current branch before its first seal, beside the list and never in it. A `RefEntry` for an unpublished branch would make every caller of RFC 032's *published* test (membership in that list) call it published |
+| `stikk-core` | **`list_refs` returns `RefList`** for the same reason, and `stikk_tui::worker::ResponseKind::Refs` carries it |
 
 **Additive:** `stikk_core::Piece`, `stikk_core::flatten` and `stikk_core::BlockState`;
-`stikk_prikk::StateFile`, `stikk_prikk::StateReport` and `stikk_prikk::TREE_FROM_MINOR`;
-`stikk_tui::text::identifier` and
-`stikk_tui::text::compose`; `stikk_prikk::escape::escape_invisible_into`. **`stikk_tui::text::inert`
-keeps its signature** and changes only what it produces (see *Changed*). No public item was removed.
+`stikk_prikk::StateFile`, `stikk_prikk::StateReport`, `stikk_prikk::UnpublishedBranch`,
+`stikk_prikk::TREE_FROM_MINOR` and `stikk_prikk::UNPUBLISHED_BRANCH_FROM_MINOR`;
+`stikk_tui::text::identifier` and `stikk_tui::text::compose`;
+`stikk_prikk::escape::escape_invisible_into`. **`stikk_tui::text::inert` keeps its signature** and
+changes only what it produces (see *Changed*). No public item was removed.
 
 ### Security
 
@@ -64,6 +67,21 @@ keeps its signature** and changes only what it produces (see *Changed*). No publ
   **The limit, stated:** this is about what reaches the terminal. A terminal that renders an escape
   sequence stikk never sent is outside stikk's reach, and so is a font that draws two different
   characters identically.
+
+### Added
+
+- **The ref picker offers the branch you are on, before its first seal** (prikk ≥ 0.47). Until now
+  a brand-new repository had nothing to choose: a branch has no ref pointer until its first `seal`,
+  so the picker was empty and stikk offered a guessed `heads/main (not published)` row only when it
+  was *completely* empty. prikk 0.47 names that branch in `branch list --format json`, in a field
+  built for stikk, and the picker now offers it as its own row — **first**, marked in stikk's own
+  words as the branch you are on before its first seal, with the name rendered as an identifier.
+  Selecting it focuses that ref like any other: History shows its queued tier and no sealed blocks,
+  and Changes works as it does today. **It is never added to the ref list**, so "has this ref
+  published history?" — which stikk answers by membership in that list — still says *no* for it,
+  and Changes still opens a fresh repository with *no published history*. Below 0.47 the picker is
+  exactly as it was, the older guessed row included; where prikk reports there is no such branch,
+  nothing says so.
 
 ### Changed
 

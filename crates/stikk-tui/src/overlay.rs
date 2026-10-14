@@ -67,14 +67,24 @@ pub enum Overlay {
     },
     /// A ref chooser: the ref names and the highlighted index.
     RefPicker {
-        /// The selectable ref names (repository-sourced; rendered inert).
+        /// The selectable ref names (repository-sourced; rendered as identifiers).
+        ///
+        /// **When prikk names an unpublished current branch it is the first entry**, and
+        /// `unpublished_current` is set. It is selectable like any other row, because focusing it
+        /// *is* like any other focus: History shows its queued tier and no sealed blocks, and
+        /// Changes works as it does today (RFC 037 Handoff B §3).
         refs: Vec<String>,
         /// The highlighted entry.
         cursor: usize,
-        /// Set only when prikk reported no refs at all (RFC 029 Handoff B §4): the picker then offers
-        /// one row, `heads/main (not published)`, so a brand-new repository below prikk 0.42 can still
-        /// be focused and make its first commit.
+        /// Set only when prikk reported no refs at all **and could not name a current branch**
+        /// (RFC 029 Handoff B §4): the picker then offers one row, `heads/main (not published)`,
+        /// so a brand-new repository below prikk 0.47 can still be focused and make its first
+        /// commit. **Where prikk answers, this guess is off** — see `unpublished_current`.
         unpublished_main: bool,
+        /// Whether `refs[0]` is the branch prikk named as the current one before its first seal
+        /// (RFC 037 decision 4). The row is marked in stikk's own words; the name itself is
+        /// repository text and is rendered as an identifier.
+        unpublished_current: bool,
     },
     /// A refusal explanation (TU-08): verbatim message + gloss + next-steps + glossary links.
     Refusal {
@@ -236,7 +246,16 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
             refs,
             cursor,
             unpublished_main,
-        } => render_ref_picker(refs, *cursor, *unpublished_main, palette, frame, area),
+            unpublished_current,
+        } => render_ref_picker(
+            refs,
+            *cursor,
+            *unpublished_main,
+            *unpublished_current,
+            palette,
+            frame,
+            area,
+        ),
         Overlay::Refusal { card, cursor } => render_refusal(card, *cursor, palette, frame, area),
         Overlay::Stale {
             operation,
@@ -480,6 +499,7 @@ fn render_ref_picker(
     refs: &[String],
     cursor: usize,
     unpublished_main: bool,
+    unpublished_current: bool,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -505,6 +525,19 @@ fn render_ref_picker(
         .render(frame, area);
         return;
     }
+    // **The sentence goes in the header, the tag on the row** (RFC 037 decision 4) — the pattern
+    // the `unpublished_main` branch above already uses, and for the same reason: this panel is a
+    // fixed-width list with one row per entry, so prose appended to a ref name is prose that gets
+    // cut off. The header says it once, in full; the row carries a tag short enough to survive
+    // beside a name.
+    let header = if unpublished_current {
+        vec![Line::from(Span::styled(
+            "  the first is the branch you are on, before its first seal",
+            Style::default().fg(palette.dim),
+        ))]
+    } else {
+        Vec::new()
+    };
     let (items, selection) = if refs.is_empty() {
         (
             vec![Line::from(Span::styled(
@@ -517,15 +550,27 @@ fn render_ref_picker(
         (
             refs.iter()
                 .enumerate()
-                .map(|(i, name)| selectable(palette, i == cursor, identifier(name)))
+                .map(|(i, name)| {
+                    // **The mark is stikk's own words; the name is the repository's** (RFC 037
+                    // decision 4, RFC 036). prikk reports the branch, not a sentence about it, so
+                    // stikk says what it means in its own voice rather than inventing a quotation.
+                    let label = if unpublished_current && i == 0 {
+                        format!("{}  (not yet published)", identifier(name))
+                    } else {
+                        identifier(name)
+                    };
+                    selectable(palette, i == cursor, label)
+                })
                 .collect(),
             Some(cursor),
         )
     };
     ListPanel {
         title: " Choose ref ",
-        width: 52,
-        header: Vec::new(),
+        // Wider than the 52 this panel used, so a ref name and its tag fit side by side. The
+        // picker's names were already the longest thing this overlay draws.
+        width: 64,
+        header,
         items,
         cursor: selection,
         style: Style::default().fg(palette.fg),

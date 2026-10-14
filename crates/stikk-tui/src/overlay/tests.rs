@@ -171,6 +171,7 @@ fn ref_picker_marks_the_highlighted_ref_and_neutralizes_hostile_names() {
         refs: vec!["heads/main".into(), "heads/\u{1b}[2Jevil".into()],
         cursor: 0,
         unpublished_main: false,
+        unpublished_current: false,
     };
     let text = draw(&overlay);
     assert!(text.contains("heads/main"));
@@ -1344,6 +1345,7 @@ fn cases() -> Vec<Case> {
             build: Box::new(|cursor| Overlay::RefPicker {
                 refs: long_refs(40),
                 cursor,
+                unpublished_current: false,
                 unpublished_main: false,
             }),
             last_row: "heads/branch-039".to_string(),
@@ -1695,6 +1697,7 @@ fn f5_ref_picker_shows_the_last_of_forty_refs_when_selected() {
         &Overlay::RefPicker {
             refs: refs.clone(),
             cursor: 39,
+            unpublished_current: false,
             unpublished_main: false,
         },
         80,
@@ -2181,6 +2184,7 @@ fn an_empty_picker_offers_only_the_unpublished_heads_main() {
         &Overlay::RefPicker {
             refs: Vec::new(),
             cursor: 0,
+            unpublished_current: false,
             unpublished_main: true,
         },
         80,
@@ -2628,6 +2632,7 @@ fn the_ref_picker_tells_two_names_apart_that_differ_only_invisibly() {
         ],
         cursor: 0,
         unpublished_main: false,
+        unpublished_current: false,
     };
     let text = draw(&overlay);
     println!("--- RFC 036: the ref picker with §1's measured branch names\n{text}");
@@ -2671,4 +2676,81 @@ fn a_refusal_with_quotes_reads_as_prikk_wrote_it() {
         text.contains("u202e"),
         "and the override is written out: {text}"
     );
+}
+
+/// **The row is marked in stikk's own words, and the name is the repository's** (RFC 037 decision
+/// 4; RFC 036). prikk reports a branch name, not a sentence about it, so stikk says what it means
+/// in its own voice rather than quoting something prikk never said — and the name goes through the
+/// identifier rule like every other ref name in this picker.
+#[test]
+fn the_picker_marks_the_unpublished_current_branch_in_stikks_words() {
+    let overlay = Overlay::RefPicker {
+        refs: vec!["heads/main".into(), "heads/dev".into()],
+        cursor: 0,
+        unpublished_main: false,
+        unpublished_current: true,
+    };
+    let text = draw_at(&overlay, 80, 24);
+    // The sentence, once, in the header — stikk's own words, not a quotation of prikk.
+    assert!(
+        text.contains("the branch you are on, before its first seal"),
+        "{text}"
+    );
+    // And the tag on the row it is about, and on no other.
+    assert!(text.contains("heads/main  (not yet published)"), "{text}");
+    assert_eq!(
+        text.matches("(not yet published)").count(),
+        1,
+        "exactly one row carries the tag: {text}"
+    );
+    assert!(text.contains("heads/dev"), "{text}");
+}
+
+/// A branch name that needs quoting is **still quoted** when it carries the mark — the mark is
+/// stikk's prose beside the identifier, never part of it, so the two rules do not bleed together.
+#[test]
+fn a_marked_branch_name_is_still_rendered_as_an_identifier() {
+    let overlay = Overlay::RefPicker {
+        refs: vec!["heads/ev\u{202e}il".into()],
+        cursor: 0,
+        unpublished_main: false,
+        unpublished_current: true,
+    };
+    let text = draw_at(&overlay, 80, 24);
+    assert!(
+        !text.contains('\u{202e}'),
+        "no override reaches the terminal"
+    );
+    assert!(
+        text.contains("\\u202e"),
+        "it is written as its escape: {text}"
+    );
+    assert!(text.contains("(not yet published)"), "{text}");
+}
+
+/// **RFC 037 Handoff B's capture, at exactly 80 columns**: the picker on a fresh repository, and
+/// after the first seal. Reproduce with
+/// `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+#[test]
+fn capture_rfc037_ref_picker_at_80_columns() {
+    let fresh = Overlay::RefPicker {
+        refs: vec!["heads/main".into()],
+        cursor: 0,
+        unpublished_main: false,
+        unpublished_current: true,
+    };
+    let sealed = Overlay::RefPicker {
+        refs: vec!["heads/main".into(), "heads/dev".into(), "tags/v1".into()],
+        cursor: 0,
+        unpublished_main: false,
+        unpublished_current: false,
+    };
+    for (label, overlay) in [
+        ("the picker on a fresh repository, at prikk 0.51", &fresh),
+        ("the picker after the first seal", &sealed),
+    ] {
+        println!("--- {label} (80 columns) ---\n{}", draw_at(overlay, 80, 16));
+    }
+    assert!(draw_at(&fresh, 80, 16).contains("(not yet published)"));
+    assert!(!draw_at(&sealed, 80, 16).contains("(not yet published)"));
 }

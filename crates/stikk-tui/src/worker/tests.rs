@@ -156,11 +156,11 @@ impl Prikk for Recording {
         self.record("block_state");
         self.inner.block_state(repo, reff, block_id, is_tip)
     }
-    fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+    fn refs(&self, repo: &Path) -> Result<stikk_prikk::BranchList> {
         self.record("refs");
         self.inner.refs(repo)
     }
-    fn tags(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+    fn tags(&self, repo: &Path) -> Result<Vec<stikk_prikk::RefEntry>> {
         self.record("tags");
         self.inner.tags(repo)
     }

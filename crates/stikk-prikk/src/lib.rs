@@ -24,7 +24,10 @@ pub mod version;
 
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
-pub use version::{JSON_REPORTS_FROM_MINOR, TREE_FROM_MINOR, Version, validated_ceiling_display};
+pub use version::{
+    JSON_REPORTS_FROM_MINOR, TREE_FROM_MINOR, UNPUBLISHED_BRANCH_FROM_MINOR, Version,
+    validated_ceiling_display,
+};
 
 use std::path::Path;
 
@@ -539,6 +542,60 @@ impl RefEntry {
     }
 }
 
+/// What [`Prikk::refs`] reads: the ref pointers, **and the current branch beside them** (RFC 037
+/// decision 3).
+///
+/// # Why the branch is not in the list
+///
+/// RFC 032 decision 5 reads *"has this ref published history?"* as **membership in the ref list**.
+/// prikk saw stikk's answer and deliberately kept `branches[]` unchanged, adding a separate
+/// top-level field instead (prikk reply 020), because a `RefEntry` for a branch with no published
+/// history would make every caller of that test say it was published. Keeping it a sibling of the
+/// list, not a member, is what makes RFC 032's test stay true without being rewritten.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchList {
+    /// Every ref pointer prikk listed — **unchanged by this increment**, in prikk's order.
+    pub refs: Vec<RefEntry>,
+    /// The branch the user is on, before its first seal.
+    pub unpublished_current: UnpublishedBranch,
+}
+
+/// The current branch before its first seal (`branch-list-v1`'s `unpublished_current_branch`,
+/// prikk ≥ [`crate::UNPUBLISHED_BRANCH_FROM_MINOR`]).
+///
+/// **Three states, and the reader never keys on the field's absence** (`C-T2c′`; RFC 037 §2).
+/// Whether prikk can answer is decided **by the version**, because *absent* and `null` are two
+/// different facts that a presence check reads as one — and prikk has already shipped a release
+/// that started writing a field where it previously wrote none (0.47's queued-patch `path`), which
+/// is the exact way a presence check turns a release note into a behaviour change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnpublishedBranch {
+    /// Below the band: this prikk does not report the field at all. **Never [`Self::None`]** — a
+    /// prikk that cannot answer has not answered "there is none".
+    NotReported,
+    /// `null`: prikk answered, and the current branch is published (it is in
+    /// [`BranchList::refs`] instead).
+    None,
+    /// The branch, validated through `RefName::parse` like every other ref name (`INV-9`).
+    Branch(String),
+}
+
+impl UnpublishedBranch {
+    /// The branch's name when prikk named one, else `None`.
+    ///
+    /// **Collapses the two "no branch" states on purpose, and only for a caller that genuinely
+    /// does not distinguish them** — the picker, which draws a row or does not. A caller that says
+    /// anything *about* the absence must match the three variants instead, because "prikk reports
+    /// none" and "this prikk cannot say" are not one sentence.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Self::Branch(name) => Some(name),
+            Self::NotReported | Self::None => None,
+        }
+    }
+}
+
 /// One worktree path that differs from the replay baseline, from `prikk worktree-status` (design
 /// FR-034; RFC 008). Path-level only — prikk reports *that* a tracked file's bytes differ, never the
 /// content difference (the UD-09 ceiling).
@@ -906,9 +963,15 @@ pub trait Prikk: Send + Sync {
     /// merge-and-deduplicate caller that makes tag coverage correct regardless of what this returns;
     /// call [`Prikk::tags`] for the documented, stable way to list tags.
     ///
+    /// **Returns the unpublished current branch beside the list, never inside it** (RFC 037
+    /// decision 3): `BranchList { refs, unpublished_current }`. The list itself is unchanged, so
+    /// RFC 032's *published* test — membership in it — means exactly what it meant before.
+    ///
     /// # Errors
-    /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`].
-    fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>>;
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::orientation`]. At prikk ≥
+    /// [`crate::UNPUBLISHED_BRANCH_FROM_MINOR`] the field is **required**: missing, or neither
+    /// `null` nor a valid ref name, is stikk's environment error (UD-02).
+    fn refs(&self, repo: &Path) -> Result<BranchList>;
 
     /// List every tag pointer in the repository (design FR-014 completion; category `read-history`;
     /// RFC 012). prikk's own stable, documented way to list tags (`prikk tag list`), as distinct from

@@ -8,7 +8,9 @@
 use std::path::Path;
 
 use stikk_model::Result;
-use stikk_prikk::{BlockRow, Prikk, RefEntry, ShowReport, ShownPatch, StateFiles, StateReport};
+use stikk_prikk::{
+    BlockRow, Prikk, RefEntry, ShowReport, ShownPatch, StateFiles, StateReport, UnpublishedBranch,
+};
 
 use crate::patch::{CONTENT_FROM_MINOR, PatchMessageState};
 use crate::piece::Piece;
@@ -326,17 +328,49 @@ pub fn block_detail(
 /// name is what stays correct whether or not it is. An entry from `tags` wins on a name collision (the
 /// documented, stable source for tags); order is `refs` first, then any `tags` entry not already named.
 ///
+/// **Since RFC 037 it also carries the unpublished current branch**, beside the list and never in
+/// it (decision 3): the merge above decides what is *published*, and a branch with no published
+/// history must not be able to enter that answer by being listed (RFC 032 decision 5, F4).
+///
 /// # Errors
 /// Propagates any [`stikk_model::StikkError`] the seam raises, from either read.
-pub fn list_refs(prikk: &impl Prikk, repo: &Path) -> Result<Vec<RefEntry>> {
+pub fn list_refs(prikk: &impl Prikk, repo: &Path) -> Result<RefList> {
     let branches = prikk.refs(repo)?;
     let tags = prikk.tags(repo)?;
     let mut merged: Vec<RefEntry> = branches
+        .refs
         .into_iter()
         .filter(|entry| !tags.iter().any(|tag| tag.name == entry.name))
         .collect();
     merged.extend(tags);
-    Ok(merged)
+    // **The published entry wins** (RFC 037 Handoff B §3). prikk should never report a branch as
+    // unpublished *and* list it, and if it ever does, the list is the one RFC 032's test reads —
+    // so the extra row is dropped rather than drawn beside the row it contradicts.
+    let unpublished_current = match branches.unpublished_current {
+        UnpublishedBranch::Branch(name) if merged.iter().any(|entry| entry.name == name) => {
+            UnpublishedBranch::None
+        }
+        other => other,
+    };
+    Ok(RefList {
+        refs: merged,
+        unpublished_current,
+    })
+}
+
+/// Every ref the picker can offer: the merged pointers, and the current branch before its first
+/// seal (RFC 037 decision 3).
+///
+/// **The branch is a sibling of the list, not a member.** `refs` is what RFC 032's *published*
+/// test reads, and it means exactly what it meant before this type existed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefList {
+    /// Branches and tags, merged and de-duplicated by name.
+    pub refs: Vec<RefEntry>,
+    /// The branch the user is on, before its first seal — in the three states prikk's report has,
+    /// with [`UnpublishedBranch::None`] also standing for a branch prikk contradicted itself about
+    /// by listing (see [`list_refs`]).
+    pub unpublished_current: UnpublishedBranch,
 }
 
 #[cfg(test)]

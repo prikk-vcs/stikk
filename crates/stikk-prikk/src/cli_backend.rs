@@ -454,21 +454,28 @@ impl Prikk for CliBackend {
         parse::state_files(&out).map(StateReport::Listed)
     }
 
-    fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+    fn refs(&self, repo: &Path) -> Result<crate::BranchList> {
         if self.reads_json()? {
             let out = self.run(
                 Some(repo),
                 RequestCategory::ReadHistory,
                 ["branch", "list", "--all", "--format", "json"],
             )?;
-            return parse_json::refs(&out);
+            // The minor goes to the reader because the band, not the field's absence, decides
+            // whether prikk can name an unpublished current branch (RFC 037 decision 3).
+            return parse_json::refs(&out, Prikk::handshake(self)?.version.minor);
         }
         let out = self.run(
             Some(repo),
             RequestCategory::ReadHistory,
             ["branch", "list", "--all"],
         )?;
-        parse::refs(&out)
+        // **The prose band is below 0.39, and the field arrived at 0.47**, so nothing here could
+        // report it even if this parser looked: not reported is the only honest answer.
+        Ok(crate::BranchList {
+            refs: parse::refs(&out)?,
+            unpublished_current: crate::UnpublishedBranch::NotReported,
+        })
     }
 
     fn tags(&self, repo: &Path) -> Result<Vec<RefEntry>> {
@@ -634,7 +641,13 @@ impl Prikk for CliBackend {
         // That premise holds for views and not for confirmation, where nothing re-read — so RFC 030 moved
         // the worktree check to **commit's confirmation** (`stikk_core::commit`), one spawn per confirmed
         // commit rather than one per token.
-        let branches = self.refs(repo)?;
+        // **The unpublished current branch is deliberately not in the token** (RFC 037). The one
+        // transition it has — a branch becoming published — adds that branch to the ref list in
+        // the same report, which already moves the token; and prikk refuses `branch switch` to a
+        // branch that does not exist (measured at 0.51.0), so the field cannot change under a
+        // session without the list changing too. A second source for a fact already covered would
+        // cost a spawn and detect nothing.
+        let branches = self.refs(repo)?.refs;
         let tags = self.tags(repo)?;
         let orientation = self.orientation(repo)?;
         let merged = branches

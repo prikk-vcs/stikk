@@ -972,3 +972,31 @@ fn the_content_note_retires_inside_the_band_and_stays_below_it() {
     assert_eq!(inside.renames, 1);
     assert_eq!(inside.content_note(), None);
 }
+
+/// **RFC 032's *published* test is unchanged by RFC 037, with the field present** (Handoff B §4).
+///
+/// This is the regression the whole shape of decision 3 exists to prevent: prikk now names the
+/// current branch before its first seal, and if that name had become a `RefEntry`, Changes would
+/// call a branch with no published history *published* and drop the sentence a fresh repository
+/// most needs (F4). The field is reported here, and the answer is the one it was before.
+#[test]
+fn rfc032s_published_test_is_unchanged_when_prikk_names_the_unpublished_branch() {
+    let backend = NullBackend::supported()
+        .with_version(0, 51, 0)
+        .with_refs(Vec::new())
+        .with_tags(Vec::new())
+        .with_unpublished_current(stikk_prikk::UnpublishedBranch::Branch("heads/main".into()));
+
+    let history = super::ref_history(&backend, std::path::Path::new("/r"), "heads/main")
+        .expect("the published test still reads");
+    assert!(
+        matches!(history, RefHistory::Unpublished(_)),
+        "a branch prikk names as unpublished is not published: {history:?}"
+    );
+    assert!(
+        history
+            .changes_headline("heads/main", false)
+            .is_some_and(|line| line.contains("no published history")),
+        "and Changes still says so"
+    );
+}

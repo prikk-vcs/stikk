@@ -44,7 +44,8 @@ use crate::{
     Authoring, BinaryBlob, BlockRow, DeclarationResolution, FileContent, History, OperationContent,
     PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold, QueuedElsewhere,
     QueuedMessage, QueuedOperation, QueuedPatch, QueuedPath, RefEntry, RenameDeclaration,
-    ShownPatch, StateFile, StateFiles, ThresholdStatus, WorktreeEntry, WorktreeStatus,
+    ShownPatch, StateFile, StateFiles, ThresholdStatus, UnpublishedBranch, WorktreeEntry,
+    WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -173,8 +174,9 @@ fn patch_messages(block: &Json) -> Result<Vec<PatchMessage>> {
 ///
 /// # Errors
 /// As [`history`].
-pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
+pub(super) fn refs(text: &str, prikk_minor: u32) -> Result<crate::BranchList> {
     let value = report(text, BRANCH_SCHEMA)?;
+    let unpublished_current = unpublished_current_branch(&value, prikk_minor)?;
     let mut out = Vec::new();
     for (key, received) in [("branches", false), ("received", true)] {
         // **prikk 0.41 always emits both arrays** — a repository that has never received anything
@@ -205,7 +207,42 @@ pub(super) fn refs(text: &str) -> Result<Vec<RefEntry>> {
             });
         }
     }
-    Ok(out)
+    Ok(crate::BranchList {
+        refs: out,
+        unpublished_current,
+    })
+}
+
+/// `branch-list-v1`'s `unpublished_current_branch` (RFC 037 decision 3), prikk ≥
+/// [`crate::UNPUBLISHED_BRANCH_FROM_MINOR`].
+///
+/// **The band decides whether prikk can answer; the field's absence never does.** Below 0.47 the
+/// key does not exist and the answer is [`UnpublishedBranch::NotReported`]; at or above it the key
+/// is **required**, because a prikk in that band that omitted it would mean stikk is reading a
+/// report it does not understand, not that there is no such branch (`C-T2c′`).
+///
+/// [`Json::opt_str_field`] is deliberately not used: it reads absent and `null` alike as "no
+/// value", and those are the two states this function exists to tell apart.
+fn unpublished_current_branch(value: &Json, prikk_minor: u32) -> Result<UnpublishedBranch> {
+    const KEY: &str = "unpublished_current_branch";
+    match value.get(KEY) {
+        None if prikk_minor < crate::UNPUBLISHED_BRANCH_FROM_MINOR => {
+            Ok(UnpublishedBranch::NotReported)
+        }
+        None => Err(StikkError::environment_msg(format!(
+            "prikk's branch listing has no `{KEY}`, which prikk 0.{} and later always report (this \
+             is 0.{prikk_minor})",
+            crate::UNPUBLISHED_BRANCH_FROM_MINOR
+        ))),
+        Some(Json::Null) => Ok(UnpublishedBranch::None),
+        Some(Json::String(_)) => Ok(UnpublishedBranch::Branch(
+            ref_name_field(value, KEY)?.to_string(),
+        )),
+        Some(other) => Err(StikkError::environment_msg(format!(
+            "prikk's branch listing has a `{KEY}` that is neither a branch name nor null: {}",
+            other.render()
+        ))),
+    }
 }
 
 /// `prikk tree --ref <block-id> --format json` (`tree-listing-v1`), prikk ≥ 0.46 — the files present

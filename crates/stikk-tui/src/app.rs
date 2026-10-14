@@ -800,7 +800,10 @@ impl App {
                 refs,
                 cursor,
                 unpublished_main,
+                ..
             }) => {
+                // **The unpublished current branch needs no case of its own**: RFC 037 Handoff B
+                // §3 says selecting it focuses that ref like any other, and it is in `refs`.
                 let picked = if *unpublished_main {
                     // RFC 029 Handoff B §4: the one row an empty picker offers. It acts like any other
                     // pick: prikk reports an unpublished ref's history as empty (exit 0, at 0.28 and
@@ -1106,6 +1109,7 @@ impl App {
                 refs,
                 cursor,
                 unpublished_main,
+                ..
             }) => {
                 let len = if *unpublished_main { 1 } else { refs.len() };
                 *cursor = next_index(*cursor, len);
@@ -1563,27 +1567,43 @@ impl App {
         }
     }
 
-    fn apply_refs(&mut self, seq: u64, result: stikk_model::Result<Vec<stikk_prikk::RefEntry>>) {
+    fn apply_refs(&mut self, seq: u64, result: stikk_model::Result<stikk_core::RefList>) {
         let index = self
             .overlays
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         if let Some(index) = index {
             match result {
-                Ok(entries) => {
-                    let refs: Vec<String> = entries.into_iter().map(|entry| entry.name).collect();
+                Ok(list) => {
+                    let named = list.unpublished_current.name().map(ToString::to_string);
+                    // **The branch prikk named goes first** (RFC 037 decision 4). It is the branch
+                    // the user is standing on, and in a fresh repository it is the only row — so
+                    // the cursor's default position lands on the row they almost certainly want.
+                    let mut refs: Vec<String> = named.iter().cloned().collect();
+                    refs.extend(list.refs.into_iter().map(|entry| entry.name));
+                    let unpublished_current = named.is_some();
                     let cursor = refs
                         .iter()
                         .position(|name| Some(name.as_str()) == self.focused_ref())
                         .unwrap_or(0);
                     // RFC 029 Handoff B §4: only an empty list offers the unpublished `heads/main`. A
                     // repository with other refs does not, because that is roadmap item 8's confusion.
-                    let unpublished_main = refs.is_empty();
+                    //
+                    // **And only where prikk cannot say** (RFC 037 decision 3). That row is a guess
+                    // stikk made because prikk would not answer; from prikk 0.47 prikk answers, and
+                    // a guess beside an answer is the worse of the two — including when the answer
+                    // is `null`, where the guess would assert a branch prikk just denied.
+                    let unpublished_main = refs.is_empty()
+                        && matches!(
+                            list.unpublished_current,
+                            stikk_prikk::UnpublishedBranch::NotReported
+                        );
                     if let Some(slot) = self.overlays.get_mut(index) {
                         *slot = Overlay::RefPicker {
                             refs,
                             cursor,
                             unpublished_main,
+                            unpublished_current,
                         };
                     }
                 }

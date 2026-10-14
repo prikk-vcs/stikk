@@ -103,7 +103,9 @@ fn a_block_with_no_patch_messages_is_normal_whether_the_field_is_absent_or_empty
 
 #[test]
 fn the_captured_branch_report_parses_both_arrays() {
-    let refs = refs(BRANCH_0_41).expect("captured 0.41 branch report");
+    let refs = refs(BRANCH_0_41, 41)
+        .expect("captured 0.41 branch report")
+        .refs;
     assert_eq!(refs.len(), 2);
     assert_eq!(refs[0].name, "heads/feature");
     assert!(!refs[0].received);
@@ -125,7 +127,7 @@ fn a_received_ref_is_flagged_by_its_array() {
         "branches": [{{"ref_name": "heads/main", "ref_state_id": "{BLOCK}", "closed": true}}],
         "received": [{{"ref_name": "heads/theirs", "ref_state_id": "{STATE}"}}]}}"#
     );
-    let refs = refs(&text).expect("both arrays");
+    let refs = refs(&text, 41).expect("both arrays").refs;
     assert_eq!(refs.len(), 2);
     assert!(refs[0].closed && !refs[0].received);
     // The received entry carries no `closed` field at all — prikk never emits one there — and stikk
@@ -141,7 +143,7 @@ fn an_absent_received_array_is_an_empty_list() {
         r#"{{"schema_version": "branch-list-v1",
         "branches": [{{"ref_name": "heads/main", "ref_state_id": "{BLOCK}", "closed": false}}]}}"#
     );
-    assert_eq!(refs(&text).map(|r| r.len()).ok(), Some(1));
+    assert_eq!(refs(&text, 41).map(|r| r.refs.len()).ok(), Some(1));
 }
 
 #[test]
@@ -171,7 +173,7 @@ fn an_unknown_schema_version_is_refused_and_names_both_versions() {
 /// Reading the wrong report's JSON is caught by the same check, rather than producing an empty list.
 #[test]
 fn a_report_of_the_wrong_kind_is_refused_not_read_as_empty() {
-    assert!(refs(TAG_0_41).is_err());
+    assert!(refs(TAG_0_41, 41).is_err());
     assert!(tags(BRANCH_0_41).is_err());
     assert!(history(BRANCH_0_41).is_err());
 }
@@ -266,11 +268,11 @@ fn every_name_and_id_field_in_the_ref_listings_is_validated() {
         )
     };
     assert!(
-        refs(&branch("heads/main", BLOCK)).is_ok(),
+        refs(&branch("heads/main", BLOCK), 41).is_ok(),
         "the control must parse"
     );
-    assert!(refs(&branch("", BLOCK)).is_err(), "an empty ref name");
-    assert!(refs(&branch("heads/main", "a")).is_err());
+    assert!(refs(&branch("", BLOCK), 41).is_err(), "an empty ref name");
+    assert!(refs(&branch("heads/main", "a"), 41).is_err());
 
     let tag = |name: &str, id: &str| {
         format!(
@@ -289,7 +291,7 @@ fn every_name_and_id_field_in_the_ref_listings_is_validated() {
     let received = r#"{"schema_version": "branch-list-v1", "branches": [],
         "received": [{"ref_name": "heads/theirs", "ref_state_id": "a"}]}"#;
     assert!(
-        refs(received).is_err(),
+        refs(received, 41).is_err(),
         "received entries are not a laxer path"
     );
 }
@@ -306,7 +308,7 @@ fn a_branch_missing_closed_is_a_schema_change_and_says_so() {
         r#"{{"schema_version": "branch-list-v1",
         "branches": [{{"ref_name": "heads/main", "ref_state_id": "{BLOCK}"}}]}}"#
     );
-    let err = refs(&text).expect_err("a branch without `closed` is a schema change");
+    let err = refs(&text, 41).expect_err("a branch without `closed` is a schema change");
     assert!(err.to_string().contains("closed"), "{err}");
 
     // A wrong type is caught by the same read, rather than quietly meaning `false`.
@@ -314,7 +316,7 @@ fn a_branch_missing_closed_is_a_schema_change_and_says_so() {
         r#"{{"schema_version": "branch-list-v1",
         "branches": [{{"ref_name": "heads/main", "ref_state_id": "{BLOCK}", "closed": "yes"}}]}}"#
     );
-    assert!(refs(&wrong).is_err());
+    assert!(refs(&wrong, 41).is_err());
 }
 
 /// `patch_messages`: **absent is tolerated, a wrong type is not.** Two different rules, and this file
@@ -2871,4 +2873,164 @@ fn a_tree_listing_that_breaks_the_measured_shape_is_refused() {
             "{what}: {err:?}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// `branch-list-v1`'s `unpublished_current_branch` (RFC 037 decision 3) — captured 2026-10-14 from
+// real prikk 0.51.0 and 0.46.0 binaries, one capture per state. **Captured, never written.**
+// ---------------------------------------------------------------------------------------------
+
+/// A fresh repository at 0.51: nothing published, and prikk names the branch you are on.
+const BRANCH_FRESH_0_51: &str = r#"{
+  "schema_version": "branch-list-v1",
+  "branches": [],
+  "received": [],
+  "unpublished_current_branch": "heads/main"
+}"#;
+
+/// The same repository with a commit **queued** and nothing sealed: still unpublished.
+const BRANCH_QUEUED_0_51: &str = r#"{
+  "schema_version": "branch-list-v1",
+  "branches": [],
+  "received": [],
+  "unpublished_current_branch": "heads/main"
+}"#;
+
+/// After the first seal: `null`, and the branch is in `branches[]` instead.
+const BRANCH_SEALED_0_51: &str = r#"{
+  "schema_version": "branch-list-v1",
+  "branches": [
+    {"ref_name": "heads/main", "ref_state_id": "4c484507196cb1cb76a5e15f939121806c7da27ab9f630f6d72df0306166cf41", "closed": false, "current": true}
+  ],
+  "received": [],
+  "unpublished_current_branch": null
+}"#;
+
+/// A fresh repository at **0.46**, one minor below the band: the key is **absent entirely**.
+const BRANCH_FRESH_0_46: &str = r#"{
+  "schema_version": "branch-list-v1",
+  "branches": [],
+  "received": []
+}"#;
+
+/// The three states prikk reports, each read as itself. **`null` and absent are not the same
+/// fact**, and this is the test that keeps them apart.
+#[test]
+fn the_unpublished_current_branch_has_three_states() {
+    for (what, text) in [
+        ("fresh", BRANCH_FRESH_0_51),
+        ("a queued commit, nothing sealed", BRANCH_QUEUED_0_51),
+    ] {
+        let list = refs(text, 51).expect(what);
+        assert_eq!(
+            list.unpublished_current,
+            UnpublishedBranch::Branch("heads/main".to_string()),
+            "{what}"
+        );
+    }
+
+    let sealed = refs(BRANCH_SEALED_0_51, 51).expect("sealed");
+    assert_eq!(
+        sealed.unpublished_current,
+        UnpublishedBranch::None,
+        "prikk answered: there is none"
+    );
+
+    let old = refs(BRANCH_FRESH_0_46, 46).expect("0.46");
+    assert_eq!(
+        old.unpublished_current,
+        UnpublishedBranch::NotReported,
+        "0.46 cannot answer, which is not the same as answering none"
+    );
+}
+
+/// **RFC 032's *published* test is untouched** (RFC 037 F4), and this is the assertion that says
+/// so: the branch prikk names as unpublished is **not** in the list, and after the seal the same
+/// name **is**. A `RefEntry` for it would have inverted the one question that list answers.
+#[test]
+fn the_unpublished_branch_is_never_in_the_ref_list() {
+    let fresh = refs(BRANCH_FRESH_0_51, 51).expect("fresh");
+    assert!(
+        fresh.refs.is_empty(),
+        "nothing is published yet: {:?}",
+        fresh.refs
+    );
+    assert_eq!(fresh.unpublished_current.name(), Some("heads/main"));
+
+    let sealed = refs(BRANCH_SEALED_0_51, 51).expect("sealed");
+    assert_eq!(
+        sealed
+            .refs
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect::<Vec<_>>(),
+        ["heads/main"],
+        "the seal publishes it into the list"
+    );
+    assert_eq!(sealed.unpublished_current.name(), None);
+}
+
+/// **At or above the band the field is required** — its absence means stikk is reading a report it
+/// does not understand, not that there is no such branch (`C-T2c′`). And a value that is neither a
+/// branch name nor `null` is refused rather than carried.
+#[test]
+fn a_branch_listing_that_breaks_the_field_is_refused_inside_the_band() {
+    let cases = [
+        (
+            "the field missing at 0.51",
+            variant(
+                BRANCH_FRESH_0_51,
+                r#""unpublished_current_branch""#,
+                r#""unpublished_branch""#,
+            ),
+        ),
+        (
+            // What `RefName::parse` actually rejects, which is the project-wide `INV-9` bar for
+            // every ref name: empty, or carrying a control character. Testing against a stricter
+            // rule would be testing a validator stikk does not have.
+            "an empty ref name",
+            variant(
+                BRANCH_FRESH_0_51,
+                r#""unpublished_current_branch": "heads/main""#,
+                r#""unpublished_current_branch": """#,
+            ),
+        ),
+        (
+            "a ref name carrying a control character",
+            variant(
+                BRANCH_FRESH_0_51,
+                r#""unpublished_current_branch": "heads/main""#,
+                r#""unpublished_current_branch": "heads/ma\u001bin""#,
+            ),
+        ),
+        (
+            "a value that is neither a string nor null",
+            variant(
+                BRANCH_FRESH_0_51,
+                r#""unpublished_current_branch": "heads/main""#,
+                r#""unpublished_current_branch": true"#,
+            ),
+        ),
+    ];
+    for (what, text) in cases {
+        let err = refs(&text, 51).expect_err(what);
+        assert!(
+            matches!(err, StikkError::Environment { .. }),
+            "{what}: {err:?}"
+        );
+    }
+}
+
+/// **The same report, one minor below the band, is read without complaint.** The band decides, and
+/// the field's absence never does — which is the whole reason the minor is a parameter here.
+#[test]
+fn the_field_is_not_required_below_the_band() {
+    let text = variant(
+        BRANCH_FRESH_0_51,
+        r#",
+  "unpublished_current_branch": "heads/main""#,
+        "",
+    );
+    let list = refs(&text, 46).expect("0.46 reports no such field, and that is not an error");
+    assert_eq!(list.unpublished_current, UnpublishedBranch::NotReported);
 }

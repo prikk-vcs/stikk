@@ -4,7 +4,9 @@
 
 use std::path::Path;
 
-use stikk_prikk::{BlockRow, History, NullBackend, Orientation, RefEntry, StateFile, StateFiles};
+use stikk_prikk::{
+    BlockRow, History, NullBackend, Orientation, RefEntry, StateFile, StateFiles, UnpublishedBranch,
+};
 
 use super::*;
 
@@ -185,7 +187,7 @@ fn list_refs_merges_branches_and_tags() {
     let backend = NullBackend::supported()
         .with_refs(vec![ref_entry("heads/main", "x")])
         .with_tags(vec![ref_entry("tags/v1", "y")]);
-    let refs = list_refs(&backend, Path::new("/r")).unwrap();
+    let refs = list_refs(&backend, Path::new("/r")).unwrap().refs;
     assert_eq!(refs.len(), 2);
     assert!(!refs[0].is_tag());
     assert!(refs[1].is_tag());
@@ -200,7 +202,7 @@ fn list_refs_passes_through_a_tag_that_leaked_into_refs_when_tags_is_empty() {
         ref_entry("heads/main", "x"),
         ref_entry("tags/v1", "y"),
     ]);
-    let refs = list_refs(&backend, Path::new("/r")).unwrap();
+    let refs = list_refs(&backend, Path::new("/r")).unwrap().refs;
     assert_eq!(refs.len(), 2);
     assert!(refs[1].is_tag());
 }
@@ -219,7 +221,7 @@ fn list_refs_deduplicates_a_tag_that_leaked_into_refs_too() {
     let backend = NullBackend::supported()
         .with_refs(vec![ref_entry("heads/main", "x"), leaked_in_refs])
         .with_tags(vec![ref_entry("tags/v1", "authoritative")]);
-    let refs = list_refs(&backend, Path::new("/r")).unwrap();
+    let refs = list_refs(&backend, Path::new("/r")).unwrap().refs;
     assert_eq!(refs.len(), 2);
     let tag = refs.iter().find(|r| r.name == "tags/v1").unwrap();
     assert_eq!(tag.id, "authoritative");
@@ -464,4 +466,52 @@ fn a_failed_show_leaves_the_rest_of_block_detail_intact() {
         "{reason}"
     );
     assert!(reason.contains("no object bbbb"), "{reason}");
+}
+
+/// **The unpublished current branch travels beside the merged list, never in it** (RFC 037
+/// decision 3). The merge is what RFC 032's *published* test reads, so a branch with no published
+/// history entering it would invert that answer (F4).
+#[test]
+fn list_refs_carries_the_unpublished_current_branch_beside_the_list() {
+    let backend = NullBackend::supported()
+        .with_version(0, 51, 0)
+        .with_refs(Vec::new())
+        .with_tags(Vec::new())
+        .with_unpublished_current(UnpublishedBranch::Branch("heads/main".into()));
+    let list = list_refs(&backend, Path::new("/r")).expect("list");
+    assert!(list.refs.is_empty(), "nothing is published");
+    assert_eq!(list.unpublished_current.name(), Some("heads/main"));
+}
+
+/// **Below the band nothing is reported**, and that is not the same as prikk reporting none.
+#[test]
+fn list_refs_reports_no_branch_below_the_band() {
+    let backend = NullBackend::supported().with_refs(Vec::new());
+    let list = list_refs(&backend, Path::new("/r")).expect("list");
+    assert_eq!(list.unpublished_current, UnpublishedBranch::NotReported);
+}
+
+/// **If prikk ever contradicts itself** — naming a branch unpublished *and* listing it — the
+/// published entry wins and the extra row is dropped (Handoff B §3). prikk should never do this;
+/// the stand-in is how stikk shows what it would do if it did.
+#[test]
+fn a_branch_that_is_also_published_loses_its_extra_row() {
+    let published = RefEntry {
+        name: "heads/main".into(),
+        id: "0".repeat(64),
+        closed: false,
+        received: false,
+    };
+    let backend = NullBackend::supported()
+        .with_version(0, 51, 0)
+        .with_refs(vec![published])
+        .with_tags(Vec::new())
+        .with_unpublished_current(UnpublishedBranch::Branch("heads/main".into()));
+    let list = list_refs(&backend, Path::new("/r")).expect("list");
+    assert_eq!(list.refs.len(), 1, "the published entry stays");
+    assert_eq!(
+        list.unpublished_current.name(),
+        None,
+        "and the row that would have said the opposite is not offered"
+    );
 }

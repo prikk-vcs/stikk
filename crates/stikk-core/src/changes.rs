@@ -479,7 +479,10 @@ pub fn changes_view(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<Chang
 /// # Errors
 /// Propagates a failed `refs()` or Orientation read.
 pub(crate) fn ref_history(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<RefHistory> {
-    let refs = prikk.refs(repo)?;
+    // **`.refs` and nothing else** (RFC 037 F4). prikk kept `branches[]` unchanged and added the
+    // unpublished current branch as a separate field precisely so this test would keep its meaning:
+    // a branch with no published history must not become "published" by being reported.
+    let refs = prikk.refs(repo)?.refs;
     let orientation = prikk.orientation(repo)?;
     Ok(history_from(reff, &refs, &orientation))
 }

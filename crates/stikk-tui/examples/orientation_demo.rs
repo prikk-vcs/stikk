@@ -68,7 +68,7 @@ impl Prikk for SlowOrientation {
         self.0.tags(repo)
     }
 
-    fn refs(&self, repo: &Path) -> Result<Vec<RefEntry>> {
+    fn refs(&self, repo: &Path) -> Result<stikk_prikk::BranchList> {
         self.0.refs(repo)
     }
 

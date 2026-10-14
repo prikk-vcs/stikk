@@ -16,7 +16,7 @@ use stikk_core::{
 };
 use stikk_core::{PatchDetailView, PatchMessageState, QueueView, patch_detail, queue_view};
 use stikk_model::{ChangeToken, Readiness, Result};
-use stikk_prikk::{BlockRow, CommitResult, Prikk, RefEntry, SealResult};
+use stikk_prikk::{BlockRow, CommitResult, Prikk, SealResult};
 
 /// How many blocks the History view requests at a time (design FR-011 caps the listing).
 pub(crate) const HISTORY_LIMIT: usize = 200;
@@ -134,8 +134,9 @@ pub(crate) enum ResponseKind {
         reff: String,
         result: Result<BlockDetailView>,
     },
-    /// Answers [`RequestKind::Refs`].
-    Refs(Result<Vec<RefEntry>>),
+    /// Answers [`RequestKind::Refs`] — the merged pointers **and** the unpublished current
+    /// branch beside them (RFC 037 decision 3).
+    Refs(Result<stikk_core::RefList>),
     /// Answers [`RequestKind::Queue`].
     Queue(Result<QueueView>),
     /// Answers [`RequestKind::PatchDetail`].

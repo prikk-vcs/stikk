@@ -13,7 +13,7 @@ use stikk_model::{ChangeToken, CurrentBranch, Result, StikkError};
 use crate::version::Version;
 use crate::{
     CommitResult, Handshake, History, Orientation, Prikk, QueueReport, RefEntry, SealResult,
-    ShowReport, StateFiles, StateReport, WorktreeStatus,
+    ShowReport, StateFiles, StateReport, UnpublishedBranch, WorktreeStatus,
 };
 
 type Scripted<T> = std::result::Result<T, String>;
@@ -52,6 +52,8 @@ pub struct NullBackend {
     history: Scripted<History>,
     state: Scripted<StateReport>,
     refs: Scripted<Vec<RefEntry>>,
+    /// The unpublished current branch this backend reports beside the list (RFC 037 decision 3).
+    unpublished_current: UnpublishedBranch,
     tags: Scripted<Vec<RefEntry>>,
     worktree: Scripted<WorktreeStatus>,
     /// The answer from the **second** `worktree_status` call on, when set — how a test shows commit's
@@ -126,6 +128,8 @@ impl NullBackend {
                 closed: false,
                 received: false,
             }]),
+            // The default is the band below 0.47, matching this backend's default version.
+            unpublished_current: UnpublishedBranch::NotReported,
             tags: Ok(Vec::new()),
             worktree: Ok(WorktreeStatus {
                 refused_declarations: None,
@@ -345,6 +349,14 @@ impl NullBackend {
         self
     }
 
+    /// Script the unpublished current branch this backend reports beside the ref list — the third
+    /// state prikk gained at 0.47 (RFC 037 decision 3).
+    #[must_use]
+    pub fn with_unpublished_current(mut self, branch: UnpublishedBranch) -> Self {
+        self.unpublished_current = branch;
+        self
+    }
+
     /// Replace the branch ref list this backend returns from [`Prikk::refs`].
     #[must_use]
     pub fn with_refs(mut self, refs: Vec<RefEntry>) -> Self {
@@ -497,8 +509,11 @@ impl Prikk for NullBackend {
         deliver(&self.state)
     }
 
-    fn refs(&self, _repo: &Path) -> Result<Vec<RefEntry>> {
-        deliver(&self.refs)
+    fn refs(&self, _repo: &Path) -> Result<crate::BranchList> {
+        Ok(crate::BranchList {
+            refs: deliver(&self.refs)?,
+            unpublished_current: self.unpublished_current.clone(),
+        })
     }
 
     fn tags(&self, _repo: &Path) -> Result<Vec<RefEntry>> {

@@ -805,7 +805,10 @@ fn pick_dev_above(app: &mut App, rx: &mpsc::Receiver<Request>) {
     let refs_req = next_request(rx);
     app.apply(Response {
         seq: refs_req.seq,
-        kind: ResponseKind::Refs(Ok(vec![ref_entry("heads/dev"), ref_entry("heads/main")])),
+        kind: ResponseKind::Refs(Ok(super::ref_list(vec![
+            ref_entry("heads/dev"),
+            ref_entry("heads/main"),
+        ]))),
     });
     app.nav_up(); // the picker opens on the focused ref, heads/main; up to heads/dev
     app.select();

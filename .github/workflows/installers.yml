@@ -111,10 +111,18 @@ jobs:
           set -euo pipefail
           export HOME="$RUNNER_TEMP/home"
           mirror="$RUNNER_TEMP/mirror"; mkdir -p "$mirror"
-          case "$RUNNER_OS" in
-            Linux) target=x86_64-unknown-linux-gnu ;;
-            macOS) target=aarch64-apple-darwin ;;
+          # **The same target `install.sh` picks**, or the mirror will not hold the file it asks
+          # for and this step fails on a fetch error instead of a checksum mismatch -- which is
+          # what happened the first time the assertion below was in place, because Linux x86_64
+          # moved to the musl build.
+          case "$RUNNER_OS/$(uname -m)" in
+            Linux/x86_64)          target=x86_64-unknown-linux-musl ;;
+            Linux/aarch64|Linux/arm64) target=aarch64-unknown-linux-gnu ;;
+            macOS/arm64)           target=aarch64-apple-darwin ;;
+            macOS/x86_64)          target=x86_64-apple-darwin ;;
+            *) echo "::error::unhandled runner $RUNNER_OS/$(uname -m)"; exit 1 ;;
           esac
+          echo "mirroring $target, the build install.sh picks here"
           archive="stikk-${STIKK_VER}-${target}.tar.gz"
           base="https://github.com/${{ github.repository }}/releases/download/${STIKK_VER}"
           curl -fsSL -o "$mirror/$archive"        "$base/$archive"

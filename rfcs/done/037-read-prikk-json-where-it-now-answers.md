@@ -1,6 +1,6 @@
 # RFC 037 — Read prikk's JSON where it now answers: every block's files, and an unpublished current branch
 
-**Status.** **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 2 of the authorized 0.10.0 scope
+**Status.** **Done 2026-10-14**: Handoffs A and B delivered on `main` (`af2fbc4`, `7f496a9`); in `## Unreleased` for 0.10.0. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 2 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Measured against real prikk **0.51.0** (and **0.46.0** for `tree`'s band floor) binaries. Evidence:
 `.git-exclude/reports/037-read-prikk-json/` (`measure037.sh`, with `measure037-0.51.txt` and `measure037-0.46.txt`),
@@ -93,3 +93,33 @@ entry.
 - **No change to RFC 032's published test** or to the `--ref` retry, which still serves prikk 0.45 and 0.46.
 - **No retirement of the prose `--patch-plan` path**: it stays for prikk < 0.46. No user is there, but the path
   already exists and costs nothing to keep.
+
+## Delivered
+
+**Two handoffs, one commit each, green on `main` at `7f496a9`.** CI and Docs ran on push, and the real-binary suite
+(full matrix: Linux, macOS, Windows; 45 cases at prikk 0.28.0 and 0.51.0) and the supply-chain gate were
+dispatched on `main`. **These were the first increments under the no-branch workflow** (owner, 2026-10-14).
+
+**A, every block's files** (`af2fbc4`).
+- **The floor was confirmed on binaries:** prikk 0.45 has no `tree`, 0.46 does (`TREE_FROM_MINOR`).
+- **A `null` `target_block_id` is refused.** A fresh repository's `tree` answers exit 0 with no entries, and a lax
+  reader would have drawn *"0 file(s)"* for a block that has files.
+- **prikk refuses to author a symlink** (*"worktree symlink authoring is out of scope"*), so `file` is the only
+  `kind` there is. An unmeasured kind is kept as prikk's word, tested against a stand-in.
+- Modes are shown, and "not reported" is never `0`. The tip-only sentence appears only below 0.46. A failed read
+  costs the file list only.
+- **History's queued tier wraps** (carried from RFC 036), with a 60-character ref asserted whole.
+
+**B, the unpublished current branch** (`7f496a9`).
+- Three states, decided by the version (0.47) and never by absence. `refs()`'s list is unchanged, and **RFC 032's
+  published test is asserted unchanged**, in core and on real binaries.
+- **prikk cannot reach an unpublished current branch other than the one `init` chose**, and stikk assumes no name.
+- **The picker's row comes first**, marked by a header sentence and a short tag, which keeps one row per entry for
+  the cursor. **RFC 029's guess row is silenced wherever prikk answers.**
+
+## Carried forward
+
+- **`UD-10` looks retired:** `cat --path … --ref <block-id>` returns the bytes at prikk 0.51 (Handoff A's review §7).
+  It goes to RFC 038, whose range case it unblocks.
+- **Block detail's 64-hex id rows, and the below-0.46 sentence's second row, wrap to column 0** at 80 columns.
+  Nothing is cut, but the indent is lost. A small follow-up.

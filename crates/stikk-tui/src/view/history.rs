@@ -23,7 +23,14 @@ const TIER_LABEL: &str = "  queued   ";
 const TIER_INDENT: &str = "           ";
 
 /// Render the History view for `view`, with `cursor` marking the selected block, into `area`.
-pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut Frame, area: Rect) {
+pub fn render(
+    view: &HistoryView,
+    cursor: usize,
+    marked: Option<&str>,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut lines: Vec<Line> = Vec::new();
 
     // The "not yet history" tier (FR-010), in core's words: whose queue it is, and no line at all when
@@ -72,11 +79,19 @@ pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut 
         )));
     } else {
         for (i, row) in view.blocks.iter().enumerate() {
-            lines.push(block_line(row, i == cursor, i == 0, palette));
+            let is_marked = marked == Some(row.block_id.as_str());
+            lines.push(block_line(row, i == cursor, i == 0, is_marked, palette));
         }
     }
 
-    let title = format!(" History · {} ", identifier(&view.reff));
+    // The title says a mark is set, because the marked row can be scrolled off screen.
+    let title = match marked {
+        Some(_) => format!(
+            " History · {} · \u{25cf} marked — d compares it with the selected block ",
+            identifier(&view.reff)
+        ),
+        None => format!(" History · {} ", identifier(&view.reff)),
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -91,8 +106,18 @@ pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut 
 }
 
 /// One block row: a selection marker, short id, update-seq, kind, patch count, and lineage markers.
-fn block_line<'a>(row: &'a BlockRow, selected: bool, is_tip: bool, palette: &Palette) -> Line<'a> {
-    let marker = if selected { "▶ " } else { "  " };
+fn block_line<'a>(
+    row: &'a BlockRow,
+    selected: bool,
+    is_tip: bool,
+    marked: bool,
+    palette: &Palette,
+) -> Line<'a> {
+    // **Two different marks, in two columns** (RFC 038 decision 3): the cursor is where you are,
+    // and `m`'s mark is what you set. One column could not show a row that is both, which is the
+    // ordinary case right before `d`.
+    let marker = if selected { "\u{25b6} " } else { "  " };
+    let mark = if marked { "\u{25cf} " } else { "  " };
     let id_style = if selected {
         Style::default()
             .fg(palette.accent)
@@ -103,6 +128,7 @@ fn block_line<'a>(row: &'a BlockRow, selected: bool, is_tip: bool, palette: &Pal
 
     let mut spans = vec![
         Span::styled(marker, Style::default().fg(palette.accent)),
+        Span::styled(mark, Style::default().fg(palette.warn)),
         Span::styled(short_id(&row.block_id), id_style),
         Span::styled(
             format!("  #{:<4}", row.update_seq),

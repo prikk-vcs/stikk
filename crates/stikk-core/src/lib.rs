@@ -16,6 +16,7 @@
 pub mod change_token;
 pub mod changes;
 pub mod commit;
+pub mod compare;
 pub mod confirm;
 pub mod glossary;
 pub mod history;
@@ -38,6 +39,10 @@ pub use changes::{
 pub use commit::{
     COMMIT_OPERATION, CommitPreview, CommitPreviewOutcome, CommitToken, RefusedDeclaration,
     RefusedPath, commit_confirm_and_execute, commit_preview, would_refuse_next_steps,
+};
+pub use compare::{
+    COMPARE_FROM_MINOR, CompareView, Compared, ComparedEntry, ComparedSide, HunkRow, compare,
+    compared,
 };
 pub use confirm::{
     ConfirmationSummary, ConfirmedToken, Evidence, FrozenPatches, Intent, KeyClaim, Outcome,

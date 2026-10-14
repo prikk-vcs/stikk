@@ -8,6 +8,7 @@
 use std::path::Path;
 use std::sync::mpsc;
 
+use crate::app::CompareSource;
 use stikk_core::{
     BlockDetailView, ChangesRead, CommitPreviewOutcome, CommitToken, Evidence, HistoryView,
     OrientationView, Outcome, PreviewToken, SealPreviewOutcome, block_detail, change_token,
@@ -69,6 +70,17 @@ pub(crate) enum RequestKind {
         /// stikk already holds.
         message: PatchMessageState,
     },
+    /// Compare two points, or the worktree with what `commit` would author against (`FR-033`;
+    /// RFC 038). **The comparison is decided on the UI thread**, where the marked block, the
+    /// selected one and the loaded lineage all live; the worker only runs it.
+    Compare {
+        /// What to compare.
+        comparison: stikk_prikk::Comparison,
+        /// How to head the screen, in stikk's own words — *the previous block in this ref's
+        /// history*, *the marked block*, *the worktree*. The seam reports the two points; only
+        /// this layer knows which entry point named them.
+        opened: CompareSource,
+    },
     /// Read worktree-vs-baseline status for a ref.
     Changes {
         /// The ref to compare the worktree against.
@@ -128,6 +140,13 @@ pub(crate) enum ResponseKind {
     ChangeCheck(Result<ChangeToken>),
     /// Answers [`RequestKind::History`].
     History(Result<HistoryView>),
+    /// Answers [`RequestKind::Compare`], echoing how it was opened so the screen can say it.
+    Compare {
+        /// How the comparison was asked for.
+        opened: CompareSource,
+        /// The comparison, or the band's refusal to make one.
+        result: Result<stikk_core::CompareView>,
+    },
     /// Answers [`RequestKind::BlockState`], echoing the ref it was read for, so the screen it fills names
     /// that ref and a later refresh re-reads it (RFC 031 review v1 §2.2).
     BlockState {
@@ -195,6 +214,7 @@ impl RequestKind {
             Self::Refs => "refs",
             Self::Queue => "queue",
             Self::PatchDetail { .. } => "patch detail",
+            Self::Compare { .. } => "compare",
             Self::Changes { .. } => "changes",
             Self::CommitPreview { .. } => "commit preview",
             Self::CommitConfirmExecute { .. } => "commit",
@@ -235,6 +255,10 @@ pub(crate) fn run(
                 let result = block_detail(prikk, repo, &reff, row, is_tip);
                 ResponseKind::BlockState { reff, result }
             }
+            RequestKind::Compare { comparison, opened } => ResponseKind::Compare {
+                opened,
+                result: stikk_core::compare(prikk, repo, &comparison),
+            },
             RequestKind::Refs => ResponseKind::Refs(list_refs(prikk, repo)),
             RequestKind::Queue => ResponseKind::Queue(queue_view(prikk, repo)),
             RequestKind::PatchDetail { patch_id, message } => {

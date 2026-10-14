@@ -122,7 +122,14 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         Focus::Loading(what) => {
             centered_note(palette, frame, area, &format!("loading {what}…"), false)
         }
-        Focus::History(v, cursor) => view::history::render(v, cursor, palette, frame, area),
+        Focus::History(v, cursor) => {
+            // A mark made in another lineage is not this view's to draw (RFC 038 decision 3).
+            let marked = app
+                .marked_block()
+                .filter(|m| m.reff == v.reff)
+                .map(|m| m.block_id.as_str());
+            view::history::render(v, cursor, marked, palette, frame, area);
+        }
         Focus::BlockDetail(detail, cursor) => {
             view::block::render(detail, cursor, palette, frame, area);
         }
@@ -130,11 +137,19 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
             // RFC 032: the `renames` count is shown at prikk ≥ 0.38, where a rename can be declared.
             let renames_reported =
                 matches!(app.state(), OrientationState::Loaded(o) if o.prikk_minor >= 38);
+            // RFC 038: `d` is offered only where prikk can answer it.
+            let compares = matches!(
+                app.state(),
+                OrientationState::Loaded(o) if o.prikk_minor >= stikk_core::COMPARE_FROM_MINOR
+            );
             view::changes::render(
                 v,
                 history,
                 hide_untracked,
-                renames_reported,
+                view::changes::Bands {
+                    renames_reported,
+                    compares,
+                },
                 palette,
                 frame,
                 area,
@@ -146,6 +161,7 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         Focus::PatchDetail(v, raw, offset) => {
             view::patch::render(v, raw, offset, palette, frame, area);
         }
+        Focus::Compare(focus) => view::compare::render(focus, palette, frame, area),
     }
 }
 

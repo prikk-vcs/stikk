@@ -2476,3 +2476,199 @@ fn below_the_band_the_picker_is_unchanged() {
         other => panic!("expected a RefPicker, got {other:?}"),
     }
 }
+
+/// Open History with the two-block lineage loaded, for the Compare entry-point tests.
+fn history_loaded() -> (App, std::sync::mpsc::Receiver<Request>) {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_history();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::History(Ok(two_block_history())),
+    });
+    (app, rx)
+}
+
+/// **With nothing marked, `d` compares a block with the previous block in this ref's history** —
+/// the next older row in the loaded lineage (RFC 038 decision 3). Older is the left side.
+#[test]
+fn d_with_nothing_marked_compares_with_the_previous_block_in_the_lineage() {
+    let (mut app, rx) = history_loaded();
+    app.compare(); // cursor 0 = the tip, `bbbb`; the previous row is `aaaa`
+    let req = next_request(&rx);
+    let RequestKind::Compare { comparison, opened } = &req.kind else {
+        panic!("expected a Compare request, got {:?}", req.kind)
+    };
+    assert_eq!(
+        comparison,
+        &stikk_prikk::Comparison::Points {
+            from: "aaaa".into(),
+            to: "bbbb".into()
+        }
+    );
+    assert_eq!(opened, &CompareSource::PreviousInHistory);
+}
+
+/// **On the oldest loaded block `d` is unavailable, with stikk's reason, and nothing is fetched**
+/// (Handoff A §3). More history might hold a previous block; reading it behind a keypress that
+/// meant "compare" would be stikk doing something other than it was asked.
+#[test]
+fn d_on_the_oldest_loaded_block_says_why_and_reads_nothing() {
+    let (mut app, rx) = history_loaded();
+    app.nav_down(); // the root block, the oldest row loaded
+    app.compare();
+    assert!(
+        rx.try_recv().is_err(),
+        "no request is sent for a comparison stikk cannot make"
+    );
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("the previous block is not in the loaded history")),
+        "{:?}",
+        app.banner()
+    );
+}
+
+/// **`m` marks, `d` compares the pair, and the order is older → newer whichever was marked first**
+/// (§7 trap 5) — by prikk's own `update_seq`, not by the row index.
+#[test]
+fn a_marked_pair_is_ordered_older_to_newer_whichever_was_marked_first() {
+    // Mark the tip (newer), then select the root (older).
+    let (mut app, rx) = history_loaded();
+    app.mark_block();
+    app.nav_down();
+    app.compare();
+    let req = next_request(&rx);
+    let RequestKind::Compare { comparison, opened } = &req.kind else {
+        panic!("expected a Compare request")
+    };
+    assert_eq!(
+        comparison,
+        &stikk_prikk::Comparison::Points {
+            from: "aaaa".into(),
+            to: "bbbb".into()
+        },
+        "the older block is the left side even though the newer was marked first"
+    );
+    assert_eq!(opened, &CompareSource::MarkedPair);
+
+    // And the other way round: mark the root (older), select the tip (newer).
+    let (mut app, rx) = history_loaded();
+    app.nav_down();
+    app.mark_block();
+    app.nav_up();
+    app.compare();
+    let req = next_request(&rx);
+    let RequestKind::Compare { comparison, .. } = &req.kind else {
+        panic!("expected a Compare request")
+    };
+    assert_eq!(
+        comparison,
+        &stikk_prikk::Comparison::Points {
+            from: "aaaa".into(),
+            to: "bbbb".into()
+        }
+    );
+}
+
+/// `m` on the marked block clears the mark, and `d` then falls back to the previous block.
+#[test]
+fn marking_the_same_block_twice_clears_the_mark() {
+    let (mut app, rx) = history_loaded();
+    app.mark_block();
+    assert!(app.marked_block().is_some());
+    app.mark_block();
+    assert!(app.marked_block().is_none());
+    app.compare();
+    let req = next_request(&rx);
+    let RequestKind::Compare { opened, .. } = &req.kind else {
+        panic!("expected a Compare request")
+    };
+    assert_eq!(opened, &CompareSource::PreviousInHistory);
+}
+
+/// **Marking and selecting the same row is a comparison of a block with itself**, which prikk
+/// answers as "no differences" like any other — it is not special-cased (Handoff A §3).
+#[test]
+fn comparing_a_block_with_itself_is_sent_to_prikk_like_any_other() {
+    let (mut app, rx) = history_loaded();
+    app.mark_block();
+    app.compare();
+    let req = next_request(&rx);
+    let RequestKind::Compare { comparison, .. } = &req.kind else {
+        panic!("expected a Compare request")
+    };
+    assert_eq!(
+        comparison,
+        &stikk_prikk::Comparison::Points {
+            from: "bbbb".into(),
+            to: "bbbb".into()
+        }
+    );
+}
+
+/// **A mark made in another lineage is not a pair.** The ref picker can move between the two
+/// presses, and `m` never offered a comparison across refs.
+#[test]
+fn a_mark_from_another_ref_is_not_used_as_a_pair() {
+    let (mut app, rx) = history_loaded();
+    app.mark_block();
+    // Another ref's lineage on top — what the ref picker does between the two presses.
+    app.push_screen(Screen::History {
+        view: HistoryView {
+            reff: "heads/other".into(),
+            queued: 0,
+            queued_target: None,
+            blocks: vec![block("dddd", 2), block("cccc", 1)],
+        },
+        cursor: 0,
+        refreshing: None,
+    });
+    app.compare();
+    let req = next_request(&rx);
+    let RequestKind::Compare { comparison, opened } = &req.kind else {
+        panic!("expected a Compare request")
+    };
+    assert_eq!(opened, &CompareSource::PreviousInHistory, "not the pair");
+    assert_eq!(
+        comparison,
+        &stikk_prikk::Comparison::Points {
+            from: "cccc".into(),
+            to: "dddd".into()
+        }
+    );
+}
+
+/// **From Changes, `d` is the bare `diff`**: the worktree against what `commit` would author
+/// against.
+#[test]
+fn d_from_changes_compares_the_worktree_with_its_baseline() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_changes();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::Changes(Ok(stikk_core::ChangesRead {
+            view: dirty_changes(),
+            history: stikk_core::RefHistory::Published,
+        })),
+    });
+    app.compare();
+    let req = next_request(&rx);
+    let RequestKind::Compare { comparison, opened } = &req.kind else {
+        panic!("expected a Compare request, got {:?}", req.kind)
+    };
+    assert_eq!(
+        comparison,
+        &stikk_prikk::Comparison::WorktreeAgainstBaseline
+    );
+    assert_eq!(opened, &CompareSource::WorktreeAgainstBaseline);
+}

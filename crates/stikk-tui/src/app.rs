@@ -150,6 +150,23 @@ pub enum Screen {
         /// for it, with one `show <patch-id>` read.
         cursor: usize,
     },
+    /// A comparison: what changed between two points (`FR-033`; RFC 038).
+    Compare {
+        /// The comparison, or the band's reason there is none.
+        view: stikk_core::CompareView,
+        /// How it was opened, which is what the screen says about *which side is which*.
+        opened: CompareSource,
+        /// The selected entry — the one `v` shows prikk's own fields for.
+        cursor: usize,
+        /// Whether the raw view is showing for the selected entry (`v`), Patch detail's toggle.
+        raw: bool,
+        /// The `seq` of an in-flight re-read, if any — the comparison stays visible while it runs.
+        /// Only a worktree comparison is ever re-read; two sealed blocks cannot change.
+        refreshing: Option<u64>,
+        /// First content row drawn, clamped and written back by the renderer (Patch detail's
+        /// idiom): one entry's hunks can be a whole file.
+        offset: std::cell::Cell<u16>,
+    },
     /// One patch's detail: what it changed, in prikk's own terms (`FR-030`; RFC 035).
     PatchDetail {
         /// The loaded detail.
@@ -165,6 +182,40 @@ pub enum Screen {
         /// patch's operations, and a bounded preimage among them, run past one screen.
         offset: std::cell::Cell<u16>,
     },
+}
+
+/// How a [`Screen::Compare`] was opened — **stikk's own words for which side is which** (RFC 038
+/// decision 3).
+///
+/// prikk's report names two points and says nothing about why they were chosen. Only this layer
+/// knows, and the difference matters to a reader: *the previous block in this ref's history* is a
+/// claim about the lineage they are browsing, not about parentage — **a merge block has two
+/// parents, and neither of them need be the row above it** (measured at 0.51: a merge block sits
+/// at `update_seq` 3 above a `Normal` block, with `parent_count` 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompareSource {
+    /// Two blocks the user marked and selected, ordered older → newer by the lineage.
+    MarkedPair,
+    /// A block against the next older row in the loaded lineage.
+    PreviousInHistory,
+    /// The worktree against what `commit` would author against.
+    WorktreeAgainstBaseline,
+}
+
+impl CompareSource {
+    /// One line saying what was compared, in stikk's own voice.
+    #[must_use]
+    pub fn describe(&self) -> &'static str {
+        match self {
+            Self::MarkedPair => "the marked block, against the selected one \u{2014} older first",
+            Self::PreviousInHistory => {
+                "this block, against the previous block in this ref's history"
+            }
+            Self::WorktreeAgainstBaseline => {
+                "the worktree, against what `commit` would author against"
+            }
+        }
+    }
 }
 
 /// How a [`Screen::PatchDetail`] was opened — and therefore what `r` can honestly re-read (RFC 035
@@ -205,6 +256,8 @@ pub enum Focus<'a> {
     Queue(&'a QueueView, &'a std::cell::Cell<u16>, usize),
     /// One patch's detail, whether the raw view is showing, and its scroll offset.
     PatchDetail(&'a PatchDetailView, bool, &'a std::cell::Cell<u16>),
+    /// A comparison and the state the screen holds for it.
+    Compare(CompareFocus<'a>),
 }
 
 /// One background operation the worker has answered or is still working on — display-only bookkeeping
@@ -231,6 +284,36 @@ pub enum OperationStatus {
         /// Whether the operation succeeded.
         ok: bool,
     },
+}
+
+/// Everything [`Screen::Compare`] hands its renderer. One struct rather than five positional
+/// arguments: the renderer takes a palette, a frame and an area besides, and five more alongside
+/// them is where a caller swaps two of the same type without the compiler noticing.
+#[derive(Debug, Clone, Copy)]
+pub struct CompareFocus<'a> {
+    /// The comparison, or the band's reason there is none.
+    pub view: &'a stikk_core::CompareView,
+    /// How it was opened — stikk's own words for which side is which.
+    pub opened: &'a CompareSource,
+    /// The selected entry.
+    pub cursor: usize,
+    /// Whether the raw view is showing for that entry.
+    pub raw: bool,
+    /// The scroll offset, clamped and written back by the renderer.
+    pub offset: &'a std::cell::Cell<u16>,
+}
+
+/// A block marked for comparison (`m`), with the lineage it was marked in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarkedBlock {
+    /// The ref whose History the mark was made in.
+    pub reff: String,
+    /// The marked block's id.
+    pub block_id: String,
+    /// Its `update_seq`, which is what orders the pair **older → newer** (RFC 038 §7 trap 5) —
+    /// prikk's own monotonic publication sequence, never the row index, which is a display order
+    /// over however much of the lineage happens to be loaded.
+    pub update_seq: u64,
 }
 
 /// The running application.
@@ -264,6 +347,15 @@ pub struct App {
     /// itself, since [`stikk_core::PreviewToken`] has no public constructor and no `Clone`/`PartialEq`,
     /// so it cannot live on a type ([`Overlay`]) that derives those. `App` is the one place that holds
     /// it, across exactly the two round trips the flow needs (preview, then confirm+execute).
+    /// The block marked for a comparison (`m`; RFC 038 decision 3), by id and by the ref whose
+    /// lineage it was marked in.
+    ///
+    /// **On `App`, not on the History screen**, because a mark has to survive what a reader does
+    /// between the two halves of a comparison: drilling into a block and coming back pops and
+    /// pushes that screen. The ref is carried with it so a mark made in one lineage cannot be
+    /// compared against a block the user then selected in another — the ref picker can move
+    /// between the two presses.
+    marked_block: Option<MarkedBlock>,
     pending_commit: Option<PendingCommit>,
     /// The seal flow's state between overlays (RFC 016 §5/§8) — the same reason [`Self::pending_commit`]
     /// exists, across the **three** round trips seal's own extra consent step needs (preview, then the
@@ -390,6 +482,7 @@ impl App {
             next_seq: 0,
             req_tx,
             operations: Vec::new(),
+            marked_block: None,
             pending_commit: None,
             pending_seal: None,
             stamp: None,
@@ -456,6 +549,16 @@ impl App {
                 source: PatchSource::InBlock,
                 ..
             }) => None,
+            // A comparison between two **blocks** cannot change, for the same reason a sealed
+            // block's detail cannot. One against the **worktree** can change under the reader at
+            // any moment, and that is the comparison `r` exists for.
+            Some(Screen::Compare { opened, .. }) => match opened {
+                CompareSource::WorktreeAgainstBaseline => Some(RequestKind::Compare {
+                    comparison: stikk_prikk::Comparison::WorktreeAgainstBaseline,
+                    opened: CompareSource::WorktreeAgainstBaseline,
+                }),
+                CompareSource::MarkedPair | CompareSource::PreviousInHistory => None,
+            },
             // RFC 031 §7: Changes re-reads the ref it shows.
             Some(Screen::Changes { view, .. }) => Some(RequestKind::Changes {
                 reff: view.reff.clone(),
@@ -640,8 +743,11 @@ impl App {
     /// come out of the one report already in hand, which is also the only place an `unresolved_node_id`
     /// is legible rather than apologised for (F6). A no-op on every other screen, as `u` is.
     pub fn toggle_raw(&mut self) {
-        if let Some(Screen::PatchDetail { raw, .. }) = self.screens.last_mut() {
-            *raw = !*raw;
+        match self.screens.last_mut() {
+            Some(Screen::PatchDetail { raw, .. }) | Some(Screen::Compare { raw, .. }) => {
+                *raw = !*raw;
+            }
+            _ => {}
         }
     }
 
@@ -940,8 +1046,9 @@ impl App {
             }
             // Nothing to do while a load is pending.
             Some(Screen::Loading { .. }) => {}
-            // Enter on a Changes row would open a per-file content diff — deferred (UD-09); the view
-            // states so. No drill-in.
+            // **`d` opens the per-file content diff** (RFC 038 decision 3) — `Enter` on a Changes
+            // row still has nothing to drill into, since the diff is of the whole worktree and not
+            // of the selected row.
             Some(Screen::Changes { .. }) => {}
             // RFC 035 §4.2: the selected queued patch, with one `show <patch-id>` read. A queued patch
             // has no block to ask about (F2), so the patch id is the id that resolves the most.
@@ -958,7 +1065,134 @@ impl App {
             }
             // Patch detail is the leaf: `v` toggles prikk's own fields, and there is nothing below it.
             Some(Screen::PatchDetail { .. }) => {}
+            // Compare is a leaf too: `v` toggles prikk's own fields for the selected entry, and
+            // `↑`/`↓` move between entries. There is nothing below an entry to open.
+            Some(Screen::Compare { .. }) => {}
             None => self.open_history(),
+        }
+    }
+
+    /// Mark or unmark the selected block, for a comparison (the `m` key; RFC 038 decision 3).
+    ///
+    /// Only History has a lineage to mark in. Pressing `m` on the already-marked block clears the
+    /// mark, which is the only way to take one back without making a comparison.
+    pub fn mark_block(&mut self) {
+        let Some(Screen::History { view, cursor, .. }) = self.screens.last() else {
+            return;
+        };
+        let Some(row) = view.blocks.get(*cursor) else {
+            return;
+        };
+        let mark = MarkedBlock {
+            reff: view.reff.clone(),
+            block_id: row.block_id.clone(),
+            update_seq: row.update_seq,
+        };
+        if self.marked_block.as_ref() == Some(&mark) {
+            self.marked_block = None;
+            self.banner = Some("mark cleared".to_string());
+        } else {
+            self.marked_block = Some(mark);
+            self.banner = Some("marked \u{2014} d compares it with the selected block".to_string());
+        }
+    }
+
+    /// The block currently marked for a comparison, if any — what History draws its mark from.
+    #[must_use]
+    pub fn marked_block(&self) -> Option<&MarkedBlock> {
+        self.marked_block.as_ref()
+    }
+
+    /// Compare (the `d` key; RFC 038 decision 3). What is compared depends on the screen.
+    pub fn compare(&mut self) {
+        let Some((comparison, opened)) = self.comparison() else {
+            return;
+        };
+        let seq = self.dispatch(RequestKind::Compare { comparison, opened });
+        self.screens.push(Screen::Loading {
+            what: "compare",
+            seq,
+        });
+    }
+
+    /// Which comparison `d` means here, or `None` with the reason said — the three entry points of
+    /// RFC 038 decision 3, and nothing else.
+    fn comparison(&mut self) -> Option<(stikk_prikk::Comparison, CompareSource)> {
+        match self.screens.last() {
+            // **The worktree against what `commit` would author against**: the bare `diff`.
+            Some(Screen::Changes { .. }) => Some((
+                stikk_prikk::Comparison::WorktreeAgainstBaseline,
+                CompareSource::WorktreeAgainstBaseline,
+            )),
+            Some(Screen::History { view, cursor, .. }) => {
+                // Cloned out of the screen before `block_comparison` takes `&mut self` to set a
+                // banner; the lineage is read-only to it either way.
+                let selected = view.blocks.get(*cursor)?.clone();
+                let reff = view.reff.clone();
+                let lineage: Vec<stikk_prikk::BlockRow> = view.blocks.clone();
+                self.block_comparison(&reff, &selected, Some(&lineage))
+            }
+            Some(Screen::BlockDetail { reff, view, .. }) => {
+                let reff = reff.clone();
+                let row = view.row.clone();
+                self.block_comparison(&reff, &row, None)
+            }
+            _ => None,
+        }
+    }
+
+    /// A block's comparison: against the marked block when there is one in this lineage, else
+    /// against the previous block in this ref's history.
+    fn block_comparison(
+        &mut self,
+        reff: &str,
+        selected: &stikk_prikk::BlockRow,
+        lineage: Option<&[stikk_prikk::BlockRow]>,
+    ) -> Option<(stikk_prikk::Comparison, CompareSource)> {
+        // **A mark made in another lineage is not a pair.** The ref picker can move between the
+        // two presses, and comparing across refs is not what `m` offered.
+        if let Some(mark) = self.marked_block.clone().filter(|m| m.reff == reff) {
+            // **Older → newer, by prikk's own `update_seq`** (§7 trap 5), whichever was marked
+            // first. Marking a row and selecting the same row is a comparison of a block with
+            // itself, which prikk answers as "no differences" like any other — not special-cased.
+            let (from, to) = if mark.update_seq <= selected.update_seq {
+                (mark.block_id, selected.block_id.clone())
+            } else {
+                (selected.block_id.clone(), mark.block_id)
+            };
+            return Some((
+                stikk_prikk::Comparison::Points { from, to },
+                CompareSource::MarkedPair,
+            ));
+        }
+        // **The previous block in this ref's history**, which is the next older row in the loaded
+        // lineage — named as exactly that, and never as "the parent": a merge block has two
+        // parents and neither need be the row above it (measured at 0.51).
+        let previous = lineage.and_then(|blocks| {
+            let at = blocks
+                .iter()
+                .position(|b| b.block_id == selected.block_id)?;
+            blocks.get(at + 1)
+        });
+        match previous {
+            Some(previous) => Some((
+                stikk_prikk::Comparison::Points {
+                    from: previous.block_id.clone(),
+                    to: selected.block_id.clone(),
+                },
+                CompareSource::PreviousInHistory,
+            )),
+            None => {
+                // **stikk's own reason, and no fetch** (Handoff A §3). More history might hold a
+                // previous block, but reading it behind a keypress the user meant as "compare"
+                // would be stikk doing something else than it was asked.
+                self.banner = Some(
+                    "the previous block is not in the loaded history \u{2014} nothing to compare \
+                     this block with"
+                        .to_string(),
+                );
+                None
+            }
         }
     }
 
@@ -1090,7 +1324,9 @@ impl App {
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
                 // RFC 035 §4.2: the Queue now has a selection, and the renderer scrolls to follow it.
-                Some(Screen::Queue { cursor, .. }) | Some(Screen::BlockDetail { cursor, .. }) => {
+                Some(Screen::Queue { cursor, .. })
+                | Some(Screen::BlockDetail { cursor, .. })
+                | Some(Screen::Compare { cursor, .. }) => {
                     *cursor = cursor.saturating_sub(1);
                 }
                 // Patch detail has no selection — it scrolls, the Glossary's idiom.
@@ -1156,6 +1392,14 @@ impl App {
                 Some(Screen::PatchDetail { offset, .. }) => {
                     offset.set(offset.get().saturating_add(1));
                 }
+                // **The cursor moves between entries, and the renderer follows it** — the Queue's
+                // idiom. `↑`/`↓` on a view whose sections are arbitrarily tall must select, not
+                // scroll by one row, or reaching the third entry of a long diff is a hundred
+                // presses.
+                Some(Screen::Compare { view, cursor, .. }) => {
+                    let entries = view.listed().map_or(0, |c| c.entries.len());
+                    *cursor = next_index(*cursor, entries);
+                }
                 _ => {}
             },
         }
@@ -1213,6 +1457,7 @@ impl App {
             ResponseKind::Changes(r) => r.is_ok(),
             ResponseKind::Queue(r) => r.is_ok(),
             ResponseKind::PatchDetail(r) => r.is_ok(),
+            ResponseKind::Compare { result, .. } => result.is_ok(),
             ResponseKind::CommitPreview(r) => r.is_ok(),
             ResponseKind::CommitConfirmExecute(r) => r.is_ok(),
             ResponseKind::SealPreview(r) => r.is_ok(),
@@ -1229,6 +1474,7 @@ impl App {
             ResponseKind::Changes(result) => self.apply_changes(seq, result),
             ResponseKind::Queue(result) => self.apply_queue(seq, result),
             ResponseKind::PatchDetail(result) => self.apply_patch_detail(seq, result),
+            ResponseKind::Compare { opened, result } => self.apply_compare(seq, opened, result),
             ResponseKind::CommitPreview(result) => self.apply_commit_preview(seq, result),
             ResponseKind::CommitConfirmExecute(result) => {
                 self.apply_commit_confirm_execute(seq, result);
@@ -1451,6 +1697,71 @@ impl App {
     /// not a path, not prikk's `queued` word — because a patch sealed since then reports both
     /// differently, and carrying either over would show a state prikk no longer reports (RFC 035 A1 F7,
     /// row 2). The raw toggle is the user's own and stays as they left it.
+    /// Answers [`RequestKind::Compare`]. A comparison against the worktree can be refreshed in
+    /// place; one between two blocks is never re-read, so only the first branch below ever fires
+    /// for it.
+    fn apply_compare(
+        &mut self,
+        seq: u64,
+        opened: CompareSource,
+        result: stikk_model::Result<stikk_core::CompareView>,
+    ) {
+        let is_top_refresh = matches!(
+            self.screens.last(),
+            Some(Screen::Compare { refreshing: Some(s), .. }) if *s == seq
+        );
+        if is_top_refresh {
+            if let Some(Screen::Compare { refreshing, .. }) = self.screens.last_mut() {
+                *refreshing = None;
+            }
+            match result {
+                Ok(compared) => {
+                    if let Some(Screen::Compare {
+                        view,
+                        cursor,
+                        offset,
+                        ..
+                    }) = self.screens.last_mut()
+                    {
+                        *view = compared;
+                        // The content changed shape; the next render clamps both to it.
+                        *cursor = 0;
+                        offset.set(0);
+                    }
+                }
+                Err(error) => self.surface(&error, OperationContext::Compare),
+            }
+            return;
+        }
+        let index = self
+            .screens
+            .iter()
+            .position(|s| matches!(s, Screen::Loading { seq: s, .. } if *s == seq));
+        if let Some(index) = index {
+            match result {
+                Ok(view) => {
+                    if let Some(slot) = self.screens.get_mut(index) {
+                        *slot = Screen::Compare {
+                            view,
+                            opened,
+                            cursor: 0,
+                            raw: false,
+                            refreshing: None,
+                            offset: std::cell::Cell::new(0),
+                        };
+                    }
+                }
+                Err(error) => {
+                    self.screens.remove(index);
+                    // **A refusal from `diff` goes through the usual path, verbatim** (RFC 038
+                    // decision 6). Unlike Block detail's file list there is nothing left to show
+                    // beside it: this screen *is* the comparison.
+                    self.surface(&error, OperationContext::Compare);
+                }
+            }
+        }
+    }
+
     fn apply_patch_detail(&mut self, seq: u64, result: stikk_model::Result<PatchDetailView>) {
         let is_top_refresh = matches!(
             self.screens.last(),
@@ -2033,6 +2344,20 @@ impl App {
             Some(Screen::PatchDetail {
                 view, raw, offset, ..
             }) => Focus::PatchDetail(view, *raw, offset),
+            Some(Screen::Compare {
+                view,
+                opened,
+                cursor,
+                raw,
+                offset,
+                ..
+            }) => Focus::Compare(CompareFocus {
+                view,
+                opened,
+                cursor: *cursor,
+                raw: *raw,
+                offset,
+            }),
             None => Focus::Orientation(&self.state),
         }
     }

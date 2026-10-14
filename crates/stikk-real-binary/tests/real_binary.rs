@@ -5403,3 +5403,179 @@ fn rfc038_diff_reads_every_measured_status_at_the_ceiling() {
         );
     }
 }
+
+/// **RFC 038 commit 2: the three comparisons the entry points make, against real binaries.**
+///
+/// History's marked pair, Block detail's previous-in-lineage, and Changes' worktree form — each
+/// built here exactly as the key that opens it builds it, so the view-model is driven by a real
+/// report rather than a stand-in. At the floor, all three are unreported.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc038_the_three_comparisons_read_against_real_binaries() {
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let fixture = Fixture::build(&bin);
+        let backend = CliBackend::with_program(&bin.path);
+        let repo = fixture.repo().to_path_buf();
+        let write = |name: &str, body: &str| {
+            std::fs::write(repo.join(name), body)
+                .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+        };
+        let seal = |message: &str| {
+            fixture.set_author_env();
+            backend
+                .commit(&repo, "heads/main", message)
+                .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+            fixture.set_maintainer_env();
+            let sealed = backend
+                .seal(&repo, "heads/main")
+                .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+            Fixture::clear_env();
+            sealed
+        };
+
+        // A whitespace-only edit across three blocks, so every comparison has something to show
+        // and the one it shows is the case a whitespace-blind renderer would lose.
+        write("ws.txt", "keep\n");
+        let first = seal("one");
+        write("ws.txt", "keep  \n");
+        let second = seal("two");
+        write("ws.txt", "keep   \n");
+        let third = seal("three");
+
+        let marked_pair = stikk_core::compare(
+            &backend,
+            &repo,
+            &stikk_prikk::Comparison::Points {
+                from: first.block_id.clone(),
+                to: third.block_id.clone(),
+            },
+        )
+        .unwrap_or_else(|e| panic!("0.{}: marked pair: {e}", bin.minor));
+        let previous = stikk_core::compare(
+            &backend,
+            &repo,
+            &stikk_prikk::Comparison::Points {
+                from: second.block_id.clone(),
+                to: third.block_id.clone(),
+            },
+        )
+        .unwrap_or_else(|e| panic!("0.{}: previous in lineage: {e}", bin.minor));
+
+        // Changes' form, with a commit queued so the left side folds one in.
+        write("queued.txt", "q\n");
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "queued")
+            .unwrap_or_else(|e| panic!("0.{}: queued commit: {e}", bin.minor));
+        Fixture::clear_env();
+        write("wt.txt", "wt\n");
+        let worktree = stikk_core::compare(
+            &backend,
+            &repo,
+            &stikk_prikk::Comparison::WorktreeAgainstBaseline,
+        )
+        .unwrap_or_else(|e| panic!("0.{}: worktree: {e}", bin.minor));
+
+        if bin.minor < stikk_core::COMPARE_FROM_MINOR {
+            for (what, view) in [
+                ("marked pair", &marked_pair),
+                ("previous", &previous),
+                ("worktree", &worktree),
+            ] {
+                assert!(
+                    view.listed().is_none(),
+                    "0.{}: {what} is unreported below the band",
+                    bin.minor
+                );
+                assert!(
+                    view.unreported_reason()
+                        .is_some_and(|r| r.contains("stikk compares from prikk 0.46 on")),
+                    "0.{}: {what}",
+                    bin.minor
+                );
+            }
+            println!(
+                "RFC 038: 0.{} — all three comparisons unreported, in stikk's own words",
+                bin.minor
+            );
+            continue;
+        }
+
+        let pair = marked_pair
+            .listed()
+            .unwrap_or_else(|| panic!("0.{}: the pair is listed", bin.minor));
+        let ws = pair
+            .entries
+            .iter()
+            .find(|e| e.status == "modified")
+            .unwrap_or_else(|| panic!("0.{}: no modified entry: {:?}", bin.minor, pair.entries));
+        // **The whitespace-only edit survives all the way to the rows** — quoted, with the
+        // terminator inside the quotes, so `keep` and `keep   ` cannot render alike.
+        let content: Vec<&str> = ws
+            .rows
+            .iter()
+            .filter_map(|r| match r {
+                stikk_core::HunkRow::Line { content, .. } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            content,
+            ["\"keep\\n\"", "\"keep   \\n\""],
+            "0.{}: prikk's bytes, quoted",
+            bin.minor
+        );
+
+        let prev = previous
+            .listed()
+            .unwrap_or_else(|| panic!("0.{}: previous is listed", bin.minor));
+        assert!(!prev.is_empty(), "0.{}", bin.minor);
+
+        let wt = worktree
+            .listed()
+            .unwrap_or_else(|| panic!("0.{}: worktree is listed", bin.minor));
+        assert_eq!(
+            wt.to.target,
+            stikk_prikk::DiffTarget::Worktree,
+            "0.{}",
+            bin.minor
+        );
+        assert_eq!(
+            wt.from.queued,
+            stikk_prikk::QueuedOnSide::Queued(1),
+            "0.{}: the left side folds the queue in",
+            bin.minor
+        );
+        let heading = stikk_core::flatten(&wt.heading());
+        assert!(
+            heading.contains("plus 1 queued commit(s) not yet sealed")
+                && heading.contains("the worktree"),
+            "0.{}: {heading}",
+            bin.minor
+        );
+
+        // **Two identical points are "no differences", and that is prikk's answer, not a
+        // special case** — the same code path as every other comparison.
+        let same = stikk_core::compare(
+            &backend,
+            &repo,
+            &stikk_prikk::Comparison::Points {
+                from: third.block_id.clone(),
+                to: third.block_id.clone(),
+            },
+        )
+        .unwrap_or_else(|e| panic!("0.{}: same block twice: {e}", bin.minor));
+        assert!(
+            same.listed().is_some_and(stikk_core::Compared::is_empty),
+            "0.{}: a block compared with itself",
+            bin.minor
+        );
+
+        println!(
+            "RFC 038: 0.{} pair={:?} previous={} entries worktree heading={heading:?}",
+            bin.minor,
+            content,
+            prev.entries.len()
+        );
+    }
+}

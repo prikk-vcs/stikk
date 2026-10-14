@@ -35,10 +35,20 @@ fn draw(view: &HistoryView, cursor: usize) -> String {
 }
 
 fn draw_at(view: &HistoryView, cursor: usize, width: u16, height: u16) -> String {
+    draw_marked(view, cursor, None, width, height)
+}
+
+fn draw_marked(
+    view: &HistoryView,
+    cursor: usize,
+    marked: Option<&str>,
+    width: u16,
+    height: u16,
+) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(view, cursor, &Palette::default(), f, f.area()))
+        .draw(|f| render(view, cursor, marked, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }

@@ -2,8 +2,10 @@
 //!
 //! Renders `stikk_core::ChangesView` — worktree-vs-baseline for the focused ref, at the **path level**
 //! prikk's `worktree-status` reports (changed / missing / untracked / unsupported). It is honest about
-//! two ceilings: per-file **content** diffs await prikk support (UD-09, so none is faked — threat
-//! T-T4), and commits are **whole-worktree** (UD-06). The untracked group has a display-only filter
+//! one ceiling — commits are **whole-worktree** (UD-06) — and, since RFC 038, it points at the view
+//! that answers the other: `d` compares the worktree with what `commit` would author against, from
+//! prikk's own hunks. Until prikk 0.46 that foot row said a per-file content diff *awaited prikk
+//! support*, which `prikk diff` made false. The untracked group has a display-only filter
 //! (UD-08) that never hides that a commit would still capture those files. Every worktree path is
 //! routed through [`crate::text::inert`] (threat model C-T2a).
 //!
@@ -43,11 +45,21 @@ const REFUSED_MARKER: &str = "refused — ";
 /// Render the Changes view for `view` into `area`. `hide_untracked` applies the UD-08 display filter.
 /// `history` says whether the ref has published history (RFC 032 decision 5), and `renames_reported` whether
 /// this prikk can declare a rename at all (≥ 0.38), which decides whether `renames N` is shown.
+/// The two prikk-version facts this view's wording depends on. One struct rather than two bare
+/// `bool`s side by side, which is a swap the compiler cannot catch.
+#[derive(Debug, Clone, Copy)]
+pub struct Bands {
+    /// prikk ≥ 0.38: a rename can be declared, so the `renames` count is shown (RFC 032).
+    pub renames_reported: bool,
+    /// prikk ≥ 0.46: `d` opens Compare, so the foot names it (RFC 038 F4).
+    pub compares: bool,
+}
+
 pub fn render(
     view: &ChangesView,
     history: &RefHistory,
     hide_untracked: bool,
-    renames_reported: bool,
+    bands: Bands,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -108,7 +120,7 @@ pub fn render(
         ),
     };
     // RFC 032 decision 1: paired renames only, and only where prikk can declare one.
-    if renames_reported {
+    if bands.renames_reported {
         second.push_str(&format!(" · renames {}", view.renames));
     }
     lines.push(Line::from(Span::styled(second, dim)));
@@ -257,14 +269,26 @@ pub fn render(
         }
     }
 
-    // UD-06 and UD-09 honesty.
+    // UD-06 honesty, and — since prikk 0.46 — the content diff that no longer awaits anything.
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "  commits are whole-worktree — there is no staging (u: toggle untracked)",
         dim,
     )));
+    // **This row said `per-file content diff awaits prikk support (UD-09)`, and at the ceiling
+    // that is false** (RFC 038 F4, `C-T2b`): `prikk diff` with no arguments *is* that diff — the
+    // worktree against what `commit` would author against. Below the band the sentence is stikk's
+    // own, about stikk's own limit (`C-T4d`), and never prikk's.
     lines.push(Line::from(Span::styled(
-        "  per-file content diff awaits prikk support (UD-09)",
+        if bands.compares {
+            "  d: compare the worktree with what `commit` would author against, line by line"
+                .to_string()
+        } else {
+            format!(
+                "  stikk compares from prikk 0.{} on",
+                stikk_core::COMPARE_FROM_MINOR
+            )
+        },
         dim.add_modifier(Modifier::ITALIC),
     )));
 

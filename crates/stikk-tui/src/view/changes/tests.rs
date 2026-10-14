@@ -61,7 +61,10 @@ fn draw(view: &ChangesView, hide_untracked: bool) -> String {
                 view,
                 &stikk_core::RefHistory::Published,
                 hide_untracked,
-                false,
+                Bands {
+                    renames_reported: false,
+                    compares: false,
+                },
                 &Palette::default(),
                 f,
                 f.area(),
@@ -80,9 +83,41 @@ fn renders_the_changed_headline_counts_and_paths() {
     assert!(text.contains("readme.txt"));
     assert!(text.contains("src/main.rs"));
     assert!(text.contains("notes.tmp"));
-    // The honesty notes (UD-06 / UD-09) are always present.
+    // The whole-worktree note (UD-06) is always present.
     assert!(text.contains("whole-worktree"));
-    assert!(text.contains("UD-09"));
+    // **And the UD-09 note is gone.** `prikk diff` made it false at prikk 0.46 (RFC 038 F4); this
+    // harness draws below that band, so what stands in its place is stikk's own sentence about
+    // stikk's own limit, never prikk's.
+    assert!(!text.contains("UD-09"), "{text}");
+    assert!(text.contains("stikk compares from prikk 0.46 on"), "{text}");
+}
+
+/// **At the ceiling the foot points at the view that answers it** (RFC 038 F4, `C-T2b`).
+#[test]
+fn at_the_band_the_foot_offers_the_comparison_instead() {
+    let view = dirty_view();
+    let backend = TestBackend::new(100, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| {
+            render(
+                &view,
+                &stikk_core::RefHistory::Published,
+                false,
+                Bands {
+                    renames_reported: false,
+                    compares: true,
+                },
+                &Palette::default(),
+                f,
+                f.area(),
+            )
+        })
+        .unwrap();
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(text.contains("d: compare the worktree"), "{text}");
+    assert!(!text.contains("awaits prikk support"), "{text}");
+    assert!(!text.contains("stikk compares from prikk"), "{text}");
 }
 
 #[test]
@@ -206,7 +241,10 @@ fn draw_80(view: &ChangesView, hide_untracked: bool) -> String {
                 view,
                 &stikk_core::RefHistory::Published,
                 hide_untracked,
-                false,
+                Bands {
+                    renames_reported: false,
+                    compares: false,
+                },
                 &Palette::default(),
                 f,
                 f.area(),
@@ -512,7 +550,10 @@ fn draw_032(view: &ChangesView, history: &stikk_core::RefHistory, hide_untracked
                 view,
                 history,
                 hide_untracked,
-                true,
+                Bands {
+                    renames_reported: true,
+                    compares: false,
+                },
                 &Palette::default(),
                 f,
                 f.area(),

@@ -19,10 +19,18 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. `stik
 | `stikk-core` | **`BlockDetailView::state` becomes `BlockState`** (`Listed` / `Unreported(minor)` / `Failed`) instead of `Option<StateFiles>`. `None` used to mean "an older block, which prikk cannot replay to"; from prikk 0.46 every block has an answer, and `None` would now mean two things, one of them false |
 | `stikk-prikk` | **`Prikk::refs` returns `BranchList`** — the ref pointers **and** the current branch before its first seal, beside the list and never in it. A `RefEntry` for an unpublished branch would make every caller of RFC 032's *published* test (membership in that list) call it published |
 | `stikk-core` | **`list_refs` returns `RefList`** for the same reason, and `stikk_tui::worker::ResponseKind::Refs` carries it |
+| `stikk-prikk` | **the `Prikk` trait gains `diff(&self, repo, &Comparison) -> Result<DiffReport>`**, with no default — every implementor must add it |
+| `stikk-core` | **`OperationContext` gains `Compare`** — breaking for an exhaustive `match` |
+| `stikk-tui` | **`Screen` gains `Compare { … }`** and **`Focus` gains `Compare(…)`** — breaking for an exhaustive `match` |
+| `stikk-tui` | **`keys::Action` gains `MarkBlock` and `Compare`** — breaking for an exhaustive `match` |
 
 **Additive:** `stikk_core::Piece`, `stikk_core::flatten` and `stikk_core::BlockState`;
 `stikk_prikk::StateFile`, `stikk_prikk::StateReport`, `stikk_prikk::UnpublishedBranch`,
-`stikk_prikk::TREE_FROM_MINOR` and `stikk_prikk::UNPUBLISHED_BRANCH_FROM_MINOR`;
+`stikk_prikk::TREE_FROM_MINOR`, `stikk_prikk::UNPUBLISHED_BRANCH_FROM_MINOR` and
+`stikk_prikk::DIFF_FROM_MINOR`, with `Comparison`, `Diff`, `DiffEntry`, `DiffFile`, `DiffReport`,
+`DiffSide`, `DiffTarget`, `QueuedOnSide` and `UnsupportedPath`; `stikk_core::compare` with
+`CompareView`, `Compared`, `ComparedEntry`, `ComparedSide`, `HunkRow` and `COMPARE_FROM_MINOR`;
+`stikk_tui::app::CompareSource` and `MarkedBlock`;
 `stikk_tui::text::identifier` and `stikk_tui::text::compose`;
 `stikk_prikk::escape::escape_invisible_into`. **`stikk_tui::text::inert` keeps its signature** and
 changes only what it produces (see *Changed*). No public item was removed.
@@ -70,6 +78,29 @@ changes only what it produces (see *Changed*). No public item was removed.
 
 ### Added
 
+- **Compare: what changed between two points, in prikk's own hunks** (prikk ≥ 0.46) — `FR-033`,
+  the last named view stikk had not built. The roadmap said arbitrary-point comparison was refused
+  rather than deferred; that predates `prikk diff`, which compares any two points, bare block ids
+  included. **Three ways in, each a comparison that is honest where it is offered.** In **History**,
+  `m` marks a block and `d` compares it with the selected one, ordered **older → newer** by prikk's
+  own publication sequence whichever was marked first. In **History and Block detail** with nothing
+  marked, `d` compares the block with **the previous block in this ref's history** — the next older
+  row in the loaded lineage, named as exactly that and never as "the parent", because a merge block
+  has two parents and neither need be the row above it. On the oldest loaded block `d` says so and
+  reads nothing. In **Changes**, `d` compares the worktree with what `commit` would author against,
+  naming the queued commits folded into that side.
+
+  **stikk computes no part of a comparison** — no renumbering, no re-hunking, no rename inference.
+  prikk's unified hunks are shown as prikk wrote them: the `@@` header and the
+  `\ No newline at end of file` note in prikk's words, and every body line as its marker plus its
+  content **quoted, with the line's terminator inside the quotes**. So a trailing-space edit, a CRLF
+  change and a missing final newline are each visible, and **two lines differing in any byte never
+  render alike** — in the one view built to show exactly those edits. A rename names both paths, a
+  `mode` entry both modes in octal, a `binary` entry both sizes and content ids and **never bytes**,
+  and a path `commit` would refuse carries prikk's refusal verbatim. Where prikk says the hunks are
+  not the shortest edit script, it says so. Each entry is bounded, with the withheld byte count said
+  out loud. `v` shows prikk's own fields for the selected entry. Below 0.46, stikk says it compares
+  from 0.46 on and spawns nothing.
 - **The ref picker offers the branch you are on, before its first seal** (prikk ≥ 0.47). Until now
   a brand-new repository had nothing to choose: a branch has no ref pointer until its first `seal`,
   so the picker was empty and stikk offered a guessed `heads/main (not published)` row only when it
@@ -109,6 +140,10 @@ changes only what it produces (see *Changed*). No public item was removed.
 - **A double space in a path no longer collapses**, and neither does a leading or trailing one. Word
   wrapping rebuilt every row from whitespace-separated words, which silently rewrote the three path
   shapes prikk accepts — `a  b.txt`, ` lead.txt` and `say"hi.txt`.
+- **The Changes view no longer says a per-file content diff awaits prikk.** It did, and at prikk
+  0.46 that stopped being true: `prikk diff` with no arguments *is* that diff. The foot now names
+  the `d` key that opens it, or — below 0.46 — says in stikk's own voice that stikk compares from
+  0.46 on.
 - **History's queued tier no longer clips.** It was one unwrapped row, so at 80 columns its sentence
   was cut at the border mid-word — *"…not this ref's hist"* — and a long ref name in it was cut with
   it. It now wraps, with continuation rows at the tier's own indent; a 60-character ref name appears

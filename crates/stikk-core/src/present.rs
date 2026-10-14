@@ -32,6 +32,8 @@ pub enum OperationContext {
     LoadQueue,
     /// Reading one patch's content (Patch detail; `FR-030`, RFC 035).
     LoadPatch,
+    /// Comparing two points, or the worktree with its baseline (Compare; `FR-033`, RFC 038).
+    Compare,
     /// Committing worktree changes (RFC 014). Prevention handles the common cases (F2/F6)
     /// client-side; a refusal reaching here is the race, or something neither prevention check saw.
     Commit,
@@ -552,6 +554,13 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
             "prikk declined to show this patch. A patch sealed since the list was read is still in \
              history, under the block that sealed it; stikk shows prikk's reason above."
         }
+        // **Its own sentence, not Patch detail's.** A comparison can be refused for reasons a
+        // patch read never has — a ref that has gone, or a live `prikk mv` that `commit` would
+        // refuse, which makes the worktree side unauthorable (RFC 038 decision 6).
+        OperationContext::Compare => {
+            "prikk declined to compare these two points. stikk computes no comparison of its own; \
+             it shows prikk's reason above."
+        }
         OperationContext::LoadBlockState => {
             "prikk declined to replay this ref's state. stikk shows prikk's reason above."
         }
@@ -607,6 +616,7 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
         OperationContext::ListRefs
         | OperationContext::LoadQueue
         | OperationContext::LoadPatch
+        | OperationContext::Compare
         | OperationContext::Orient => {
             vec![NextStep {
                 label: "Refresh".to_string(),

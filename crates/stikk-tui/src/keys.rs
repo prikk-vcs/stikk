@@ -35,6 +35,12 @@ pub enum Action {
     OpenQueue,
     /// Toggle the display-only untracked filter (Changes view).
     ToggleUntracked,
+    /// Mark or unmark the selected block, for a comparison (History; RFC 038 decision 3).
+    MarkBlock,
+    /// Compare (`FR-033`; RFC 038 decision 3). What is compared depends on the screen: the marked
+    /// block against the selected one, a block against the previous one in this ref's history, or
+    /// the worktree against what `commit` would author against.
+    Compare,
     /// Toggle Patch detail's raw view — prikk's own fields (RFC 035 decision 5).
     ToggleRaw,
     /// Begin the commit flow (`FL-05` step 1; RFC 014).
@@ -88,6 +94,8 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('w') => Action::OpenChanges,
         KeyCode::Char('Q') => Action::OpenQueue,
         KeyCode::Char('u') => Action::ToggleUntracked,
+        KeyCode::Char('m') => Action::MarkBlock,
+        KeyCode::Char('d') => Action::Compare,
         KeyCode::Char('v') => Action::ToggleRaw,
         KeyCode::Char('C') => Action::Commit,
         KeyCode::Char('S') => Action::Seal,

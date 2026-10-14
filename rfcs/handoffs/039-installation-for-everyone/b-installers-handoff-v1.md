@@ -11,7 +11,7 @@ one-line commands at the top of the Quick start A writes.
 > to type next, and what failed and why, in plain words.
 >
 > **Sanctioned:** two new scripts and their uninstallers, `crates/stikk/Cargo.toml`'s `binstall` metadata,
-> `release.yml` (attaching the scripts), one new workflow (testing them), and the README and guide lines that name
+> `release.yml` (attaching the scripts, and the Windows checksum format, §5), one new workflow (testing them), and the README and guide lines that name
 > them. **No Rust source.** Anything else: stop and report.
 
 ---
@@ -96,7 +96,22 @@ measure with `--manifest-path` or the equivalent override instead.
 ## 5. `release.yml`
 
 Fill the placeholders, attach the four scripts **and a `.sha256` for each** (users who download a script to read it
-can verify it too), in the job that already attaches assets. **Change nothing else in the workflow.**
+can verify it too), in the job that already attaches assets.
+
+**Amended 2026-10-14, after Handoff A's review: one more change, and only one.** The Windows archive's checksum is
+written in a **different format** from the other five (`release.yml:238`: `(Get-FileHash …).Hash | Out-File`). It
+holds an uppercase hash alone, with no filename and a CRLF, where the others hold `sha256sum`'s `<lowercase hash>␣␣<file>`.
+**Write it in the same format as the others**: lowercase, two spaces, the file name, LF. Then one shape serves every
+platform, `install.ps1` parses one format, and Git Bash's `sha256sum -c` works on Windows too.
+- `install.ps1` must parse **the new format** (the hash is the first field); it only ever installs releases from the
+  one it ships with, so it never meets the old one.
+- **Update the README's and guide's Windows check** in §6 to read the first field (for example
+  `(Get-Content f.sha256).Split(' ')[0]`), and **keep the 0.10.0 example working**: either take that one instruction
+  through the next release (the old file's first field is the whole hash, so `.Split(' ')[0]` still works on it), or
+  say which release the format changed in. **Measure both formats** with your PowerShell snippet before committing.
+- Changelog `### Changed`: every release's checksum files now share one format.
+
+**Change nothing else in the workflow.**
 
 ## 6. The README and the guide
 

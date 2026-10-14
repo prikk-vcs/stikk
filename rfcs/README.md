@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 038 | [Compare](./proposed/038-compare.md) | `FR-033`, the last named view unbuilt: what changed between two points, from prikk's own `diff-report-v1` hunks (prikk ≥ 0.46). Two marked blocks or a block and its predecessor (History, Block detail), and the worktree against what `commit` would author (Changes, replacing a false "awaits prikk" foot). Content quoted byte-faithfully; stikk computes no difference. Retires `UD-10`. 0.10.0 increment 3 |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,7 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 037 delivered and closed 2026-10-14._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 038 | [Compare](./accepted/038-compare.md) | `FR-033`: what changed between two points, from prikk's own `diff-report-v1` hunks (prikk ≥ 0.46), from History (two marked blocks, or a block and its predecessor), Block detail, and Changes (the worktree against what `commit` would author). Retires `UD-10`. **Accepted 2026-10-14**; 0.10.0 increment 3 | [A: Compare](./handoffs/038-compare/a-compare-handoff-v1.md) |
 
 ## Done (implemented)
 

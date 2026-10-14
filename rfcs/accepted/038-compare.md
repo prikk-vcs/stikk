@@ -1,6 +1,6 @@
 # RFC 038 — Compare: what changed between two points, in prikk's own hunks
 
-**Status.** **Proposed 2026-10-14** by the architect, as increment 3 of the authorized 0.10.0 scope
+**Status.** **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 3 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Measured against real prikk **0.46.0** and **0.51.0** binaries, **identical in every case** once ids are normalised.
 Evidence: `.git-exclude/reports/038-compare/` (`measure038.sh`, `measure038-0.46.txt`, `measure038-0.51.txt`), and
@@ -124,7 +124,7 @@ says a content diff awaits prikk.
 
 ## Delivery
 
-**One handoff, on acceptance, in two commits:** the seam method and reader; then the view-model, the view and the
+**One handoff, issued on acceptance:** [Handoff A](../handoffs/038-compare/a-compare-handoff-v1.md), **in two commits:** the seam method and reader; then the view-model, the view and the
 three entry points. It re-measures F1 at 0.51 first, **adding a divergent second branch** (`measure038.sh` only
 compared two refs at the same point), and stops if the shape differs.
 

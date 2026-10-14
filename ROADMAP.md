@@ -311,9 +311,10 @@ a fabricated worktree entry was fixed.
    `install.ps1`, checksum-verified, offering prikk through prikk's own verified installer, with the static build on
    Linux x86_64; `cargo binstall stikk`. **First published by the 0.11.0 release run.** Package managers are the
    owner's decision, after the installers have been used.
-3. **Polish:** History's and Block detail's column-0 wrap (RFC 037's carry); `queued_elsewhere_clauses` to `Piece`s
-   (RFC 036's carry).
-4. **Verify** (`FR-100`, RFC 040): verdict, failing conditions and stages from `verify-report-v1`, on demand.
+3. **Polish — landed on `main`** (RFC 037 Handoff C, `a6ac3c1`, `fa36111`): long rows in Block detail wrap under
+   their own value; History wraps instead of cutting (its tip marker had fallen off at 85 columns) and its columns no
+   longer run together; `queued_elsewhere_clauses` returns `Piece`s.
+4. **Verify** (`FR-100`, [RFC 040](rfcs/accepted/040-verify.md), accepted 2026-10-15): verdict, failing conditions and stages from `verify-report-v1`, on demand.
    Per-item findings are outside prikk's JSON (prikk's changelog), stated as such; stikk parses no prose. Doctor and
    locks (`FR-101/102`) stay Later: `doctor` has no JSON.
 5. **Compare two different refs** (RFC 041): a pair mode of the ref picker. The first to move to 0.12.0 if needed.

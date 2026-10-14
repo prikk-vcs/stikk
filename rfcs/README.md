@@ -29,7 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 039 delivered and closed 2026-10-14._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 040 | [Verify](./accepted/040-verify.md) | `FR-100`, partly: prikk's verdict, failing conditions and stages from `verify-report-v1`, on demand (`V`), prikk ≥ 0.39. **A damaged repository exits 1 with a complete report**: stikk reads that as a report, never a refusal. Item outcomes are only in prikk's prose, so stikk names where they are. **Accepted 2026-10-15**; 0.11.0 increment 4 | [A: Verify](./handoffs/040-verify/a-verify-handoff-v1.md) |
 
 ## Done (implemented)
 

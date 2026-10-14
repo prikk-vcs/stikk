@@ -278,11 +278,13 @@ a fabricated worktree entry was fixed.
 **0.10.0: stikk compares any two points in history, and every string it shows from a repository is shown as it
 is.** Scope: `.git-exclude/release/0-10-0-scope.md`. Every handoff asks for its own changelog entry.
 
-1. **Repository text renders as it is, everywhere** (RFC 036). `inert` escapes only `Cc`, so paths, messages and ref
-   names in every view still pass bidi overrides and zero-width characters through to the terminal (`T-T2`). It is
-   to reuse `stikk_prikk::escape::needs_unicode_escape`; **do not write a second table**. Paths keep their double
-   spaces, and **a long path in a Changes entry row stops clipping** at the border (the ceiling half of RFC 027's
-   carried row budget). First, because Compare renders paths in bulk.
+1. **Repository text renders as it is, everywhere — landed on `main`** ([RFC 036](rfcs/done/036-repository-text-renders-as-it-is.md),
+   `74a1436`, `341d024`). Prose is escaped in place; identifiers are plain or quoted, so two never look alike. A
+   Changes row no longer clips its path. `## Unreleased` carries a `### Security` entry. **Carried:**
+   - **History's queued tier is one unwrapped line**, so a long ref name in it clips at the border (predates 0.9.0;
+     the same class as RFC 036 F4). A small fix; it rides with RFC 037's Handoff A, which touches the same
+     neighbourhood.
+   - **`queued_elsewhere_clauses` still takes rendered text**; move it to `Piece`s when it is next touched.
 2. **Read prikk's JSON where it now answers** (RFC 037, two handoffs).
    - **Block detail's files from `tree --format json`**, for **every** block, not only the tip: `tree` takes a bare
      block id from prikk 0.46. Measured 2026-10-13 at 0.46 and 0.51: the same block id, the same paths, sizes
@@ -298,9 +300,12 @@ is.** Scope: `.git-exclude/release/0-10-0-scope.md`. Every handoff asks for its 
    prikk's block diff is a separate, labelled section, shown only where it is honest (a block of exactly one patch
    in Patch detail, the block itself in Block detail), **never merged into the operation list**, and never for a
    queued patch.
-4. **The node20 actions**: `docs.yml`'s three (including `peaceiris/actions-mdbook`, which has no node24 release
-   and is replaced, not bumped) and `release.yml`'s attestation actions (`actions/attest-build-provenance`,
-   `actions/attest`), reported by the 0.9.0 release run `38487394190`. A workflow chore, handed off without an RFC.
+   **It also owns the Changes foot's *"per-file content diff awaits prikk support (UD-09)"***, false at the ceiling
+   since prikk 0.46 (`C-T2b`, found in RFC 036's review): Compare either offers the worktree diff there, or the
+   sentence says what is true.
+4. **The node20 actions — landed on `main`** (`b3dcade`, under RFC 020). Every action, including those inside
+   composites, now runs on node24. mdBook is pinned by version and SHA-256, where it was `latest`. The Pages deploy
+   runs from `main` only. **`release.yml`'s attestation step is first exercised by 0.10.0's release run**: watch it.
 5. **Conditional: the prikk 0.52.0 re-baseline.** Only if prikk 0.52.0 publishes before the cut; the cut does not
    wait for it. The block-end label goes, or is banded below 0.52 (RFC 035 A2). In a block of more than one patch, a
    node-addressed path is labelled *as at the end of this block* because prikk 0.51 resolves it there. prikk has

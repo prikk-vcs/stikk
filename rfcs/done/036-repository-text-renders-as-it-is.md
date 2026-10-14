@@ -1,6 +1,6 @@
 # RFC 036 — Repository text renders as it is, everywhere
 
-**Status.** **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 1 of the authorized 0.10.0 scope
+**Status.** **Done 2026-10-14**: Handoff A delivered on `main` (`74a1436`, `341d024`); in `## Unreleased` for 0.10.0. **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 1 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Grounded in stikk's own code at `b29f997` and prikk's source in the clone (`prikk-object/src/path.rs`). The handoff
 measures the two things the source does not settle, at prikk 0.51.0 (§ Delivery).
@@ -119,3 +119,34 @@ design narrows; it does not widen.
 - **No change to what prikk is asked or how its reports are parsed.** This is rendering only, and `CON-1` is
   untouched.
 - **No Compare.** RFC 038 builds on this layer.
+
+## Delivered
+
+**One handoff, two commits, green on `main` at `341d024`** (CI and Docs on `main`; the real-binary suite on the full
+platform matrix and the supply-chain gate at the same tree, 43 cases at prikk 0.28.0 and 0.51.0).
+
+- **F2 measured before building, at 0.51:** prikk reports on-disk filenames carrying bidi, zero-width and
+  non-breaking characters (as `unsupported-path`), and `a  b.txt`, ` lead.txt` and `say"hi.txt` as ordinary
+  `untracked` files it would commit. **It accepts a branch name carrying a bidi override or a zero-width space**, and
+  prints the override raw in its own success message.
+- **Two rules on one table:** `inert` (prose) escapes in place; `identifier` is plain or quoted, with whitespace
+  escaped inside the quotes. `escape_invisible_into` was added to `escape.rs`, so `text.rs` holds no table. All 68
+  call sites and the launcher's printout were classified, 33 as prose and 35 as identifiers.
+- **Decision 8, met in review v1 §2.3:** `stikk-core` returns a sentence as `Piece::{Said, Name}`, and the frontend
+  renders each piece (`text::compose`). Core carries structure; each frontend applies its own rules. Four sites were
+  converted, and `## Unreleased` carries their Breaking rows.
+- **A Changes row never clips its path**, and double, leading and trailing spaces in a path survive.
+- **`### Security`** in `## Unreleased`, including that the one-shot printout used to write the repository root and
+  prikk's version line with no filtering at all.
+- **Found in review, by the dev team:** an escape typed with one backslash was decoded into the character before it
+  reached the file, **three times**. One instance had shipped in 0.9.0's rustdoc for `escape.rs` itself. All three
+  are fixed, and a sweep of every tracked file now finds no invisible character.
+
+## Carried forward
+
+- **History's queued tier is one unwrapped `Line`**, so a long ref name in it is clipped at the border. It predates
+  this RFC (0.9.0 has it) and is the same class as F4. It is a small follow-up in 0.10.0.
+- **The Changes foot says *"per-file content diff awaits prikk support (UD-09)"***, which has been false at the
+  ceiling since prikk 0.46 (`C-T2b`). It goes to Compare (RFC 038).
+- **`queued_elsewhere_clauses` still takes text the frontend rendered**, the one place left with that pattern. Move it
+  to `Piece`s whenever it is next touched.

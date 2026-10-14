@@ -77,7 +77,7 @@ View-models exist only while a view is open; none are persisted (except as the i
 | VW-05 | ChangesView | worktree-vs-baseline | FR-034 via UD-03 route |
 | VW-06 | QueueView | queued patches + thresholds | FR-051 |
 | VW-07 | EvidenceReport | merge outcome + witnesses | FR-080; cacheable |
-| VW-08 | VerifyReportView | 14 stages + items + signature outcomes | FR-100; passthrough export source |
+| VW-08 | VerifyReportView | **every stage prikk reports** (14 at prikk 0.39, 17 at 0.51 — measured, never written down) + items + signature outcomes | FR-100; passthrough export source. **Built 2026-10-15 (RFC 040)**, for the verdict, the failing conditions and the stages; items and signature outcomes are not in prikk's JSON (RFC 040 F3) |
 | VW-09 | TrustView / ReadinessView | adopted keys + per-role readiness | FR-103/104; **no secrets** |
 | VW-10 | ExchangeView | bundle reports, sync checklist, pending claims | FR-090–094 |
 | VW-11 | RecoveryView | doctor findings, lock inspector rows | FR-101/102 |

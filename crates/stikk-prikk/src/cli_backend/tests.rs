@@ -4,7 +4,7 @@
 //! `printf`) so they run without a prikk binary. Parsing is tested against golden fixtures in
 //! `parse/tests.rs`; version parsing in `version/tests.rs`.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use stikk_model::RequestCategory;
 
@@ -1143,4 +1143,242 @@ fn at_0_39_and_above_show_asks_for_json_with_the_id_it_was_given() {
         lines,
         vec!["--version", &format!("show {id} --format json")]
     );
+}
+
+// -------------------------------------------------------------------------------------------
+// RFC 040 decision 1: the exit-code rule, one test per row.
+//
+// This is the one place in the seam where a non-zero exit can be success, so each row of the rule
+// gets its own test. A fake prikk stands in because a real one cannot be made to exit 1 *without*
+// a report on demand -- and the damage cases that do exit 1 with one are covered for real by the
+// suite leg at 0.51.
+
+/// prikk sound, at 0.51.0 (captured; the reader's tests hold the same text).
+#[cfg(unix)]
+const FAKE_SOUND: &str = r##"{
+  "schema_version": "verify-report-v1",
+  "verdict": {
+    "ok": true,
+    "failed_conditions": []
+  },
+  "active_sessions": {"count": 1, "verified_count": 1},
+  "stages": [
+    {"stage": "objects", "status": "evaluated"},
+    {"stage": "refs", "status": "evaluated"},
+    {"stage": "ref-update-schema-trust", "status": "evaluated"},
+    {"stage": "wal-replay", "status": "evaluated"},
+    {"stage": "wal-persistence", "status": "evaluated"},
+    {"stage": "rollback-drafts", "status": "evaluated"},
+    {"stage": "wal-record-schema", "status": "evaluated"},
+    {"stage": "active-wal-metadata", "status": "evaluated"},
+    {"stage": "commit-witness", "status": "evaluated"},
+    {"stage": "publication-reclassification", "status": "evaluated"},
+    {"stage": "commit-index", "status": "evaluated"},
+    {"stage": "lifecycle-cache", "status": "evaluated"},
+    {"stage": "wal-ordering", "status": "evaluated"},
+    {"stage": "received-refs", "status": "evaluated"},
+    {"stage": "local-tag-trust", "status": "evaluated"},
+    {"stage": "object-connectivity", "status": "evaluated"},
+    {"stage": "appended-file-tails", "status": "evaluated"}
+  ]
+}"##;
+
+/// prikk's `item-failure` report, at 0.51.0 (captured) -- the exit-1-with-a-report case.
+#[cfg(unix)]
+const FAKE_ITEM_FAILURE: &str = r##"{
+  "schema_version": "verify-report-v1",
+  "verdict": {
+    "ok": false,
+    "failed_conditions": [
+      {"id": "item-failure", "message": "repository verification found at least one failed object, block, or ref; see item outcomes above"}
+    ]
+  },
+  "active_sessions": {"count": 1, "verified_count": 1},
+  "stages": [
+    {"stage": "objects", "status": "evaluated"},
+    {"stage": "refs", "status": "evaluated"},
+    {"stage": "ref-update-schema-trust", "status": "evaluated"},
+    {"stage": "wal-replay", "status": "evaluated"},
+    {"stage": "wal-persistence", "status": "evaluated"},
+    {"stage": "rollback-drafts", "status": "evaluated"},
+    {"stage": "wal-record-schema", "status": "evaluated"},
+    {"stage": "active-wal-metadata", "status": "evaluated"},
+    {"stage": "commit-witness", "status": "evaluated"},
+    {"stage": "publication-reclassification", "status": "evaluated"},
+    {"stage": "commit-index", "status": "evaluated"},
+    {"stage": "lifecycle-cache", "status": "evaluated"},
+    {"stage": "wal-ordering", "status": "evaluated"},
+    {"stage": "received-refs", "status": "evaluated"},
+    {"stage": "local-tag-trust", "status": "evaluated"},
+    {"stage": "object-connectivity", "status": "evaluated"},
+    {"stage": "appended-file-tails", "status": "evaluated"}
+  ]
+}"##;
+
+/// A fake `prikk` that answers `--version` with 0.51.0 and `verify` with `stdout`/`stderr`/`code`.
+#[cfg(unix)]
+fn fake_verify_prikk(tag: &str, stdout: &str, stderr: &str, code: i32) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-verify-{tag}-{}", std::process::id()));
+    // See the handshake test above for why this is defensive rather than incidental.
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk 0.51.0'; exit 0; fi\n\
+             cat <<'STIKK_FIXTURE_EOF'\n\
+             {stdout}\n\
+             STIKK_FIXTURE_EOF\n\
+             printf '%s' {stderr} 1>&2\n\
+             exit {code}\n",
+            stdout = stdout,
+            stderr = shell_single_quote(stderr),
+            code = code,
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    script
+}
+
+#[cfg(unix)]
+fn shell_single_quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', r"'\''"))
+}
+
+/// **Row 1: exit 0 with a report is a report.**
+#[cfg(unix)]
+#[test]
+fn verify_exit_0_with_a_report_is_a_report() {
+    let script = fake_verify_prikk("exit0", FAKE_SOUND, "", 0);
+    let backend = CliBackend::with_program(&script);
+    let report = retrying_transient_exec_busy(|| backend.verify(std::path::Path::new(".")))
+        .expect("exit 0 with a report reads");
+    match report {
+        crate::VerifyReport::Listed(v) => {
+            assert!(v.verdict.ok);
+            assert_eq!(v.stages.len(), 17);
+        }
+        crate::VerifyReport::Unreported => panic!("0.51 is above the band"),
+    }
+}
+
+/// **Row 2: exit 1 with a report is a report, not a refusal** — the whole point of RFC 040 F2.
+/// stderr repeats the condition, and is deliberately ignored.
+#[cfg(unix)]
+#[test]
+fn verify_exit_1_with_a_report_is_a_report_not_a_refusal() {
+    let script = fake_verify_prikk(
+        "exit1ok",
+        FAKE_ITEM_FAILURE,
+        "error: repository verification found at least one failed object, block, or ref; see item outcomes above",
+        1,
+    );
+    let backend = CliBackend::with_program(&script);
+    let report = retrying_transient_exec_busy(|| backend.verify(std::path::Path::new(".")))
+        .expect("exit 1 with a report is NOT an error");
+    match report {
+        crate::VerifyReport::Listed(v) => {
+            assert!(!v.verdict.ok);
+            assert_eq!(v.verdict.failed_conditions.len(), 1);
+            assert_eq!(v.verdict.failed_conditions[0].id, "item-failure");
+            // Every stage still reported, as measured.
+            assert_eq!(v.stages.len(), 17);
+        }
+        crate::VerifyReport::Unreported => panic!("0.51 is above the band"),
+    }
+}
+
+/// **Row 3: exit 1 whose stdout is not a report is prikk's refusal, verbatim.**
+#[cfg(unix)]
+#[test]
+fn verify_exit_1_without_a_report_is_prikks_refusal() {
+    let script = fake_verify_prikk("exit1bad", "", "error: no prikk repository here", 1);
+    let backend = CliBackend::with_program(&script);
+    let err = retrying_transient_exec_busy(|| backend.verify(std::path::Path::new(".")))
+        .expect_err("exit 1 without a report is an error");
+    assert_eq!(err.class(), "refusal");
+    // **prikk's words, not stikk's parse failure.** Saying "stikk could not read the report" here
+    // would bury the reason the reader actually needs.
+    assert!(
+        err.to_string().contains("no prikk repository here"),
+        "{err}"
+    );
+}
+
+/// **Row 4: exit 2 is stikk's bug**, as everywhere else in the seam.
+#[cfg(unix)]
+#[test]
+fn verify_exit_2_is_stikks_bug() {
+    let script = fake_verify_prikk("exit2", "", "error: unknown flag --format", 2);
+    let backend = CliBackend::with_program(&script);
+    let err = retrying_transient_exec_busy(|| backend.verify(std::path::Path::new(".")))
+        .expect_err("exit 2 is an error");
+    assert_eq!(err.class(), "stikk-internal");
+}
+
+/// **Any other code classifies as it does today** — not as a report, and not as stikk's bug.
+#[cfg(unix)]
+#[test]
+fn verify_any_other_exit_code_classifies_as_today() {
+    // Even carrying a perfectly good report on stdout: the rule is exit 0 or exit 1, and widening
+    // it by accident is exactly the drift this test exists to catch.
+    let script = fake_verify_prikk("exit3", FAKE_SOUND, "error: something else went wrong", 3);
+    let backend = CliBackend::with_program(&script);
+    let err = retrying_transient_exec_busy(|| backend.verify(std::path::Path::new(".")))
+        .expect_err("exit 3 is an error");
+    assert_eq!(err.class(), "refusal");
+    assert!(
+        err.to_string().contains("something else went wrong"),
+        "{err}"
+    );
+}
+
+/// **Below the band nothing is spawned**, and *unreported* is not *sound*.
+#[cfg(unix)]
+#[test]
+fn verify_below_the_band_spawns_nothing_and_is_not_sound() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-verify-band-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let log = dir.join("calls");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo \"$1\" >> \"{log}\"\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk 0.38.0'; exit 0; fi\n\
+             exit 0\n",
+            log = log.display(),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+
+    let backend = CliBackend::with_program(&script);
+    let report = retrying_transient_exec_busy(|| backend.verify(&dir)).expect("below the band");
+    assert_eq!(report, crate::VerifyReport::Unreported);
+    // The handshake ran; `verify` never did.
+    let calls = std::fs::read_to_string(&log).expect("read the call log");
+    assert!(
+        !calls.contains("verify"),
+        "verify must not be spawned: {calls:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

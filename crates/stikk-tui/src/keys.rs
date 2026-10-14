@@ -33,6 +33,9 @@ pub enum Action {
     OpenChanges,
     /// Open the Queue view (RFC 028).
     OpenQueue,
+    /// Open the Verify view (`FR-100`; RFC 040). **Capital `V`**, like `Q` and `R`, because it
+    /// opens a repository-wide view; lowercase `v` stays the raw toggle it is everywhere else.
+    OpenVerify,
     /// Toggle the display-only untracked filter (Changes view).
     ToggleUntracked,
     /// Mark or unmark the selected block, for a comparison (History; RFC 038 decision 3).
@@ -93,6 +96,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('b') => Action::OpenRefPicker,
         KeyCode::Char('w') => Action::OpenChanges,
         KeyCode::Char('Q') => Action::OpenQueue,
+        KeyCode::Char('V') => Action::OpenVerify,
         KeyCode::Char('u') => Action::ToggleUntracked,
         KeyCode::Char('m') => Action::MarkBlock,
         KeyCode::Char('d') => Action::Compare,

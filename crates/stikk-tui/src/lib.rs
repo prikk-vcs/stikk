@@ -130,6 +130,7 @@ fn ui_loop(
                     Action::OpenRefPicker => app.open_ref_picker(),
                     Action::OpenChanges => app.open_changes(),
                     Action::OpenQueue => app.open_queue(),
+                    Action::OpenVerify => app.open_verify(),
                     Action::ToggleUntracked => app.toggle_untracked(),
                     Action::MarkBlock => app.mark_block(),
                     Action::Compare => app.compare(),

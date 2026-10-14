@@ -28,6 +28,7 @@ pub mod present;
 pub mod queue;
 pub mod refusal_history;
 pub mod seal;
+pub mod verify;
 
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{
@@ -69,4 +70,7 @@ pub use queue::{QueueView, QueuedPatchView, queue_view};
 pub use refusal_history::{RefusalHistory, RefusalRecord};
 pub use seal::{
     SEAL_CONSENT_COPY, SEAL_OPERATION, SealPreviewOutcome, seal_confirm_and_execute, seal_preview,
+};
+pub use verify::{
+    Checked, ConditionRow, JSON_OMITS, StageRow, VERIFY_FROM_MINOR, VerifyView, checked, verify,
 };

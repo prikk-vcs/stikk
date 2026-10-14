@@ -7,13 +7,21 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 ### Breaking
 
 Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
-`stikk-prikk`, `stikk-state`, `stikk-tui` and the `stikk` launcher are unchanged.**
+`stikk-state` and the `stikk` launcher are unchanged.**
 
 | Crate | Change |
 |---|---|
+| `stikk-prikk` | **the `Prikk` trait gains `verify(&self, repo) -> Result<VerifyReport>`**, with no default — every implementor must add it |
 | `stikk-core` | **`queued_elsewhere_clauses` returns `[Vec<Piece>; 4]`** — one piece list per clause, with each of the two ref names a `Piece::Name` — instead of `[String; 4]`. It was the last place core took a string a frontend had already rendered: the caller handed in `identifier(queued_ref)`, deciding how a name is spelled in the one layer that cannot know how it will be drawn, so the same clauses could not be given to a GUI. **The words are unchanged** — flattening a clause gives back the sentence it gave before, and the clause-by-clause test against prikk's own captured sentence still holds every claim by name |
+| `stikk-tui` | **`Screen` gains `Verify { … }`** and **`Focus` gains `Verify(…)`** — breaking for an exhaustive `match` |
 
-**Additive:** none. **No public item was removed.** The MSRV is unchanged at 1.88.
+**Additive:** `stikk_prikk::VerifyReport`, `Verification`, `Verdict`, `FailedCondition`,
+`ActiveSessions`, `VerifyStage` and `StageStatus`, with `NullBackend`'s `with_verification` and
+`with_verify_refusal`; `stikk_core::verify` with `VerifyView`, `Checked`, `ConditionRow`,
+`StageRow`, `JSON_OMITS`, `VERIFY_FROM_MINOR`, `verify` and `checked`;
+`stikk_core::OperationContext::Verify`, on an enum that is already `#[non_exhaustive]`;
+`stikk_tui::app::App::open_verify`. **`stikk-model` and `stikk-state` are unchanged.**
+**No public item was removed.** The MSRV is unchanged at 1.88.
 
 ### Added
 
@@ -48,6 +56,30 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
   the installer added, and nothing else. **They never remove prikk**, which has its own uninstaller.
 
 - **`cargo binstall stikk`** downloads the same prebuilt binary instead of compiling it.
+
+- **Verify (`V`): whether the repository is sound, in prikk's own verdict** (prikk ≥ 0.39).
+  stikk could show every block and patch in a repository and still not say whether the thing
+  underneath them was intact. `V` — or the command palette — runs `prikk verify` and shows what
+  prikk said: **the verdict**, **every condition prikk is currently failing** in prikk's own words,
+  and **every stage prikk ran**, in prikk's order, with its status. `v` shows prikk's own JSON
+  report, `r` re-runs it.
+
+  **A damaged repository is a verdict, not a refusal.** prikk exits non-zero when it finds damage
+  — *and still prints a complete report*. Read the way stikk reads every other command, that
+  would have made Verify say *prikk refused* at exactly the moment prikk was telling you what was
+  wrong, which is the worst thing it could say. So this one command reads that exit as the report
+  it carries, and nothing else does. Measured against real damage: a byte flipped inside an object
+  container, and a torn write-ahead-log record.
+
+  **It is honest about what prikk's JSON does not carry.** prikk's own failure message ends *"see
+  item outcomes above"* — and in the JSON there is no "above": which objects or refs failed, and
+  how many signatures could not be verified, exist only in prikk's prose report. Verify therefore
+  always shows one standing sentence saying so and naming where to get them, on a sound report as
+  well as a failing one. **stikk does not parse prikk's prose** to fill the gap.
+
+  **Verify changes nothing**: no repair, no lock clearing, no automatic or background run — it
+  scans the whole repository, so it runs only when you ask. Below prikk 0.39 stikk spawns nothing
+  and says so, rather than reporting a repository it never checked as sound.
 
 ### Changed
 

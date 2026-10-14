@@ -13,6 +13,49 @@ pub mod history;
 pub mod orientation;
 pub mod patch;
 pub mod queue;
+pub mod verify;
+
+/// Word-wrap `text` to `width`, opening at `indent` and hanging the rest at `hang`, and return
+/// the rows **already prefixed**.
+///
+/// **Each row gets the room its own indent leaves**, which is not one number when the two indents
+/// differ. Wrapping the whole thing to either one is wrong in a different direction: to the first
+/// row's room and a continuation is laid out wider than it has, so it **clips at the border**; to
+/// the hanging room and the first row stops short of the border for no reason a reader can see.
+/// Both faults have been found by measurement in this codebase rather than reasoned about — the
+/// clip twice, in two different views.
+///
+/// Re-joining the leftover rows with single spaces loses nothing: [`crate::text::wrap_indented`]
+/// has already collapsed the text's whitespace, and this is for stikk's own prose and for strings
+/// composed through the two rules, where an identifier that needed escaping is quoted with every
+/// space spelled (RFC 036 decision 3).
+pub(crate) fn wrap_hanging(text: &str, width: usize, indent: &str, hang: &str) -> Vec<String> {
+    use crate::text::wrap_indented;
+
+    let mut first = wrap_indented(text, width, indent).into_iter();
+    let Some(head) = first.next() else {
+        return Vec::new();
+    };
+    let mut rows = vec![head];
+    // What the first row could not take, laid out again to the hanging indent's own room.
+    // **The whole opening indent comes off, not just its whitespace.** `wrap_indented` prefixes
+    // every row it returns, so a continuation carries the first row's marker too -- and an indent
+    // like `    ! ` ends in a character a trim would leave behind, repeating the marker down the
+    // side of the paragraph (measured on the first run).
+    let leftover = first
+        .map(|row| {
+            row.strip_prefix(indent)
+                .unwrap_or(row.as_str())
+                .trim_start()
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !leftover.is_empty() {
+        rows.extend(wrap_indented(&leftover, width, hang));
+    }
+    rows
+}
 
 /// Hard-split a row of styled spans to `width`, continuing each further row under `indent`.
 ///

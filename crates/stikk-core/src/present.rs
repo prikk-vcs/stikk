@@ -34,6 +34,10 @@ pub enum OperationContext {
     LoadPatch,
     /// Comparing two points, or the worktree with its baseline (Compare; `FR-033`, RFC 038).
     Compare,
+    /// Running prikk's repository verification (Verify; `FR-100`, RFC 040). **A damaged
+    /// repository is not a refusal** and never reaches here (RFC 040 decision 1); what does is an
+    /// exit 1 that carried no report at all.
+    Verify,
     /// Committing worktree changes (RFC 014). Prevention handles the common cases (F2/F6)
     /// client-side; a refusal reaching here is the race, or something neither prevention check saw.
     Commit,
@@ -561,6 +565,11 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
             "prikk declined to compare these two points. stikk computes no comparison of its own; \
              it shows prikk's reason above."
         }
+        OperationContext::Verify => {
+            "prikk declined to verify this repository. **This is not a verdict on the repository** \
+             — prikk reports damage with a complete report, not a refusal; something stopped it \
+             running at all. stikk shows prikk's reason above."
+        }
         OperationContext::LoadBlockState => {
             "prikk declined to replay this ref's state. stikk shows prikk's reason above."
         }
@@ -617,6 +626,7 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
         | OperationContext::LoadQueue
         | OperationContext::LoadPatch
         | OperationContext::Compare
+        | OperationContext::Verify
         | OperationContext::Orient => {
             vec![NextStep {
                 label: "Refresh".to_string(),

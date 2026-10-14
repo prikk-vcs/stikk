@@ -3469,3 +3469,302 @@ fn an_entrys_raw_fields_are_multi_line_indented_json() {
         entry.raw
     );
 }
+
+// -------------------------------------------------------------------------------------------
+// RFC 040: `verify-report-v1`.
+//
+// **Captured from real prikk binaries**, 2026-10-15, by the two scripts in
+// `.git-exclude/reports/040-verify/`: a sound repository, one with a byte flipped inside
+// `containers/blob/a.container`, and one with a queued commit's WAL record torn. The 0.39 report
+// is the band floor's own, so both ends of the validated range are pinned here.
+
+/// Sound, at **0.51.0**. 17 stages.
+const VERIFY_SOUND_0_51: &str = r##"{
+  "schema_version": "verify-report-v1",
+  "verdict": {
+    "ok": true,
+    "failed_conditions": []
+  },
+  "active_sessions": {"count": 1, "verified_count": 1},
+  "stages": [
+    {"stage": "objects", "status": "evaluated"},
+    {"stage": "refs", "status": "evaluated"},
+    {"stage": "ref-update-schema-trust", "status": "evaluated"},
+    {"stage": "wal-replay", "status": "evaluated"},
+    {"stage": "wal-persistence", "status": "evaluated"},
+    {"stage": "rollback-drafts", "status": "evaluated"},
+    {"stage": "wal-record-schema", "status": "evaluated"},
+    {"stage": "active-wal-metadata", "status": "evaluated"},
+    {"stage": "commit-witness", "status": "evaluated"},
+    {"stage": "publication-reclassification", "status": "evaluated"},
+    {"stage": "commit-index", "status": "evaluated"},
+    {"stage": "lifecycle-cache", "status": "evaluated"},
+    {"stage": "wal-ordering", "status": "evaluated"},
+    {"stage": "received-refs", "status": "evaluated"},
+    {"stage": "local-tag-trust", "status": "evaluated"},
+    {"stage": "object-connectivity", "status": "evaluated"},
+    {"stage": "appended-file-tails", "status": "evaluated"}
+  ]
+}"##;
+
+/// The **`item-failure`** case at 0.51.0: prikk exits 1 and still prints a complete report (F2).
+const VERIFY_ITEM_FAILURE_0_51: &str = r##"{
+  "schema_version": "verify-report-v1",
+  "verdict": {
+    "ok": false,
+    "failed_conditions": [
+      {"id": "item-failure", "message": "repository verification found at least one failed object, block, or ref; see item outcomes above"}
+    ]
+  },
+  "active_sessions": {"count": 1, "verified_count": 1},
+  "stages": [
+    {"stage": "objects", "status": "evaluated"},
+    {"stage": "refs", "status": "evaluated"},
+    {"stage": "ref-update-schema-trust", "status": "evaluated"},
+    {"stage": "wal-replay", "status": "evaluated"},
+    {"stage": "wal-persistence", "status": "evaluated"},
+    {"stage": "rollback-drafts", "status": "evaluated"},
+    {"stage": "wal-record-schema", "status": "evaluated"},
+    {"stage": "active-wal-metadata", "status": "evaluated"},
+    {"stage": "commit-witness", "status": "evaluated"},
+    {"stage": "publication-reclassification", "status": "evaluated"},
+    {"stage": "commit-index", "status": "evaluated"},
+    {"stage": "lifecycle-cache", "status": "evaluated"},
+    {"stage": "wal-ordering", "status": "evaluated"},
+    {"stage": "received-refs", "status": "evaluated"},
+    {"stage": "local-tag-trust", "status": "evaluated"},
+    {"stage": "object-connectivity", "status": "evaluated"},
+    {"stage": "appended-file-tails", "status": "evaluated"}
+  ]
+}"##;
+
+/// The **`commit-witness-integrity`** case at 0.51.0: exit 1, and a complete report.
+const VERIFY_WITNESS_0_51: &str = r##"{
+  "schema_version": "verify-report-v1",
+  "verdict": {
+    "ok": false,
+    "failed_conditions": [
+      {"id": "commit-witness-integrity", "message": "a queued commit you were told had succeeded disagrees with the WAL in a way the WAL's own sound prefix cannot explain (RFC 166)"}
+    ]
+  },
+  "active_sessions": {"count": 1, "verified_count": 1},
+  "stages": [
+    {"stage": "objects", "status": "evaluated"},
+    {"stage": "refs", "status": "evaluated"},
+    {"stage": "ref-update-schema-trust", "status": "evaluated"},
+    {"stage": "wal-replay", "status": "evaluated"},
+    {"stage": "wal-persistence", "status": "evaluated"},
+    {"stage": "rollback-drafts", "status": "evaluated"},
+    {"stage": "wal-record-schema", "status": "evaluated"},
+    {"stage": "active-wal-metadata", "status": "evaluated"},
+    {"stage": "commit-witness", "status": "evaluated"},
+    {"stage": "publication-reclassification", "status": "evaluated"},
+    {"stage": "commit-index", "status": "evaluated"},
+    {"stage": "lifecycle-cache", "status": "evaluated"},
+    {"stage": "wal-ordering", "status": "evaluated"},
+    {"stage": "received-refs", "status": "evaluated"},
+    {"stage": "local-tag-trust", "status": "evaluated"},
+    {"stage": "object-connectivity", "status": "evaluated"},
+    {"stage": "appended-file-tails", "status": "evaluated"}
+  ]
+}"##;
+
+/// Sound, at the band floor **0.39.0**. **14 stages, not 17**, and the three it lacks are absent
+/// rather than renamed. This fixture is why nothing here counts or names a stage.
+const VERIFY_SOUND_0_39: &str = r##"{
+  "schema_version": "verify-report-v1",
+  "verdict": {
+    "ok": true,
+    "failed_conditions": []
+  },
+  "active_sessions": {"count": 1, "verified_count": 1},
+  "stages": [
+    {"stage": "objects", "status": "evaluated"},
+    {"stage": "refs", "status": "evaluated"},
+    {"stage": "ref-update-schema-trust", "status": "evaluated"},
+    {"stage": "wal-replay", "status": "evaluated"},
+    {"stage": "wal-persistence", "status": "evaluated"},
+    {"stage": "rollback-drafts", "status": "evaluated"},
+    {"stage": "wal-record-schema", "status": "evaluated"},
+    {"stage": "active-wal-metadata", "status": "evaluated"},
+    {"stage": "publication-reclassification", "status": "evaluated"},
+    {"stage": "commit-index", "status": "evaluated"},
+    {"stage": "lifecycle-cache", "status": "evaluated"},
+    {"stage": "wal-ordering", "status": "evaluated"},
+    {"stage": "received-refs", "status": "evaluated"},
+    {"stage": "local-tag-trust", "status": "evaluated"}
+  ]
+}"##;
+
+#[test]
+fn a_sound_report_reads_as_sound_with_every_stage_prikk_listed() {
+    let report = verify(VERIFY_SOUND_0_51).expect("the captured sound report reads");
+    assert!(report.verdict.ok);
+    assert!(report.verdict.failed_conditions.is_empty());
+    assert_eq!(
+        report.active_sessions,
+        Some(ActiveSessions {
+            count: 1,
+            verified_count: 1
+        })
+    );
+    // prikk's order, and the count is prikk's rather than stikk's.
+    assert_eq!(report.stages.len(), 17);
+    assert_eq!(report.stages[0].stage, "objects");
+    assert_eq!(report.stages[0].status, StageStatus::Evaluated);
+    assert_eq!(report.stages[16].stage, "appended-file-tails");
+    assert!(
+        report
+            .stages
+            .iter()
+            .all(|s| s.status == StageStatus::Evaluated)
+    );
+    // The raw view's text is prikk's own report, not a summary of it.
+    assert!(report.raw.contains("verify-report-v1"));
+}
+
+#[test]
+fn the_band_floors_shorter_stage_list_reads_just_as_well() {
+    // **0.39 reports 14 stages and 0.51 reports 17**, both measured. A reader that knew the list
+    // would have broken between two versions stikk claims to support.
+    let report = verify(VERIFY_SOUND_0_39).expect("the captured 0.39 report reads");
+    assert!(report.verdict.ok);
+    assert_eq!(report.stages.len(), 14);
+    let names: Vec<&str> = report.stages.iter().map(|s| s.stage.as_str()).collect();
+    for absent in [
+        "commit-witness",
+        "object-connectivity",
+        "appended-file-tails",
+    ] {
+        assert!(
+            !names.contains(&absent),
+            "{absent} is not a 0.39 stage: {names:?}"
+        );
+    }
+}
+
+#[test]
+fn a_damaged_report_carries_prikks_condition_verbatim() {
+    for (text, id, fragment) in [
+        (
+            VERIFY_ITEM_FAILURE_0_51,
+            "item-failure",
+            "see item outcomes above",
+        ),
+        (
+            VERIFY_WITNESS_0_51,
+            "commit-witness-integrity",
+            "disagrees with the WAL",
+        ),
+    ] {
+        let report = verify(text).expect("a damaged report still reads");
+        assert!(!report.verdict.ok);
+        assert_eq!(report.verdict.failed_conditions.len(), 1);
+        let condition = &report.verdict.failed_conditions[0];
+        assert_eq!(condition.id, id);
+        assert!(condition.message.contains(fragment), "{condition:?}");
+        // **Every stage still reported** on both damage cases (F2): the verdict carries the
+        // signal, and the stages confirm coverage rather than pointing at the fault.
+        assert!(
+            report
+                .stages
+                .iter()
+                .all(|s| s.status == StageStatus::Evaluated),
+            "{:?}",
+            report.stages
+        );
+    }
+}
+
+#[test]
+fn a_verdict_that_disagrees_with_its_own_conditions_is_refused() {
+    // prikk derives `ok` and the conditions from one declaration, so they cannot disagree in a
+    // report stikk understands, and there is no honest way to pick one: believing `ok` hides
+    // damage, believing the conditions contradicts prikk's own verdict. Both directions.
+    let ok_but_failing = VERIFY_SOUND_0_51.replace(
+        r#""failed_conditions": []"#,
+        r#""failed_conditions": [{"id": "x", "message": "y"}]"#,
+    );
+    assert_eq!(
+        verify(&ok_but_failing)
+            .expect_err("ok: true beside a condition is refused")
+            .class(),
+        "environment"
+    );
+
+    let failing_but_ok = VERIFY_ITEM_FAILURE_0_51.replace(r#""ok": false"#, r#""ok": true"#);
+    assert_eq!(
+        verify(&failing_but_ok)
+            .expect_err("ok: true beside conditions is refused")
+            .class(),
+        "environment"
+    );
+}
+
+#[test]
+fn the_readers_negatives_are_all_environment_errors() {
+    const STAGE_ROW: &str = r#"{"stage": "refs", "status": "evaluated"}"#;
+    for (label, text) in [
+        (
+            "another schema",
+            VERIFY_SOUND_0_51.replace("verify-report-v1", "verify-report-v2"),
+        ),
+        (
+            "a condition with no message",
+            VERIFY_ITEM_FAILURE_0_51.replace(
+                r#", "message": "repository verification found at least one failed object, block, or ref; see item outcomes above""#,
+                "",
+            ),
+        ),
+        (
+            "a stage with no status",
+            VERIFY_SOUND_0_51.replace(STAGE_ROW, r#"{"stage": "refs"}"#),
+        ),
+        (
+            "a stage with no name",
+            VERIFY_SOUND_0_51.replace(STAGE_ROW, r#"{"status": "evaluated"}"#),
+        ),
+        (
+            "a stage whose name is empty",
+            VERIFY_SOUND_0_51.replace(STAGE_ROW, r#"{"stage": "", "status": "evaluated"}"#),
+        ),
+        (
+            "a failed stage with no message",
+            VERIFY_SOUND_0_51.replace(STAGE_ROW, r#"{"stage": "refs", "status": "failed"}"#),
+        ),
+        (
+            "a verdict that is not there",
+            VERIFY_SOUND_0_51.replace(r#""verdict""#, r#""verdicts""#),
+        ),
+        ("not json at all", "error: no repository here".to_string()),
+    ] {
+        let err = verify(&text).err().unwrap_or_else(|| panic!("{label} must be refused"));
+        assert_eq!(err.class(), "environment", "{label}");
+    }
+}
+
+#[test]
+fn an_unmeasured_stage_status_is_kept_as_prikks_word() {
+    // Neither guessed at nor folded into `evaluated`, which would be stikk inventing a clean
+    // result for an outcome it does not understand.
+    let text = VERIFY_SOUND_0_51.replace(
+        r#"{"stage": "refs", "status": "evaluated"}"#,
+        r#"{"stage": "refs", "status": "skipped-for-now", "why": "a field stikk has never seen"}"#,
+    );
+    let report = verify(&text).expect("an unmeasured status still reads");
+    let refs = report
+        .stages
+        .iter()
+        .find(|s| s.stage == "refs")
+        .expect("the refs stage is present");
+    assert_eq!(
+        refs.status,
+        StageStatus::Other("skipped-for-now".to_string())
+    );
+    // Its own field is not lost: the raw view still carries prikk's whole report.
+    assert!(
+        report.raw.contains("a field stikk has never seen"),
+        "{}",
+        report.raw
+    );
+}

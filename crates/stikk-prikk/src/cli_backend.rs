@@ -201,6 +201,58 @@ impl CliBackend {
         Ok((stdout, stderr, output.status.success()))
     }
 
+    /// Run `prikk`, draining both streams, and return `(stdout, stderr, code)` — the exit **code**,
+    /// not just whether it was zero.
+    ///
+    /// **For [`Prikk::verify`] and nothing else.** `verify` is the one command whose non-zero exit
+    /// can carry a complete, valid report: a damaged repository exits 1 *and* prints the whole
+    /// `verify-report-v1` (RFC 040 F2, measured). Telling that apart from a refusal needs the code
+    /// itself — [`Self::run_capturing`] gives only a boolean, which cannot distinguish prikk's
+    /// exit 1 from any other failure, and that distinction is the whole rule.
+    ///
+    /// **No other method may use this.** Every other command on this trait means one thing by a
+    /// non-zero exit: prikk refused, or stikk has a bug. Reaching for the raw code elsewhere would
+    /// be a caller deciding for itself which failures to believe, which is exactly what
+    /// [`Self::run`]'s classification exists to prevent (UD-05). A usage-error exit (`2`) is still
+    /// handled here, since it is never a normal outcome for any caller (RFC 009 F6).
+    ///
+    /// `code` is `None` only where the platform reports no code (a signal on Unix), which is not a
+    /// refusal and not a report — the caller treats it as it treats any other unexpected exit.
+    fn run_with_status<I, S>(
+        &self,
+        cwd: Option<&Path>,
+        args: I,
+    ) -> Result<(String, String, Option<i32>)>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let args: Vec<OsString> = args
+            .into_iter()
+            .map(|a| a.as_ref().to_os_string())
+            .collect();
+        let mut command = Command::new(&self.program);
+        command.args(&args);
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        let output = command.output().map_err(|error| {
+            StikkError::environment(
+                format!(
+                    "could not launch prikk ({}): is it installed and on PATH?",
+                    self.program.to_string_lossy()
+                ),
+                error,
+            )
+        })?;
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        if output.status.code() == Some(USAGE_ERROR_EXIT) {
+            return Err(self.usage_error(&args, &stdout, &stderr));
+        }
+        Ok((stdout, stderr, output.status.code()))
+    }
+
     /// Build the [`StikkError::Internal`] for a usage-error exit (RFC 009 F6): the repository was not
     /// touched (no repository work runs before prikk validates its arguments), so the fault-screen
     /// framing `present()` already gives `Internal` ("the repository was not touched") is accurate
@@ -471,6 +523,44 @@ impl Prikk for CliBackend {
         };
         let out = self.run(Some(repo), RequestCategory::ReadState, args)?;
         parse_json::diff(&out, comparison).map(crate::DiffReport::Listed)
+    }
+
+    fn verify(&self, repo: &Path) -> Result<crate::VerifyReport> {
+        // RFC 040 decision 1. The gate sits beside the command it chooses, as every other banded
+        // read in this file puts it.
+        if !self.reads_json()? {
+            return Ok(crate::VerifyReport::Unreported);
+        }
+        let (stdout, stderr, code) =
+            self.run_with_status(Some(repo), ["verify", "--format", "json"])?;
+
+        // **The one place a non-zero exit can be success** (RFC 040 F2, measured at 0.51 on a
+        // flipped container byte and a torn WAL record: exit 1, `ok: false`, and every stage still
+        // reported). The rule is deliberately narrow -- only exit 1, and only when stdout really is
+        // a `verify-report-v1`.
+        match code {
+            Some(0) => parse_json::verify(&stdout).map(crate::VerifyReport::Listed),
+            Some(1) => match parse_json::verify(&stdout) {
+                // A report. stderr only repeats the failing condition, so it is not read.
+                Ok(report) => Ok(crate::VerifyReport::Listed(report)),
+                // **Not a report, so it is a refusal** -- an absent or locked repository, say --
+                // and it classifies exactly as every other refusal does, in prikk's own words. The
+                // parse error is dropped on purpose: reporting "stikk could not read the report"
+                // would bury prikk's actual reason for a reader who needs to see it.
+                Err(_) => Err(classify::classify(
+                    &stdout,
+                    &stderr,
+                    RequestCategory::ReadState,
+                )),
+            },
+            // Exit 2 never reaches here (`run_with_status` turns it into stikk's bug), and any
+            // other code is as unexpected for `verify` as for anything else.
+            _ => Err(classify::classify(
+                &stdout,
+                &stderr,
+                RequestCategory::ReadState,
+            )),
+        }
     }
 
     fn refs(&self, repo: &Path) -> Result<crate::BranchList> {

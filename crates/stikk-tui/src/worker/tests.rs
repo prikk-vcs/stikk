@@ -156,6 +156,11 @@ impl Prikk for Recording {
         self.record("block_state");
         self.inner.block_state(repo, reff, block_id, is_tip)
     }
+    fn verify(&self, repo: &Path) -> Result<stikk_prikk::VerifyReport> {
+        self.record("verify");
+        self.inner.verify(repo)
+    }
+
     fn diff(
         &self,
         repo: &Path,

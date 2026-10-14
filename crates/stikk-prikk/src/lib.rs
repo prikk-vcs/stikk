@@ -523,6 +523,116 @@ pub enum Comparison {
     WorktreeAgainstBaseline,
 }
 
+/// What [`Prikk::verify`] can say (RFC 040 decision 1).
+///
+/// The same two-variant shape [`QueueReport`], [`ShowReport`], [`StateReport`] and [`DiffReport`]
+/// take: below the band stikk spawns nothing, and *unreported* is not *sound* (`C-T2c′`). A
+/// repository stikk never asked about must never read as one prikk found no fault in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerifyReport {
+    /// prikk >= [`crate::JSON_REPORTS_FROM_MINOR`]: the report, as prikk wrote it.
+    Listed(Verification),
+    /// Below the band. stikk spawns nothing and says so in its own voice (`C-T4d`).
+    Unreported,
+}
+
+/// One `verify-report-v1`, as prikk wrote it.
+///
+/// **Measured at 0.51.0 and at 0.39.0** (RFC 040 F1, re-measured for Handoff A): the same four
+/// keys and the same verdict and stage shape at both ends. Only the stage *list* differs -- 17 at
+/// 0.51, 14 at 0.39, and the three extra ones are new names, not renamed old ones -- which is
+/// exactly why nothing here counts or names a stage (decision 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Verification {
+    /// prikk's verdict, and every condition it currently fails.
+    pub verdict: Verdict,
+    /// prikk's session coverage, when the report carries it. `None` is *not reported*, never zero
+    /// sessions: `active_sessions` arrived in prikk 0.27, below stikk's floor, but the reader does
+    /// not depend on a field being present in every version it reads.
+    pub active_sessions: Option<ActiveSessions>,
+    /// Every stage prikk ran, **in prikk's order**.
+    pub stages: Vec<VerifyStage>,
+    /// prikk's own JSON for the whole report, for the raw view (`v`). Bounded by the frontend,
+    /// never here.
+    pub raw: String,
+}
+
+/// prikk's verdict: whether the repository is sound, and what it currently fails.
+///
+/// **`ok` and `failed_conditions` cannot disagree.** prikk derives both from one declaration (RFC
+/// 040 F1, from prikk's own source), so a report where they disagree is a report stikk does not
+/// understand -- the reader rejects it rather than believing one over the other (`T-T4`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Verdict {
+    /// prikk's own boolean.
+    pub ok: bool,
+    /// Every condition currently failing, in prikk's order. Empty exactly when `ok`.
+    pub failed_conditions: Vec<FailedCondition>,
+}
+
+/// One failing condition, in prikk's words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailedCondition {
+    /// prikk's own identifier for the condition (`item-failure`,
+    /// `commit-witness-integrity`, ...). A name the repository's tooling chose, rendered as an
+    /// identifier.
+    pub id: String,
+    /// prikk's sentence, verbatim (`ER-02`). Never parsed for anything (RFC 040 §7 trap 4).
+    pub message: String,
+}
+
+/// How many active sessions prikk saw, and how many its verification covered.
+///
+/// At 0.51 `verified_count` is always `1`: only the default session is covered, by construction.
+/// stikk reports both numbers as prikk gives them and claims nothing about the difference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActiveSessions {
+    /// Sessions prikk found.
+    pub count: u64,
+    /// Sessions its sealed-history verification covered.
+    pub verified_count: u64,
+}
+
+/// One verification stage, in prikk's order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifyStage {
+    /// prikk's stage name (`objects`, `wal-replay`, ...), rendered as an identifier.
+    ///
+    /// **Never matched against a list.** 0.39 reports 14 stages and 0.51 reports 17 (measured);
+    /// stikk shows what prikk lists.
+    pub stage: String,
+    /// What prikk said about it.
+    pub status: StageStatus,
+}
+
+/// A stage's outcome, with the field prikk pairs with it.
+///
+/// **A status stikk has not measured is kept as prikk's word** ([`Self::Other`]), not folded into
+/// one of the four below: a new outcome shown as `evaluated` would be stikk inventing a clean
+/// result (`T-T4`). Its own fields stay visible in the raw view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StageStatus {
+    /// prikk ran the stage and it raised nothing.
+    Evaluated,
+    /// prikk ran the stage and it failed, with prikk's own message.
+    Failed {
+        /// prikk's sentence, verbatim.
+        message: String,
+    },
+    /// prikk did not run the stage, because of the stage it names.
+    NotEvaluated {
+        /// prikk's own word for what blocked it.
+        blocked_by: String,
+    },
+    /// prikk stopped after the stage it names.
+    Halted {
+        /// prikk's own word for where it stopped.
+        after: String,
+    },
+    /// A status stikk has not measured, kept exactly as prikk wrote it.
+    Other(String),
+}
+
 /// What [`Prikk::diff`] can say (RFC 038 decision 1).
 ///
 /// **Two variants, because below prikk 0.46 a comparison is not reported, not empty** (`C-T2c′`) —
@@ -1179,6 +1289,35 @@ pub trait Prikk: Send + Sync {
     /// `commit` would refuse — classifies as for [`Prikk::orientation`] and carries prikk's words
     /// verbatim (decision 6), never an empty comparison.
     fn diff(&self, repo: &Path, comparison: &Comparison) -> Result<DiffReport>;
+
+    /// Whether the repository is sound, in prikk's own verdict (design `FR-100`; category
+    /// `read-state`; RFC 040 decision 1) — `verify --format json`.
+    ///
+    /// **Version-banded behind this one method**, in [`Prikk::queue`]'s pattern. At prikk ≥
+    /// [`crate::JSON_REPORTS_FROM_MINOR`] it reads. **Below it nothing is spawned** and the answer
+    /// is [`VerifyReport::Unreported`] — never a sound verdict, which would say stikk had checked
+    /// (`C-T2c′`). **No prose `verify` is parsed, at any version** (§7 trap 4): the prose is
+    /// current CLI vocabulary, not a schema, and the counts it carries are the ones F3 found
+    /// missing from the JSON.
+    ///
+    /// **This method reads `exit 1` as success, and it is the only one that may.** A damaged
+    /// repository makes `verify` exit 1 **with a complete report** (RFC 040 F2, measured twice at
+    /// 0.51): a byte flipped in a container, and a torn WAL record. Were this classified like
+    /// every other non-zero exit, Verify would say *prikk refused* at exactly the moment prikk is
+    /// reporting damage — the most wrong thing stikk could say (`T-T4`). The rule is narrow:
+    /// **exit 0 or exit 1 whose stdout parses as `verify-report-v1` is a report**, whatever stderr
+    /// says (stderr only repeats the condition); anything else classifies as it does today.
+    ///
+    /// **Verify changes nothing** (decision 4): no repair, no lock clearing, and it never runs on
+    /// its own — it scans the whole repository, so only the reader starts it.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: a report that breaks `verify-report-v1`'s measured shape — or
+    /// one whose `verdict.ok` disagrees with its own `failed_conditions`, which prikk derives from
+    /// one declaration — is stikk's environment error (UD-02), never a guess at which half to
+    /// believe. An exit 1 **without** a parseable report is prikk's refusal, verbatim, classified
+    /// as for [`Prikk::orientation`]; exit 2 is stikk's bug, as everywhere.
+    fn verify(&self, repo: &Path) -> Result<VerifyReport>;
 
     /// Compose a cheap "has anything changed?" signal from the ref pointers (branches **and** tags,
     /// merged and deduplicated by name — never `Prikk::refs` alone, since its tag coverage is

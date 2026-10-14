@@ -142,6 +142,19 @@ static COMMANDS: &[Command] = &[
         needs_focused_ref: false,
     },
     Command {
+        id: "view.verify",
+        name: "Verify repository",
+        binding: "V",
+        operation: "verify",
+        // **Tier One: it reads and changes nothing** (RFC 040 decision 4). Verify repairs nothing
+        // and clears no lock, so it needs no signing readiness -- a repository too damaged to
+        // commit in is exactly where a reader most needs to be able to run it.
+        tier: Tier::One,
+        opens: Some(Target::Verify),
+        // Verification is repository-wide, as the queue is.
+        needs_focused_ref: false,
+    },
+    Command {
         id: "op.commit",
         name: "Commit worktree changes",
         binding: "C",

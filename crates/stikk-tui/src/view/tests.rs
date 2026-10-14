@@ -5,7 +5,7 @@
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 
-use super::wrap_spans;
+use super::{wrap_hanging, wrap_spans};
 
 /// The row's text, rows joined by `|`, each continuation still carrying its indent.
 fn shape(rows: &[ratatui::text::Line<'_>]) -> String {
@@ -102,4 +102,71 @@ fn an_indent_is_never_left_as_a_row_of_its_own() {
 #[test]
 fn an_empty_span_sequence_renders_no_rows() {
     assert!(wrap_spans(Vec::new(), 10, "  ").is_empty());
+}
+
+// ---------------------------------------------------------------------------------------------
+// `wrap_hanging`: each row gets the room its own indent leaves.
+
+#[test]
+fn a_hanging_wrap_fills_the_first_row_to_its_own_width() {
+    // Wrapping the whole sentence to the *hanging* room would stop the first row short of the
+    // border for no reason a reader can see.
+    // Width 11: the first row has 9 columns to spend and takes two words; the hanging rows have
+    // 5 and take one each. Wrapped to the hanging room throughout, the first row would hold only
+    // `aaa`.
+    let rows = wrap_hanging("aaa bbb ccc ddd eee", 11, "  ", "      ");
+    assert_eq!(
+        rows,
+        vec!["  aaa bbb", "      ccc", "      ddd", "      eee"]
+    );
+}
+
+#[test]
+fn a_hanging_wrap_never_lays_a_continuation_wider_than_it_has() {
+    // The fault this helper exists for: a continuation laid out to the first row's room overflows
+    // its own indent and clips at the border.
+    let rows = wrap_hanging(
+        "one two three four five six seven",
+        20,
+        "  ",
+        "            ",
+    );
+    for row in &rows {
+        assert!(
+            row.chars().count() <= 20,
+            "{row:?} is wider than 20: {rows:?}"
+        );
+    }
+}
+
+#[test]
+fn a_hanging_wrap_does_not_repeat_a_marker_down_the_side() {
+    // An opening indent can end in a character a trim would leave behind (`    ! `), which used
+    // to print the marker on every continuation.
+    let rows = wrap_hanging("alpha beta gamma delta epsilon zeta", 18, "  ! ", "    ");
+    assert!(rows.len() > 1, "{rows:?}");
+    for row in &rows[1..] {
+        assert!(
+            !row.contains('!'),
+            "the marker is only on the first row: {rows:?}"
+        );
+        assert!(row.starts_with("    "), "{row:?}");
+    }
+}
+
+#[test]
+fn a_hanging_wrap_keeps_every_word_once_and_in_order() {
+    let text = "the quick brown fox jumps over the lazy dog";
+    let rows = wrap_hanging(text, 16, "  ", "     ");
+    let rejoined: Vec<&str> = rows
+        .iter()
+        .flat_map(|r| r.split_whitespace())
+        .filter(|w| *w != "!")
+        .collect();
+    assert_eq!(rejoined.join(" "), text, "{rows:?}");
+}
+
+#[test]
+fn a_hanging_wrap_of_a_short_text_is_one_row() {
+    assert_eq!(wrap_hanging("short", 40, "  ", "    "), vec!["  short"]);
 }

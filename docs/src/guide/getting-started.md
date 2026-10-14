@@ -57,14 +57,26 @@ touches the worktree.
 
 Key reference: `Enter` opens History and drills into a block; `b` chooses which ref to view; `w` opens
 Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; `Q` opens the Queue view,
-the patches waiting to be sealed; `C` commits worktree changes and `S` seals the queue, each after a
+the patches waiting to be sealed; `V` runs prikk's repository verification and shows its
+verdict; `C` commits worktree changes and `S` seals the queue, each after a
 preview and a confirmation; `:` opens the command palette; `R` shows the session's recent refusals; `o` lists background operations still in flight or
 recently finished (a listing only — there is no cancel action); `?` opens the glossary and full key
 reference; `m` marks a block in History and `d` compares — see *Compare* below; `v` toggles Patch
-detail's and Compare's raw view of prikk's own fields; `r` refreshes Orientation and the
-screen you are on — History, the Queue, Changes, the tip's Block detail, or a Patch detail opened from
-the Queue — **in place**, each view staying visible while its read runs, and **re-reading the ref that screen
+detail's, Compare's and Verify's raw view of prikk's own fields; `r` refreshes Orientation and the
+screen you are on — History, the Queue, Changes, the tip's Block detail, a Patch detail opened from
+the Queue, or Verify (which re-runs it) — **in place**, each view staying visible while its read runs, and **re-reading the ref that screen
 shows**, which need not be the ref you have focused; `Esc`/`q` steps back, and quits at the root.
+
+**Is the repository sound?** `V` runs prikk's own verification and shows what prikk said: the
+verdict, every condition prikk is currently failing in prikk's own words, and every stage prikk ran
+with its status. `v` shows prikk's own JSON report and `r` re-runs it — a verdict is about the
+moment it was taken, so stikk never shows you a cached one. **Verify changes nothing**: it repairs
+nothing, clears no lock, and never runs on its own, because it scans the whole repository.
+
+prikk's JSON report does not say *which* objects or refs failed, or how many signatures could not be
+verified — those live only in prikk's prose output. Verify says so on every report, sound or not,
+and names the command to run for them. stikk does not parse that prose. Below prikk 0.39 stikk has
+no report to read, and says that rather than reporting a repository it never checked as sound.
 
 **When another terminal changes the repository.** stikk checks for a commit, seal or branch switch made
 outside it — when your terminal reports that you have come back to it, and every few seconds while stikk

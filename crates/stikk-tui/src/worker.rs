@@ -81,6 +81,12 @@ pub(crate) enum RequestKind {
         /// this layer knows which entry point named them.
         opened: CompareSource,
     },
+    /// Run `prikk verify` and shape its report (`FR-100`; RFC 040).
+    ///
+    /// **Only ever sent because the reader asked** — `V`, the palette, or `r` on the screen it
+    /// opened. It scans the whole repository, so nothing schedules it: not the change check, not a
+    /// refresh of any other screen, and not startup (RFC 040 decision 4).
+    Verify,
     /// Read worktree-vs-baseline status for a ref.
     Changes {
         /// The ref to compare the worktree against.
@@ -147,6 +153,8 @@ pub(crate) enum ResponseKind {
         /// The comparison, or the band's refusal to make one.
         result: Result<stikk_core::CompareView>,
     },
+    /// Answers [`RequestKind::Verify`].
+    Verify(Result<stikk_core::VerifyView>),
     /// Answers [`RequestKind::BlockState`], echoing the ref it was read for, so the screen it fills names
     /// that ref and a later refresh re-reads it (RFC 031 review v1 §2.2).
     BlockState {
@@ -215,6 +223,7 @@ impl RequestKind {
             Self::Queue => "queue",
             Self::PatchDetail { .. } => "patch detail",
             Self::Compare { .. } => "compare",
+            Self::Verify => "verify",
             Self::Changes { .. } => "changes",
             Self::CommitPreview { .. } => "commit preview",
             Self::CommitConfirmExecute { .. } => "commit",
@@ -259,6 +268,7 @@ pub(crate) fn run(
                 opened,
                 result: stikk_core::compare(prikk, repo, &comparison),
             },
+            RequestKind::Verify => ResponseKind::Verify(stikk_core::verify(prikk, repo)),
             RequestKind::Refs => ResponseKind::Refs(list_refs(prikk, repo)),
             RequestKind::Queue => ResponseKind::Queue(queue_view(prikk, repo)),
             RequestKind::PatchDetail { patch_id, message } => {

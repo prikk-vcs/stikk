@@ -68,6 +68,10 @@ impl Prikk for SlowOrientation {
         self.0.tags(repo)
     }
 
+    fn verify(&self, repo: &Path) -> Result<stikk_prikk::VerifyReport> {
+        self.0.verify(repo)
+    }
+
     fn diff(
         &self,
         repo: &Path,

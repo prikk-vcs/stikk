@@ -162,6 +162,9 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
             view::patch::render(v, raw, offset, palette, frame, area);
         }
         Focus::Compare(focus) => view::compare::render(focus, palette, frame, area),
+        Focus::Verify(v, raw, refreshing, offset) => {
+            view::verify::render(v, raw, refreshing, offset, palette, frame, area);
+        }
     }
 }
 

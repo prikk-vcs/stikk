@@ -167,6 +167,20 @@ pub enum Screen {
         /// idiom): one entry's hunks can be a whole file.
         offset: std::cell::Cell<u16>,
     },
+    /// prikk's verdict on whether the repository is sound (`FR-100`; RFC 040).
+    Verify {
+        /// The report, or the band's reason there is none.
+        view: stikk_core::VerifyView,
+        /// Whether the raw view is showing (`v`): prikk's own JSON instead of stikk's rendering.
+        raw: bool,
+        /// The `seq` of an in-flight re-run (`r`), if any — the report stays visible while it
+        /// runs, with the heading saying so. **A verdict is never cached across runs** (RFC 040
+        /// decision 4): what is on screen is what this run said.
+        refreshing: Option<u64>,
+        /// First content row drawn, clamped and written back by the renderer (Patch detail's
+        /// idiom): 17 stages plus the raw report is taller than a terminal.
+        offset: std::cell::Cell<u16>,
+    },
     /// One patch's detail: what it changed, in prikk's own terms (`FR-030`; RFC 035).
     PatchDetail {
         /// The loaded detail.
@@ -258,6 +272,14 @@ pub enum Focus<'a> {
     PatchDetail(&'a PatchDetailView, bool, &'a std::cell::Cell<u16>),
     /// A comparison and the state the screen holds for it.
     Compare(CompareFocus<'a>),
+    /// The Verify report, whether the raw view is showing, whether a re-run is in flight, and the
+    /// scroll offset.
+    Verify(
+        &'a stikk_core::VerifyView,
+        bool,
+        bool,
+        &'a std::cell::Cell<u16>,
+    ),
 }
 
 /// One background operation the worker has answered or is still working on — display-only bookkeeping
@@ -559,6 +581,10 @@ impl App {
                 }),
                 CompareSource::MarkedPair | CompareSource::PreviousInHistory => None,
             },
+            // **`r` re-runs the verification** (RFC 040 decision 3). A verdict is about the
+            // moment it was taken and is never cached across runs, so this is the only way to a
+            // newer one — and it only ever happens because the reader asked.
+            Some(Screen::Verify { .. }) => Some(RequestKind::Verify),
             // RFC 031 §7: Changes re-reads the ref it shows.
             Some(Screen::Changes { view, .. }) => Some(RequestKind::Changes {
                 reff: view.reff.clone(),
@@ -579,6 +605,7 @@ impl App {
         let seq = self.dispatch(kind);
         if let Some(
             Screen::History { refreshing, .. }
+            | Screen::Verify { refreshing, .. }
             | Screen::Queue { refreshing, .. }
             | Screen::Changes { refreshing, .. }
             | Screen::PatchDetail { refreshing, .. }
@@ -731,6 +758,22 @@ impl App {
         self.screens.push(Screen::Loading { what: "queue", seq });
     }
 
+    /// Open the Verify view (the `V` key, or the palette; `FR-100`, RFC 040 decision 3). **Needs
+    /// no focused ref**: verification is repository-wide.
+    ///
+    /// **Only ever on demand.** `verify` scans the whole repository, so nothing else starts it:
+    /// not startup, not the change check, not another screen's refresh. `V` is capital for the
+    /// same reason `Q` and `R` are — it opens a repository-wide view — and lowercase `v` stays the
+    /// raw toggle it already is everywhere else.
+    pub fn open_verify(&mut self) {
+        self.banner = None;
+        let seq = self.dispatch(RequestKind::Verify);
+        self.screens.push(Screen::Loading {
+            what: "verify",
+            seq,
+        });
+    }
+
     /// Toggle the display-only untracked filter on a focused Changes screen (the `u` key; UD-08).
     pub fn toggle_untracked(&mut self) {
         if let Some(Screen::Changes { hide_untracked, .. }) = self.screens.last_mut() {
@@ -744,7 +787,9 @@ impl App {
     /// is legible rather than apologised for (F6). A no-op on every other screen, as `u` is.
     pub fn toggle_raw(&mut self) {
         match self.screens.last_mut() {
-            Some(Screen::PatchDetail { raw, .. }) | Some(Screen::Compare { raw, .. }) => {
+            Some(Screen::PatchDetail { raw, .. })
+            | Some(Screen::Compare { raw, .. })
+            | Some(Screen::Verify { raw, .. }) => {
                 *raw = !*raw;
             }
             _ => {}
@@ -1068,6 +1113,10 @@ impl App {
             // Compare is a leaf too: `v` toggles prikk's own fields for the selected entry, and
             // `↑`/`↓` move between entries. There is nothing below an entry to open.
             Some(Screen::Compare { .. }) => {}
+            // Verify is a leaf: `v` toggles prikk's own JSON and `r` re-runs it. There is nothing
+            // below a verdict to open — and **nothing here acts on it** (RFC 040 decision 4):
+            // Verify repairs nothing, clears no lock, and changes nothing at all.
+            Some(Screen::Verify { .. }) => {}
             None => self.open_history(),
         }
     }
@@ -1458,6 +1507,10 @@ impl App {
             ResponseKind::Queue(r) => r.is_ok(),
             ResponseKind::PatchDetail(r) => r.is_ok(),
             ResponseKind::Compare { result, .. } => result.is_ok(),
+            // **Whether the *operation* succeeded, never whether the repository is sound.** A
+            // damaged repository is a successful read of a bad verdict (RFC 040 F2), and the
+            // background-operations overlay is a listing, not a content view (INV-8).
+            ResponseKind::Verify(r) => r.is_ok(),
             ResponseKind::CommitPreview(r) => r.is_ok(),
             ResponseKind::CommitConfirmExecute(r) => r.is_ok(),
             ResponseKind::SealPreview(r) => r.is_ok(),
@@ -1474,6 +1527,7 @@ impl App {
             ResponseKind::Changes(result) => self.apply_changes(seq, result),
             ResponseKind::Queue(result) => self.apply_queue(seq, result),
             ResponseKind::PatchDetail(result) => self.apply_patch_detail(seq, result),
+            ResponseKind::Verify(result) => self.apply_verify(seq, result),
             ResponseKind::Compare { opened, result } => self.apply_compare(seq, opened, result),
             ResponseKind::CommitPreview(result) => self.apply_commit_preview(seq, result),
             ResponseKind::CommitConfirmExecute(result) => {
@@ -1757,6 +1811,59 @@ impl App {
                     // decision 6). Unlike Block detail's file list there is nothing left to show
                     // beside it: this screen *is* the comparison.
                     self.surface(&error, OperationContext::Compare);
+                }
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::Verify`]. Re-runnable in place with `r`, like History and the
+    /// Queue: the report stays visible while the new run works.
+    fn apply_verify(&mut self, seq: u64, result: stikk_model::Result<stikk_core::VerifyView>) {
+        let is_top_refresh = matches!(
+            self.screens.last(),
+            Some(Screen::Verify { refreshing: Some(s), .. }) if *s == seq
+        );
+        if is_top_refresh {
+            if let Some(Screen::Verify { refreshing, .. }) = self.screens.last_mut() {
+                *refreshing = None;
+            }
+            match result {
+                Ok(fresh) => {
+                    if let Some(Screen::Verify { view, offset, .. }) = self.screens.last_mut() {
+                        // **Replaced, never merged.** A verdict is about the moment it was taken
+                        // (RFC 040 decision 4), so the previous one is gone the instant this one
+                        // lands -- there is no state in which the screen shows two runs at once.
+                        *view = fresh;
+                        offset.set(0);
+                    }
+                }
+                Err(error) => self.surface(&error, OperationContext::Verify),
+            }
+            return;
+        }
+        let index = self
+            .screens
+            .iter()
+            .position(|s| matches!(s, Screen::Loading { seq: s, .. } if *s == seq));
+        if let Some(index) = index {
+            match result {
+                Ok(view) => {
+                    if let Some(slot) = self.screens.get_mut(index) {
+                        *slot = Screen::Verify {
+                            view,
+                            raw: false,
+                            refreshing: None,
+                            offset: std::cell::Cell::new(0),
+                        };
+                    }
+                }
+                Err(error) => {
+                    self.screens.remove(index);
+                    // **A refusal goes through the usual path, verbatim.** This screen *is* the
+                    // report, so there is nothing left to show beside the failure -- and a
+                    // damaged repository never arrives here, because the seam already read its
+                    // exit 1 as the report it carried (RFC 040 decision 1).
+                    self.surface(&error, OperationContext::Verify);
                 }
             }
         }
@@ -2344,6 +2451,12 @@ impl App {
             Some(Screen::PatchDetail {
                 view, raw, offset, ..
             }) => Focus::PatchDetail(view, *raw, offset),
+            Some(Screen::Verify {
+                view,
+                raw,
+                refreshing,
+                offset,
+            }) => Focus::Verify(view, *raw, refreshing.is_some(), offset),
             Some(Screen::Compare {
                 view,
                 opened,

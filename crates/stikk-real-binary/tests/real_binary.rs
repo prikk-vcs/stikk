@@ -5579,3 +5579,148 @@ fn rfc038_the_three_comparisons_read_against_real_binaries() {
         );
     }
 }
+
+/// **RFC 040: a real repository, sound, then with a byte flipped — Verify reports the problem,
+/// never a refusal.**
+///
+/// This is the one behaviour the whole increment turns on (F2). prikk exits **1** on a damaged
+/// repository and still prints a complete report; stikk's seam is the only place that reads a
+/// non-zero exit as success, and if it ever stopped doing so, Verify would say *prikk refused* at
+/// exactly the moment prikk is reporting damage. No fake binary can prove that — only a real
+/// prikk and real damage.
+///
+/// The damage is the one `measure040b.sh` makes: a byte flipped inside a blob container, which
+/// prikk reports as `item-failure`.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc040_verify_reports_real_damage_as_a_verdict_never_as_a_refusal() {
+    let bin = PrikkBin::ceiling();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    std::fs::write(repo.join("a.txt"), "one\n")
+        .unwrap_or_else(|e| panic!("0.{}: write a.txt: {e}", bin.minor));
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "one")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+
+    // **Sound first**, so the damaged run below is a change and not just an assertion.
+    let sound = stikk_core::verify(&backend, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: verify on a sound repository: {e}", bin.minor));
+    let sound = sound
+        .checked()
+        .unwrap_or_else(|| panic!("0.{}: 0.51 is above the band", bin.minor));
+    assert!(
+        sound.ok,
+        "0.{}: a freshly sealed repository must verify sound: {:?}",
+        bin.minor, sound.conditions
+    );
+    assert_eq!(sound.verdict(), "prikk reports this repository sound");
+    // prikk's own stage list, whatever its length -- never one stikk wrote down.
+    assert!(
+        !sound.stages.is_empty(),
+        "0.{}: prikk reported no stages at all",
+        bin.minor
+    );
+    assert!(
+        sound.stages.iter().all(|s| s.is_evaluated()),
+        "0.{}: {:?}",
+        bin.minor,
+        sound.stages
+    );
+
+    // **Now flip one byte inside a blob container**, exactly as `measure040b.sh` does.
+    let container = repo.join(".prikk/containers/blob/a.container");
+    let mut bytes = std::fs::read(&container)
+        .unwrap_or_else(|e| panic!("0.{}: read {}: {e}", bin.minor, container.display()));
+    assert!(
+        !bytes.is_empty(),
+        "0.{}: the blob container is empty; the layout has moved and this test is measuring \
+         nothing",
+        bin.minor
+    );
+    let middle = bytes.len() / 2;
+    bytes[middle] ^= 0xff;
+    std::fs::write(&container, &bytes)
+        .unwrap_or_else(|e| panic!("0.{}: write {}: {e}", bin.minor, container.display()));
+
+    // **The whole point.** `verify` now exits 1. It must come back as a verdict.
+    let damaged = match stikk_core::verify(&backend, &repo) {
+        Ok(view) => view,
+        Err(error) => panic!(
+            "0.{}: a damaged repository came back as a REFUSAL, which is the one thing Verify \
+             must never say (RFC 040 F2): {error}",
+            bin.minor
+        ),
+    };
+    let damaged = damaged
+        .checked()
+        .unwrap_or_else(|| panic!("0.{}: 0.51 is above the band", bin.minor));
+    assert!(
+        !damaged.ok,
+        "0.{}: prikk must not call a damaged repository sound",
+        bin.minor
+    );
+    assert!(
+        !damaged.conditions.is_empty(),
+        "0.{}: a false verdict with no condition beside it",
+        bin.minor
+    );
+    // prikk's own id and words, verbatim -- not stikk's summary of them.
+    let ids: Vec<&str> = damaged.conditions.iter().map(|c| c.id.as_str()).collect();
+    assert!(
+        ids.contains(&"item-failure"),
+        "0.{}: prikk's measured condition for this damage is `item-failure`, got {ids:?}",
+        bin.minor
+    );
+    assert_eq!(damaged.verdict(), "prikk reports 1 problem(s)");
+    // And every stage still reported, as measured (F2): the verdict carries the signal.
+    assert!(
+        damaged.stages.iter().all(|s| s.is_evaluated()),
+        "0.{}: {:?}",
+        bin.minor,
+        damaged.stages
+    );
+}
+
+/// **RFC 040: below the band, stikk says it did not check — never that the repository is sound.**
+///
+/// The mirror of the test above. At 0.28 nothing is spawned, and the view's sentence is stikk's
+/// own (`C-T4d`).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc040_below_the_band_verify_says_stikk_did_not_check() {
+    let bin = PrikkBin::floor();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+
+    let view = stikk_core::verify(&backend, fixture.repo())
+        .unwrap_or_else(|e| panic!("0.{}: below the band must not be an error: {e}", bin.minor));
+    assert!(
+        view.checked().is_none(),
+        "0.{}: nothing should have been read",
+        bin.minor
+    );
+    let reason = view
+        .unreported_reason()
+        .unwrap_or_else(|| panic!("0.{}: a reason in stikk's own voice", bin.minor));
+    assert!(
+        reason.contains("from prikk 0.39 on"),
+        "0.{}: {reason}",
+        bin.minor
+    );
+    assert!(
+        reason.contains(&format!("this is 0.{}", bin.minor)),
+        "0.{}: {reason}",
+        bin.minor
+    );
+    // **Never a verdict.** A repository nobody checked is not a repository found sound.
+    assert!(!reason.contains("sound"), "0.{}: {reason}", bin.minor);
+}

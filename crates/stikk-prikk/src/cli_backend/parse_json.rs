@@ -41,11 +41,13 @@ use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{
-    Authoring, BinaryBlob, BlockRow, Comparison, DeclarationResolution, Diff, DiffEntry, DiffFile,
-    DiffSide, DiffTarget, FileContent, History, OperationContent, PatchMessage, PatchOperation,
-    Queue, QueueTarget, QueueThreshold, QueuedElsewhere, QueuedMessage, QueuedOnSide,
-    QueuedOperation, QueuedPatch, QueuedPath, RefEntry, RenameDeclaration, ShownPatch, StateFile,
-    StateFiles, ThresholdStatus, UnpublishedBranch, UnsupportedPath, WorktreeEntry, WorktreeStatus,
+    ActiveSessions, Authoring, BinaryBlob, BlockRow, Comparison, DeclarationResolution, Diff,
+    DiffEntry, DiffFile, DiffSide, DiffTarget, FailedCondition, FileContent, History,
+    OperationContent, PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold,
+    QueuedElsewhere, QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch, QueuedPath,
+    RefEntry, RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles, ThresholdStatus,
+    UnpublishedBranch, UnsupportedPath, Verdict, Verification, VerifyStage, WorktreeEntry,
+    WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -58,6 +60,7 @@ const STATUS_SCHEMA: &str = "status-report-v1";
 const SHOW_SCHEMA: &str = "show-report-v1";
 const TREE_SCHEMA: &str = "tree-listing-v1";
 const DIFF_SCHEMA: &str = "diff-report-v1";
+const VERIFY_SCHEMA: &str = "verify-report-v1";
 
 /// The first prikk minor whose queued patches carry `message` (prikk 0.42; RFC 028 as revised).
 const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
@@ -368,6 +371,107 @@ pub(super) fn diff(text: &str, comparison: &Comparison) -> Result<Diff> {
             })
             .collect::<Result<Vec<_>>>()?,
     })
+}
+
+/// `prikk verify --format json` (`verify-report-v1`), prikk >= 0.39.
+///
+/// **Strict where stikk relies on the shape, and only there** (RFC 040 decision 2). The schema,
+/// the verdict, each condition's two strings and each stage's name and status are required,
+/// because every one of them is something the view states as fact. Nothing counts or names a
+/// stage: 0.39 reports 14 and 0.51 reports 17 (both measured for Handoff A), and a reader that
+/// knew the list would have broken between them.
+///
+/// **`ok` must equal `failed_conditions` being empty.** prikk derives both from one declaration,
+/// so they cannot disagree in a report stikk understands -- and if they ever did, there is no
+/// honest way to pick one. Believing `ok` would hide damage; believing the conditions would
+/// contradict prikk's own verdict. It is stikk's environment error instead (`T-T4`).
+///
+/// # Errors
+/// As [`history`], plus every rule above.
+pub(super) fn verify(text: &str) -> Result<Verification> {
+    let value = report(text, VERIFY_SCHEMA)?;
+
+    let verdict_value = value
+        .get("verdict")
+        .ok_or_else(|| verify_rule("has no `verdict`"))?;
+    let ok = verdict_value.bool_field("ok")?;
+    let failed_conditions = verdict_value
+        .array_field("failed_conditions")?
+        .iter()
+        .map(|condition| {
+            Ok(FailedCondition {
+                id: condition.str_field("id")?.to_string(),
+                message: condition.str_field("message")?.to_string(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    if ok != failed_conditions.is_empty() {
+        return Err(verify_rule(format!(
+            "says `ok` is {ok} while listing {} failing condition(s). prikk derives both from one              declaration, so stikk does not choose between them",
+            failed_conditions.len()
+        )));
+    }
+
+    let active_sessions = match value.get("active_sessions") {
+        // Optional, and absent is *not reported* -- never zero sessions (`C-T2c'`).
+        None => None,
+        Some(sessions) => Some(ActiveSessions {
+            count: sessions.u64_field("count")?,
+            verified_count: sessions.u64_field("verified_count")?,
+        }),
+    };
+
+    let stages = value
+        .array_field("stages")?
+        .iter()
+        .map(stage)
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(Verification {
+        verdict: Verdict {
+            ok,
+            failed_conditions,
+        },
+        active_sessions,
+        stages,
+        // prikk's own JSON, re-rendered the way the other raw views carry it. The frontend bounds
+        // it; nothing is dropped here.
+        raw: value.render(),
+    })
+}
+
+/// One stage. **The status word decides which field is required** -- and an unmeasured word
+/// requires none, because stikk cannot know what travels with it.
+fn stage(entry: &Json) -> Result<VerifyStage> {
+    let name = entry.str_field("stage")?.to_string();
+    if name.is_empty() {
+        return Err(verify_rule("has a stage whose `stage` is empty"));
+    }
+    let word = entry.str_field("status")?;
+    let status = match word {
+        "evaluated" => StageStatus::Evaluated,
+        "failed" => StageStatus::Failed {
+            message: entry.str_field("message")?.to_string(),
+        },
+        "not_evaluated" => StageStatus::NotEvaluated {
+            blocked_by: entry.str_field("blocked_by")?.to_string(),
+        },
+        "halted" => StageStatus::Halted {
+            after: entry.str_field("after")?.to_string(),
+        },
+        // **Kept as prikk's word**, with whatever fields it carries left to the raw view. Folding
+        // an unmeasured outcome into `evaluated` would be stikk inventing a clean result.
+        other => StageStatus::Other(other.to_string()),
+    };
+    Ok(VerifyStage {
+        stage: name,
+        status,
+    })
+}
+
+fn verify_rule(detail: impl std::fmt::Display) -> StikkError {
+    StikkError::environment_msg(format!("prikk's verify report {detail}"))
 }
 
 fn missing(key: &str) -> StikkError {

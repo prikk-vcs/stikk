@@ -52,6 +52,7 @@ pub struct NullBackend {
     history: Scripted<History>,
     state: Scripted<StateReport>,
     diff: Scripted<crate::DiffReport>,
+    verify: Scripted<crate::VerifyReport>,
     refs: Scripted<Vec<RefEntry>>,
     /// The unpublished current branch this backend reports beside the list (RFC 037 decision 3).
     unpublished_current: UnpublishedBranch,
@@ -120,6 +121,9 @@ impl NullBackend {
             }),
             // The default is the band below 0.46, matching this backend's default version.
             diff: Ok(crate::DiffReport::Unreported),
+            // The default is the band below 0.39: a backend that has not been given a report
+            // has not checked, which is not the same as finding the repository sound.
+            verify: Ok(crate::VerifyReport::Unreported),
             state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
@@ -343,6 +347,21 @@ impl NullBackend {
         self
     }
 
+    /// Answer [`Prikk::verify`] with `verification` (RFC 040).
+    #[must_use]
+    pub fn with_verification(mut self, verification: crate::Verification) -> Self {
+        self.verify = Ok(crate::VerifyReport::Listed(verification));
+        self
+    }
+
+    /// Fail [`Prikk::verify`], so a test can show a refusal — an exit 1 whose stdout was *not* a
+    /// report — reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_verify_refusal(mut self, message: impl Into<String>) -> Self {
+        self.verify = Err(message.into());
+        self
+    }
+
     /// Fail [`Prikk::diff`], so a test can show a refusal reaching the usual path verbatim.
     #[must_use]
     pub fn with_diff_refusal(mut self, message: impl Into<String>) -> Self {
@@ -518,6 +537,10 @@ impl Prikk for NullBackend {
 
     fn diff(&self, _repo: &Path, _comparison: &crate::Comparison) -> Result<crate::DiffReport> {
         deliver(&self.diff)
+    }
+
+    fn verify(&self, _repo: &Path) -> Result<crate::VerifyReport> {
+        deliver(&self.verify)
     }
 
     fn block_state(

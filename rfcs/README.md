@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 037 | [Read prikk's JSON where it now answers](./proposed/037-read-prikk-json-where-it-now-answers.md) | Block detail lists **every** block's files from `tree --format json` (prikk ≥ 0.46; today only the tip, from prose); the ref picker offers the current branch before its first seal (`unpublished_current_branch`, prikk ≥ 0.47), **beside** the refs, never among them, so RFC 032's *published* test is untouched. 0.10.0 increment 2 |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,7 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 036 delivered and closed 2026-10-14._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 037 | [Read prikk's JSON where it now answers](./accepted/037-read-prikk-json-where-it-now-answers.md) | Block detail lists **every** block's files from `tree --format json` (prikk ≥ 0.46); the ref picker offers the current branch before its first seal (prikk ≥ 0.47), **beside** the refs, never among them. **Accepted 2026-10-14**; 0.10.0 increment 2 | [A: every block's files](./handoffs/037-read-prikk-json-where-it-now-answers/a-every-blocks-files-handoff-v1.md) · [B: the unpublished current branch](./handoffs/037-read-prikk-json-where-it-now-answers/b-unpublished-current-branch-handoff-v1.md) |
 
 ## Done (implemented)
 

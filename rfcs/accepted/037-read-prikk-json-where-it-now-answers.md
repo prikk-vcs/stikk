@@ -1,6 +1,6 @@
 # RFC 037 — Read prikk's JSON where it now answers: every block's files, and an unpublished current branch
 
-**Status.** **Proposed 2026-10-14** by the architect, as increment 2 of the authorized 0.10.0 scope
+**Status.** **Accepted by the project owner 2026-10-14.** **Proposed 2026-10-14** by the architect, as increment 2 of the authorized 0.10.0 scope
 (`.git-exclude/release/0-10-0-scope.md`). **No open question.**
 Measured against real prikk **0.51.0** (and **0.46.0** for `tree`'s band floor) binaries. Evidence:
 `.git-exclude/reports/037-read-prikk-json/` (`measure037.sh`, with `measure037-0.51.txt` and `measure037-0.46.txt`),
@@ -83,7 +83,7 @@ block's files, with modes, at prikk ≥ 0.46. Both go under `## Unreleased`.
 
 ## Delivery
 
-**Two handoffs, independent of each other:** A, every block's files (decisions 1, 2, 5); B, the unpublished current
+**Two handoffs, independent of each other, issued on acceptance:** [A: every block's files](../handoffs/037-read-prikk-json-where-it-now-answers/a-every-blocks-files-handoff-v1.md) (which also carries RFC 036's History-tier clip) · [B: the unpublished current branch](../handoffs/037-read-prikk-json-where-it-now-answers/b-unpublished-current-branch-handoff-v1.md). A, every block's files (decisions 1, 2, 5); B, the unpublished current
 branch (decisions 3, 4). **Each re-measures its own row at 0.51 before building**, and each asks for its changelog
 entry.
 

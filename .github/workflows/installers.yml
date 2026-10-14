@@ -180,13 +180,27 @@ jobs:
             fi
           done
 
+      # `setsid` is Linux-only -- macOS has no such command (its first run failed here). A new
+      # session is started from Python instead, which is portable and leaves the child with no
+      # controlling terminal on either platform.
       - name: With no controlling terminal it does not block
         run: |
           set -euo pipefail
           home="$RUNNER_TEMP/notty"; mkdir -p "$home"
-          setsid env HOME="$home" PATH="$home/.local/bin:/usr/bin:/bin" \
-            sh -c "cat filled/install.sh | sh -s -- --prefix '$home/.local/bin'" < /dev/null \
-            > "$RUNNER_TEMP/notty.log" 2>&1
+          python3 - "$home" > "$RUNNER_TEMP/notty.log" 2>&1 <<'PYEOF'
+          import os, subprocess, sys
+          home = sys.argv[1]
+          prefix = os.path.join(home, ".local", "bin")
+          proc = subprocess.run(
+              ["sh", "-s", "--", "--prefix", prefix],
+              stdin=open("filled/install.sh", "rb"),
+              stdout=sys.stdout, stderr=subprocess.STDOUT,
+              preexec_fn=os.setsid,          # no controlling terminal, on Linux and macOS alike
+              env={**os.environ, "HOME": home, "PATH": prefix + ":/usr/bin:/bin"},
+          )
+          sys.exit(proc.returncode)
+          PYEOF
+          cat "$RUNNER_TEMP/notty.log"
           grep -q 'no terminal to ask on' "$RUNNER_TEMP/notty.log"
           test ! -e "$home/.local/bin/prikk"
 
@@ -211,12 +225,17 @@ jobs:
           done
           ! grep -q '@STIKK_VERSION@\|@PRIKK_VERSION@' filled/* || { echo "::error::placeholder survived"; exit 1; }
 
+      # Run it as its own process: the script refuses by calling `exit 1`, and invoked inline that
+      # ends the step itself before anything can be checked (its first run failed exactly so,
+      # having printed the correct refusal first).
       - name: The unfilled template refuses to run
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          & ./scripts/install.ps1 -Prefix "$env:RUNNER_TEMP\never" -NoPrikk
-          if ($LASTEXITCODE -eq 0) { Write-Error 'the template installed something; it must refuse'; exit 1 }
+          & (Get-Process -Id $PID).Path -NoProfile -File ./scripts/install.ps1 -Prefix "$env:RUNNER_TEMP\never" -NoPrikk
+          $code = $LASTEXITCODE
+          if ($code -eq 0) { Write-Error 'the template installed something; it must refuse'; exit 1 }
+          Write-Host "refused with exit $code, as it should"
           if (Test-Path "$env:RUNNER_TEMP\never\stikk.exe") { Write-Error 'it installed anyway'; exit 1 }
 
       - name: Install, and check the version

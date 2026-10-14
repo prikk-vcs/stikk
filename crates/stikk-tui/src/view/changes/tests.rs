@@ -145,7 +145,10 @@ fn a_hostile_path_is_rendered_inert() {
     };
     let text = draw(&view, false);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 #[test]
@@ -861,5 +864,136 @@ fn rfc034_a_rename_whose_mode_changed_says_so_and_silence_means_unchanged() {
     // silent too, because unknown is not "unchanged".
     for silent in [with(Some(false), Some(false)), with(None, None)] {
         assert!(!silent.contains("changed too"), "{silent}");
+    }
+}
+
+// =============================================================================================
+// RFC 036 — a path is an identifier, and an entry row never clips it.
+
+/// Whether any single row holds `needle` **exactly**, whitespace and all. Content and identifiers
+/// must be judged with this, never with [`joined`], which collapses runs of whitespace (RFC 035 v2).
+fn on_a_row(screen: &str, needle: &str) -> bool {
+    screen.lines().any(|row| row.contains(needle))
+}
+
+fn one_entry_view(path: &str, note: &str) -> ChangesView {
+    ChangesView {
+        refused_declarations: None,
+        reff: "heads/main".into(),
+        clean: false,
+        tracked: 1,
+        unchanged: 0,
+        missing: 0,
+        modified: 0,
+        untracked: 1,
+        unsupported: 0,
+        refused: None,
+        entries: vec![ChangeEntry {
+            kind: ChangeKind::Untracked,
+            path: path.into(),
+            note: note.into(),
+            authoring: Authoring::Authored,
+            rename: None,
+        }],
+        declarations: Vec::new(),
+        declared_renames: Vec::new(),
+        renames: 0,
+        queued_elsewhere: None,
+    }
+}
+
+/// **RFC 036 decision 6: a 150-character path appears whole, in order, at 80 columns.** It used to
+/// be cut at the border — the ceiling half of RFC 027's carried row budget.
+#[test]
+fn a_long_path_is_continued_rather_than_clipped_at_80_columns() {
+    let long: String = (0..15).map(|i| format!("segment{i:02}/")).collect();
+    let path = format!("{long}file.rs");
+    assert!(
+        path.chars().count() >= 150,
+        "{} chars",
+        path.chars().count()
+    );
+    let screen = draw_80(
+        &one_entry_view(&path, "worktree file is not in the baseline"),
+        false,
+    );
+    println!(
+        "--- RFC 036 §4: a {}-character path at 80 columns\n{screen}",
+        path.chars().count()
+    );
+
+    // Every character, exactly once, in order — read off the screen with the borders stripped.
+    let body: String = screen
+        .lines()
+        .map(|row| row.trim_matches(|c: char| c == '│' || c.is_whitespace()))
+        .collect::<Vec<_>>()
+        .join("");
+    let at = body.find("segment00/").expect("the path starts on screen");
+    assert!(
+        body[at..].starts_with(path.as_str()),
+        "the path is continued across rows, unbroken and in order:\n{screen}"
+    );
+    assert_eq!(
+        body.matches("segment07/").count(),
+        1,
+        "and appears exactly once:\n{screen}"
+    );
+}
+
+/// A path prikk itself accepts, with two spaces in it, keeps both — quoted, because
+/// `wrap_indented` would otherwise collapse them (RFC 036 F3).
+#[test]
+fn a_path_with_two_spaces_is_quoted_and_keeps_them() {
+    let screen = draw_80(
+        &one_entry_view("a  b.txt", "worktree file is not in the baseline"),
+        false,
+    );
+    println!("--- RFC 036: a path prikk accepts, with a double space\n{screen}");
+    assert!(
+        on_a_row(&screen, "\"a\\u0020\\u0020b.txt\""),
+        "the double space survives as escapes:\n{screen}"
+    );
+    assert!(
+        !on_a_row(&screen, " a  b.txt "),
+        "and the bare form, which wrapping would have collapsed, is not what is shown:\n{screen}"
+    );
+}
+
+/// The four filenames prikk 0.51 really reports for files it will not track (§1's measurement):
+/// each is distinct on screen, and none reaches a cell as itself.
+#[test]
+fn the_measured_hostile_filenames_each_render_distinctly() {
+    let names = [
+        "evil\u{202e}gnp.txt",
+        "a\u{200b}b.txt",
+        "a\u{a0}b.txt",
+        "tab\tname.txt",
+        " lead.txt",
+        "say\"hi.txt",
+    ];
+    let mut rendered = Vec::new();
+    for name in names {
+        let screen = draw_80(
+            &one_entry_view(name, "worktree path is not representable"),
+            false,
+        );
+        for ch in ['\u{202e}', '\u{200b}', '\u{a0}', '\t'] {
+            assert!(
+                !screen.contains(ch),
+                "U+{:04X} reached a cell from {name:?}",
+                u32::from(ch)
+            );
+        }
+        let row = screen
+            .lines()
+            .find(|row| row.contains("not representable"))
+            .expect("the entry row is on screen")
+            .to_string();
+        rendered.push(row);
+    }
+    for (at, left) in rendered.iter().enumerate() {
+        for right in rendered.iter().skip(at + 1) {
+            assert_ne!(left, right, "two different filenames render alike");
+        }
     }
 }

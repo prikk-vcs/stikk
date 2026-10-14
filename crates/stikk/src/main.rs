@@ -181,13 +181,23 @@ fn open_handle(start: &Path) -> stikk_model::Result<RepositoryHandle> {
 
 fn print_orientation(root: &Path, view: &orient::OrientationView) {
     println!("stikk — orientation");
-    println!("  repository:  {}", root.display());
+    // **The same two rules as the TUI** (RFC 036 decision 5; RFC 009's M1 is why stdout counts as a
+    // terminal here). The root is a local filesystem path, so it may legitimately be non-ASCII —
+    // visible non-ASCII stays as itself, and only what does not show as itself is escaped.
+    println!(
+        "  repository:  {}",
+        stikk_tui::text::identifier(&root.display().to_string())
+    );
     let support = support_line(
         view.prikk_supported,
         view.prikk_validated,
         &view.validated_through,
     );
-    println!("  prikk:       {} ({support})", view.prikk_version);
+    // prikk's own version line, as prose: prikk's sentence, not an identifier.
+    println!(
+        "  prikk:       {} ({support})",
+        stikk_tui::text::inert(&view.prikk_version)
+    );
     println!("  capability:  {}", view.capability.name());
     println!(
         "  signing:     author {} · maintainer {}{}",
@@ -210,7 +220,7 @@ fn print_orientation(root: &Path, view: &orient::OrientationView) {
         );
     }
     match &view.main_ref_state {
-        Some(id) => println!("  heads/main:  {id}"),
+        Some(id) => println!("  heads/main:  {}", stikk_tui::text::identifier(id)),
         None => println!("  heads/main:  <unpublished>"),
     }
     println!(
@@ -219,15 +229,16 @@ fn print_orientation(root: &Path, view: &orient::OrientationView) {
     );
 }
 
-/// Format the `queued:` line. `target` is repository-sourced (prikk's active-ref metadata) and is
-/// rendered inert (design C-T2a) before it reaches stdout: this one-shot path has no raw terminal mode
-/// to rely on, but the output can still land on a real terminal (piped through `less`, or a redirected
-/// file `cat`-ed later), so the same control applies as in the TUI (review finding M1, RFC 009).
+/// Format the `queued:` line. `target` is repository-sourced (prikk's active-ref metadata) and is a
+/// ref name, so it is rendered as an **identifier** (RFC 036 decision 3) before it reaches stdout:
+/// this one-shot path has no raw terminal mode to rely on, but the output can still land on a real
+/// terminal (piped through `less`, or a redirected file `cat`-ed later), so the same rules apply as
+/// in the TUI (review finding M1, RFC 009).
 fn queued_line(patches: u64, target: Option<&str>) -> String {
     match target {
         Some(target) => format!(
             "  queued:      {patches} · targeting {}",
-            stikk_tui::text::inert(target)
+            stikk_tui::text::identifier(target)
         ),
         None => format!("  queued:      {patches}"),
     }

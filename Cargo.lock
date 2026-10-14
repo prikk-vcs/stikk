@@ -1169,6 +1169,7 @@ dependencies = [
  "stikk-core",
  "stikk-model",
  "stikk-prikk",
+ "stikk-tui",
 ]
 
 [[package]]

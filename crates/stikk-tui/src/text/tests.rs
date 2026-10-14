@@ -15,12 +15,13 @@ fn control_sequences_are_neutralized() {
     // An ANSI colour escape must not survive to the terminal.
     let hostile = "\u{1b}[31mred\u{1b}[0m";
     let safe = inert(hostile);
-    assert!(!safe.contains('\u{1b}'), "the ESC byte must be replaced");
+    assert!(!safe.contains('\u{1b}'), "the ESC byte must not survive");
     assert!(safe.contains("red"), "the visible text is preserved");
-    assert!(
-        safe.contains('\u{FFFD}'),
-        "control chars become the replacement char"
-    );
+    // **RFC 036 changed what this asserts.** It used to require `U+FFFD`, which said *something was
+    // here* without saying what. The escape says which character it was, and `U+FFFD` is now
+    // prikk's alone.
+    assert_eq!(safe, r"\u001b[31mred\u001b[0m");
+    assert!(!safe.contains('\u{FFFD}'), "stikk produces no U+FFFD");
 }
 
 #[test]
@@ -156,4 +157,160 @@ fn wrap_verbatim_splits_on_char_boundaries_and_terminates() {
 #[test]
 fn wrap_verbatim_keeps_an_empty_row() {
     assert_eq!(wrap_verbatim("", 20, "  "), vec!["  ".to_string()]);
+}
+
+// =============================================================================================
+// RFC 036 — the two rules.
+//
+// **The claims under test are invariants.** Prose: nothing that does not show as itself reaches a
+// cell, and `"`/`\` are untouched. Identifier: the same, **plus** two different identifiers never
+// render alike, and no layout pass can change one.
+
+/// Each trigger for the quoted form, alone, so a future change to one cannot hide behind another.
+#[test]
+fn each_trigger_quotes_and_nothing_else_does() {
+    for (what, value, expected) in [
+        ("a bidi override", "ev\u{202e}il", "\"ev\\u202eil\""),
+        ("a zero-width space", "a\u{200b}b", "\"a\\u200bb\""),
+        ("a non-breaking space", "a\u{a0}b", "\"a\\u00a0b\""),
+        ("a tab", "a\tb", "\"a\\tb\""),
+        ("a quotation mark", "say\"hi", "\"say\\\"hi\""),
+        ("a backslash", "a\\b", "\"a\\\\b\""),
+        ("a leading space", " lead", "\"\\u0020lead\""),
+        ("a trailing space", "trail ", "\"trail\\u0020\""),
+        ("two spaces", "a  b", "\"a\\u0020\\u0020b\""),
+        ("the empty value", "", "\"\""),
+    ] {
+        assert_eq!(identifier(value), expected, "{what}");
+    }
+    for plain in [
+        "heads/main",
+        "src/main.rs",
+        "a b.txt",
+        "é",
+        "日本語",
+        "🦀",
+        "4db1669a176b",
+        "author",
+    ] {
+        assert_eq!(identifier(plain), plain, "{plain} must stay plain");
+    }
+}
+
+/// **The identifier invariant**: RFC 035's sixteen look-alike spans, plus the three whitespace
+/// shapes prikk's own path validator accepts, no two of which may render the same.
+#[test]
+fn no_two_distinct_identifiers_render_alike() {
+    let values = [
+        "x",
+        "x ",
+        " x",
+        "x\u{a0}",
+        "x\u{200b}",
+        "x\u{2060}",
+        "x\u{feff}",
+        "x\n",
+        "x\r\n",
+        "x\t",
+        "x  ",
+        "  x",
+        "\tx",
+        "x\u{202e}",
+        "x\u{e0001}",
+        "x\u{ad}",
+        "x\u{3000}",
+        "a b",
+        "a  b",
+        " a b",
+        "",
+    ];
+    for (at, left) in values.iter().enumerate() {
+        for right in values.iter().skip(at + 1) {
+            assert_ne!(
+                identifier(left),
+                identifier(right),
+                "{left:?} and {right:?} render alike"
+            );
+        }
+    }
+}
+
+/// **Prose escapes every row of RFC 035 A3's table, and leaves `"` and `\` alone.** The second half
+/// is the difference between the two rules: a refusal prikk wrote with a quotation mark in it must
+/// read as prikk wrote it (`ER-02`).
+#[test]
+fn prose_escapes_the_invisible_and_keeps_the_rest() {
+    for (what, value, expected) in [
+        ("a bidi override", "ev\u{202e}il", "ev\\u202eil"),
+        ("a zero-width space", "a\u{200b}b", "a\\u200bb"),
+        ("a non-breaking space", "a\u{a0}b", "a\\u00a0b"),
+        ("an ideographic space", "a\u{3000}b", "a\\u3000b"),
+        ("a tag character", "A\u{e0041}", "A\\udb40\\udc41"),
+        ("an ESC", "\u{1b}[2J", r"\u001b[2J"),
+        ("a newline", "a\nb", "a\\nb"),
+    ] {
+        assert_eq!(inert(value), expected, "{what}");
+    }
+    assert_eq!(
+        inert(r#"prikk said "no" at a\b"#),
+        r#"prikk said "no" at a\b"#,
+        "prose is never quoted and never escapes a quote or a backslash"
+    );
+    for visible in ["é", "日本語", "🦀", "plain words"] {
+        assert_eq!(inert(visible), visible, "{visible} must pass through");
+    }
+}
+
+/// **Trap 4: a quoted identifier survives `wrap_indented` unchanged**, at every width, because it
+/// holds no whitespace for `split_whitespace` to act on.
+#[test]
+fn a_quoted_identifier_survives_wrapping_at_every_width() {
+    let quoted = identifier("a  b\u{202e}c.txt");
+    assert!(quoted.starts_with('"'), "{quoted}");
+    assert!(
+        !quoted.chars().any(char::is_whitespace),
+        "the quoted form holds no whitespace: {quoted}"
+    );
+    for width in [20, 30, 40, 60, 80, 120] {
+        let sentence = format!("create-file {quoted} — prikk reported it");
+        let rows = wrap_indented(&sentence, width, "  ");
+        let joined: String = rows
+            .iter()
+            .map(|row| row.trim_start().to_string())
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(
+            joined.contains(&quoted) || rows.len() > 1,
+            "width {width}: {rows:?}"
+        );
+        // Whatever the width, every character of the identifier is still present, in order.
+        let all: String = rows.concat();
+        let mut haystack = all.chars().filter(|c| !c.is_whitespace());
+        for wanted in quoted.chars() {
+            assert!(
+                haystack.any(|c| c == wanted),
+                "width {width}: {wanted:?} lost from {rows:?}"
+            );
+        }
+    }
+}
+
+/// **`U+FFFD` is prikk's now** (trap 3). stikk produces none, and one that arrives from prikk — the
+/// character it substitutes for filename bytes it cannot show — reaches the screen as itself, which
+/// is what makes `stikk_core::would_refuse_next_steps`'s extra step exact.
+#[test]
+fn a_replacement_character_from_prikk_is_shown_as_itself() {
+    let name = "bad\u{FFFD}name.txt";
+    assert_eq!(identifier(name), name, "it needs no escape and no quoting");
+    assert_eq!(inert(name), name);
+    assert!(
+        stikk_core::would_refuse_next_steps(&[stikk_core::RefusedPath {
+            path: name.to_string(),
+            kind: stikk_core::ChangeKind::Unsupported,
+            reason: "invalid name".to_string(),
+        }])
+        .iter()
+        .any(|step| step.contains('\u{FFFD}')),
+        "the next step still fires on prikk's own substitution"
+    );
 }

@@ -31,7 +31,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use stikk_core::{Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewhere, RefHistory};
 
-use crate::text::{inert, wrap_indented};
+use crate::text::{identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
 
 /// The columns an entry row spends before its path: two of margin, an 11-column kind tag, one space.
@@ -63,8 +63,10 @@ pub fn render(
     //
     // RFC 032 decision 5, A2: a ref with no published history has no baseline to be "against", so core's
     // words replace the headline — chosen from `refs()` and the queue, in warn, wrapped.
-    if let Some(headline) = history.changes_headline(&view.reff, view.clean) {
-        for row in wrap_indented(&inert(&headline), text_width, "  ") {
+    if let Some(headline) = history.changes_headline(&identifier(&view.reff), view.clean) {
+        // The rule is applied **per piece, before formatting** (RFC 036 §3): the ref goes in as an
+        // identifier, and what comes back is that plus stikk's own words, which need neither rule.
+        for row in wrap_indented(&headline, text_width, "  ") {
             lines.push(Line::from(Span::styled(
                 row,
                 Style::default()
@@ -154,9 +156,10 @@ pub fn render(
                 "  stikk's warning, from prikk's queued-work report —",
                 dim,
             )));
-            for clause in
-                stikk_core::queued_elsewhere_clauses(&inert(queued_ref), &inert(&view.reff))
-            {
+            for clause in stikk_core::queued_elsewhere_clauses(
+                &identifier(queued_ref),
+                &identifier(&view.reff),
+            ) {
                 for row in wrap_indented(&clause, text_width, "    ") {
                     lines.push(Line::from(vec![
                         Span::styled("  ! ", Style::default().fg(palette.warn)),
@@ -265,7 +268,7 @@ pub fn render(
         dim.add_modifier(Modifier::ITALIC),
     )));
 
-    let title = format!(" Changes · {} ", inert(&view.reff));
+    let title = format!(" Changes · {} ", identifier(&view.reff));
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -288,19 +291,49 @@ fn entry_lines(entry: &ChangeEntry, palette: &Palette, text_width: usize) -> Vec
         ChangeKind::Unsupported => ("unsupported".to_string(), Style::default().fg(palette.warn)),
         // Handoff A's ask 3: prikk's own word, inert, in the tag position — not stikk's `changed`,
         // which would paraphrase the one thing prikk said about a kind stikk does not know (`ER-02`).
-        ChangeKind::Other(word) => (inert(word).to_string(), Style::default().fg(palette.warn)),
+        ChangeKind::Other(word) => (identifier(word), Style::default().fg(palette.warn)),
+    };
+    // **The path never clips** (RFC 036 decision 6). It used to share one `Line` with the tag and
+    // prikk's note, and a path wider than the row was cut at the border — the ceiling half of RFC
+    // 027's carried row budget. Now the tag keeps the first row, the path follows it and continues
+    // on further rows at the entry's indent, **hard-split** so nothing is lost, and prikk's note
+    // comes after it wrapping as the prose it is.
+    //
+    // Hard-split, not word-wrapped: a plain path's single spaces are part of the name (prikk accepts
+    // `a b.txt`), and a quoted one holds no whitespace at all, so there is nothing to wrap on.
+    let path = identifier(&entry.path);
+    let tag_width = ENTRY_INDENT.chars().count();
+    let first_row_room = text_width.saturating_sub(tag_width).max(1);
+    let mut path_rows = Vec::new();
+    let head = if path.chars().count() <= first_row_room {
+        path.clone()
+    } else {
+        let cut = path
+            .char_indices()
+            .nth(first_row_room)
+            .map_or(path.len(), |(byte, _)| byte);
+        let (head, tail) = path.split_at(cut);
+        path_rows = wrap_verbatim(tail, text_width, ENTRY_INDENT);
+        head.to_string()
     };
     let mut row = Line::from(vec![
         Span::styled(format!("  {tag:<11} "), tag_style),
-        Span::styled(
-            inert(&entry.path).to_string(),
-            Style::default().fg(palette.fg),
-        ),
-        Span::styled(
-            format!("  — {}", inert(&entry.note)),
-            Style::default().fg(palette.dim),
-        ),
+        Span::styled(head, Style::default().fg(palette.fg)),
     ]);
+    // prikk's note, as prose: on the path's last row when it fits, otherwise wrapped under it.
+    let note = format!("  — {}", inert(&entry.note));
+    let mut note_rows = Vec::new();
+    if path_rows.is_empty() && row.width() + note.chars().count() <= text_width {
+        row.spans
+            .push(Span::styled(note, Style::default().fg(palette.dim)));
+    } else {
+        for wrapped in wrap_indented(&note, text_width, ENTRY_INDENT) {
+            note_rows.push(Line::from(Span::styled(
+                wrapped,
+                Style::default().fg(palette.dim),
+            )));
+        }
+    }
     // RFC 032 Q1 (a): half of a paired declared rename, annotated after prikk's note in stikk's style —
     // on the same row when it fits, otherwise wrapped under the path rather than clipped (RFC 024).
     let mut annotation_rows = Vec::new();
@@ -317,6 +350,12 @@ fn entry_lines(entry: &ChangeEntry, palette: &Palette, text_width: usize) -> Vec
         }
     }
     let mut lines = vec![row];
+    lines.extend(
+        path_rows
+            .into_iter()
+            .map(|r| Line::from(Span::styled(r, Style::default().fg(palette.fg)))),
+    );
+    lines.extend(note_rows);
     lines.extend(annotation_rows);
 
     if let Authoring::Refused(reason) = &entry.authoring {

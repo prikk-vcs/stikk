@@ -4684,6 +4684,117 @@ fn rfc035_a_queued_patch_opens_from_the_queue_at_both_ends() {
     }
 }
 
+/// **RFC 036 §8: the names prikk really reports, rendered by the rules, at both ends.**
+///
+/// §1 measured prikk 0.51: `worktree-status --format json` reports an on-disk filename carrying a bidi
+/// override, a zero-width space, a non-breaking space or a tab **with its exact characters**, under
+/// `unsupported-path`; and a double space, a leading space and a `"` are ordinary `untracked` entries
+/// that a commit would author. This drives those names through the real binary and the real view, and
+/// requires that **nothing that does not show as itself reaches a cell** and that **no two of them
+/// render alike**.
+///
+/// **A filesystem that refuses a name skips that name, announced** (RFC 022 §3) — Windows refuses most
+/// of them, and a skipped name is not a failure.
+///
+/// **What this leg proves that a unit test cannot**: that prikk really hands stikk these bytes. The
+/// rendering at 80 columns is covered by the view's own tests, which can reach the private renderer.
+#[test]
+#[ignore = "requires two real prikk binaries; see the module docs"]
+fn rfc036_names_prikk_reports_render_by_the_rules_at_both_ends() {
+    // Written as escapes so this source file holds no invisible character of its own.
+    const NAMES: [(&str, &str); 6] = [
+        ("bidi override", "evil\u{202e}gnp.txt"),
+        ("zero-width space", "a\u{200b}b.txt"),
+        ("non-breaking space", "a\u{a0}b.txt"),
+        ("double space", "a  b.txt"),
+        ("leading space", " lead.txt"),
+        ("double quote", "say\"hi.txt"),
+    ];
+    for bin in [PrikkBin::floor(), PrikkBin::ceiling()] {
+        let (_fixture, backend, repo) = rfc032_sealed_base(&bin);
+        let mut created: Vec<&str> = Vec::new();
+        for (what, name) in NAMES {
+            match std::fs::write(repo.join(name), "x\n") {
+                Ok(()) => created.push(name),
+                Err(e) => println!(
+                    "RFC 036: 0.{} SKIPPED {what} — this filesystem refuses the name ({e}). \
+                     Announced rather than silent (RFC 022 §3).",
+                    bin.minor
+                ),
+            }
+        }
+        if created.is_empty() {
+            continue;
+        }
+        let view = stikk_core::changes_view(&backend, &repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: changes: {e}", bin.minor))
+            .view;
+        // **What prikk reports is prikk's, and it differs by version** — measured here rather than
+        // assumed. At 0.51 every name comes back relative and byte-for-byte. At 0.28 the three
+        // non-ASCII ones come back as **absolute** paths (the shape RFC 029 A recorded for 0.39–0.41
+        // and prikk made relative at 0.42), and ` lead.txt` comes back as `lead.txt` — prikk 0.28
+        // drops the leading space. stikk renders what it is given either way, so the leg asserts
+        // **stikk's** claim, not prikk's shape, and prints prikk's shape so a reader can see it.
+        let listed: Vec<&stikk_core::ChangeEntry> = view
+            .entries
+            .iter()
+            .filter(|e| e.path != "a.txt" && e.path != "keep.txt")
+            .collect();
+        println!(
+            "RFC 036: 0.{} prikk reported {:?}",
+            bin.minor,
+            listed.iter().map(|e| &e.path).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            listed.len(),
+            created.len(),
+            "0.{}: one entry per created name, whatever shape prikk gives it",
+            bin.minor
+        );
+        let mut rendered: Vec<String> = listed
+            .iter()
+            .map(|e| stikk_tui::text::identifier(&e.path))
+            .collect();
+        rendered.sort();
+        let distinct = {
+            let mut copy = rendered.clone();
+            copy.dedup();
+            copy.len()
+        };
+        assert_eq!(
+            distinct,
+            rendered.len(),
+            "0.{}: two names render alike: {rendered:?}",
+            bin.minor
+        );
+        for value in &rendered {
+            for ch in ['\u{202e}', '\u{200b}', '\u{a0}', '\t'] {
+                assert!(
+                    !value.contains(ch),
+                    "0.{}: U+{:04X} survives in {value}",
+                    bin.minor,
+                    u32::from(ch)
+                );
+            }
+        }
+        println!("RFC 036: 0.{} rendered {rendered:?}", bin.minor);
+        // And prikk's own verdict on each is carried, so what the view says about them is prikk's.
+        for entry in &listed {
+            assert!(
+                matches!(
+                    entry.authoring,
+                    stikk_prikk::Authoring::Authored
+                        | stikk_prikk::Authoring::Refused(_)
+                        | stikk_prikk::Authoring::Unreported
+                ),
+                "0.{}: {:?}",
+                bin.minor,
+                entry.authoring
+            );
+        }
+    }
+}
+
 /// **RFC 035 review v2 §2: a real file whose content does not show as itself.**
 ///
 /// prikk stores the bytes; stikk must show them and must not let a terminal act on them. The file

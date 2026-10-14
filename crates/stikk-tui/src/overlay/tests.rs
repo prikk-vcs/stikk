@@ -176,7 +176,10 @@ fn ref_picker_marks_the_highlighted_ref_and_neutralizes_hostile_names() {
     assert!(text.contains("heads/main"));
     assert!(text.contains('▶'));
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 fn card(verbatim: &str, gloss: Option<&str>) -> RefusalCard {
@@ -326,7 +329,10 @@ fn refusal_message_is_inert_and_forges_no_action() {
     };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
     // The message text appears in the quoted region, but the only *actions* are stikk's own.
     assert!(text.contains("Choose another ref"));
     assert!(text.contains("Refresh"));
@@ -582,7 +588,10 @@ fn confirmation_hostile_target_id_and_target_name_render_inert() {
     };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 #[test]
@@ -634,7 +643,10 @@ fn commit_message_hostile_ref_and_typed_text_render_inert() {
     };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 fn commit_result(notes: Vec<&str>) -> stikk_prikk::CommitResult {
@@ -689,7 +701,10 @@ fn commit_result_hostile_patch_id_and_path_render_inert() {
     let overlay = Overlay::CommitResult { result };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 #[test]
@@ -732,7 +747,10 @@ fn seal_consent_hostile_ref_renders_inert() {
     };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 fn seal_result(notes: Vec<&str>) -> stikk_prikk::SealResult {
@@ -766,7 +784,10 @@ fn seal_result_hostile_block_id_and_ref_render_inert() {
     let overlay = Overlay::SealResult { result };
     let text = draw(&overlay);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1106,11 +1127,12 @@ fn a_hostile_key_id_renders_inert_and_forges_no_chrome() {
         !text.contains('\u{1b}') && !text.contains('\u{7f}'),
         "control characters reached the buffer:\n{text:?}"
     );
-    // And it forged no row. The `\r\n` in the id is neutralized to replacement characters, so the
-    // injected `Consumes: MAINTAINER` stays inside the id's own labelled row instead of starting a
-    // second capability row — which is the thing that would actually mislead. The string still occurs
-    // in the buffer, plainly tagged as part of the id; counting occurrences would assert the wrong
-    // property, so this asserts the shape: exactly one row *begins* a capability claim, and it is the
+    // And it forged no row. **RFC 036 strengthened this.** The `\r\n` in the id used to become two
+    // replacement characters, which kept the injected `Consumes: MAINTAINER` inside the id's own
+    // labelled row instead of starting a second capability row. Now the id is an *identifier*: it is
+    // quoted, every escape is written out, and **every space inside the quotes becomes `\u0020`** —
+    // so the forged phrase is not even readable as a phrase any more. The shape assertion below is
+    // unchanged and still the right one: exactly one row *begins* a capability claim, and it is the
     // true one.
     assert!(text.contains("Consumes: AUTHOR"), "{text}");
     let capability_rows: Vec<&str> = text
@@ -1123,12 +1145,24 @@ fn a_hostile_key_id_renders_inert_and_forges_no_chrome() {
         "a key id must not be able to forge a capability row:\n{text}"
     );
     assert!(capability_rows[0].contains("AUTHOR"), "{text}");
-    // The forged text that is present is on the id's row, under stikk's own label.
+    // What is left of the forged text is on the id's row, under stikk's own label, inside quotes,
+    // with its spaces escaped — so it cannot be read as the claim it imitates.
     let id_row = text
         .lines()
         .find(|row| row.contains("Signing key id:"))
         .expect("the id row is on screen");
-    assert!(id_row.contains("Consumes: MAINTAINER"), "{id_row:?}");
+    assert!(
+        !id_row.contains("Consumes: MAINTAINER"),
+        "the forged phrase must not survive as a phrase: {id_row:?}"
+    );
+    assert!(
+        id_row.contains("Consumes:\\u0020MA"),
+        "it survives only as escaped identifier text: {id_row:?}"
+    );
+    assert!(
+        id_row.contains("\\r\\n"),
+        "the CR LF takes JSON's short escapes, the same spelling Patch detail uses: {id_row:?}"
+    );
 }
 
 // =============================================================================================
@@ -2579,4 +2613,62 @@ fn the_glossary_names_the_quoting_patch_detail_shows_content_with() {
     if let Some(screen) = &escapes {
         println!("--- …and spells out each escape, `\\uXXXX` included\n{screen}");
     }
+}
+
+/// **RFC 036 §1's measured branch names, in the ref picker.** prikk 0.51 accepts both of these and
+/// `branch list --format json` reports them verbatim, so they are names a real repository can hold.
+/// Two names that differ by one invisible character must not offer the user one choice twice.
+#[test]
+fn the_ref_picker_tells_two_names_apart_that_differ_only_invisibly() {
+    let overlay = Overlay::RefPicker {
+        refs: vec![
+            "heads/ab".into(),
+            "heads/a\u{200b}b".into(),
+            "heads/ev\u{202e}il".into(),
+        ],
+        cursor: 0,
+        unpublished_main: false,
+    };
+    let text = draw(&overlay);
+    println!("--- RFC 036: the ref picker with §1's measured branch names\n{text}");
+    for ch in ['\u{200b}', '\u{202e}'] {
+        assert!(!text.contains(ch), "U+{:04X} reached a cell", u32::from(ch));
+    }
+    let rows: Vec<&str> = text
+        .lines()
+        .filter(|row| row.contains("heads/a") || row.contains("heads/ev"))
+        .collect();
+    assert_eq!(rows.len(), 3, "three rows, one per name:\n{text}");
+    assert_ne!(
+        rows[0].trim(),
+        rows[1].trim(),
+        "the plain name and the one with a zero-width space must not look alike:\n{text}"
+    );
+    assert!(
+        rows[1].contains("u200b"),
+        "the zero-width space is written out: {:?}",
+        rows[1]
+    );
+}
+
+/// **A refusal keeps prikk's own quotation marks** (RFC 036 decision 2, trap 2): prose is never
+/// quoted, and `"` and `\` are left exactly as prikk wrote them (`ER-02`).
+#[test]
+fn a_refusal_with_quotes_reads_as_prikk_wrote_it() {
+    let hostile = "invalid name: \"a\\b\" is not allowed\u{202e}";
+    let overlay = Overlay::Refusal {
+        card: card(hostile, None),
+        cursor: 0,
+    };
+    let text = draw(&overlay);
+    println!("--- RFC 036: a refusal containing a quote and a backslash\n{text}");
+    assert!(
+        text.contains("\"a\\b\""),
+        "prikk's quotes and backslash survive untouched: {text}"
+    );
+    assert!(!text.contains('\u{202e}'), "{text:?}");
+    assert!(
+        text.contains("u202e"),
+        "and the override is written out: {text}"
+    );
 }

@@ -31,7 +31,7 @@ use stikk_model::{Capability, Tier};
 use crate::app::{Operation, OperationStatus};
 use std::cell::Cell;
 
-use crate::text::{inert, wrap_indented};
+use crate::text::{identifier, inert, wrap_indented};
 use crate::theme::Palette;
 
 /// One overlay. Data-carrying variants own their state; `Glossary` reads the static asset.
@@ -517,7 +517,7 @@ fn render_ref_picker(
         (
             refs.iter()
                 .enumerate()
-                .map(|(i, name)| selectable(palette, i == cursor, inert(name)))
+                .map(|(i, name)| selectable(palette, i == cursor, identifier(name)))
                 .collect(),
             Some(cursor),
         )
@@ -727,10 +727,11 @@ fn render_commit_would_refuse_declarations(
     prose.push(Line::from(""));
 
     for declaration in declarations {
+        // The rule per piece, before formatting (RFC 036 §3): two paths, then stikk's words.
         let heading = format!(
             "declared rename {} → {}",
-            inert(&declaration.old_path),
-            inert(&declaration.new_path)
+            identifier(&declaration.old_path),
+            identifier(&declaration.new_path)
         );
         for row in wrap_indented(&heading, REFUSAL_TEXT_WIDTH, "  ") {
             prose.push(Line::from(Span::styled(
@@ -809,7 +810,11 @@ fn render_commit_would_refuse(
     prose.push(Line::from(""));
 
     for path in paths {
-        let heading = format!("{} {}", inert(path.kind.label()), inert(&path.path));
+        let heading = format!(
+            "{} {}",
+            identifier(path.kind.label()),
+            identifier(&path.path)
+        );
         for row in wrap_indented(&heading, REFUSAL_TEXT_WIDTH, "  ") {
             prose.push(Line::from(Span::styled(
                 row,
@@ -1101,7 +1106,7 @@ fn render_confirmation(
         }
         for id in &summary.target_ids {
             lines.push(Line::from(Span::styled(
-                format!("    {}", inert(id)),
+                format!("    {}", identifier(id)),
                 Style::default().fg(palette.accent),
             )));
         }
@@ -1182,10 +1187,10 @@ fn render_confirmation(
     if let Some(id) = &summary.signing_key_id {
         lines.push(Line::from(vec![
             Span::styled("  Signing key id: ", Style::default().fg(palette.dim)),
-            // Inert like every other string that did not originate in stikk (`C-T2a`): an id is a
-            // label a user or a repository's conventions chose, and it reaches a cell the same way a
-            // ref name does.
-            Span::styled(inert(id), Style::default().fg(palette.accent)),
+            // An **identifier** (RFC 036 decision 3), like every other id: it is a label a user
+            // or a repository's conventions chose, and two different key ids must never look alike
+            // in the one place that names which key will sign.
+            Span::styled(identifier(id), Style::default().fg(palette.accent)),
         ]));
         // **The id alone is not a statement** (RFC 026 §5). Naming it plainly claims a binding, and on
         // a fresh repository there is none yet — which is the first commit every new user makes.
@@ -1243,7 +1248,7 @@ fn render_confirmation(
         Tier::ThreeTyped => {
             let target = summary.target_name.as_deref().unwrap_or("");
             actions.push(Line::from(Span::styled(
-                format!("  Type \"{}\" to confirm:", inert(target)),
+                format!("  Type \"{}\" to confirm:", identifier(target)),
                 Style::default().fg(palette.dim),
             )));
             actions.push(Line::from(vec![
@@ -1438,7 +1443,7 @@ fn render_commit_message(
     // footer its place under `lines.len() + 2`. Wrapped here so the count is exact.
     let mut prose = vec![
         Line::from(Span::styled(
-            format!("  Commit to {}", inert(reff)),
+            format!("  Commit to {}", identifier(reff)),
             Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
@@ -1492,7 +1497,7 @@ fn render_commit_result(
     ];
     lines.extend(labelled(
         "patch id: ",
-        &inert(&result.patch_id),
+        &identifier(&result.patch_id),
         SEAL_TEXT_WIDTH,
         Style::default().fg(palette.dim),
         Style::default().fg(palette.accent),
@@ -1510,7 +1515,11 @@ fn render_commit_result(
             // A repository path can be long; wrapped with a deeper hanging indent so a continued path
             // is visibly a continuation rather than a second entry.
             for row in wrap_indented(
-                &format!("{} {}", inert(&change.operation), inert(&change.path)),
+                &format!(
+                    "{} {}",
+                    identifier(&change.operation),
+                    identifier(&change.path)
+                ),
                 SEAL_TEXT_WIDTH,
                 "    ",
             ) {
@@ -1566,7 +1575,7 @@ fn render_seal_consent(
     };
     let mut lines = vec![
         Line::from(Span::styled(
-            format!("  Seal {}", inert(reff)),
+            format!("  Seal {}", identifier(reff)),
             Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
@@ -1634,7 +1643,7 @@ fn render_seal_result(
     ];
     lines.extend(labelled(
         "block id: ",
-        &inert(&result.block_id),
+        &identifier(&result.block_id),
         SEAL_TEXT_WIDTH,
         Style::default().fg(palette.dim),
         Style::default().fg(palette.accent),
@@ -1644,8 +1653,8 @@ fn render_seal_result(
         Style::default().fg(palette.fg),
     )));
     lines.extend(labelled(
-        &format!("{} RefState: ", inert(&result.reff)),
-        &inert(&result.ref_state),
+        &format!("{} RefState: ", identifier(&result.reff)),
+        &identifier(&result.ref_state),
         SEAL_TEXT_WIDTH,
         Style::default().fg(palette.dim),
         Style::default().fg(palette.accent),

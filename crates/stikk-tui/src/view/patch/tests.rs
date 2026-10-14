@@ -365,7 +365,10 @@ fn hostile_content_is_rendered_inert_in_both_views() {
     for raw in [false, true] {
         let text = draw(&view, raw);
         assert!(!text.contains('\u{1b}'), "raw={raw}: {text:?}");
-        assert!(text.contains('\u{FFFD}') || raw, "raw={raw}: {text:?}");
+        assert!(
+            text.contains("\\u001b") || raw,
+            "RFC 036: the ESC is written as its escape — raw={raw}: {text:?}"
+        );
     }
 }
 

@@ -242,9 +242,10 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
 /// invents; quoting borrows prikk's own JSON spelling instead. The escapes still have to be named,
 /// because `\u202e` on a row is not self-explanatory — and a reader who does not know what it is
 /// would be right to wonder whether stikk mangled the file.
-static NOTATIONS: &[Notation] = &[Notation {
-    title: "Quoted content rows (Patch detail)",
-    note: "A file's content is shown one quoted row per line — \"\\tlet x = 1;\\n\" — so \
+static NOTATIONS: &[Notation] = &[
+    Notation {
+        title: "Quoted content rows (Patch detail)",
+        note: "A file's content is shown one quoted row per line — \"\\tlet x = 1;\\n\" — so \
            indentation, a tab against spaces, a double space, trailing whitespace and a missing \
            final newline are all part of what you read, instead of vanishing into the layout. \
            Inside the quotes the spelling is prikk's own JSON: \\n a line ending, \\t a tab, \
@@ -253,7 +254,20 @@ static NOTATIONS: &[Notation] = &[Notation {
            the ordinary one. Visible text stays as itself, é and 日本 and an emoji included. Two \
            lines that differ in any byte never look alike, which is the whole point: a change stikk \
            cannot show you is worse than one it shows awkwardly.",
-}];
+    },
+    Notation {
+        title: "Quoted names (paths, refs, key ids)",
+        note: "A name stikk cannot show plainly is shown in quotes, with every space written as an \
+               escape — \"a\\u0020\\u0020b.txt\" — so that no wrapping can collapse it, trim it or \
+               break it in two, and two names that differ in any byte never look alike. A name is \
+               quoted when it holds a character that does not show as itself, a quote or a \
+               backslash, a leading or trailing space, or two spaces in a row; prikk accepts all of \
+               those in a path. Almost every name is shown plainly, which is how you can tell the \
+               quoted one apart. Text that is not a name — a message, or something prikk said — is \
+               never quoted: it keeps prikk's own wording, with only the invisible characters \
+               written as escapes.",
+    },
+];
 
 /// Look up a code entry (witness kind or verify finding). `None` is the RR-5 degradation: the caller
 /// shows prikk's verbatim message and says no gloss exists yet — it never hides the message.

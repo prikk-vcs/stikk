@@ -26,7 +26,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use stikk_core::BlockDetailView;
 
-use crate::text::inert;
+use crate::text::{identifier, inert};
 use crate::theme::Palette;
 
 /// Render the Block-detail view for `detail` into `area`, with `cursor` selecting one of the block's
@@ -40,10 +40,10 @@ pub fn render(
 ) {
     let row = &detail.row;
     let mut lines: Vec<Line> = vec![
-        field(palette, "block", inert(&row.block_id)),
-        field(palette, "ref-state", inert(&row.ref_state_id)),
+        field(palette, "block", identifier(&row.block_id)),
+        field(palette, "ref-state", identifier(&row.ref_state_id)),
         field(palette, "update-seq", row.update_seq.to_string()),
-        field(palette, "kind", inert(&row.kind)),
+        field(palette, "kind", identifier(&row.kind)),
         field(palette, "parents", row.parents.to_string()),
         field(
             palette,
@@ -74,7 +74,7 @@ pub fn render(
         ));
     }
     let prev = match &row.previous_ref_state {
-        Some(id) => inert(id),
+        Some(id) => identifier(id),
         None => "<none — root>".to_string(),
     };
     lines.push(field(palette, "prev-ref-state", prev));
@@ -98,7 +98,10 @@ pub fn render(
             // text across two rows (caught while testing this exact rendering).
             lines.push(Line::from(vec![
                 Span::styled("    ", Style::default()),
-                Span::styled(inert(&patch.patch_id), Style::default().fg(palette.accent)),
+                Span::styled(
+                    identifier(&patch.patch_id),
+                    Style::default().fg(palette.accent),
+                ),
             ]));
             lines.push(Line::from(vec![
                 Span::styled("      ", Style::default()),
@@ -129,7 +132,7 @@ pub fn render(
                 for file in &state.files {
                     lines.push(Line::from(vec![
                         Span::styled("    ", Style::default()),
-                        Span::styled(inert(file), Style::default().fg(palette.fg)),
+                        Span::styled(identifier(file), Style::default().fg(palette.fg)),
                     ]));
                 }
             }
@@ -174,6 +177,11 @@ pub fn render(
                 };
                 lines.push(Line::from(vec![
                     Span::styled(format!("    {marker}"), Style::default()),
+                    // Core composes this: a short hex id, the patch's message and stikk's own
+                    // count. A sentence holding both kinds, so it takes **prose** — the rule that
+                    // cannot drop a character (RFC 036 decision 4). The id is hex and the message
+                    // is prose in its own right, so nothing is lost by it; the patch id in full is
+                    // an identifier on the row above, and in Patch detail's heading.
                     Span::styled(inert(&row.summary()), style),
                 ]));
             }

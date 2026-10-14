@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{App, Focus, OrientationState};
-use crate::text::inert;
+use crate::text::{identifier, inert};
 use crate::theme::Palette;
 use crate::{overlay, status_bar, view};
 
@@ -96,8 +96,8 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     let repo = app
         .repo()
         .file_name()
-        .map(|n| inert(&n.to_string_lossy()))
-        .unwrap_or_else(|| inert(&app.repo().to_string_lossy()));
+        .map(|n| identifier(&n.to_string_lossy()))
+        .unwrap_or_else(|| identifier(&app.repo().to_string_lossy()));
     let line = Line::from(vec![
         Span::styled(
             "stikk",

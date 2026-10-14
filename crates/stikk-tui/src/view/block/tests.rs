@@ -149,7 +149,10 @@ fn a_hostile_message_renders_inert_and_forges_no_field() {
     };
     let text = draw(&detail);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 #[test]
@@ -184,7 +187,10 @@ fn hostile_file_path_is_rendered_inert() {
     };
     let text = draw(&detail);
     assert!(!text.contains('\u{1b}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -305,7 +311,10 @@ fn a_patch_rows_message_is_rendered_inert() {
     };
     let text = draw_at(&detail, 0, 80);
     assert!(!text.contains('\u{1b}'), "{text:?}");
-    assert!(text.contains('\u{FFFD}'), "{text:?}");
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
 }
 
 /// **A failed `show` costs the Patches section and nothing else** (review v1 §2.3): the block's fields

@@ -2,6 +2,58 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Security
+
+- **Every string stikk did not write is now rendered so that what you read is what prikk reported.**
+  Until this release only Patch detail's *content* was (0.9.0, RFC 035 A3); everything else —
+  **paths, ref and branch names, key ids, patch messages, prikk's refusals, notes and version line, in
+  every view and in the one-shot printout** — passed through `inert`, which replaced Unicode category
+  `Cc` with `�` and let the rest through. That let three kinds of character reach the terminal:
+  - **bidirectional controls** (`U+202A`–`U+202E`, `U+2066`–`U+2069`, `U+200E`, `U+200F`, `U+061C`),
+    which **reorder the displayed text** — the "Trojan Source" class, CVE-2021-42574. A branch name or
+    a patch message could make a line read in an order its bytes do not have;
+  - **zero-width and other default-ignorable characters**, which display nothing, so two different
+    names looked identical;
+  - **whitespace that is not an ordinary space** (`U+00A0`, `U+2000`–`U+200A`, `U+3000`, …), which
+    looks like a space or breaks a row.
+
+  These are reachable: prikk 0.51 reports an on-disk filename carrying any of them, and **accepts a
+  branch name carrying a bidirectional override or a zero-width space** (measured before this was
+  built). 0.9.0's release notes named this gap; this closes it.
+
+  **Two rules now, from the one table RFC 035 built.**
+  - **Prose** — messages, refusals, notes, reasons, routes, prikk's version line: every character that
+    does not show as itself is written as its escape, in place. `"` and `\` are untouched and nothing
+    is quoted, so a refusal still reads as prikk wrote it.
+  - **Identifiers** — paths, ref and branch names, key ids, prikk's kind words where they tag a row:
+    the same, **and two different identifiers never look alike**. An identifier is shown plainly when
+    nothing in it needs an escape and its whitespace is unremarkable, which is nearly always;
+    otherwise it is quoted, with every space written as ` `, so that no wrapping can collapse,
+    trim or break it. `"a  b.txt"` is a path prikk itself accepts.
+
+  **The limit, stated:** this is about what reaches the terminal. A terminal that renders an escape
+  sequence stikk never sent is outside stikk's reach, and so is a font that draws two different
+  characters identically.
+
+### Changed
+
+- **A control character is shown as its escape, not as `�`.** `\u001b`, `\n`, `\t` say which
+  character was there; `�` said only that something was. **`U+FFFD` is now prikk's alone**: prikk
+  substitutes it for filename bytes it cannot show, so a `�` on screen means prikk put it there —
+  which is what makes commit's *"a name shown with `�` is not the file's real name"* step exact.
+- **The Glossary** (`?`) names the quoted-name convention beside the quoted-content one.
+
+### Fixed
+
+- **A long path in a Changes row is no longer cut at the border.** The tag keeps the first row and the
+  path continues on further rows at the entry's indent, hard-split so that nothing is lost, with
+  prikk's note after it. A 150-character path at 80 columns now appears whole, in order.
+- **A double space in a path no longer collapses**, and neither does a leading or trailing one. Word
+  wrapping rebuilt every row from whitespace-separated words, which silently rewrote the three path
+  shapes prikk accepts — `a  b.txt`, ` lead.txt` and `say"hi.txt`.
+
 ## 0.9.0 — 2026-10-14
 
 **stikk now shows what each patch changed, in prikk's own terms and byte for byte.** `FR-030` has been

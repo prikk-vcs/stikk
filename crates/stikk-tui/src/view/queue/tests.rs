@@ -427,3 +427,35 @@ fn rfc035_the_queue_marks_the_selected_patch_at_80_columns() {
         "{text}"
     );
 }
+
+/// **RFC 036: a queued patch's message is prose, its id an identifier.** The message keeps prikk's
+/// own wording — quotes and backslashes included — with only what does not show as itself escaped.
+#[test]
+fn a_message_keeps_its_quotes_and_loses_only_the_invisible() {
+    let view = QueueView {
+        heading: "1 patch(es) queued for heads/main".to_string(),
+        thresholds: Vec::new(),
+        patches: vec![stikk_core::QueuedPatchView {
+            id: "3829ccfb080c07011497119384f429bbcf32395695bfc6030dc3fe20da56f321".to_string(),
+            message: Some("say \"no\" to a\\b and to ev\u{202e}il".to_string()),
+            detail_message: stikk_core::PatchMessageState::Text("m".to_string()),
+            operations: Vec::new(),
+        }],
+        foot: None,
+    };
+    let text = draw(&view);
+    println!("--- RFC 036: a message is prose\n{text}");
+    assert!(!text.contains('\u{202e}'), "{text:?}");
+    assert!(
+        text.contains("say \"no\" to a\\b"),
+        "prose is never quoted, and a quote or backslash is prikk's own: {text}"
+    );
+    assert!(
+        text.contains("u202eil"),
+        "and the override is written out: {text}"
+    );
+    assert!(
+        text.contains("3829ccfb080c0701"),
+        "the id is an identifier, plain because it is hex: {text}"
+    );
+}

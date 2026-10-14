@@ -14,7 +14,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use stikk_core::HistoryView;
 use stikk_prikk::BlockRow;
 
-use crate::text::inert;
+use crate::text::{identifier, inert};
 use crate::theme::Palette;
 
 /// Render the History view for `view`, with `cursor` marking the selected block, into `area`.
@@ -22,7 +22,9 @@ pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut 
     let mut lines: Vec<Line> = Vec::new();
 
     // The "not yet history" tier (FR-010), in core's words: whose queue it is, and no line at all when
-    // nothing is queued (RFC 028 decision 5). The line names a ref, so it is inert (`C-T2a`).
+    // nothing is queued (RFC 028 decision 5). Core composes a ref name into its own sentence, so this
+    // is a string of both kinds and takes **prose** — the rule that cannot drop a character (RFC 036
+    // decision 4). The same ref is an identifier in this view's title.
     if let Some(tier) = view.queued_tier() {
         lines.push(Line::from(vec![
             Span::styled("  queued   ", Style::default().fg(palette.dim)),
@@ -47,7 +49,7 @@ pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut 
         }
     }
 
-    let title = format!(" History · {} ", inert(&view.reff));
+    let title = format!(" History · {} ", identifier(&view.reff));
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -80,7 +82,7 @@ fn block_line<'a>(row: &'a BlockRow, selected: bool, is_tip: bool, palette: &Pal
             Style::default().fg(palette.dim),
         ),
         Span::styled(
-            format!("{:<8}", inert(&row.kind)),
+            format!("{:<8}", identifier(&row.kind)),
             Style::default().fg(palette.fg),
         ),
         Span::styled(
@@ -106,9 +108,10 @@ fn block_line<'a>(row: &'a BlockRow, selected: bool, is_tip: bool, palette: &Pal
     Line::from(spans)
 }
 
-/// A short, display-only prefix of an object id (never fabricated — a plain prefix, inert).
+/// A short, display-only prefix of an object id (never fabricated — a plain prefix, rendered as the
+/// identifier it is).
 fn short_id(id: &str) -> String {
-    let inert_id = inert(id);
+    let inert_id = identifier(id);
     // The same form a seal confirmation names a patch by (`stikk_core::confirm::SHORT_ID_CHARS`).
     let short: String = inert_id
         .chars()

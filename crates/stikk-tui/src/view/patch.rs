@@ -30,7 +30,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use stikk_core::{OperationRow, PatchDetailView};
 
-use crate::text::{inert, wrap_indented, wrap_verbatim};
+use crate::text::{identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
 
 /// Indents, by level: the patch id and foot, the heading rows, an operation's title, and its rows.
@@ -106,13 +106,32 @@ fn patch_lines<'a>(
     let mut lines: Vec<Line> = Vec::new();
     // Functions rather than closures over `lines`, so the verbatim half can push to the same vector —
     // the Queue view's own renderer took this shape for the same reason.
+    //
+    // **Prose** (RFC 036 decision 2) for everything but the patch id. An operation's title and its
+    // `Said` rows are composed by core from stikk's words and prikk's values together — `create-file
+    // src/a.txt`, `node <id> — as at the end of this block` — and decision 4 sends a string of both
+    // kinds through the rule that cannot drop a character. A *content* row is neither: it arrives
+    // already quoted and escaped by `stikk-core`, and goes through `push_verbatim`.
     fn push<'a>(lines: &mut Vec<Line<'a>>, width: usize, text: &str, indent: &str, style: Style) {
         for row in wrap_indented(&inert(text), width, indent) {
             lines.push(Line::from(Span::styled(row, style)));
         }
     }
 
-    push(
+    /// The patch id, the one bare identifier this view renders. Hex, so always plain.
+    fn push_identifier<'a>(
+        lines: &mut Vec<Line<'a>>,
+        width: usize,
+        value: &str,
+        indent: &str,
+        style: Style,
+    ) {
+        for row in wrap_indented(&identifier(value), width, indent) {
+            lines.push(Line::from(Span::styled(row, style)));
+        }
+    }
+
+    push_identifier(
         &mut lines,
         width,
         &view.patch_id,

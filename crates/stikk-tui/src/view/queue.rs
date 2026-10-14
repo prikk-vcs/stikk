@@ -27,7 +27,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use stikk_core::QueueView;
 
-use crate::text::{inert, wrap_indented};
+use crate::text::{identifier, inert, wrap_indented};
 use crate::theme::Palette;
 
 /// Indents, by level: the heading and foot, a patch's id (selected or not), its message, and its
@@ -104,8 +104,27 @@ fn queue_lines<'a>(
     let mut patch_rows: Vec<(usize, usize)> = Vec::new();
     // A function rather than a closure over `lines`: the loop below needs to read `lines.len()` to
     // record where each patch's rows begin, which a closure holding it mutably would forbid.
+    //
+    // **Prose** (RFC 036 decision 2). Everything this pushes is either stikk's own words or a string
+    // core composed from both kinds — a heading naming a ref, an operation line naming a path — and
+    // decision 4 sends those through the rule that cannot drop a character. The one bare identifier
+    // here, a patch id, is pushed through `push_identifier` instead.
     fn push<'a>(lines: &mut Vec<Line<'a>>, width: usize, text: &str, indent: &str, style: Style) {
         for row in wrap_indented(&inert(text), width, indent) {
+            lines.push(Line::from(Span::styled(row, style)));
+        }
+    }
+
+    /// The same, for a bare identifier: a patch id. Hex, so it is always plain and nothing changes
+    /// visibly — but it goes through the rule that owns it, not the one next to it.
+    fn push_identifier<'a>(
+        lines: &mut Vec<Line<'a>>,
+        width: usize,
+        value: &str,
+        indent: &str,
+        style: Style,
+    ) {
+        for row in wrap_indented(&identifier(value), width, indent) {
             lines.push(Line::from(Span::styled(row, style)));
         }
     }
@@ -138,7 +157,7 @@ fn queue_lines<'a>(
         // The marker goes in the **indent**, not in the text: `wrap_indented` word-wraps, so leading
         // spaces inside the text would be collapsed and the two kinds of row would not line up.
         let marker = if selected { SELECTED } else { UNSELECTED };
-        push(
+        push_identifier(
             &mut lines,
             width,
             &patch.id,

@@ -146,6 +146,29 @@ pub fn quoted(text: &str) -> String {
     out
 }
 
+/// Append `text` to `out` with **only what does not show as itself** escaped: every character for
+/// which [`needs_unicode_escape`] holds becomes its escape, and `"` and `\` are left exactly as they
+/// are.
+///
+/// **This is the prose rule** (RFC 036 decision 2), and it is the difference between the two rules
+/// this workspace has. [`escape_into`] additionally escapes `"` and `\`, because its output goes
+/// inside quotes; prose is not quoted, so a refusal that contains a quotation mark must read as prikk
+/// wrote it. Both call the same table, which is the point: a character is invisible here exactly when
+/// it is invisible there.
+pub fn escape_invisible_into(out: &mut String, text: &str) {
+    for ch in text.chars() {
+        match ch {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            ch if needs_unicode_escape(ch) => push_unicode_escape(out, ch),
+            ch => out.push(ch),
+        }
+    }
+}
+
 /// Write `ch` as `\uXXXX`, **as a surrogate pair above `U+FFFF`**, which is how JSON spells an astral
 /// character.
 ///

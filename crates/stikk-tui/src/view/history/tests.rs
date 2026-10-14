@@ -76,5 +76,34 @@ fn hostile_ref_name_and_kind_are_rendered_inert() {
     let text = draw(&view, 0);
     assert!(!text.contains('\u{1b}'));
     assert!(!text.contains('\u{7}'));
-    assert!(text.contains('\u{FFFD}'));
+    assert!(
+        text.contains("\\u001b"),
+        "RFC 036: the ESC is written as its escape, not as U+FFFD — {text:?}"
+    );
+}
+
+/// **RFC 036: a ref name in a title is an identifier.** §1's measurement found prikk 0.51 accepts a
+/// branch name carrying a bidi override, so this is a name a real repository can hold.
+#[test]
+fn a_ref_name_with_an_override_is_quoted_in_the_title() {
+    let view = HistoryView {
+        reff: "heads/ev\u{202e}il".to_string(),
+        queued: 0,
+        queued_target: None,
+        blocks: vec![row("b1", 1, "commit")],
+    };
+    let text = draw(&view, 0);
+    println!("--- RFC 036: a branch name prikk accepts, in History's title\n{text}");
+    assert!(
+        !text.contains('\u{202e}'),
+        "no override may reach a cell: {text:?}"
+    );
+    assert!(
+        text.lines().any(|row| row.contains("u202eil")),
+        "the override is written out, in the title: {text}"
+    );
+    assert!(
+        text.lines().any(|row| row.contains("History")),
+        "and the title is still there: {text}"
+    );
 }

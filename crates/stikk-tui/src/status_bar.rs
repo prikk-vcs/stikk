@@ -19,7 +19,7 @@ use ratatui::widgets::Paragraph;
 use stikk_model::{Binding, CurrentBranch, Readiness, RoleReadiness};
 
 use crate::app::{App, OrientationState, RefFocus};
-use crate::text::inert;
+use crate::text::{identifier, inert};
 use crate::theme::Palette;
 
 /// The key hint, the first thing the line sheds.
@@ -35,7 +35,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         repo: app
             .repo()
             .file_name()
-            .map(|n| inert(&n.to_string_lossy()))
+            .map(|n| identifier(&n.to_string_lossy()))
             .unwrap_or_else(|| "?".to_string()),
         focus: focus_spans(app, palette),
         default: prikks_default(app),
@@ -157,7 +157,7 @@ fn focus_spans(app: &App, palette: &Palette) -> Vec<Span<'static>> {
         // The focused ref — a client-side pointer, not a HEAD (design FR-055).
         RefFocus::Ref(name) => vec![
             sep(palette),
-            Span::styled(inert(name), Style::default().fg(palette.accent)),
+            Span::styled(identifier(name), Style::default().fg(palette.accent)),
         ],
     }
 }
@@ -177,7 +177,9 @@ fn prikks_default(app: &App) -> Option<String> {
         return None;
     };
     match &view.current_branch {
-        CurrentBranch::Branch(branch) if branch.as_str() != focused => Some(inert(branch.as_str())),
+        CurrentBranch::Branch(branch) if branch.as_str() != focused => {
+            Some(identifier(branch.as_str()))
+        }
         CurrentBranch::Unresolved(text) => Some(inert(text)),
         CurrentBranch::Branch(_) | CurrentBranch::NotReported => None,
     }

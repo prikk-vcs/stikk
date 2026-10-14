@@ -136,3 +136,26 @@ fn the_content_notation_names_every_escape_a_reader_can_meet() {
         "the invariant is the reason the notation exists, so it is stated"
     );
 }
+
+/// **RFC 036 decision 7: the Glossary names the quoted-name convention too.** A reader who meets a
+/// quoted path with escaped spaces has somewhere to look it up — the same reason the content-row
+/// notation exists.
+#[test]
+fn the_notation_names_quoted_names_as_well_as_quoted_content() {
+    let names: Vec<&str> = notations().iter().map(|n| n.title).collect();
+    assert_eq!(names.len(), 2, "two notations ship: {names:?}");
+    let quoted_names = notations()
+        .iter()
+        .find(|n| n.title.contains("Quoted names"))
+        .expect("the quoted-name notation ships");
+    for wanted in ["u0020", "quote", "backslash", "never look alike"] {
+        assert!(
+            quoted_names.note.contains(wanted),
+            "the notation must name {wanted}"
+        );
+    }
+    assert!(
+        quoted_names.note.contains("never quoted"),
+        "and must say that prose is not quoted, which is the distinction a reader needs"
+    );
+}

@@ -14,7 +14,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use stikk_core::OrientationView;
 use stikk_model::{Binding, CurrentBranch, RoleReadiness};
 
-use crate::text::inert;
+use crate::text::{identifier, inert};
 use crate::theme::Palette;
 
 /// Render the Orientation view into `area`.
@@ -84,7 +84,10 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
             " · targeting ",
             Style::default().fg(palette.dim),
         ));
-        queued_spans.push(Span::styled(inert(target), Style::default().fg(palette.fg)));
+        queued_spans.push(Span::styled(
+            identifier(target),
+            Style::default().fg(palette.fg),
+        ));
     }
     lines.push(field(palette, "queued", queued_spans));
 
@@ -136,7 +139,7 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
             palette,
             "branch",
             vec![
-                Span::styled(inert(branch), Style::default().fg(palette.fg)),
+                Span::styled(identifier(branch), Style::default().fg(palette.fg)),
                 Span::styled(
                     " — prikk's current branch",
                     Style::default().fg(palette.dim),
@@ -146,7 +149,7 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
     }
 
     let main_ref = match &view.main_ref_state {
-        Some(id) => inert(id),
+        Some(id) => identifier(id),
         None => "<unpublished>".to_string(),
     };
     lines.push(field(

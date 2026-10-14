@@ -1,6 +1,6 @@
 # RFC 039 — Installation for everyone: one command, prikk included
 
-**Status.** **Proposed 2026-10-14** by the architect, after the project owner's direction the same day: *"Much
+**Status.** **Accepted by the project owner 2026-10-14**, decision 4 included. **Proposed 2026-10-14** by the architect, after the project owner's direction the same day: *"Much
 easier installation for unskilled users is required in the near future."* Its first handoff, the documentation, was
 already accepted by the owner in conversation that day. **No open question**, but decision 4 reaches into another
 project, and accepting this RFC accepts it.
@@ -90,11 +90,11 @@ Per release: `stikk-<ver>-<target>.tar.gz` (`.zip` on Windows) and `.sha256`, fo
 
 ## Delivery
 
-- **Handoff A, the documentation (decision 1)**, issued with this proposal, since the owner already accepted it.
+- [**Handoff A, the documentation (decision 1)**](../handoffs/039-installation-for-everyone/a-installation-docs-handoff-v1.md), issued with this proposal, since the owner already accepted it.
   **It documents what exists today**: the prebuilt download per platform (with its checksum) as the first path,
   prikk's own installer for prikk, and `cargo install` for Rust users. **Handoff B then puts the one-line installer
   at the top of the same Quick start.** A never documents a command that does not exist yet.
-- **Handoff B, the installers and `binstall` (decisions 2–5)**, on acceptance. It touches `release.yml`, so the next
+- **Handoff B, the installers and `binstall` (decisions 2–5)**, issued on acceptance: [Handoff B](../handoffs/039-installation-for-everyone/b-installers-handoff-v1.md). It touches `release.yml`, so the next
   release run is the installers' first real publication. B's CI test installs **the previous release** until then.
 
 ## Changelog

@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 039 | [Installation for everyone](./proposed/039-installation-for-everyone.md) | A new user is told to `cargo build`. One command per platform (`install.sh`, `install.ps1`), checksum-verified, with uninstallers, **installing prikk too when missing** through prikk's own installer pinned to the validated version; `cargo binstall stikk`; the README leads with installing. Handoff A (docs) accepted by the owner and issued: [A: installation docs](./handoffs/039-installation-for-everyone/a-installation-docs-handoff-v1.md). 0.11.0 increments 1–2 |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,7 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 038 delivered and closed 2026-10-14._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 039 | [Installation for everyone](./accepted/039-installation-for-everyone.md) | A new user is told to `cargo build`. One command per platform (`install.sh`, `install.ps1`), checksum-verified, with uninstallers, **installing prikk too when missing** through prikk's own verified installer pinned to the validated version; `cargo binstall stikk`; the README leads with installing. **Accepted 2026-10-14**; 0.11.0 increments 1–2 | [A: installation docs](./handoffs/039-installation-for-everyone/a-installation-docs-handoff-v1.md) · [B: the installers](./handoffs/039-installation-for-everyone/b-installers-handoff-v1.md) |
 
 ## Done (implemented)
 

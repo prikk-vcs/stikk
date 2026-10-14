@@ -305,7 +305,7 @@ a fabricated worktree entry was fixed.
 **0.11.0: anyone can install stikk in one command, and stikk shows whether a repository is sound.** Scope:
 `.git-exclude/release/0-11-0-scope.md`.
 
-1. **Installation docs** ([RFC 039](rfcs/proposed/039-installation-for-everyone.md) A): the README and guide lead with
+1. **Installation docs** ([RFC 039](rfcs/accepted/039-installation-for-everyone.md) A): the README and guide lead with
    prebuilt binaries and prikk's installer, not with `cargo build`.
 2. **One-command installers** (RFC 039 B): `install.sh` and `install.ps1`, checksum-verified, with uninstallers; prikk
    installed too when missing, through prikk's own installer pinned to the validated version; `cargo binstall stikk`.

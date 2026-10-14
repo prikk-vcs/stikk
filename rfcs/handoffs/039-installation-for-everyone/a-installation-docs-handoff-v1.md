@@ -1,6 +1,6 @@
 # Handoff A — RFC 039: installation for everyone, the documentation (v1)
 
-**Companion to:** [RFC 039](../../proposed/039-installation-for-everyone.md). **This handoff's part (decision 1) was
+**Companion to:** [RFC 039](../../accepted/039-installation-for-everyone.md). **This handoff's part (decision 1) was
 accepted by the project owner on 2026-10-14**, before the rest of the RFC, which is why it is issued while the RFC is
 still proposed. **Do not start Handoff B's work here.**
 **Covers:** decision 1, for what exists **today**. 0.11.0's first increment.

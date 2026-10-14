@@ -166,18 +166,24 @@ fn the_queued_tier_follows_each_row_of_the_table_exactly() {
     assert_eq!(
         view_with_queue("heads/main", 2, Some("heads/main"))
             .queued_tier()
+            .as_deref()
+            .map(crate::flatten)
             .as_deref(),
         Some("2 patch(es) in the active WAL — not yet sealed · Q: Queue")
     );
     assert_eq!(
         view_with_queue("heads/other", 2, Some("heads/main"))
             .queued_tier()
+            .as_deref()
+            .map(crate::flatten)
             .as_deref(),
         Some("the active WAL holds 2 patch(es) for heads/main — not this ref's history · Q: Queue")
     );
     assert_eq!(
         view_with_queue("heads/main", 1, None)
             .queued_tier()
+            .as_deref()
+            .map(crate::flatten)
             .as_deref(),
         Some("the active WAL holds 1 patch(es); prikk reports no target ref · Q: Queue")
     );
@@ -203,7 +209,7 @@ fn history_view_takes_the_count_and_the_target_from_one_orientation_read() {
     assert_eq!(view.queued, 2);
     assert_eq!(view.queued_target.as_deref(), Some("heads/main"));
     assert_eq!(
-        view.queued_tier().as_deref(),
+        view.queued_tier().as_deref().map(crate::flatten).as_deref(),
         Some("the active WAL holds 2 patch(es) for heads/main — not this ref's history · Q: Queue")
     );
 }
@@ -269,15 +275,15 @@ fn a_blocks_patch_messages_are_joined_by_id_not_by_position() {
         crate::patch::PatchMessageState::Text("the second patch".to_string())
     );
     assert!(
-        rows[0].summary().contains("(no message reported)"),
+        crate::flatten(&rows[0].summary()).contains("(no message reported)"),
         "{}",
-        rows[0].summary()
+        crate::flatten(&rows[0].summary())
     );
     assert!(
-        rows[1].summary().contains("the second patch")
-            && rows[1].summary().contains("2 operation(s)"),
+        crate::flatten(&rows[1].summary()).contains("the second patch")
+            && crate::flatten(&rows[1].summary()).contains("2 operation(s)"),
         "{}",
-        rows[1].summary()
+        crate::flatten(&rows[1].summary())
     );
     assert_eq!(detail.patches.unreported_reason(), None);
 }

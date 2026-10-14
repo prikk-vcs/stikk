@@ -2632,7 +2632,11 @@ fn rfc028_history_for_another_ref_does_not_claim_the_queue() {
             main.queued_tier()
         );
         assert_eq!(
-            other.queued_tier().as_deref(),
+            other
+                .queued_tier()
+                .as_deref()
+                .map(stikk_core::flatten)
+                .as_deref(),
             Some(
                 "the active WAL holds 1 patch(es) for heads/main — not this ref's history · Q: Queue"
             ),
@@ -2640,7 +2644,10 @@ fn rfc028_history_for_another_ref_does_not_claim_the_queue() {
             bin.minor
         );
         assert_eq!(
-            main.queued_tier().as_deref(),
+            main.queued_tier()
+                .as_deref()
+                .map(stikk_core::flatten)
+                .as_deref(),
             Some("1 patch(es) in the active WAL — not yet sealed · Q: Queue"),
             "0.{}: this ref's tier",
             bin.minor
@@ -4182,7 +4189,12 @@ fn rfc035_rows(operation: &stikk_core::OperationView) -> String {
     operation
         .rows
         .iter()
-        .map(stikk_core::OperationRow::text)
+        .map(|row| match row {
+            // A row that mixes stikk's words with a repository name is flattened here, which a
+            // renderer must never do — this is a test asserting the words (RFC 036 review v1 §2.3).
+            stikk_core::OperationRow::Named(pieces) => stikk_core::flatten(pieces),
+            other => other.text().unwrap_or_default().to_string(),
+        })
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -4359,7 +4371,7 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
         for (operation, rendered) in patch_row.patch.operations.iter().zip(&view.operations) {
             seen.push(&operation.kind);
             assert!(
-                rendered.title.starts_with(&operation.kind),
+                stikk_core::flatten(&rendered.title).starts_with(&operation.kind),
                 "0.{}: prikk's kind word leads the row: {rendered:?}",
                 bin.minor
             );
@@ -4370,7 +4382,11 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
                         bin.minor, operation.paths
                     )
                 };
-                let whole = format!("{} {}", rendered.title, rfc035_rows(rendered));
+                let whole = format!(
+                    "{} {}",
+                    stikk_core::flatten(&rendered.title),
+                    rfc035_rows(rendered)
+                );
                 assert!(
                     whole.contains(path.as_str()),
                     "0.{}: prikk's path {path} is on screen: {whole}",
@@ -4462,7 +4478,7 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
         assert!(
             view.operations
                 .iter()
-                .all(|o| !o.title.contains(stikk_core::AS_AT_BLOCK_END)),
+                .all(|o| !stikk_core::flatten(&o.title).contains(stikk_core::AS_AT_BLOCK_END)),
             "0.{}: {:?}",
             bin.minor,
             view.operations
@@ -4536,8 +4552,8 @@ fn rfc035_a_sealed_blocks_patch_is_resolved_at_the_blocks_end_at_both_ends() {
                     let title = view
                         .operations
                         .iter()
-                        .find(|o| o.title.starts_with("edit-text"))
-                        .map(|o| o.title.clone())
+                        .find(|o| stikk_core::flatten(&o.title).starts_with("edit-text"))
+                        .map(|o| stikk_core::flatten(&o.title))
                         .unwrap_or_default();
                     assert_eq!(
                         title,
@@ -4601,16 +4617,16 @@ fn rfc035_a_sealed_blocks_patch_is_resolved_at_the_blocks_end_at_both_ends() {
         let shown = view
             .operations
             .iter()
-            .find(|o| o.title == "edit-text")
+            .find(|o| stikk_core::flatten(&o.title) == "edit-text")
             .unwrap_or_else(|| panic!("0.{}: {:?}", bin.minor, view.operations));
         assert_eq!(
             shown.rows[0].text(),
-            stikk_core::NO_PATH_REPORTED,
+            Some(stikk_core::NO_PATH_REPORTED),
             "0.{}: one sentence, and no reason — stikk cannot know which applies",
             bin.minor
         );
         assert!(
-            !shown.title.contains(stikk_core::AS_AT_BLOCK_END),
+            !stikk_core::flatten(&shown.title).contains(stikk_core::AS_AT_BLOCK_END),
             "0.{}: there is no name to label: {shown:?}",
             bin.minor
         );
@@ -4664,7 +4680,7 @@ fn rfc035_a_queued_patch_opens_from_the_queue_at_both_ends() {
         assert!(
             view.operations
                 .iter()
-                .all(|o| !o.title.contains(stikk_core::AS_AT_BLOCK_END)),
+                .all(|o| !stikk_core::flatten(&o.title).contains(stikk_core::AS_AT_BLOCK_END)),
             "0.{}: {:?}",
             bin.minor,
             view.operations

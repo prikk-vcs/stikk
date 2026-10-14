@@ -107,3 +107,27 @@ fn a_ref_name_with_an_override_is_quoted_in_the_title() {
         "and the title is still there: {text}"
     );
 }
+
+/// **RFC 036 review v1 §2.3: the queued tier names its target ref as an identifier.** Core returns
+/// the sentence as pieces, so a ref with a double space in it keeps both inside the sentence.
+#[test]
+fn the_queued_tiers_target_ref_is_an_identifier() {
+    let view = HistoryView {
+        reff: "heads/other".to_string(),
+        queued: 2,
+        queued_target: Some("heads/ev\u{202e}il".to_string()),
+        blocks: vec![row("b1", 1, "commit")],
+    };
+    let text = draw(&view, 0);
+    println!("--- RFC 036 §2.3: the queued tier's target ref\n{text}");
+    assert!(!text.contains('\u{202e}'), "{text:?}");
+    assert!(
+        text.lines().any(|r| r.contains("u202eil")),
+        "the override is written out inside core's sentence: {text}"
+    );
+    assert!(
+        text.lines()
+            .any(|r| r.contains("the active WAL holds 2 patch(es) for")),
+        "and core's words are unchanged: {text}"
+    );
+}

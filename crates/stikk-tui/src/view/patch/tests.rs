@@ -52,6 +52,14 @@ fn draw_sized(view: &PatchDetailView, raw: bool, width: u16, height: u16) -> Str
 /// **Content rows must be judged with this, never with [`joined`]**, which collapses runs of
 /// whitespace to match a wrapped sentence — the very thing a content row must not do (review v1 §2.1).
 /// It caught this test file's own first draft asserting a re-indent against the joined text.
+/// One row exactly as the view renders it: a `Named` row through `compose`, anything else as it is.
+fn rendered_row(row: &OperationRow) -> String {
+    match row {
+        OperationRow::Named(pieces) => crate::text::compose(pieces),
+        other => other.text().unwrap_or_default().to_string(),
+    }
+}
+
 fn on_a_row(text: &str, needle: &str) -> bool {
     text.lines().any(|line| line.contains(needle))
 }
@@ -173,11 +181,13 @@ fn all_six_kinds_render_whole_at_80_columns() {
     let text = draw_sized(&view, false, 80, 40);
     println!("--- RFC 035 §6: Patch detail, all six kinds, 80 columns\n{text}");
     let flat = joined(&text);
+    // **As the view renders them** (RFC 036 review v1 §2.3): a title and a `Named` row are pieces,
+    // and `compose` is what turns them into the string that reaches a cell.
     for row in view.operations.iter().flat_map(|o| {
-        std::iter::once(o.title.as_str()).chain(o.rows.iter().map(OperationRow::text))
+        std::iter::once(crate::text::compose(&o.title)).chain(o.rows.iter().map(rendered_row))
     }) {
         // Row by row, whitespace and all: a content row's spaces are prikk's bytes.
-        assert!(on_a_row(&text, row), "missing {row:?} in {text}");
+        assert!(on_a_row(&text, &row), "missing {row:?} in {text}");
     }
     assert!(flat.contains("sealed · in block"), "{flat}");
     assert!(flat.contains("every kind"), "{flat}");
@@ -274,8 +284,8 @@ fn a_bounded_preimage_says_how_many_bytes_it_withheld() {
     );
     let rows = &view.operations[0].rows;
     assert_eq!(
-        rows.last().map(OperationRow::text),
-        Some(format!("… {withheld} more bytes not shown").as_str()),
+        rows.last().map(rendered_row),
+        Some(format!("… {withheld} more bytes not shown")),
         "{rows:?}"
     );
     assert!(joined(&text).contains("delete-node big.txt"), "{text}");
@@ -423,7 +433,7 @@ fn rfc035_a_re_indent_edit_renders_as_a_change_at_80_columns() {
     }
     // The two spans of each edit are different rows on screen — that is the defect this fixes.
     for operation in &view.operations {
-        let rows: Vec<&str> = operation.rows.iter().map(OperationRow::text).collect();
+        let rows: Vec<String> = operation.rows.iter().map(rendered_row).collect();
         assert_ne!(rows[1], rows[3], "{rows:?}");
     }
 }
@@ -544,4 +554,83 @@ fn content_that_does_not_show_as_itself_is_escaped_on_screen() {
         "{rendered}"
     );
     assert!(on_a_row(&rendered, "\"x\\u00a0y   \\n\""), "{rendered}");
+}
+
+/// **RFC 036 review v1 §2.3: an operation title's path is an identifier.** Core returns the title as
+/// pieces, so the path inside the sentence is rendered by the identifier rule — which is what
+/// decision 8 asked for and what a single composed `String` could not give.
+#[test]
+fn an_operation_titles_path_is_rendered_as_an_identifier() {
+    for (what, path_text, expected) in [
+        ("a double space", "a  b.txt", "\"a\\u0020\\u0020b.txt\""),
+        ("a bidi override", "ev\u{202e}il.txt", "\"ev\\u202eil.txt\""),
+    ] {
+        let view = stikk_core::patch_detail_in_block(
+            &ShownPatch {
+                patch_id: PATCH_A.to_string(),
+                queued: false,
+                operations: vec![PatchOperation {
+                    kind: "create-file".to_string(),
+                    paths: vec![QueuedPath::Path(path_text.to_string())],
+                    content: OperationContent::FileCreated {
+                        content: FileContent::Text("x\n".to_string()),
+                        mode: 33188,
+                    },
+                    raw: "{}".to_string(),
+                }],
+            },
+            BLOCK,
+            &PatchMessageState::NotReported,
+            1,
+        );
+        let screen = draw(&view, false);
+        println!("--- RFC 036 §2.3: an operation title with {what}\n{screen}");
+        assert!(
+            on_a_row(&screen, &format!("create-file {expected}")),
+            "{what}: the path is an identifier inside the title:\n{screen}"
+        );
+        assert!(
+            !screen.contains('\u{202e}'),
+            "{what}: nothing invisible reaches a cell:\n{screen}"
+        );
+    }
+}
+
+/// The same for a **path-bearing `Said` row** — the multi-path shape, where the path is a row of its
+/// own rather than part of the title.
+#[test]
+fn a_path_row_is_rendered_as_an_identifier() {
+    let view = stikk_core::patch_detail_in_block(
+        &ShownPatch {
+            patch_id: PATCH_A.to_string(),
+            queued: false,
+            operations: vec![PatchOperation {
+                kind: "edit-text".to_string(),
+                paths: vec![
+                    QueuedPath::Path("a  b.txt".to_string()),
+                    QueuedPath::Path("c.txt".to_string()),
+                    QueuedPath::UnresolvedNode(NODE.to_string()),
+                ],
+                content: OperationContent::Unrendered,
+                raw: "{}".to_string(),
+            }],
+        },
+        BLOCK,
+        &PatchMessageState::NotReported,
+        1,
+    );
+    let screen = draw(&view, false);
+    println!("--- RFC 036 §2.3: path rows, one of them with a double space\n{screen}");
+    assert!(
+        on_a_row(&screen, "\"a\\u0020\\u0020b.txt\""),
+        "the double space survives as escapes:\n{screen}"
+    );
+    assert!(
+        on_a_row(&screen, "c.txt"),
+        "a plain path stays plain:\n{screen}"
+    );
+    assert!(
+        on_a_row(&screen, &format!("node {NODE}")),
+        "and prikk's node id is beside its sentence:\n{screen}"
+    );
 }

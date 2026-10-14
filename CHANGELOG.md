@@ -4,13 +4,32 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. `stikk-model`,
+`stikk-state` and the `stikk` launcher are unchanged, and `stikk-prikk` is additive only.
+
+| Crate | Change |
+|---|---|
+| `stikk-core` | **`OperationView::title` becomes `Vec<Piece>`** — prikk's kind word and each path are names the repository chose, and only a frontend can decide how a name is rendered. A `String` forced one rule on the whole sentence |
+| `stikk-core` | **`OperationRow` gains `Named(Vec<Piece>)`** — breaking for an exhaustive `match` — and **`OperationRow::text` returns `Option<&str>`**, `None` for that variant: a caller that flattened one would have lost the distinction the row exists to carry |
+| `stikk-core` | **`BlockPatchRow::summary`, `HistoryView::queued_tier` and `RenameHalf::annotation` return pieces** (`Vec<Piece>`, and `Option<Vec<Piece>>` for the tier) instead of a composed `String`, for the same reason |
+
+**Additive:** `stikk_core::Piece` and `stikk_core::flatten`; `stikk_tui::text::identifier` and
+`stikk_tui::text::compose`; `stikk_prikk::escape::escape_invisible_into`. **`stikk_tui::text::inert`
+keeps its signature** and changes only what it produces (see *Changed*). No public item was removed.
+
 ### Security
 
 - **Every string stikk did not write is now rendered so that what you read is what prikk reported.**
-  Until this release only Patch detail's *content* was (0.9.0, RFC 035 A3); everything else —
-  **paths, ref and branch names, key ids, patch messages, prikk's refusals, notes and version line, in
-  every view and in the one-shot printout** — passed through `inert`, which replaced Unicode category
-  `Cc` with `�` and let the rest through. That let three kinds of character reach the terminal:
+  Until this release only Patch detail's *content* was (0.9.0, RFC 035 A3).
+  **In the TUI** — paths, ref and branch names, key ids, patch messages, prikk's refusals, notes and
+  version line, in every view — the rest passed through `inert`, which replaced Unicode category
+  `Cc` with the replacement character and let everything else through. **In the one-shot printout it
+  was worse: the repository root and prikk's version line were printed with no filtering at all**, so
+  a control character in either reached stdout as itself; only the queued target was filtered.
+  (`heads/main`'s id is a validated hex id, so it was never a carrier.) What `inert` let through was
+  three kinds of character:
   - **bidirectional controls** (`U+202A`–`U+202E`, `U+2066`–`U+2069`, `U+200E`, `U+200F`, `U+061C`),
     which **reorder the displayed text** — the "Trojan Source" class, CVE-2021-42574. A branch name or
     a patch message could make a line read in an order its bytes do not have;
@@ -30,8 +49,12 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   - **Identifiers** — paths, ref and branch names, key ids, prikk's kind words where they tag a row:
     the same, **and two different identifiers never look alike**. An identifier is shown plainly when
     nothing in it needs an escape and its whitespace is unremarkable, which is nearly always;
-    otherwise it is quoted, with every space written as ` `, so that no wrapping can collapse,
-    trim or break it. `"a  b.txt"` is a path prikk itself accepts.
+    otherwise it is quoted, with every space written as `\u0020`, so that no wrapping can
+    collapse, trim or break it. `"a\u0020\u0020b.txt"` is a path prikk itself accepts —
+    prikk's own validator does, and a commit would author it.
+
+  **All four values the printout writes now take the same two rules** as the TUI: the repository
+  root, `heads/main`'s id and the queued target as identifiers, prikk's version line as prose.
 
   **The limit, stated:** this is about what reaches the terminal. A terminal that renders an escape
   sequence stikk never sent is outside stikk's reach, and so is a font that draws two different

@@ -22,6 +22,7 @@ pub mod history;
 pub mod orient;
 pub mod palette;
 pub mod patch;
+pub mod piece;
 pub mod present;
 pub mod queue;
 pub mod refusal_history;
@@ -54,6 +55,7 @@ pub use patch::{
     AS_AT_BLOCK_END, CONTENT_DISPLAY_BYTES, CONTENT_FROM_MINOR, NO_PATH_REPORTED, OperationRow,
     OperationView, PatchDetailView, PatchMessageState, patch_detail, patch_detail_in_block,
 };
+pub use piece::{Piece, flatten};
 pub use present::{
     NextStep, NextTarget, OperationContext, Presentation, RefusalCard, Target, present,
     stale_gloss, stale_headline,

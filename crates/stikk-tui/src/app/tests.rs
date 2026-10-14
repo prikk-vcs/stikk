@@ -2207,7 +2207,7 @@ fn opening_a_patch_from_block_detail_spawns_nothing() {
             assert!(!raw, "the rendered view first");
             assert_eq!(view.heading[1], "patch two", "joined by id");
             assert_eq!(
-                view.operations[0].title,
+                stikk_core::flatten(&view.operations[0].title),
                 format!("edit-text z.txt — {}", stikk_core::AS_AT_BLOCK_END),
                 "two patches in the block, so the path is labelled"
             );

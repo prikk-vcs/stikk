@@ -26,7 +26,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use stikk_core::BlockDetailView;
 
-use crate::text::{identifier, inert};
+use crate::text::{compose, identifier, inert};
 use crate::theme::Palette;
 
 /// Render the Block-detail view for `detail` into `area`, with `cursor` selecting one of the block's
@@ -177,12 +177,10 @@ pub fn render(
                 };
                 lines.push(Line::from(vec![
                     Span::styled(format!("    {marker}"), Style::default()),
-                    // Core composes this: a short hex id, the patch's message and stikk's own
-                    // count. A sentence holding both kinds, so it takes **prose** — the rule that
-                    // cannot drop a character (RFC 036 decision 4). The id is hex and the message
-                    // is prose in its own right, so nothing is lost by it; the patch id in full is
-                    // an identifier on the row above, and in Patch detail's heading.
-                    Span::styled(inert(&row.summary()), style),
+                    // Core returns this as pieces (RFC 036 review v1 §2.3): the short id is a
+                    // name, the message is prose, the count is stikk's. `compose` renders each
+                    // under its own rule.
+                    Span::styled(compose(&row.summary()), style),
                 ]));
             }
         }

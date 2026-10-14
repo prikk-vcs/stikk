@@ -14,7 +14,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use stikk_core::HistoryView;
 use stikk_prikk::BlockRow;
 
-use crate::text::{identifier, inert};
+use crate::text::{compose, identifier};
 use crate::theme::Palette;
 
 /// Render the History view for `view`, with `cursor` marking the selected block, into `area`.
@@ -28,7 +28,7 @@ pub fn render(view: &HistoryView, cursor: usize, palette: &Palette, frame: &mut 
     if let Some(tier) = view.queued_tier() {
         lines.push(Line::from(vec![
             Span::styled("  queued   ", Style::default().fg(palette.dim)),
-            Span::styled(inert(&tier), Style::default().fg(palette.warn)),
+            Span::styled(compose(&tier), Style::default().fg(palette.warn)),
         ]));
     }
     lines.push(Line::from(Span::styled(

@@ -1,6 +1,6 @@
 //! Tests for the Changes view (design TS-01; RFC 008).
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -995,5 +995,28 @@ fn the_measured_hostile_filenames_each_render_distinctly() {
         for right in rendered.iter().skip(at + 1) {
             assert_ne!(left, right, "two different filenames render alike");
         }
+    }
+}
+
+/// **RFC 036 review v1 §2.3: a declared rename's annotation names the other half as an identifier.**
+/// Core returns it as pieces, so a double space in the other path survives inside the sentence.
+#[test]
+fn a_rename_annotations_other_path_is_an_identifier() {
+    for (what, other, expected) in [
+        ("a double space", "b  new.txt", "\"b\\u0020\\u0020new.txt\""),
+        ("a bidi override", "ev\u{202e}il.txt", "\"ev\\u202eil.txt\""),
+    ] {
+        let mut view = one_entry_view("a.txt", "tracked file is absent from the worktree");
+        view.entries[0].kind = ChangeKind::Missing;
+        view.entries[0].rename = Some(stikk_core::RenameHalf::Source {
+            new_path: other.to_string(),
+        });
+        let screen = draw_80(&view, false);
+        println!("--- RFC 036 §2.3: a rename annotation with {what}\n{screen}");
+        assert!(
+            on_a_row(&screen, expected),
+            "{what}: the other half's path is an identifier:\n{screen}"
+        );
+        assert!(!screen.contains('\u{202e}'), "{what}:\n{screen}");
     }
 }

@@ -11,6 +11,7 @@ use stikk_model::Result;
 use stikk_prikk::{BlockRow, Prikk, RefEntry, ShowReport, ShownPatch, StateFiles};
 
 use crate::patch::{CONTENT_FROM_MINOR, PatchMessageState};
+use crate::piece::Piece;
 
 /// A ref's history for the History view (design FR-010/011).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,19 +35,23 @@ impl HistoryView {
     /// count on any ref's lineage (RFC 028 F5), which is true of the WAL and wrong about the ref it sat on.
     /// The target is repository text, so the frontend renders the line through `inert` (`C-T2a`).
     #[must_use]
-    pub fn queued_tier(&self) -> Option<String> {
+    pub fn queued_tier(&self) -> Option<Vec<Piece>> {
         let n = self.queued;
         match self.queued_target.as_deref() {
             _ if n == 0 => None,
-            Some(target) if target == self.reff => Some(format!(
-                "{n} patch(es) in the active WAL — not yet sealed · Q: Queue"
-            )),
-            Some(target) => Some(format!(
-                "the active WAL holds {n} patch(es) for {target} — not this ref's history · Q: Queue"
-            )),
-            None => Some(format!(
-                "the active WAL holds {n} patch(es); prikk reports no target ref · Q: Queue"
-            )),
+            Some(target) if target == self.reff => Some(vec![Piece::said(format!(
+                "{n} patch(es) in the active WAL \u{2014} not yet sealed \u{b7} Q: Queue"
+            ))]),
+            // **The target is a name the repository chose** (RFC 036 review v1 §2.3), so it comes
+            // back as its own piece and the frontend renders it under the identifier rule.
+            Some(target) => Some(vec![
+                Piece::said(format!("the active WAL holds {n} patch(es) for ")),
+                Piece::name(target.to_string()),
+                Piece::said(" \u{2014} not this ref's history \u{b7} Q: Queue"),
+            ]),
+            None => Some(vec![Piece::said(format!(
+                "the active WAL holds {n} patch(es); prikk reports no target ref \u{b7} Q: Queue"
+            ))]),
         }
     }
 }
@@ -132,9 +137,11 @@ pub struct BlockPatchRow {
 }
 
 impl BlockPatchRow {
-    /// The row's one line: the short patch id, the message, and the operation count.
+    /// The row's one line, **as pieces** (RFC 036 review v1 §2.3): the short patch id, the message,
+    /// and the operation count. The id is a name the repository chose, so the frontend renders it
+    /// under its identifier rule; the message is prose, and the rest is stikk's.
     #[must_use]
-    pub fn summary(&self) -> String {
+    pub fn summary(&self) -> Vec<Piece> {
         let short: String = self
             .patch
             .patch_id
@@ -142,17 +149,31 @@ impl BlockPatchRow {
             .take(crate::SHORT_ID_CHARS)
             .collect();
         let count = self.patch.operations.len();
+        let tail = format!("  \u{b7}  {count} operation(s)");
         match &self.message {
             PatchMessageState::Text(text) => {
                 let mut lines = text.lines();
-                let first = lines.next().unwrap_or_default();
-                let ellipsis = if lines.next().is_some() { "…" } else { "" };
-                format!("{short}  {first}{ellipsis}  ·  {count} operation(s)")
+                let first = lines.next().unwrap_or_default().to_string();
+                let ellipsis = if lines.next().is_some() {
+                    "\u{2026}"
+                } else {
+                    ""
+                };
+                vec![
+                    Piece::name(short),
+                    Piece::said("  "),
+                    Piece::said(format!("{first}{ellipsis}")),
+                    Piece::said(tail),
+                ]
             }
-            PatchMessageState::Absent => format!("{short}  (no message)  ·  {count} operation(s)"),
-            PatchMessageState::NotReported => {
-                format!("{short}  (no message reported)  ·  {count} operation(s)")
-            }
+            PatchMessageState::Absent => vec![
+                Piece::name(short),
+                Piece::said(format!("  (no message){tail}")),
+            ],
+            PatchMessageState::NotReported => vec![
+                Piece::name(short),
+                Piece::said(format!("  (no message reported){tail}")),
+            ],
         }
     }
 }

@@ -18,12 +18,17 @@ const NODE: &str = "ab011b1bb05d2b0a527fe45c4fc20eba9604233dea617c1551031cf2fc01
 
 /// One operation's rendered rows as plain text, for the assertions that are about the words rather
 /// than about which rows are content. The ones that *are* about that compare `OperationRow` itself.
-fn texts(view: &PatchDetailView, at: usize) -> Vec<&str> {
-    view.operations[at]
-        .rows
-        .iter()
-        .map(OperationRow::text)
-        .collect()
+fn texts(view: &PatchDetailView, at: usize) -> Vec<String> {
+    view.operations[at].rows.iter().map(row_text).collect()
+}
+
+/// One row's text, whichever kind it is — a `Named` row flattened, which is what a test about the
+/// words wants and what a renderer must never do.
+fn row_text(row: &OperationRow) -> String {
+    match row {
+        OperationRow::Named(pieces) => crate::flatten(pieces),
+        other => other.text().unwrap_or_default().to_string(),
+    }
 }
 
 fn operation(kind: &str, paths: Vec<QueuedPath>, content: OperationContent) -> PatchOperation {
@@ -130,7 +135,11 @@ fn every_kind_is_rendered_from_prikks_own_fields() {
             "every kind".to_string()
         ]
     );
-    let titles: Vec<&str> = view.operations.iter().map(|o| o.title.as_str()).collect();
+    let titles: Vec<String> = view
+        .operations
+        .iter()
+        .map(|o| crate::flatten(&o.title))
+        .collect();
     assert_eq!(
         titles,
         [
@@ -226,7 +235,7 @@ fn the_block_end_label_follows_the_blocks_patch_count_and_the_kind() {
         alone
             .operations
             .iter()
-            .all(|o| !o.title.contains(AS_AT_BLOCK_END)),
+            .all(|o| !crate::flatten(&o.title).contains(AS_AT_BLOCK_END)),
         "{:?}",
         alone.operations
     );
@@ -235,22 +244,26 @@ fn the_block_end_label_follows_the_blocks_patch_count_and_the_kind() {
     // their own paths in the payload (F0), so there is nothing resolved and nothing to label.
     let in_two = patch_detail_in_block(&sealed, BLOCK, &PatchMessageState::NotReported, 2);
     assert_eq!(
-        in_two.operations[0].title,
+        crate::flatten(&in_two.operations[0].title),
         format!("edit-text z.txt — {AS_AT_BLOCK_END}")
     );
     assert_eq!(
-        in_two.operations[1].title,
+        crate::flatten(&in_two.operations[1].title),
         format!("change-perm m.sh — {AS_AT_BLOCK_END}")
     );
     assert_eq!(
-        in_two.operations[2].title, "rename-path a.txt → z.txt",
+        crate::flatten(&in_two.operations[2].title),
+        "rename-path a.txt → z.txt",
         "a rename names its own two paths, unlabelled"
     );
 
     // A queued patch is never labelled: it has no block (F2).
     let queued = patch(PATCH_A, true, vec![edit(path("a.txt"), "", "more\n")]);
     let queued = patch_detail_in_block(&queued, BLOCK, &PatchMessageState::Absent, 2);
-    assert_eq!(queued.operations[0].title, "edit-text a.txt");
+    assert_eq!(
+        crate::flatten(&queued.operations[0].title),
+        "edit-text a.txt"
+    );
     assert_eq!(queued.heading[0], "queued", "and it names no block");
 }
 
@@ -272,7 +285,11 @@ fn an_unresolved_path_gets_one_sentence_and_no_reason() {
         &PatchMessageState::Text("edit d".into()),
         2,
     );
-    assert_eq!(view.operations[0].title, "edit-text", "no path to name");
+    assert_eq!(
+        crate::flatten(&view.operations[0].title),
+        "edit-text",
+        "no path to name"
+    );
     assert_eq!(
         texts(&view, 0),
         [
@@ -343,7 +360,10 @@ fn an_operation_kind_stikk_does_not_render_still_appears() {
         &PatchMessageState::NotReported,
         1,
     );
-    assert_eq!(view.operations[0].title, "rewrite-span a.txt");
+    assert_eq!(
+        crate::flatten(&view.operations[0].title),
+        "rewrite-span a.txt"
+    );
     assert_eq!(
         texts(&view, 0),
         ["stikk does not render this operation kind — v shows prikk's own fields"]
@@ -378,7 +398,7 @@ fn content_is_bounded_and_the_cut_is_said_out_loud() {
         .operations[0]
             .rows
             .iter()
-            .map(|row| row.text().to_string())
+            .map(row_text)
             .collect::<Vec<_>>()
     };
 
@@ -439,7 +459,7 @@ fn two_spans_that_differ_in_any_byte_never_render_identically() {
         .operations[0]
             .rows
             .iter()
-            .map(|row| row.text().to_string())
+            .map(row_text)
             .collect()
     };
     let cases: [(&str, &str, &str); 6] = [
@@ -501,6 +521,7 @@ fn an_invisible_character_never_renders_as_its_visible_look_alike() {
         .operations[0]
             .rows[1]
             .text()
+            .unwrap_or_default()
             .to_string()
     };
     let cases: [(&str, &str, &str); 6] = [
@@ -543,11 +564,7 @@ fn a_bidi_override_in_a_span_renders_in_byte_order() {
         &PatchMessageState::NotReported,
         1,
     );
-    let rendered: Vec<String> = detail.operations[0]
-        .rows
-        .iter()
-        .map(|row| row.text().to_string())
-        .collect();
+    let rendered: Vec<String> = detail.operations[0].rows.iter().map(row_text).collect();
     assert!(
         rendered
             .iter()
@@ -797,7 +814,10 @@ fn a_re_read_of_a_sealed_patch_loses_the_path_it_used_to_name() {
     )
     .expect("reads");
     assert_eq!(before.heading[0], "queued");
-    assert_eq!(before.operations[0].title, "edit-text a.txt");
+    assert_eq!(
+        crate::flatten(&before.operations[0].title),
+        "edit-text a.txt"
+    );
 
     let after = patch_detail(
         &NullBackend::supported()
@@ -812,13 +832,13 @@ fn a_re_read_of_a_sealed_patch_loses_the_path_it_used_to_name() {
         after.heading[0], "sealed",
         "prikk's own word, not stikk's memory"
     );
-    assert_eq!(after.operations[0].title, "edit-text");
+    assert_eq!(crate::flatten(&after.operations[0].title), "edit-text");
     assert_eq!(texts(&after, 0)[0], NO_PATH_REPORTED);
     assert!(
         !after.operations[0]
             .rows
             .iter()
-            .any(|row| row.text().contains("a.txt")),
+            .any(|row| row_text(row).contains("a.txt")),
         "nothing is carried over from the read before it: {:?}",
         after.operations[0].rows
     );

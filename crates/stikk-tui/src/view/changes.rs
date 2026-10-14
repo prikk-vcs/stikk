@@ -31,7 +31,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use stikk_core::{Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewhere, RefHistory};
 
-use crate::text::{identifier, inert, wrap_indented, wrap_verbatim};
+use crate::text::{compose, identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
 
 /// The columns an entry row spends before its path: two of margin, an 11-column kind tag, one space.
@@ -338,7 +338,8 @@ fn entry_lines(entry: &ChangeEntry, palette: &Palette, text_width: usize) -> Vec
     // on the same row when it fits, otherwise wrapped under the path rather than clipped (RFC 024).
     let mut annotation_rows = Vec::new();
     if let Some(half) = &entry.rename {
-        let annotation = inert(&half.annotation()).to_string();
+        // The other half's path comes back as its own piece (RFC 036 review v1 §2.3).
+        let annotation = compose(&half.annotation());
         let style = Style::default().fg(palette.accent);
         if row.width() + 1 + annotation.chars().count() <= text_width {
             row.spans

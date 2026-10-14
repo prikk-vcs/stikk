@@ -510,17 +510,21 @@ fn the_analysis_is_equal_for_equal_reports() {
 #[test]
 fn every_rename_sentence_is_byte_exact() {
     assert_eq!(
-        RenameHalf::Source {
-            new_path: "b.txt".into()
-        }
-        .annotation(),
+        crate::flatten(
+            &RenameHalf::Source {
+                new_path: "b.txt".into()
+            }
+            .annotation()
+        ),
         "· declared rename → b.txt"
     );
     assert_eq!(
-        RenameHalf::Destination {
-            old_path: "a.txt".into()
-        }
-        .annotation(),
+        crate::flatten(
+            &RenameHalf::Destination {
+                old_path: "a.txt".into()
+            }
+            .annotation()
+        ),
         "· declared rename ← a.txt"
     );
     assert_eq!(

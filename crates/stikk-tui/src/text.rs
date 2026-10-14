@@ -55,8 +55,8 @@ pub fn inert(input: &str) -> String {
 /// case costs nothing visually.
 ///
 /// **Otherwise quoted**: `"`, the value escaped as it would be inside JSON (so `"` and `\` are
-/// escaped too), **with every whitespace character written as an escape** — a space as ` ` —
-/// then `"`. The quoted form therefore contains **no whitespace at all**, which is what makes it
+/// escaped too), **with every whitespace character written as an escape** — a tab as `\t`, a
+/// space as `\u0020` — then `"`. The quoted form therefore contains **no whitespace at all**, which is what makes it
 /// survive [`wrap_indented`]: there is nothing inside it for `split_whitespace` to collapse, trim or
 /// break on. A quoted identifier longer than a row is hard-split by the wrapper and loses nothing.
 ///
@@ -113,6 +113,23 @@ fn is_plain(value: &str) -> bool {
         }
     }
     !previous_was_whitespace
+}
+
+/// **Render a sentence core returned as pieces** (RFC 036 review v1 §2.3): each [`stikk_core::Piece::Said`]
+/// under the prose rule, each [`stikk_core::Piece::Name`] under the identifier rule, joined in order.
+///
+/// This is the one place the two rules meet. Core decides every word and which pieces are names;
+/// this decides how a name looks on a terminal, which is the frontend's to decide and a GUI's to
+/// decide differently.
+#[must_use]
+pub fn compose(pieces: &[stikk_core::Piece]) -> String {
+    pieces
+        .iter()
+        .map(|piece| match piece {
+            stikk_core::Piece::Said(text) => inert(text),
+            stikk_core::Piece::Name(value) => identifier(value),
+        })
+        .collect()
 }
 
 /// Word-wrap `text` to `width` columns, prefixing every produced line with `indent`.

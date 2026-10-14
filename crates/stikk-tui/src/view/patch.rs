@@ -30,7 +30,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use stikk_core::{OperationRow, PatchDetailView};
 
-use crate::text::{identifier, inert, wrap_indented, wrap_verbatim};
+use crate::text::{compose, identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
 
 /// Indents, by level: the patch id and foot, the heading rows, an operation's title, and its rows.
@@ -118,6 +118,20 @@ fn patch_lines<'a>(
         }
     }
 
+    /// A sentence core returned as pieces, each rendered under its own rule and then wrapped as
+    /// prose — a quoted name holds no whitespace, so the wrap cannot reach inside it.
+    fn push_composed<'a>(
+        lines: &mut Vec<Line<'a>>,
+        width: usize,
+        pieces: &[stikk_core::Piece],
+        indent: &str,
+        style: Style,
+    ) {
+        for row in wrap_indented(&compose(pieces), width, indent) {
+            lines.push(Line::from(Span::styled(row, style)));
+        }
+    }
+
     /// The patch id, the one bare identifier this view renders. Hex, so always plain.
     fn push_identifier<'a>(
         lines: &mut Vec<Line<'a>>,
@@ -151,7 +165,9 @@ fn patch_lines<'a>(
     }
     for operation in &view.operations {
         push(&mut lines, width, "", TOP, Style::default());
-        push(
+        // The title comes back as pieces: prikk's kind word and each path are names, and the
+        // arrows and the block-end label are stikk's words (RFC 036 review v1 §2.3).
+        push_composed(
             &mut lines,
             width,
             &operation.title,
@@ -180,6 +196,16 @@ fn patch_lines<'a>(
                     // Byte-faithful: quoted by core, hard-split here, nothing collapsed.
                     OperationRow::Content(text) => {
                         push_verbatim(&mut lines, width, text, Style::default().fg(palette.fg));
+                    }
+                    // A path, or prikk's node id, beside stikk's words.
+                    OperationRow::Named(pieces) => {
+                        push_composed(
+                            &mut lines,
+                            width,
+                            pieces,
+                            DETAIL,
+                            Style::default().fg(palette.fg),
+                        );
                     }
                 }
             }

@@ -40,6 +40,7 @@
 
 use std::path::Path;
 
+use crate::piece::Piece;
 use stikk_model::Result;
 use stikk_prikk::{
     BinaryBlob, FileContent, OperationContent, PatchOperation, Prikk, QueuedMessage, QueuedPath,
@@ -105,14 +106,21 @@ pub enum OperationRow {
     /// **Repository content**, already quoted and escaped, one row per source line, the line's own
     /// terminator inside the quotes. Rendered verbatim: never re-wrapped on whitespace, never trimmed.
     Content(String),
+    /// **A row that mixes stikk's words with a name the repository chose** (RFC 036 review v1 §2.3)
+    /// — a path, or prikk's node id. The frontend renders each [`Piece`] under its own rule and
+    /// joins them; it wraps like prose once composed.
+    Named(Vec<Piece>),
 }
 
 impl OperationRow {
-    /// The row's text, whichever kind it is.
+    /// The row's text where it is one string. **`None` for a [`Self::Named`] row**, whose pieces
+    /// must be rendered separately — a caller that flattens one has lost the distinction the row
+    /// exists to carry.
     #[must_use]
-    pub fn text(&self) -> &str {
+    pub fn text(&self) -> Option<&str> {
         match self {
-            Self::Said(text) | Self::Content(text) => text,
+            Self::Said(text) | Self::Content(text) => Some(text),
+            Self::Named(_) => None,
         }
     }
 
@@ -127,8 +135,10 @@ impl OperationRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperationView {
     /// The row naming the operation: **prikk's kind word, verbatim**, and its path where prikk gives
-    /// one — with decision 3a's label where it applies.
-    pub title: String,
+    /// one — with decision 3a's label where it applies. **As pieces, not as one string** (RFC 036
+    /// review v1 §2.3): the kind word and each path are names the repository chose, and the
+    /// frontend renders them under its identifier rule.
+    pub title: Vec<Piece>,
     /// stikk's rendering of what the operation did, as rows: spans, content, modes, blobs, the key
     /// that asserted a rename, or the one sentence for a path prikk did not resolve.
     pub rows: Vec<OperationRow>,
@@ -298,21 +308,37 @@ fn node_addressed(kind: &str) -> bool {
 fn operation_view(operation: &PatchOperation, label_paths: bool) -> OperationView {
     let labelled = label_paths && node_addressed(&operation.kind);
     let mut rows = Vec::new();
+    // **The title and any path-bearing row come back as pieces, not as one string** (RFC 036 review
+    // v1 §2.3): a path is a name the repository chose, and only the frontend knows how to render one
+    // so that two different paths cannot look alike. The words are still core's.
+    let kind = || Piece::name(operation.kind.clone());
     let title = match operation.paths.as_slice() {
         // A rename names both of its own paths, in the title, as the Queue view does.
         [QueuedPath::Path(from), QueuedPath::Path(to)] if operation.kind == "rename-path" => {
-            format!("{} {from} → {to}", operation.kind)
+            vec![
+                kind(),
+                Piece::said(" "),
+                Piece::name(from.clone()),
+                Piece::said(" → "),
+                Piece::name(to.clone()),
+            ]
         }
-        [QueuedPath::Path(path)] if labelled => {
-            format!("{} {path} — {AS_AT_BLOCK_END}", operation.kind)
-        }
-        [QueuedPath::Path(path)] => format!("{} {path}", operation.kind),
+        [QueuedPath::Path(path)] if labelled => vec![
+            kind(),
+            Piece::said(" "),
+            Piece::name(path.clone()),
+            Piece::said(format!(" — {AS_AT_BLOCK_END}")),
+        ],
+        [QueuedPath::Path(path)] => vec![kind(), Piece::said(" "), Piece::name(path.clone())],
         // One sentence, no reason (decision 3), and prikk's node id beside it — which the raw view
         // shows too, and is the only honest thing stikk has to name the node by (F6).
         [QueuedPath::UnresolvedNode(node)] => {
             rows.push(OperationRow::Said(NO_PATH_REPORTED.to_string()));
-            rows.push(OperationRow::Said(format!("node {node}")));
-            operation.kind.clone()
+            rows.push(OperationRow::Named(vec![
+                Piece::said("node "),
+                Piece::name(node.clone()),
+            ]));
+            vec![kind()]
         }
         // Any other shape — several paths, a mix, none at all — is listed rather than reshaped, with
         // each unresolved element carrying the same sentence.
@@ -320,16 +346,24 @@ fn operation_view(operation: &PatchOperation, label_paths: bool) -> OperationVie
             for path in paths {
                 match path {
                     QueuedPath::Path(path) if labelled => {
-                        rows.push(OperationRow::Said(format!("{path} — {AS_AT_BLOCK_END}")));
+                        rows.push(OperationRow::Named(vec![
+                            Piece::name(path.clone()),
+                            Piece::said(format!(" — {AS_AT_BLOCK_END}")),
+                        ]));
                     }
-                    QueuedPath::Path(path) => rows.push(OperationRow::Said(path.clone())),
+                    QueuedPath::Path(path) => {
+                        rows.push(OperationRow::Named(vec![Piece::name(path.clone())]));
+                    }
                     QueuedPath::UnresolvedNode(node) => {
                         rows.push(OperationRow::Said(NO_PATH_REPORTED.to_string()));
-                        rows.push(OperationRow::Said(format!("node {node}")));
+                        rows.push(OperationRow::Named(vec![
+                            Piece::said("node "),
+                            Piece::name(node.clone()),
+                        ]));
                     }
                 }
             }
-            operation.kind.clone()
+            vec![kind()]
         }
     };
     rows.extend(content_rows(&operation.content));

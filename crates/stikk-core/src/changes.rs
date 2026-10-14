@@ -20,6 +20,7 @@
 
 use std::path::Path;
 
+use crate::piece::Piece;
 use stikk_model::{Result, StikkError};
 use stikk_prikk::{Handshake, Orientation, Prikk, WorktreeStatus};
 
@@ -117,10 +118,19 @@ impl RenameHalf {
     /// stikk's annotation, rendered after prikk's note (RFC 032 handoff §5). Carries repository text:
     /// render it inert.
     #[must_use]
-    pub fn annotation(&self) -> String {
+    pub fn annotation(&self) -> Vec<Piece> {
+        // **The other half's path is a name the repository chose** (RFC 036 review v1 §2.3): it
+        // comes back as its own piece, so the frontend can render it under the identifier rule
+        // rather than letting a double space in it collapse inside a sentence.
         match self {
-            Self::Source { new_path } => format!("· declared rename → {new_path}"),
-            Self::Destination { old_path } => format!("· declared rename ← {old_path}"),
+            Self::Source { new_path } => vec![
+                Piece::said("\u{b7} declared rename \u{2192} "),
+                Piece::name(new_path.clone()),
+            ],
+            Self::Destination { old_path } => vec![
+                Piece::said("\u{b7} declared rename \u{2190} "),
+                Piece::name(old_path.clone()),
+            ],
         }
     }
 

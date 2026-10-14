@@ -172,9 +172,9 @@ pub fn escape_invisible_into(out: &mut String, text: &str) {
 /// Write `ch` as `\uXXXX`, **as a surrogate pair above `U+FFFF`**, which is how JSON spells an astral
 /// character.
 ///
-/// `\u{:04x}` alone is not injective up there: `U+E0001` would print `1`, which also reads as
-/// `U+E000` followed by `1`. Writing `󠀁` instead keeps the escape unambiguous *and* keeps
-/// the raw view's output parseable as the JSON it claims to be.
+/// `\u{:04x}` alone is not injective up there: `U+E0001` would print `\ue0001`, which also reads
+/// as `U+E000` followed by `1`. Writing `\udb40\udc01` instead keeps the escape unambiguous
+/// *and* keeps the raw view's output parseable as the JSON it claims to be.
 fn push_unicode_escape(out: &mut String, ch: char) {
     let code = u32::from(ch);
     match code.checked_sub(0x1_0000) {

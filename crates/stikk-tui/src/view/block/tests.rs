@@ -350,3 +350,31 @@ fn a_failed_patches_read_leaves_the_rest_of_the_block_on_screen() {
     assert!(text.contains("no object bbbb"), "prikk's own words: {text}");
     assert!(!text.contains('▸'), "nothing to select: {text}");
 }
+
+/// **RFC 036 review v1 §2.3: `BlockPatchRow::summary()`'s short id is an identifier.** Hex, so it
+/// is always plain — the point is that it goes through the rule that owns it, so a change to what
+/// prikk puts in a patch id cannot sneak past.
+#[test]
+fn a_patch_summarys_id_is_rendered_as_an_identifier() {
+    let detail = BlockDetailView {
+        row: row(),
+        is_tip: false,
+        state: None,
+        patches: BlockPatches::Listed(vec![stikk_core::BlockPatchRow {
+            patch: shown(PATCH_ONE, 1),
+            message: stikk_core::PatchMessageState::Text("a  message".to_string()),
+        }]),
+    };
+    let text = draw_at(&detail, 0, 90);
+    println!("--- RFC 036 §2.3: a block's patch summary\n{text}");
+    let short = &PATCH_ONE[..stikk_core::SHORT_ID_CHARS];
+    assert!(
+        text.lines().any(|r| r.contains(short)),
+        "the short id is plain, as hex always is: {text}"
+    );
+    assert!(
+        text.lines()
+            .any(|r| r.contains("a  message") || r.contains("a message")),
+        "and the message is prose beside it: {text}"
+    );
+}

@@ -67,7 +67,15 @@ esac
 os="$(uname -s)"
 arch="$(uname -m)"
 case "$os/$arch" in
-  Linux/x86_64)          target="x86_64-unknown-linux-gnu" ;;
+  # **The static musl build on x86_64 Linux, not the glibc one.** Measured: the musl archive is
+  # static-pie with no interpreter and runs in an empty chroot with no libc at all, while the glibc
+  # build there fails with "No such file or directory" -- which names the missing *loader*, not the
+  # file, and is the one error the person this installer is for cannot diagnose. The glibc build
+  # also refuses to start on Alpine, or against a glibc older than the one it was built on. Both
+  # builds produce identical output on an ordinary glibc system (checked, including a real
+  # orientation). The manual table in the README still offers both.
+  Linux/x86_64)          target="x86_64-unknown-linux-musl" ;;
+  # aarch64 has no musl build published, so it stays glibc.
   Linux/aarch64|Linux/arm64) target="aarch64-unknown-linux-gnu" ;;
   Darwin/arm64)          target="aarch64-apple-darwin" ;;
   Darwin/x86_64)         target="x86_64-apple-darwin" ;;
@@ -179,12 +187,16 @@ else
   case "$os/$arch" in
     Linux/x86_64|Linux/aarch64|Linux/arm64|Darwin/arm64)
       if [ "$want_prikk" = "ask" ]; then
-        if [ -t 0 ]; then
+        # **Ask through the controlling terminal, not through standard input.** Under the command
+        # the README gives -- `curl ... | sh` -- stdin is the pipe, so `[ -t 0 ]` is false even
+        # though the person is sitting at a terminal, and they would never be offered prikk at all.
+        # What decides it is whether /dev/tty can be opened; in CI it cannot, and the answer is no.
+        if (exec 3</dev/tty) 2>/dev/null; then
           printf 'stikk-install: install prikk %s now, with prikk own installer? [Y/n] ' "$PRIKK_PINNED_VERSION"
           read -r answer </dev/tty || answer=""
           case "$answer" in [Nn]*) want_prikk="no" ;; *) want_prikk="yes" ;; esac
         else
-          # Piped from curl, so there is nobody to ask. Never block.
+          # No controlling terminal -- CI, or a detached run. Never block.
           want_prikk="no"
           say "no terminal to ask on, so prikk was not installed. Re-run with --with-prikk to install it."
         fi

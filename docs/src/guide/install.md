@@ -30,7 +30,9 @@ To remove stikk later:
 curl -fsSL https://github.com/prikk-vcs/stikk/releases/latest/download/uninstall.sh | sh
 ```
 
-It removes stikk and the `PATH` entry it added, and nothing else. It never removes prikk.
+It removes stikk and the `PATH` entry it added, and nothing else. **It never removes prikk** — and
+if the installer brought prikk in, prikk added its own `PATH` entry, which is prikk's to remove
+(`curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/uninstall.sh | sh`).
 
 The script is one file and is meant to be read before it is run — open the URL in a browser first
 if you would rather see it. The rest of this section is the same thing by hand.

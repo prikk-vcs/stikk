@@ -80,9 +80,15 @@ jobs:
           export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
           printf '# test shell config\n' > "$HOME/.zshrc"
           cp "$HOME/.zshrc" "$RUNNER_TEMP/zshrc.before"
-          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" --no-prikk
+          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" --no-prikk | tee "$RUNNER_TEMP/install.log"
           "$RUNNER_TEMP/bin/stikk" --version
           "$RUNNER_TEMP/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+          # On x86_64 Linux it must take the **static musl** build, not the glibc one: the glibc
+          # build cannot start on Alpine or against an older glibc (review v1 §2.2).
+          if [ "$RUNNER_OS" = Linux ] && [ "$(uname -m)" = x86_64 ]; then
+            grep -q 'x86_64-unknown-linux-musl' "$RUNNER_TEMP/install.log"
+            file "$RUNNER_TEMP/bin/stikk" | grep -q 'static-pie'
+          fi
 
       - name: Re-running is safe
         run: |
@@ -128,6 +134,61 @@ jobs:
           sh filled/install.sh --prefix "$RUNNER_TEMP/both" --with-prikk
           "$RUNNER_TEMP/both/prikk" --version | grep -qx "prikk ${PRIKK_VER}"
           "$RUNNER_TEMP/both/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+
+      # The command the README actually gives: the script arrives on a pipe while the person is at
+      # a terminal. `[ -t 0 ]` is false there, which is why the question is asked through
+      # /dev/tty -- and why this leg drives a real pty rather than a pipe (review v1 §2.1).
+      - name: curl | sh at a terminal asks about prikk, and takes both answers
+        run: |
+          set -euo pipefail
+          for answer in y n; do
+            home="$RUNNER_TEMP/tty-$answer"; mkdir -p "$home"
+            out="$RUNNER_TEMP/tty-$answer.log"
+            python3 - "$answer" filled/install.sh "$home/.local/bin" "$home" > "$out" <<'PYEOF'
+          import os, pty, select, subprocess, sys, fcntl, termios, time
+          answer, script, prefix, home = sys.argv[1:5]
+          master, slave = pty.openpty()
+          def setup():
+              os.setsid(); fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+          proc = subprocess.Popen(["sh", "-s", "--", "--prefix", prefix],
+              stdin=subprocess.PIPE, stdout=slave, stderr=slave, preexec_fn=setup, close_fds=True,
+              env={**os.environ, "HOME": home, "PATH": prefix + ":/usr/bin:/bin"})
+          os.close(slave)
+          proc.stdin.write(open(script, "rb").read()); proc.stdin.close()
+          out, asked, deadline = b"", False, time.time() + 300
+          while time.time() < deadline:
+              r, _, _ = select.select([master], [], [], 0.5)
+              if r:
+                  try: chunk = os.read(master, 4096)
+                  except OSError: break
+                  if not chunk: break
+                  out += chunk
+                  if not asked and b"[Y/n]" in out:
+                      os.write(master, answer.encode() + b"\n"); asked = True
+              elif proc.poll() is not None: break
+          proc.wait(timeout=60)
+          sys.stdout.write(out.decode(errors="replace").replace("\r\n", "\n"))
+          sys.exit(0 if (asked and proc.returncode == 0) else 1)
+          PYEOF
+            cat "$out"
+            grep -q 'install prikk .* \[Y/n\]' "$out" || { echo "::error::it never asked ($answer)"; exit 1; }
+            "$home/.local/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+            if [ "$answer" = y ]; then
+              "$home/.local/bin/prikk" --version | grep -qx "prikk ${PRIKK_VER}"
+            else
+              test ! -e "$home/.local/bin/prikk"
+            fi
+          done
+
+      - name: With no controlling terminal it does not block
+        run: |
+          set -euo pipefail
+          home="$RUNNER_TEMP/notty"; mkdir -p "$home"
+          setsid env HOME="$home" PATH="$home/.local/bin:/usr/bin:/bin" \
+            sh -c "cat filled/install.sh | sh -s -- --prefix '$home/.local/bin'" < /dev/null \
+            > "$RUNNER_TEMP/notty.log" 2>&1
+          grep -q 'no terminal to ask on' "$RUNNER_TEMP/notty.log"
+          test ! -e "$home/.local/bin/prikk"
 
   windows:
     name: install.ps1 (windows-latest)

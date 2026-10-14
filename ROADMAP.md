@@ -300,18 +300,24 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — carried into 0.11.0, in order
+## Next — 0.11.0, scoped 2026-10-14 (authorized, amended the same day), in delivery order
 
-1. **The prikk 0.52.0 re-baseline — unconditional now; it waits only on prikk publishing.** prikk 0.52.0 was
-   unpublished at the 0.10.0 cut (crates.io's latest: 0.51.0; prikk's `main` in 0.52's step 2). When it publishes,
-   validate it, and Patch detail's *as at the end of this block* label goes or is banded below 0.52 (RFC 035 A2).
-2. **History's and Block detail's column-0 wrap.** A 64-hex id row, and the below-0.46 state sentence, wrap to
-   column 0 at 80 columns instead of to their own indent. Cosmetic — nothing is cut — and a small fix. Carried
-   from RFC 037.
-3. **`queued_elsewhere_clauses` still takes rendered text**; move it to `Piece`s when it is next touched. Carried
-   from RFC 036.
-4. **Comparing two different refs.** prikk's `diff` does it, and stikk's seam already expresses it; what is
-   missing is the picker that would choose two refs, which is its own design. Carried from RFC 038.
+**0.11.0: anyone can install stikk in one command, and stikk shows whether a repository is sound.** Scope:
+`.git-exclude/release/0-11-0-scope.md`.
+
+1. **Installation docs** ([RFC 039](rfcs/proposed/039-installation-for-everyone.md) A): the README and guide lead with
+   prebuilt binaries and prikk's installer, not with `cargo build`.
+2. **One-command installers** (RFC 039 B): `install.sh` and `install.ps1`, checksum-verified, with uninstallers; prikk
+   installed too when missing, through prikk's own installer pinned to the validated version; `cargo binstall stikk`.
+   **Package managers** (Homebrew, Scoop, winget) are the owner's decision, after the installers have been used.
+3. **Polish:** History's and Block detail's column-0 wrap (RFC 037's carry); `queued_elsewhere_clauses` to `Piece`s
+   (RFC 036's carry).
+4. **Verify** (`FR-100`, RFC 040): verdict, failing conditions and stages from `verify-report-v1`, on demand.
+   Per-item findings are outside prikk's JSON (prikk's changelog), stated as such; stikk parses no prose. Doctor and
+   locks (`FR-101/102`) stay Later: `doctor` has no JSON.
+5. **Compare two different refs** (RFC 041): a pair mode of the ref picker. The first to move to 0.12.0 if needed.
+6. **Conditional: the prikk 0.52.0 re-baseline**, only if prikk publishes before the cut. The block-end label goes, or
+   is banded below 0.52 (RFC 035 A2).
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

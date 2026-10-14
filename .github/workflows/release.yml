@@ -239,8 +239,12 @@ jobs:
           "ASSET=$dist.zip"          | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
           "ASSET_SHA=$dist.zip.sha256" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
 
+      # v3 moved to node24 (and requires runner >= v2.327.1, far below what GitHub-hosted runners
+      # run); v4 made this action a thin wrapper over `actions/attest`. `subject-path` and the
+      # three permissions this job already grants are unchanged, and so is the attestation itself:
+      # SLSA build provenance, verified the same way.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ env.ASSET }}
 

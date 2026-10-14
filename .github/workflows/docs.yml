@@ -37,13 +37,29 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install mdBook
-        uses: peaceiris/actions-mdbook@v2
-        with:
-          mdbook-version: latest
+      # No third-party action: `peaceiris/actions-mdbook` is node20 and has no node24 release
+      # (its last is v2.0.0, 2024-04-08). The release binary is pinned **by version and by
+      # SHA-256**, which is stronger than the tag pin it replaces: `mdbook-version: latest` let any
+      # mdBook release change this site with no commit in this repository. 0.5.4 is what `latest`
+      # resolved to on 2026-10-14, and it is the version gate 7 runs locally — the two must stay
+      # equal, so bump them together.
+      - name: Install mdBook (pinned, checksum-verified)
+        env:
+          MDBOOK_VERSION: "0.5.4"
+          MDBOOK_SHA256: "3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7"
+        run: |
+          set -euo pipefail
+          archive="mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL -o "$archive" \
+            "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/${archive}"
+          echo "${MDBOOK_SHA256}  ${archive}" | sha256sum --check --strict
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$archive" -C "$HOME/.local/bin" mdbook
+          rm -f "$archive"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Build the book
         run: mdbook build docs
@@ -67,12 +83,21 @@ jobs:
           HTML
 
       - name: Upload the Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+          # v4 stopped including dotfiles. The assembled site has two: mdBook's own `.nojekyll`,
+          # and cargo doc's `.lock`. Neither matters to an artifact deployment — Pages serves the
+          # artifact as-is and never runs Jekyll — but this chore changes no behaviour, so the
+          # artifact stays byte-identical to the one v3 uploaded.
+          include-hidden-files: true
 
   deploy:
     needs: build
+    # **`main` only.** This workflow has `workflow_dispatch`, and without this a dispatch from any
+    # branch would publish that branch's docs to the live site. `build` still runs and uploads, so
+    # a prep branch can be verified end to end without deploying.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -80,4 +105,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

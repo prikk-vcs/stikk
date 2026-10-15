@@ -77,7 +77,7 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// first raise made **to build a view on the new version's report** rather than to absorb drift, and
 /// the order held for the same reason: the suite would not have run `show` at 0.51 at all until this
 /// constant named it.
-const VALIDATED_MAX_MINOR: u32 = 51;
+const VALIDATED_MAX_MINOR: u32 = 52;
 
 /// The first prikk minor whose reports stikk reads as **JSON** (prikk 0.39, where `log`, `branch` and
 /// `tag` gained `--format json`; RFC 026 §6).

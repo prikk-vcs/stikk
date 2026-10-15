@@ -78,10 +78,7 @@ pub fn render(
     } else {
         let first = usize::from(scroll) + 1;
         let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        format!(
-            " Queue — ↑/↓ to scroll · lines {first}–{last} of {} ",
-            lines.len()
-        )
+        format!(" Queue — ↑/↓ · lines {first}–{last} of {} ", lines.len())
     };
 
     let block = Block::default()

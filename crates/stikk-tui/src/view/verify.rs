@@ -53,20 +53,23 @@ pub fn render(
 
     // **"from this run"**, never a time: stikk has no clock policy beyond its own session (RFC
     // 040 decision 4), and a wall-clock time would be a precision it has not earned.
+    // **Every one of these fits 80 columns with the scroll indicator on the end** (RFC 042 review
+    // v1 §2). They used to run past the border, where ratatui cuts them: a reader at 80 columns
+    // saw the view's name and lost the keys. Each word below is stikk's own and was shortened to
+    // pay for the indicator; **no word of prikk's and no name is ever shortened**.
     let mut title = if refreshing {
-        " Verify · re-running — the verdict below is the previous run ".to_string()
+        " Verify · re-running — the previous verdict ".to_string()
     } else if raw {
-        // The body labels the raw block itself, so the title does not repeat it — and at 80
-        // columns a longer one reaches the border exactly, which truncates on anything narrower.
-        " Verify · from this run — v: stikk's rendering · r: re-run ".to_string()
+        // The body labels the raw block itself, so the title does not repeat it.
+        " Verify · this run — v: rendered · r: re-run ".to_string()
     } else {
-        " Verify · from this run — v: prikk's own report · r: re-run ".to_string()
+        " Verify · this run — v: raw · r: re-run ".to_string()
     };
     if max_offset > 0 {
         let first = usize::from(scroll) + 1;
         let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
         title.push_str(&format!(
-            "· \u{2191}/\u{2193} to scroll · lines {first}\u{2013}{last} of {} ",
+            "· \u{2191}/\u{2193} · lines {first}\u{2013}{last} of {} ",
             lines.len()
         ));
     }

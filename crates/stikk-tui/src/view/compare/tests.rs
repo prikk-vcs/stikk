@@ -524,3 +524,39 @@ fn a_block_pairs_heading_is_unchanged() {
     assert!(!text.contains("(selected)"), "{text}");
     assert!(text.contains("older first"), "{text}");
 }
+
+/// **A title must not be cut off at 80 columns** (RFC 042 review v1 §2).
+///
+/// ratatui truncates a title that will not fit the top border, silently -- so a reader at 80
+/// columns sees the view's name and loses the keys at the end of it. The end of a title is the
+/// half a reader needs most: what `v` and `r` do, and where in the content they are. This asserts
+/// those last characters survive, which is the half that goes first.
+fn assert_title_is_whole(screen: &str, tail: &str) {
+    let top = screen.lines().next().unwrap_or_default();
+    assert!(
+        top.contains(tail),
+        "the title is cut off at 80 columns -- {tail:?} is missing from:\n{top}"
+    );
+}
+
+#[test]
+fn the_compare_title_is_whole_at_80_columns_in_both_renderings() {
+    // A comparison tall enough to scroll at 24 rows, so the indicator is present.
+    // Hunks enough to push the content past 24 rows, so the indicator is on the title.
+    let hunks: Vec<String> = (1..=8)
+        .map(|n| format!("@@ -{n} +{n} @@\n-before {n}\n+after {n}\n"))
+        .collect();
+    let refs: Vec<&str> = hunks.iter().map(String::as_str).collect();
+    let view = two_blocks(vec![entry("modified", "src/main.rs", &refs)]);
+    for raw in [false, true] {
+        let text = draw_at(&view, &CompareSource::MarkedPair, 0, raw, 80, 24);
+        assert_title_is_whole(
+            &text,
+            if raw {
+                "v: rendered"
+            } else {
+                "v: prikk's own fields"
+            },
+        );
+    }
+}

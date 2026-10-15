@@ -19,6 +19,16 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   contains a home-directory path, a machine's own user or host name, an email address, an
   unexpected object id, or the words `seed` or `secret`.
 
+### Fixed
+
+- **A view's title no longer runs off the edge at 80 columns.** Once a view had something to
+  scroll, its title grew a *lines X–Y of N* indicator — and in Patch detail's and Compare's raw
+  views, and in Verify in every state, the whole thing was then too long for the top border, so
+  the terminal cut it. What it cut was the end: the keys. A reader at 80 columns saw the view's
+  name and lost *what `v` does*, *what `r` does*, and where in the content they were. stikk's own
+  wording in those titles is shorter now — **no word of prikk's and no name was shortened** — and
+  a test over every view that scrolls fails if a title is cut again.
+
 ## 0.11.0 — 2026-10-15
 
 **stikk now installs in one command, prikk included, and tells you whether your repository is

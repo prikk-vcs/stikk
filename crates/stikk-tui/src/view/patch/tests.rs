@@ -290,7 +290,7 @@ fn a_bounded_preimage_says_how_many_bytes_it_withheld() {
     );
     assert!(joined(&text).contains("delete-node big.txt"), "{text}");
     assert!(
-        text.contains("to scroll"),
+        text.contains("\u{2191}/\u{2193} \u{b7} lines"),
         "a bounded preimage still scrolls: {text}"
     );
 }
@@ -309,7 +309,7 @@ fn the_raw_view_shows_prikks_own_fields_at_80_columns() {
     let raw = draw_sized(&view, true, 80, 40);
     println!("--- RFC 035 §6: the raw view, 80 columns\n{raw}");
     assert!(
-        raw.contains(" Patch · prikk's own fields — v: stikk's rendering"),
+        raw.contains(" Patch · prikk's own fields — v: rendered"),
         "{raw}"
     );
     let flat = joined(&raw);
@@ -633,4 +633,55 @@ fn a_path_row_is_rendered_as_an_identifier() {
         on_a_row(&screen, &format!("node {NODE}")),
         "and prikk's node id is beside its sentence:\n{screen}"
     );
+}
+
+/// **A title must not be cut off at 80 columns** (RFC 042 review v1 §2).
+///
+/// ratatui truncates a title that will not fit the top border, silently -- so a reader at 80
+/// columns sees the view's name and loses the keys at the end of it. The end of a title is the
+/// half a reader needs most: what `v` and `r` do, and where in the content they are. This asserts
+/// those last characters survive, which is the half that goes first.
+fn assert_title_is_whole(screen: &str, tail: &str) {
+    let top = screen.lines().next().unwrap_or_default();
+    assert!(
+        top.contains(tail),
+        "the title is cut off at 80 columns -- {tail:?} is missing from:\n{top}"
+    );
+}
+
+#[test]
+fn the_patch_title_is_whole_at_80_columns_in_both_renderings() {
+    // Enough content to scroll, so the indicator is on the end of the title -- which is exactly
+    // when the title is longest and the truncation used to bite.
+    let big = "lorem ipsum dolor sit amet\n".repeat(400);
+    let patch = ShownPatch {
+        patch_id: PATCH_A.to_string(),
+        queued: false,
+        // A text edit, so **both** renderings are long: the rendered one quotes the span, and
+        // prikk's own fields carry it too. Each therefore scrolls, which is the case the title
+        // used to be cut in.
+        operations: vec![operation(
+            "edit-text",
+            vec![path("big.txt")],
+            OperationContent::TextEdit {
+                old_span: big.clone(),
+                replacement: big,
+            },
+        )],
+    };
+    let view = stikk_core::patch_detail_in_block(&patch, BLOCK, &PatchMessageState::NotReported, 1);
+    for raw in [false, true] {
+        let text = draw(&view, raw);
+        assert!(text.contains("lines 1"), "it must be scrolling: {text}");
+        assert_title_is_whole(&text, " of ");
+        // And the last word of stikk's own wording survives, not just the counter.
+        assert_title_is_whole(
+            &text,
+            if raw {
+                "v: rendered"
+            } else {
+                "v: prikk's own fields"
+            },
+        );
+    }
 }

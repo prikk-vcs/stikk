@@ -65,17 +65,14 @@ pub fn render(
     // scrolls, and a hint at the foot is a hint below the fold exactly when the patch is big enough to
     // need it (caught by this module's own capture test).
     let mut title = if raw {
-        " Patch · prikk's own fields — v: stikk's rendering ".to_string()
+        " Patch · prikk's own fields — v: rendered ".to_string()
     } else {
         " Patch — v: prikk's own fields ".to_string()
     };
     if max_offset > 0 {
         let first = usize::from(scroll) + 1;
         let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        title.push_str(&format!(
-            "· ↑/↓ to scroll · lines {first}–{last} of {} ",
-            lines.len()
-        ));
+        title.push_str(&format!("· ↑/↓ · lines {first}–{last} of {} ", lines.len()));
     }
 
     let block = Block::default()

@@ -332,18 +332,13 @@ fn the_heading_says_the_verdict_is_from_this_run() {
     // A verdict is about the moment it was taken (RFC 040 decision 4), and nothing is cached
     // across runs -- so the heading says which run this is, and says when a new one is working.
     let v = view(true, Vec::new(), all_evaluated());
-    assert!(
-        draw(&v, false).contains("from this run"),
-        "{}",
-        draw(&v, false)
-    );
+    // **Shortened to fit 80 columns** (RFC 042 review v1 §2); the claim is unchanged -- the
+    // verdict on screen is this run's.
+    assert!(draw(&v, false).contains("this run"), "{}", draw(&v, false));
 
     let running = draw_at(&v, false, true, 80, 30);
     assert!(running.contains("re-running"), "{running}");
-    assert!(
-        running.contains("the verdict below is the previous run"),
-        "{running}"
-    );
+    assert!(running.contains("the previous verdict"), "{running}");
 }
 
 #[test]
@@ -363,4 +358,35 @@ fn a_hostile_condition_id_and_stage_name_render_as_identifiers() {
     // The double space is spelled, so the wrap cannot collapse it into one.
     assert!(!text.contains("two  spaces"), "{text}");
     assert!(text.contains("\\u0020\\u0020"), "{text}");
+}
+
+/// **A title must not be cut off at 80 columns** (RFC 042 review v1 §2).
+///
+/// ratatui truncates a title that will not fit the top border, silently -- so a reader at 80
+/// columns sees the view's name and loses the keys at the end of it. The end of a title is the
+/// half a reader needs most: what `v` and `r` do, and where in the content they are. This asserts
+/// those last characters survive, which is the half that goes first.
+fn assert_title_is_whole(screen: &str, tail: &str) {
+    let top = screen.lines().next().unwrap_or_default();
+    assert!(
+        top.contains(tail),
+        "the title is cut off at 80 columns -- {tail:?} is missing from:\n{top}"
+    );
+}
+
+#[test]
+fn the_verify_title_is_whole_at_80_columns_in_every_state() {
+    // Seventeen stages overflow 24 rows, so every one of these carries the scroll indicator --
+    // which is the case that used to cut the title in half.
+    let v = view(true, Vec::new(), all_evaluated());
+    for (raw, refreshing, tail) in [
+        (false, false, "r: re-run"),
+        (true, false, "r: re-run"),
+        (false, true, "the previous verdict"),
+    ] {
+        let text = draw_at(&v, raw, refreshing, 80, 24);
+        assert!(text.contains("lines 1"), "it must be scrolling: {text}");
+        assert_title_is_whole(&text, tail);
+        assert_title_is_whole(&text, " of ");
+    }
 }

@@ -317,10 +317,7 @@ fn a_tall_queue_scrolls_to_follow_the_selected_patch_and_says_where_it_is() {
 
     let top = draw_at(&view, &offset, 0);
     println!("--- Queue, twelve patches, first selected, 80×24\n{top}");
-    assert!(
-        top.contains(" Queue — ↑/↓ to scroll · lines 1–22 of 53 "),
-        "{top}"
-    );
+    assert!(top.contains(" Queue — ↑/↓ · lines 1–22 of 53 "), "{top}");
     assert!(top.contains("12 patch(es) queued for heads/main"), "{top}");
     assert!(
         top.contains("▸ 00000000000"),
@@ -458,4 +455,27 @@ fn a_message_keeps_its_quotes_and_loses_only_the_invisible() {
         text.contains("3829ccfb080c0701"),
         "the id is an identifier, plain because it is hex: {text}"
     );
+}
+
+/// **A title must not be cut off at 80 columns** (RFC 042 review v1 §2).
+///
+/// ratatui truncates a title that will not fit the top border, silently -- so a reader at 80
+/// columns sees the view's name and loses the keys at the end of it. The end of every one of
+/// stikk's titles is the part a reader needs most: what `v` and `r` do, and where in the content
+/// they are. This asserts the **last** characters of the title survive, which is the half that
+/// goes first.
+fn assert_title_is_whole(screen: &str, tail: &str) {
+    let top = screen.lines().next().unwrap_or_default();
+    assert!(
+        top.contains(tail),
+        "the title is cut off at 80 columns -- {tail:?} is missing from:\n{top}"
+    );
+}
+
+#[test]
+fn the_queue_title_is_whole_at_80_columns_with_the_scroll_indicator() {
+    let view = tall_queue();
+    let offset = std::cell::Cell::new(0);
+    let top = draw_at(&view, &offset, 0);
+    assert_title_is_whole(&top, "of 53 ");
 }

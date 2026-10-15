@@ -64,17 +64,14 @@ pub fn render(
     offset.set(scroll);
 
     let mut title = if raw {
-        " Compare · prikk's own fields — v: stikk's rendering ".to_string()
+        " Compare · prikk's own fields — v: rendered ".to_string()
     } else {
         " Compare — v: prikk's own fields ".to_string()
     };
     if max_offset > 0 {
         let first = usize::from(scroll) + 1;
         let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        title.push_str(&format!(
-            "· ↑/↓ to scroll · lines {first}–{last} of {} ",
-            lines.len()
-        ));
+        title.push_str(&format!("· ↑/↓ · lines {first}–{last} of {} ", lines.len()));
     }
 
     let block = Block::default()

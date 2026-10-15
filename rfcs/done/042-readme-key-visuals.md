@@ -1,6 +1,6 @@
 # RFC 042 — README key visuals, made from invented data so nothing private can appear
 
-**Status.** **Accepted by the project owner 2026-10-15**, with the three views as proposed. **Proposed 2026-10-15** by the architect, on the project owner's suggestion the same day: *"It may be better
+**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`8a84c8b`, `991aebd`); on GitHub's README now, on crates.io at the next publish. **Accepted by the project owner 2026-10-15**, with the three views as proposed. **Proposed 2026-10-15** by the architect, on the project owner's suggestion the same day: *"It may be better
 to new user candidates to put a few screenshot(s) (key visual only) on `README.md`. However, when the screenshots taken,
 my privacy must be respected and the local secrets must not be exposed."* **No open question**; decision 2's choice of
 views is the owner's to change on acceptance.
@@ -89,3 +89,21 @@ crates.io at the next publish.
 - **No animated GIF or video.** That can come later, from the same generator, if wanted.
 - **No change to any view.** If a scene looks poor, that is a design note for later, not a change made here for a
   picture.
+
+## Delivered
+
+**One handoff, two commits, green on `main` at `991aebd`** (CI, Docs, the full-matrix suite and supply chain).
+
+- **Three SVGs in `docs/assets/readme/`**, History, Compare (with a whitespace-only change) and Verify. They are
+  rendered by the real `App` and `shell::render` from `NullBackend` data in an invented `example-project`, with ids
+  that are visibly placeholders. **Nothing is read from the machine.** The architect rendered them to PNG, looked at
+  them, and scanned them independently; nothing private appears.
+- **The generator is a `#[cfg(test)]` module, not an example** (ruled in review), so stikk's worker protocol stays
+  private. `cargo public-api` showed no change. Regenerate with
+  `cargo test -p stikk-tui regenerate_readme_images -- --ignored`.
+- **The guard:** images current byte for byte; the committed files clean; every rule firing on a planted fault, in a
+  second independent implementation too.
+- **Looked at, not just read:** text pinned to the cell grid, and box-drawing drawn as rectangles.
+- **crates.io:** absolute GitHub raw URLs (measured: crates.io renders them; `width` is stripped). The page tracks `main`.
+- **Found through the picture:** five view titles were cut at 80 columns, not just Verify's. They were shortened in
+  stikk's own words, never prikk's or a name, and a test now holds every scrolling view's title whole.

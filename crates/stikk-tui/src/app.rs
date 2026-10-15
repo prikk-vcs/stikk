@@ -1129,11 +1129,14 @@ impl App {
             Some(Screen::BlockDetail { view, cursor, .. }) => {
                 let rows = view.patches.rows();
                 if let Some(row) = rows.get(*cursor) {
+                    // The minor the Orientation read already carries — Patch detail spawns
+                    // nothing here, so it must not handshake for it (RFC 043 decision 2).
                     let detail = stikk_core::patch_detail_in_block(
                         &row.patch,
                         &view.row.block_id,
                         &row.message,
                         rows.len(),
+                        self.prikk_minor(),
                     );
                     self.screens.push(Screen::PatchDetail {
                         view: detail,

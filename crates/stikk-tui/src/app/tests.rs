@@ -2327,6 +2327,7 @@ fn opening_a_patch_from_the_queue_reads_once_and_r_re_reads_the_same_id() {
         "unused",
         &stikk_core::PatchMessageState::Text("patch 2".to_string()),
         1,
+        Some(51),
     );
     app.apply(Response {
         seq: req.seq,

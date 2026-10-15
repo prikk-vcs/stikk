@@ -25,8 +25,8 @@ pub mod version;
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
 pub use version::{
-    DIFF_FROM_MINOR, JSON_REPORTS_FROM_MINOR, TREE_FROM_MINOR, UNPUBLISHED_BRANCH_FROM_MINOR,
-    Version, validated_ceiling_display,
+    DIFF_FROM_MINOR, JSON_REPORTS_FROM_MINOR, PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR,
+    UNPUBLISHED_BRANCH_FROM_MINOR, Version, validated_ceiling_display,
 };
 
 use std::path::Path;

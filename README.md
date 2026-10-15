@@ -95,7 +95,7 @@ programs. **If it changed your `PATH`, open a new terminal before carrying on.**
 prikk --version
 ```
 
-stikk works with prikk **0.28 and above, and is tested through 0.51.0** — which is what the command
+stikk works with prikk **0.28 and above, and is tested through 0.52.0** — which is what the command
 above installs today. To ask for exactly that version rather than the newest one:
 
 ```sh
@@ -264,7 +264,7 @@ If prikk is installed somewhere your terminal does not look, point stikk at it:
 export STIKK_PRIKK_BIN=/path/to/prikk
 ```
 
-stikk requires prikk **≥ 0.28** and is validated through **0.51.0**; a newer prikk still runs, but
+stikk requires prikk **≥ 0.28** and is validated through **0.52.0**; a newer prikk still runs, but
 stikk says its output shapes have not been checked against it, rather than assuming they have.
 
 Opening a repository on a terminal launches the interactive **TUI** — an Orientation view showing

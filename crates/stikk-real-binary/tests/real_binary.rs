@@ -4366,6 +4366,7 @@ fn rfc035_every_operation_kind_renders_from_prikks_fields_at_both_ends() {
             &row.block_id,
             &patch_row.message,
             rows.len(),
+            Some(bin.minor),
         );
         assert!(
             view.heading[0].starts_with("sealed · in block"),
@@ -4547,6 +4548,7 @@ fn rfc035_a_sealed_blocks_patch_is_resolved_at_the_blocks_end_at_both_ends() {
                 &row.block_id,
                 &first.message,
                 rows.len(),
+                Some(bin.minor),
             );
             let edit = first
                 .patch
@@ -4554,7 +4556,8 @@ fn rfc035_a_sealed_blocks_patch_is_resolved_at_the_blocks_end_at_both_ends() {
                 .iter()
                 .find(|o| o.kind == "edit-text")
                 .unwrap_or_else(|| panic!("0.{}: patch 1 edits: {:?}", bin.minor, first.patch));
-            // Whatever prikk resolved it to, stikk renders **that** and labels where it came from.
+            // **Whatever prikk resolved it to, stikk renders that** — and labels it only
+            // where prikk resolved at the block's end (RFC 043 decision 3).
             match &edit.paths[..] {
                 [stikk_prikk::QueuedPath::Path(path)] => {
                     let title = view
@@ -4563,17 +4566,32 @@ fn rfc035_a_sealed_blocks_patch_is_resolved_at_the_blocks_end_at_both_ends() {
                         .find(|o| stikk_core::flatten(&o.title).starts_with("edit-text"))
                         .map(|o| stikk_core::flatten(&o.title))
                         .unwrap_or_default();
-                    assert_eq!(
-                        title,
-                        format!("edit-text {path} — {}", stikk_core::AS_AT_BLOCK_END),
-                        "0.{}: prikk's own name, labelled as the block's end",
-                        bin.minor
-                    );
-                    assert_eq!(
-                        path, "z.txt",
-                        "0.{}: measured at 0.46.0 and 0.51.0 — the later patch's name",
-                        bin.minor
-                    );
+                    if bin.minor >= stikk_prikk::PATCH_PATH_AT_PATCH_FROM_MINOR {
+                        // **prikk 0.52 fixed this** (letter 020; RFC 043 F2): patch 1's path is
+                        // the name patch 1 saw, so there is nothing left to caution about.
+                        assert_eq!(
+                            path, "a.txt",
+                            "0.{}: the name this patch saw, not the later one's",
+                            bin.minor
+                        );
+                        assert_eq!(
+                            title, "edit-text a.txt",
+                            "0.{}: resolved at the patch, so no label",
+                            bin.minor
+                        );
+                    } else {
+                        assert_eq!(
+                            path, "z.txt",
+                            "0.{}: measured at 0.46.0 and 0.51.0 — the later patch's name",
+                            bin.minor
+                        );
+                        assert_eq!(
+                            title,
+                            format!("edit-text {path} — {}", stikk_core::AS_AT_BLOCK_END),
+                            "0.{}: prikk's own name, labelled as the block's end",
+                            bin.minor
+                        );
+                    }
                 }
                 other => panic!("0.{}: patch 1's edit names {other:?}", bin.minor),
             }
@@ -4610,34 +4628,57 @@ fn rfc035_a_sealed_blocks_patch_is_resolved_at_the_blocks_end_at_both_ends() {
             .iter()
             .find(|o| o.kind == "edit-text")
             .unwrap_or_else(|| panic!("0.{}: patch 1 edits: {:?}", bin.minor, first.patch));
-        assert!(
-            matches!(edit.paths[..], [stikk_prikk::QueuedPath::UnresolvedNode(_)]),
-            "0.{}: sealing removed the path prikk had already given: {:?}",
-            bin.minor,
-            edit.paths
-        );
         let view = stikk_core::patch_detail_in_block(
             &first.patch,
             &row.block_id,
             &first.message,
             rows.len(),
+            Some(bin.minor),
         );
-        let shown = view
-            .operations
-            .iter()
-            .find(|o| stikk_core::flatten(&o.title) == "edit-text")
-            .unwrap_or_else(|| panic!("0.{}: {:?}", bin.minor, view.operations));
-        assert_eq!(
-            shown.rows[0].text(),
-            Some(stikk_core::NO_PATH_REPORTED),
-            "0.{}: one sentence, and no reason — stikk cannot know which applies",
-            bin.minor
-        );
-        assert!(
-            !stikk_core::flatten(&shown.title).contains(stikk_core::AS_AT_BLOCK_END),
-            "0.{}: there is no name to label: {shown:?}",
-            bin.minor
-        );
+        if bin.minor >= stikk_prikk::PATCH_PATH_AT_PATCH_FROM_MINOR {
+            // **0.52 names it** (RFC 043 F2): patch 1 edited `a.txt`, and a later delete no longer
+            // takes that name away. Where there was one sentence and no path, there is a path.
+            match &edit.paths[..] {
+                [stikk_prikk::QueuedPath::Path(path)] => {
+                    assert_eq!(path, "a.txt", "0.{}: the name this patch saw", bin.minor);
+                }
+                other => panic!("0.{}: patch 1's edit names {other:?}", bin.minor),
+            }
+            let shown = view
+                .operations
+                .iter()
+                .find(|o| stikk_core::flatten(&o.title).starts_with("edit-text"))
+                .unwrap_or_else(|| panic!("0.{}: {:?}", bin.minor, view.operations));
+            assert_eq!(
+                stikk_core::flatten(&shown.title),
+                "edit-text a.txt",
+                "0.{}: resolved at the patch, so no label",
+                bin.minor
+            );
+        } else {
+            assert!(
+                matches!(edit.paths[..], [stikk_prikk::QueuedPath::UnresolvedNode(_)]),
+                "0.{}: sealing removed the path prikk had already given: {:?}",
+                bin.minor,
+                edit.paths
+            );
+            let shown = view
+                .operations
+                .iter()
+                .find(|o| stikk_core::flatten(&o.title) == "edit-text")
+                .unwrap_or_else(|| panic!("0.{}: {:?}", bin.minor, view.operations));
+            assert_eq!(
+                shown.rows[0].text(),
+                Some(stikk_core::NO_PATH_REPORTED),
+                "0.{}: one sentence, and no reason — stikk cannot know which applies",
+                bin.minor
+            );
+            assert!(
+                !stikk_core::flatten(&shown.title).contains(stikk_core::AS_AT_BLOCK_END),
+                "0.{}: there is no name to label: {shown:?}",
+                bin.minor
+            );
+        }
     }
 }
 

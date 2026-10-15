@@ -4,6 +4,18 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-prikk`, `stikk-state`, `stikk-tui` and the `stikk` launcher are unchanged.**
+
+| Crate | Change |
+|---|---|
+| `stikk-core` | **`patch_detail_in_block` takes prikk's minor** (`Option<u32>`) as a fifth argument. It decides whether Patch detail's *as at the end of this block* label is shown, which is a per-version fact the caller already holds — and this entry spawns nothing by design, so it must not handshake to learn it. `None` means the caller does not know yet, and is labelled |
+
+**Additive:** `stikk_prikk::PATCH_PATH_AT_PATCH_FROM_MINOR`. **No public item was removed.** The
+MSRV is unchanged at 1.88.
+
 ### Added
 
 - **The README shows stikk at work.** Three images — **History**, **Compare** and **Verify** — sit
@@ -18,6 +30,21 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   from the views, so they cannot quietly show last month's UI, and a second test fails if any image
   contains a home-directory path, a machine's own user or host name, an email address, an
   unexpected object id, or the words `seed` or `secret`.
+
+### Changed
+
+- **Validated through prikk 0.52.0**, raised the day it was published and measured the same day
+  against real 0.28.0 and 0.52.0 binaries. **prikk 0.52 fixed the one thing stikk had been working
+  around**: in a sealed block of several patches, `show <block-id>` now reports each patch's path
+  **as that patch saw it**, not as it stood at the block's end. Where a later patch renamed the
+  file, patch 1 used to be reported under the *new* name; where a later patch deleted it, patch 1
+  had no path at all.
+
+  So **Patch detail's *as at the end of this block* label now appears only below prikk 0.52**,
+  where it is still true. At 0.52 and above the path is simply that patch's own, and the label
+  would be false. The label is banded rather than removed because prikk 0.39 through 0.51 are
+  still in the supported range and the caution is right there. Nothing else prikk 0.52 changed
+  reaches stikk.
 
 ### Fixed
 

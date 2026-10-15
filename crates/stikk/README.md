@@ -40,7 +40,7 @@ ships ready-to-run binaries for Linux, macOS and Windows, with checksums — see
 compatible `prikk` on your `PATH` as well, which prikk's own installer does in one line
 (`curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh`).
 This release requires prikk **≥ 0.28** and is validated
-through **0.51.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
+through **0.52.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
 against it rather than silently assuming they have. If `prikk` is missing, stikk opens and then
 explains that — by design.
 

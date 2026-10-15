@@ -125,6 +125,7 @@ fn every_kind_is_rendered_from_prikks_own_fields() {
         BLOCK,
         &PatchMessageState::Text("every kind".into()),
         1,
+        Some(51),
     );
 
     assert_eq!(view.patch_id, PATCH_A);
@@ -192,6 +193,7 @@ fn an_empty_span_says_it_is_empty() {
         BLOCK,
         &PatchMessageState::Text("append".into()),
         1,
+        Some(51),
     );
     assert_eq!(
         texts(&view, 0),
@@ -230,7 +232,7 @@ fn the_block_end_label_follows_the_blocks_patch_count_and_the_kind() {
     );
 
     // One patch: no label anywhere.
-    let alone = patch_detail_in_block(&sealed, BLOCK, &PatchMessageState::NotReported, 1);
+    let alone = patch_detail_in_block(&sealed, BLOCK, &PatchMessageState::NotReported, 1, Some(51));
     assert!(
         alone
             .operations
@@ -242,7 +244,8 @@ fn the_block_end_label_follows_the_blocks_patch_count_and_the_kind() {
 
     // Two patches: the three node-addressed kinds carry it, and the other three do not — they carry
     // their own paths in the payload (F0), so there is nothing resolved and nothing to label.
-    let in_two = patch_detail_in_block(&sealed, BLOCK, &PatchMessageState::NotReported, 2);
+    let in_two =
+        patch_detail_in_block(&sealed, BLOCK, &PatchMessageState::NotReported, 2, Some(51));
     assert_eq!(
         crate::flatten(&in_two.operations[0].title),
         format!("edit-text z.txt — {AS_AT_BLOCK_END}")
@@ -259,7 +262,7 @@ fn the_block_end_label_follows_the_blocks_patch_count_and_the_kind() {
 
     // A queued patch is never labelled: it has no block (F2).
     let queued = patch(PATCH_A, true, vec![edit(path("a.txt"), "", "more\n")]);
-    let queued = patch_detail_in_block(&queued, BLOCK, &PatchMessageState::Absent, 2);
+    let queued = patch_detail_in_block(&queued, BLOCK, &PatchMessageState::Absent, 2, Some(51));
     assert_eq!(
         crate::flatten(&queued.operations[0].title),
         "edit-text a.txt"
@@ -284,6 +287,7 @@ fn an_unresolved_path_gets_one_sentence_and_no_reason() {
         BLOCK,
         &PatchMessageState::Text("edit d".into()),
         2,
+        Some(51),
     );
     assert_eq!(
         crate::flatten(&view.operations[0].title),
@@ -332,6 +336,7 @@ fn an_unavailable_blob_is_named_with_the_id_prikk_could_not_read() {
         BLOCK,
         &PatchMessageState::Text("delete d".into()),
         2,
+        Some(51),
     );
     assert_eq!(
         texts(&view, 0),
@@ -359,6 +364,7 @@ fn an_operation_kind_stikk_does_not_render_still_appears() {
         BLOCK,
         &PatchMessageState::NotReported,
         1,
+        Some(51),
     );
     assert_eq!(
         crate::flatten(&view.operations[0].title),
@@ -394,6 +400,7 @@ fn content_is_bounded_and_the_cut_is_said_out_loud() {
             BLOCK,
             &PatchMessageState::NotReported,
             1,
+            Some(51),
         )
         .operations[0]
             .rows
@@ -455,6 +462,7 @@ fn two_spans_that_differ_in_any_byte_never_render_identically() {
             BLOCK,
             &PatchMessageState::NotReported,
             1,
+            Some(51),
         )
         .operations[0]
             .rows
@@ -517,6 +525,7 @@ fn an_invisible_character_never_renders_as_its_visible_look_alike() {
             BLOCK,
             &PatchMessageState::NotReported,
             1,
+            Some(51),
         )
         .operations[0]
             .rows[1]
@@ -563,6 +572,7 @@ fn a_bidi_override_in_a_span_renders_in_byte_order() {
         BLOCK,
         &PatchMessageState::NotReported,
         1,
+        Some(51),
     );
     let rendered: Vec<String> = detail.operations[0].rows.iter().map(row_text).collect();
     assert!(
@@ -613,6 +623,7 @@ fn indented_file_content_keeps_its_indentation() {
         BLOCK,
         &PatchMessageState::NotReported,
         1,
+        Some(51),
     );
     let want = [
         "\"fn main() {\\n\"",
@@ -687,6 +698,7 @@ fn binary_file_content_shows_its_blob_and_size_and_never_bytes() {
         BLOCK,
         &PatchMessageState::NotReported,
         1,
+        Some(51),
     );
     assert_eq!(
         texts(&view, 0),
@@ -723,6 +735,7 @@ fn a_content_kind_stikk_has_never_seen_claims_nothing_about_it() {
         BLOCK,
         &PatchMessageState::NotReported,
         1,
+        Some(51),
     );
     assert_eq!(
         texts(&view, 0),
@@ -739,7 +752,7 @@ fn a_content_kind_stikk_has_never_seen_claims_nothing_about_it() {
 fn a_messages_three_states_stay_three() {
     let one = patch(PATCH_A, true, Vec::new());
     let row = |message: PatchMessageState| {
-        patch_detail_in_block(&one, BLOCK, &message, 1).heading[1].clone()
+        patch_detail_in_block(&one, BLOCK, &message, 1, Some(51)).heading[1].clone()
     };
     assert_eq!(
         row(PatchMessageState::Text("a message".into())),
@@ -863,4 +876,59 @@ fn a_report_without_the_patch_asked_for_says_so() {
         view.foot.as_deref(),
         Some("prikk's report for this id does not list it (1 patch(es) listed).")
     );
+}
+
+/// **The block-end label is banded at prikk 0.52** (RFC 043 decision 2).
+///
+/// Below 0.52 prikk resolves a sealed patch's node-addressed path at the **block's** end, so a
+/// path can be a name that patch never saw and the label is true. From 0.52 prikk resolves it at
+/// that patch, so the path is already the patch's own and **the label would be false** -- measured
+/// at 0.52.0, where the case that reported `z.txt` reports `a.txt`.
+///
+/// The same patch, the same block of two, rendered at both ends of the band.
+#[test]
+fn the_block_end_label_is_shown_below_prikk_0_52_and_not_at_or_above_it() {
+    let sealed = patch(PATCH_A, false, vec![edit(path("z.txt"), "", "more\n")]);
+    let title = |minor: Option<u32>| {
+        let view = patch_detail_in_block(&sealed, BLOCK, &PatchMessageState::NotReported, 2, minor);
+        crate::flatten(&view.operations[0].title)
+    };
+
+    // The last version that needs it, and the first that does not.
+    assert_eq!(
+        title(Some(51)),
+        format!("edit-text z.txt \u{2014} {AS_AT_BLOCK_END}")
+    );
+    assert_eq!(title(Some(52)), "edit-text z.txt");
+    // And on either side of those, so the comparison is a band and not an equality.
+    assert_eq!(
+        title(Some(39)),
+        format!("edit-text z.txt \u{2014} {AS_AT_BLOCK_END}")
+    );
+    assert_eq!(title(Some(60)), "edit-text z.txt");
+
+    // **An unknown minor is labelled.** The label is a caution: showing it where it was not needed
+    // costs a sentence, and omitting it where it was needed presents a path that patch never saw
+    // as that patch's own (`T-T4`). This is `present`'s own direction when it cannot exclude an
+    // old prikk.
+    assert_eq!(
+        title(None),
+        format!("edit-text z.txt \u{2014} {AS_AT_BLOCK_END}")
+    );
+
+    // The band never *adds* a label: a block of one has none at any version.
+    for minor in [Some(51), Some(52), None] {
+        let alone =
+            patch_detail_in_block(&sealed, BLOCK, &PatchMessageState::NotReported, 1, minor);
+        assert!(
+            !crate::flatten(&alone.operations[0].title).contains(AS_AT_BLOCK_END),
+            "a block of one is never labelled, at {minor:?}"
+        );
+    }
+}
+
+/// The band's constant is the one in `stikk-prikk`, not a second literal here.
+#[test]
+fn the_band_reads_the_one_constant() {
+    assert_eq!(stikk_prikk::PATCH_PATH_AT_PATCH_FROM_MINOR, 52);
 }

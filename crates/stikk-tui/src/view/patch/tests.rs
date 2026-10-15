@@ -176,6 +176,7 @@ fn all_six_kinds_render_whole_at_80_columns() {
         BLOCK,
         &PatchMessageState::Text("every kind".to_string()),
         1,
+        Some(51),
     );
     // Tall enough that the whole patch is on one screen for the capture.
     let text = draw_sized(&view, false, 80, 40);
@@ -234,6 +235,7 @@ fn an_unresolved_path_and_the_block_end_label_render_at_80_columns() {
         BLOCK,
         &PatchMessageState::Text("patch one".to_string()),
         2,
+        Some(51),
     );
     let text = draw_sized(&view, false, 80, 30);
     println!("--- RFC 035 §6: an unresolved path, and the block-end label, 80 columns\n{text}");
@@ -267,7 +269,13 @@ fn a_bounded_preimage_says_how_many_bytes_it_withheld() {
             },
         )],
     };
-    let view = stikk_core::patch_detail_in_block(&patch, BLOCK, &PatchMessageState::NotReported, 1);
+    let view = stikk_core::patch_detail_in_block(
+        &patch,
+        BLOCK,
+        &PatchMessageState::NotReported,
+        1,
+        Some(51),
+    );
     let text = draw(&view, false);
     println!("--- RFC 035 §6: a bounded preimage, 80×24 (the top)\n{text}");
     // And scrolled to where the bound bites, which is the half of this capture worth looking at.
@@ -304,6 +312,7 @@ fn the_raw_view_shows_prikks_own_fields_at_80_columns() {
         BLOCK,
         &PatchMessageState::Text("every kind".to_string()),
         1,
+        Some(51),
     );
     let rendered = draw_sized(&view, false, 80, 40);
     let raw = draw_sized(&view, true, 80, 40);
@@ -371,6 +380,7 @@ fn hostile_content_is_rendered_inert_in_both_views() {
         BLOCK,
         &PatchMessageState::Text("evil\u{1b}[2Jmessage".to_string()),
         1,
+        Some(51),
     );
     for raw in [false, true] {
         let text = draw(&view, raw);
@@ -418,7 +428,8 @@ fn rfc035_a_re_indent_edit_renders_as_a_change_at_80_columns() {
             ),
         ],
     };
-    let view = stikk_core::patch_detail_in_block(&patch, BLOCK, &PatchMessageState::Absent, 1);
+    let view =
+        stikk_core::patch_detail_in_block(&patch, BLOCK, &PatchMessageState::Absent, 1, Some(51));
     let text = draw_sized(&view, false, 80, 30);
     println!("--- RFC 035 review v1 §2.1: whitespace edits, 80 columns\n{text}");
     for row in [
@@ -454,7 +465,13 @@ fn a_content_rows_internal_whitespace_survives_the_renderer() {
             },
         )],
     };
-    let view = stikk_core::patch_detail_in_block(&patch, BLOCK, &PatchMessageState::NotReported, 1);
+    let view = stikk_core::patch_detail_in_block(
+        &patch,
+        BLOCK,
+        &PatchMessageState::NotReported,
+        1,
+        Some(51),
+    );
     let text = draw(&view, false);
     assert!(
         on_a_row(&text, "\"a  b\""),
@@ -487,6 +504,7 @@ fn rfc035_binary_content_shows_its_blob_at_80_columns() {
         BLOCK,
         &PatchMessageState::Text("add the logo".to_string()),
         1,
+        Some(51),
     );
     let text = draw(&view, false);
     println!("--- RFC 035 review v1 §2.4: a binary create, 80 columns\n{text}");
@@ -526,6 +544,7 @@ fn content_that_does_not_show_as_itself_is_escaped_on_screen() {
         BLOCK,
         &PatchMessageState::Text("harden the admin check".to_string()),
         1,
+        Some(51),
     );
     let rendered = draw(&view, false);
     println!("--- RFC 035 review v2 §2: a Trojan Source span, rendered, 80×24\n{rendered}");
@@ -582,6 +601,7 @@ fn an_operation_titles_path_is_rendered_as_an_identifier() {
             BLOCK,
             &PatchMessageState::NotReported,
             1,
+            Some(51),
         );
         let screen = draw(&view, false);
         println!("--- RFC 036 §2.3: an operation title with {what}\n{screen}");
@@ -618,6 +638,7 @@ fn a_path_row_is_rendered_as_an_identifier() {
         BLOCK,
         &PatchMessageState::NotReported,
         1,
+        Some(51),
     );
     let screen = draw(&view, false);
     println!("--- RFC 036 §2.3: path rows, one of them with a double space\n{screen}");
@@ -669,7 +690,13 @@ fn the_patch_title_is_whole_at_80_columns_in_both_renderings() {
             },
         )],
     };
-    let view = stikk_core::patch_detail_in_block(&patch, BLOCK, &PatchMessageState::NotReported, 1);
+    let view = stikk_core::patch_detail_in_block(
+        &patch,
+        BLOCK,
+        &PatchMessageState::NotReported,
+        1,
+        Some(51),
+    );
     for raw in [false, true] {
         let text = draw(&view, raw);
         assert!(text.contains("lines 1"), "it must be scrolling: {text}");

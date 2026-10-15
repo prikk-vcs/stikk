@@ -227,7 +227,7 @@ pub fn patch_detail(
                     )),
                 });
             };
-            Ok(render(patch, None, message, 1))
+            Ok(render(patch, None, message, 1, Some(prikk_minor)))
         }
     }
 }
@@ -240,14 +240,30 @@ pub fn patch_detail(
 ///
 /// `patches_in_block` is the number of patches in **that report**, which is what decides decision 3a's
 /// label — not whether a later patch renames anything (§5 trap 3).
+///
+/// `prikk_minor` decides whether that label is shown at all (RFC 043 decision 2): below prikk 0.52
+/// the reported path is the one at the block's end and is labelled; from 0.52 it is the path that
+/// patch saw, and labelling it would be false. **The caller passes the minor rather than this
+/// function reading it**, because this entry spawns nothing: Block detail has already read the
+/// report, and a handshake here would be a second call for a question the caller can answer.
+/// **`None` means the caller does not know it yet, and is labelled.** The label is a caution:
+/// showing it where it was not needed costs a reader one sentence, while omitting it where it was
+/// needed presents a path that patch never saw as that patch's own (`T-T4`).
 #[must_use]
 pub fn patch_detail_in_block(
     patch: &ShownPatch,
     block_id: &str,
     message: &PatchMessageState,
     patches_in_block: usize,
+    prikk_minor: Option<u32>,
 ) -> PatchDetailView {
-    render(patch, Some(block_id), message, patches_in_block)
+    render(
+        patch,
+        Some(block_id),
+        message,
+        patches_in_block,
+        prikk_minor,
+    )
 }
 
 /// The view below stikk's JSON floor: stikk asked prikk nothing, and says so in **its own** voice
@@ -273,6 +289,7 @@ fn render(
     block_id: Option<&str>,
     message: &PatchMessageState,
     patches_in_block: usize,
+    prikk_minor: Option<u32>,
 ) -> PatchDetailView {
     // prikk's own word for where the patch is, never an inference from the id stikk asked with
     // (§5 trap 5).
@@ -284,7 +301,20 @@ fn render(
     heading.push(message.row());
     // Decision 3a: the label is about the block's patch count, and never applies to a queued patch or
     // to a block of one — where the block's end *is* that patch's end, and the path is simply right.
-    let label_paths = !patch.queued && patches_in_block > 1;
+    //
+    // **And only below prikk 0.52** (RFC 043 decision 2). From 0.52 prikk resolves a sealed
+    // patch's node-addressed path *at that patch*, so the path is already the one that patch saw
+    // and the label would be false — measured at 0.52.0, where the case that reported `z.txt`
+    // reports `a.txt`. Banded rather than deleted: 0.39–0.51 are still in the supported range,
+    // and the sentence stays true there.
+    //
+    // **An unknown minor is labelled**, the same direction `present` takes when it cannot exclude
+    // prikk 0.28: the label is a caution, and showing it where it was not needed costs a reader
+    // one sentence, while omitting it where it was needed presents a path that patch never saw as
+    // though it were that patch's own (`T-T4`).
+    let label_paths = !patch.queued
+        && patches_in_block > 1
+        && prikk_minor.is_none_or(|minor| minor < stikk_prikk::PATCH_PATH_AT_PATCH_FROM_MINOR);
     PatchDetailView {
         patch_id: patch.patch_id.clone(),
         heading,

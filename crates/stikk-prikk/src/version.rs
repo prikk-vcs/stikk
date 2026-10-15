@@ -1,14 +1,20 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.51.0` (**RFC 035**, the 0.51 re-baseline, which
+//! stikk targets prikk `>= 0.28`, validated through `0.52.0` (**RFC 043**, the 0.52 re-baseline:
+//! prikk 0.52.0 fixed the defect stikk reported in letter 020 — `show <block-id>` resolves each
+//! sealed patch's node-addressed path **at that patch** now, not at the block's end, so the case
+//! that reported `z.txt` reports `a.txt` and the case that reported no path reports `d.txt`
+//! (measured at 0.52.0). The raise came first and alone, and the suite was red on exactly the one
+//! leg that pinned 0.51's answer. [`PATCH_PATH_AT_PATCH_FROM_MINOR`] bands Patch detail's
+//! *as at the end of this block* label below 0.52, where it is still true.
+//!
+//! Before it **RFC 035**, the 0.51 re-baseline, which
 //! exists to build Patch detail against prikk's `show --format json`: the raise came first, and on its
 //! own it cost nothing — the suite passed 37 of 37 at 0.28.0 and 0.51.0 with only this constant moved.
-//! What 0.51 changes for stikk is elsewhere and is read deliberately: `show <block-id>` resolves each
+//! What 0.51 changed for stikk is elsewhere and was read deliberately: `show <block-id>` resolved each
 //! sealed patch's node-addressed path **at the block's end**, not at that patch (RFC 035 A1 F7), so a
-//! two-patch block can name a path the first patch never saw; prikk confirmed it and has said it will
-//! fix it in 0.52.0 (A2) — **not a published release**, so nothing here reads as though it were, and
-//! the label is a re-baseline's decision, not this one's. Across 0.47–0.51 the queued form
+//! two-patch block could name a path the first patch never saw. Across 0.47–0.51 the queued form
 //! gained the paths it used to withhold (0.47, `### Changed`: a `path` appears where one was absent),
 //! which is why no reader here may key on a field's absence. The previous ceiling was `0.46.0`
 //! (**RFC 034**, the 0.46 re-baseline:
@@ -131,6 +137,25 @@ pub const DIFF_FROM_MINOR: u32 = 46;
 /// the field's absence would read the two as one, which is why the band decides and absence never
 /// does.
 pub const UNPUBLISHED_BRANCH_FROM_MINOR: u32 = 47;
+
+/// The first prikk minor that resolves a **sealed patch's node-addressed path at that patch**
+/// rather than at its block's end: prikk 0.52, which fixed the defect stikk reported in letter 020
+/// (RFC 035 A1 F7, A2; RFC 043 F2).
+///
+/// **Measured at 0.52.0**, against the two cases RFC 035 found. In a sealed block of two patches
+/// where patch 2 renames the file patch 1 edited, `show <block-id>` reports patch 1's path as
+/// `a.txt` -- the name that patch saw -- where 0.51 reported `z.txt`, the name a later patch gave
+/// it. Where patch 2 *deletes* the file, patch 1 now reports `d.txt` where 0.51 reported no path
+/// at all. The queued and sealed forms agree from here on.
+///
+/// Below this band the path prikk reports is the one at the block's end, which can be a name that
+/// patch never saw -- so Patch detail labels it *as at the end of this block*
+/// ([`stikk_core`'s `AS_AT_BLOCK_END`]). **At and above it the label would be false**, and stikk
+/// shows the path unlabelled. The label is banded rather than deleted because 0.39-0.51 are still
+/// in the supported range and the sentence stays true there.
+///
+/// [`stikk_core`'s `AS_AT_BLOCK_END`]: https://docs.rs/stikk-core
+pub const PATCH_PATH_AT_PATCH_FROM_MINOR: u32 = 52;
 
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

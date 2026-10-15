@@ -1,6 +1,6 @@
 # RFC 043 — The prikk 0.52 re-baseline: a sealed patch now names its own path
 
-**Status.** **Proposed 2026-10-15** by the architect, the day prikk 0.52.0 was published (the owner also updated
+**Status.** **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, the day prikk 0.52.0 was published (the owner also updated
 their own machine to it). It delivers the item carried since 0.10.0: *"when prikk 0.52.0 publishes, validate it, and
 the block-end label goes or is banded"* (RFC 035 A2). **No open question.**
 Measured against real prikk **0.52.0** and **0.28.0** binaries. Evidence: `.git-exclude/reports/043-prikk-0-52-rebaseline/`.
@@ -66,7 +66,7 @@ prikk 0.52, which now names each patch's own path.
 
 ## Delivery
 
-**One handoff, on acceptance, in two commits**: the ceiling raise alone (suite red on F1's leg, reported), then the band,
+**One handoff, issued on acceptance** ([Handoff A](../handoffs/043-prikk-0-52-rebaseline/a-rebaseline-handoff-v1.md)), **in two commits**: the ceiling raise alone (suite red on F1's leg, reported), then the band,
 the test and the docs. It re-runs F2 at 0.52 before building.
 
 ## What this RFC does not do

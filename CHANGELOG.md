@@ -2,6 +2,23 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Added
+
+- **The README shows stikk at work.** Three images — **History**, **Compare** and **Verify** — sit
+  under the opening paragraph, so a new reader can see what stikk is before reading a word about
+  it.
+
+  **They are rendered, never photographed.** Each is drawn by stikk's own views from invented data,
+  through the same code the running program uses, into an 80-column screen written out as SVG. That
+  is not a detail of how they were made: it is why nothing of a maintainer's machine — no path,
+  user name, host name, repository content, key id or key material — can be in them. There is
+  nothing real in the scenes to leak. A test regenerates the images and fails if they have drifted
+  from the views, so they cannot quietly show last month's UI, and a second test fails if any image
+  contains a home-directory path, a machine's own user or host name, an email address, an
+  unexpected object id, or the words `seed` or `secret`.
+
 ## 0.11.0 — 2026-10-15
 
 **stikk now installs in one command, prikk included, and tells you whether your repository is

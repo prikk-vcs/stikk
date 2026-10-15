@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="408" viewBox="0 0 640 408" role="img">
+<rect width="640" height="408" fill="#12161b"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" xml:space="preserve">
+<text x="0" y="13" textLength="40" lengthAdjust="spacing" fill="#56b6c2" font-weight="bold">stikk</text>
+<text x="40" y="13" textLength="40" lengthAdjust="spacing" fill="#9ea6b0">  —  </text>
+<text x="80" y="13" textLength="560" lengthAdjust="spacing" fill="#d8dee4">example-project                                                       </text>
+<rect x="4" y="25" width="4" height="1" fill="#d8dee4"/>
+<rect x="4" y="25" width="1" height="9" fill="#d8dee4"/>
+<text x="8" y="30" textLength="624" lengthAdjust="spacing" fill="#d8dee4"> Verify · from this run — v: prikk's own report · r: re-run · ↑/↓ to scroll · </text>
+<rect x="632" y="25" width="5" height="1" fill="#d8dee4"/>
+<rect x="636" y="25" width="1" height="9" fill="#d8dee4"/>
+<rect x="4" y="34" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="47" textLength="296" lengthAdjust="spacing" fill="#8cc265" font-weight="bold">  prikk reports this repository sound</text>
+<rect x="636" y="34" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="51" width="1" height="17" fill="#d8dee4"/>
+<rect x="636" y="51" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="68" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="81" textLength="592" lengthAdjust="spacing" fill="#9ea6b0">  prikk's JSON report does not list which objects or refs failed, or count</text>
+<rect x="636" y="68" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="85" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="98" textLength="560" lengthAdjust="spacing" fill="#9ea6b0">  unverifiable signatures. Run `prikk verify` in a terminal for those.</text>
+<rect x="636" y="85" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="102" width="1" height="17" fill="#d8dee4"/>
+<rect x="636" y="102" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="119" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="132" textLength="328" lengthAdjust="spacing" fill="#9ea6b0">  prikk verified 1 of 1 active session(s)</text>
+<rect x="636" y="119" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="136" width="1" height="17" fill="#d8dee4"/>
+<rect x="636" y="136" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="153" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="166" textLength="256" lengthAdjust="spacing" fill="#9ea6b0">  stages — 17 reported by prikk:</text>
+<rect x="636" y="153" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="170" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="183" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    objects evaluated                                                         </text>
+<rect x="636" y="170" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="187" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="200" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    refs evaluated                                                            </text>
+<rect x="636" y="187" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="204" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="217" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    ref-update-schema-trust evaluated                                         </text>
+<rect x="636" y="204" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="221" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="234" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    wal-replay evaluated                                                      </text>
+<rect x="636" y="221" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="238" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="251" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    wal-persistence evaluated                                                 </text>
+<rect x="636" y="238" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="255" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="268" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    rollback-drafts evaluated                                                 </text>
+<rect x="636" y="255" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="272" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="285" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    wal-record-schema evaluated                                               </text>
+<rect x="636" y="272" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="289" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="302" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    active-wal-metadata evaluated                                             </text>
+<rect x="636" y="289" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="306" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="319" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    commit-witness evaluated                                                  </text>
+<rect x="636" y="306" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="323" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="336" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    publication-reclassification evaluated                                    </text>
+<rect x="636" y="323" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="340" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="353" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    commit-index evaluated                                                    </text>
+<rect x="636" y="340" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="357" width="1" height="17" fill="#d8dee4"/>
+<text x="8" y="370" textLength="624" lengthAdjust="spacing" fill="#d8dee4">    lifecycle-cache evaluated                                                 </text>
+<rect x="636" y="357" width="1" height="17" fill="#d8dee4"/>
+<rect x="4" y="382" width="4" height="1" fill="#d8dee4"/>
+<rect x="4" y="374" width="1" height="9" fill="#d8dee4"/>
+<rect x="8" y="382" width="624" height="1" fill="#d8dee4"/>
+<rect x="632" y="382" width="5" height="1" fill="#d8dee4"/>
+<rect x="636" y="374" width="1" height="9" fill="#d8dee4"/>
+<text x="0" y="404" textLength="120" lengthAdjust="spacing" fill="#d8dee4" font-weight="bold">example-project</text>
+<text x="120" y="404" textLength="40" lengthAdjust="spacing" fill="#9ea6b0">  ·  </text>
+<text x="160" y="404" textLength="80" lengthAdjust="spacing" fill="#56b6c2">heads/main</text>
+<text x="240" y="404" textLength="40" lengthAdjust="spacing" fill="#9ea6b0">  ·  </text>
+<text x="280" y="404" textLength="72" lengthAdjust="spacing" fill="#e5c07b">●2 queued</text>
+<text x="352" y="404" textLength="96" lengthAdjust="spacing" fill="#9ea6b0">  ·  [AUT –]</text>
+<text x="456" y="404" textLength="56" lengthAdjust="spacing" fill="#9ea6b0">[MNT –]</text>
+</g>
+</svg>

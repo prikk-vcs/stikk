@@ -69,6 +69,26 @@ These are enforced by test; a change that trips them is a bug, not a style prefe
 2. **stikk never writes inside a repository** — `stikk-state::paths::ensure_outside_repository`
    refuses any repository-internal target.
 
+## The README's images
+
+The three images in `README.md` are **rendered by stikk's own views from invented data** (RFC 042),
+never photographed: a scene is built from a scripted `NullBackend`, drawn through the real `App`
+and the real views into an 80 x 24 buffer, and written out as SVG. Nothing of your machine is read
+while they are made, so nothing of it can appear in them.
+
+**If you change a view, the images go stale and `readme_images_are_current` fails.** Regenerate
+them with:
+
+```sh
+cargo test -p stikk-tui regenerate_readme_images -- --ignored
+```
+
+Then look at what changed before committing it. Two other tests guard the result: one checks that
+no image carries a home-directory path, this machine's user or host name, an email address, an
+object id that is not one of the invented ones, the words `seed` or `secret`, or any character the
+escape rules would flag; the other plants a fault for each of those rules and fails if the rule
+does not fire.
+
 ## Before submitting
 
 Run the gates the CI will run:

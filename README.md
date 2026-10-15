@@ -9,6 +9,15 @@
 version control system** — a terminal (TUI) front-end, with a graphical (GUI) one planned, over one shared
 operation layer.
 
+![stikk's History view: a ref's block lineage, newest first, with the queued tier above it, the tip marked, and a rollback block and one needing attestations called out](docs/assets/readme/history.svg)
+
+![stikk's Compare view: what changed between two blocks, in prikk's own diff hunks, every line quoted byte for byte so a trailing space is visible](docs/assets/readme/compare.svg)
+
+![stikk's Verify view: prikk's verdict that the repository is sound, every stage prikk ran, and a sentence naming what prikk's JSON report leaves out](docs/assets/readme/verify.svg)
+
+*Drawn by stikk's own views from invented data, not photographed — see
+[RFC 042](rfcs/accepted/042-readme-key-visuals.md).*
+
 ## Overview
 
 prikk is a distributed VCS built around block-oriented patch theory. stikk sits on top of it to

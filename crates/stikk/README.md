@@ -5,6 +5,15 @@
 **stikk is a history browser and workbench for the [prikk](https://github.com/prikk-vcs/prikk)
 version control system** — a terminal (TUI) front-end over one shared operation layer.
 
+![stikk's History view: a ref's block lineage, newest first, with the queued tier above it, the tip marked, and a rollback block and one needing attestations called out](https://raw.githubusercontent.com/prikk-vcs/stikk/main/docs/assets/readme/history.svg)
+
+![stikk's Compare view: what changed between two blocks, in prikk's own diff hunks, every line quoted byte for byte so a trailing space is visible](https://raw.githubusercontent.com/prikk-vcs/stikk/main/docs/assets/readme/compare.svg)
+
+![stikk's Verify view: prikk's verdict that the repository is sound, every stage prikk ran, and a sentence naming what prikk's JSON report leaves out](https://raw.githubusercontent.com/prikk-vcs/stikk/main/docs/assets/readme/verify.svg)
+
+*Drawn by stikk's own views from invented data, not photographed — see
+[RFC 042](https://github.com/prikk-vcs/stikk/blob/main/rfcs/accepted/042-readme-key-visuals.md).*
+
 Its founding property is that **stikk owns no repository authority and no secrets**: every repository
 fact is re-derived from prikk, and prikk — never stikk — reads signing key material. Its stance
 mirrors prikk's own: *where prikk refuses, stikk explains.* The name is Norwegian for *to set a

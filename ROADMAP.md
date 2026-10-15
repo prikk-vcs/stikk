@@ -335,12 +335,14 @@ a fabricated worktree entry was fixed.
 
 ## Next — carried into 0.12.0, in order
 
-1. **The prikk 0.52.0 re-baseline** — **unconditional now**, and waiting only on prikk publishing it (crates.io is
-   still 0.51.0 at the 0.11.0 cut). The block-end label goes, or is banded below 0.52 (RFC 035 A2).
-2. **`block.rs`'s `said` to `wrap_hanging`** (RFC 040's carry): Block detail wraps an opening row and its hanging
+1. **The prikk 0.52.0 re-baseline — landed on `main`** ([RFC 043](rfcs/done/043-prikk-0-52-rebaseline.md), `e570583`, `eb85ebe`): validated through 0.52.0; Patch detail's block-end label banded to < 0.52.
+2. **README key visuals — landed on `main`** ([RFC 042](rfcs/done/042-readme-key-visuals.md), `8a84c8b`, `991aebd`): History,
+   Compare and Verify, rendered by stikk's own views from invented data, with a guard test against drift and anything
+   private. Five view titles that were cut at 80 columns now fit.
+3. **`block.rs`'s `said` to `wrap_hanging`** (RFC 040's carry): Block detail wraps an opening row and its hanging
    rows to their own widths inline, which is exactly what the shared `view::wrap_hanging` does. Collapse it into the
    helper so the wrap-to-the-wrong-width fault cannot be written a fourth time.
-3. **Package managers** — the owner's decision, after the installers have been used.
+4. **Package managers** — the owner's decision, after the installers have been used.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

@@ -1,6 +1,6 @@
 # RFC 043 — The prikk 0.52 re-baseline: a sealed patch now names its own path
 
-**Status.** **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, the day prikk 0.52.0 was published (the owner also updated
+**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`e570583`, `eb85ebe`); in `## Unreleased`. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, the day prikk 0.52.0 was published (the owner also updated
 their own machine to it). It delivers the item carried since 0.10.0: *"when prikk 0.52.0 publishes, validate it, and
 the block-end label goes or is banded"* (RFC 035 A2). **No open question.**
 Measured against real prikk **0.52.0** and **0.28.0** binaries. Evidence: `.git-exclude/reports/043-prikk-0-52-rebaseline/`.
@@ -73,3 +73,21 @@ the test and the docs. It re-runs F2 at 0.52 before building.
 
 - **No other behaviour change.** prikk 0.52's other changes do not reach stikk.
 - **No letter to prikk** (decision 5).
+
+## Delivered
+
+**One handoff, two commits, green on `main` at `eb85ebe`**: CI, Docs, the full-matrix suite (51 cases, installed at
+`--version 0.28.0` and `--version 0.52.0` on every platform), supply chain, and `installers.yml`. **The installers derived
+prikk `0.52.0` and installed it on the Unix `--with-prikk` legs, with no script changed** (decision 4).
+
+- **The ceiling alone (`e570583`), red on exactly F1's leg**, then green at `eb85ebe`. Measured against a pinned 0.52.0,
+  not the owner's binary on `PATH`.
+- **`PATCH_PATH_AT_PATCH_FROM_MINOR = 52`**, one constant. `patch_detail_in_block` takes the minor (it spawns nothing by
+  design). **An unknown minor is labelled**, because the label is a caution. Band tests run at 39, 51, 52, 60 and
+  `None`, and a block of one is never labelled.
+- **The suite leg is version-aware in both directions**, a later rename and a later delete, using the binary's own
+  minor.
+- **Two statements prikk's publication made false** (*"0.52.0 … not published"*, in `ASM-2` and `version.rs`) were
+  corrected. **`patch_detail_in_block`'s fifth argument** is a Breaking row in `## Unreleased`.
+- **prikk's letter 023** confirms the fix independently. Its §3 (0.53.0's `checkout` wording) cannot reach stikk, checked
+  in code, and no reply was needed.

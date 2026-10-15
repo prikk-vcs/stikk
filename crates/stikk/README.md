@@ -47,10 +47,16 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.10.x compares any two points in history, and shows every repository string as it is.**
-**Compare** (prikk ≥ 0.46) shows what changed between two points in **prikk's own `diff` hunks** —
-two marked blocks or a block and the one before it, from History and Block detail; the worktree
-against what `commit` would author, from Changes. Every line is quoted byte for byte, so a
+**v0.11.x installs in one command, prikk included, and tells you whether your repository is
+sound.** **One line installs stikk** — `curl … install.sh | sh`, or `irm … install.ps1 | iex` on
+Windows — checking the download against the checksum published beside it, installing where you own
+it, and offering to install **prikk** through prikk's own verified installer; `cargo binstall
+stikk` fetches the same prebuilt binary. **Verify** (`V`, prikk ≥ 0.39) shows prikk's verdict on
+whether the repository is sound, every condition it fails and every stage it ran — and a damaged
+repository reads as a verdict, never as a refusal. **Compare** (prikk ≥ 0.46) shows what changed
+between two points in **prikk's own `diff` hunks** — two marked blocks or a block and the one
+before it, from History and Block detail; **any two refs**, marked and selected in the ref picker;
+the worktree against what `commit` would author, from Changes. Every line is quoted byte for byte, so a
 whitespace or line-ending edit is visible, and stikk computes no difference of its own. **Every
 string stikk did not write is rendered so that what you read is what prikk reported**: a
 bidirectional override, a zero-width character or a look-alike space in a path, branch name or

@@ -20,7 +20,10 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.10.x compares any two points in history, and shows every repository string as it is.**
+**0.11.x installs in one command, prikk included, and tells you whether your repository is
+sound.** One line installs stikk and offers prikk through prikk's own verified installer; **Verify**
+(`V`) shows prikk's verdict on whether the repository is sound; and **Compare** reaches any two
+points, including any two refs. Every repository string is still shown as it is.
 The security-critical
 layers (shared model, prikk seam, state layer), the interactive **TUI** (shell + Orientation, built on
 `ratatui` — RFC 001), **History** + Block detail (RFC 006), the refusal-explanation and glossary surfaces
@@ -53,8 +56,11 @@ so that what you read is what prikk reported** (RFC 036): a bidirectional overri
 character or a look-alike space in a path, message, ref name or key id is written as its escape, in
 every view and in the one-shot printout, and two different names never look alike. **Block detail
 lists the files at any block, with their modes**, and the ref picker offers the branch you are on
-before its first seal (RFC 037, prikk ≥ 0.46 and ≥ 0.47). **Compare** (`FR-033`) is built at prikk
-≥ 0.46 (RFC 038): `m` and `d` in History, `d` in Block detail and in Changes, showing what changed
+before its first seal (RFC 037, prikk ≥ 0.46 and ≥ 0.47). **Compare** (`FR-033`, delivered in full) is built at prikk
+≥ 0.46 (RFCs 038 and 041): `m` and `d` in History, `d` in Block detail and in Changes, and `m`
+and `d` in the **ref picker** for any two branches, tags or received refs — showing what changed
 between two points in prikk's own `diff` hunks, quoted line by line, with stikk computing no
-difference of its own. **Comparing two different refs is not built.** Merge, sync, tag create, and
-branch create/close remain unbuilt; a **Trust & Keys** view is a named gap too.
+difference of its own. **Verify** (`V`, `FR-100` in part) shows prikk's verdict on whether the
+repository is sound, its failing conditions and its stages, at prikk ≥ 0.39 (RFC 040), and names
+what prikk's JSON leaves out. Merge, sync, tag create, and branch create/close remain unbuilt; a
+**Trust & Keys** view and a **doctor**/lock-inspector view are named gaps too.

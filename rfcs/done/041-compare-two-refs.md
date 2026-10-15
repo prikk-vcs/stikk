@@ -1,6 +1,6 @@
 # RFC 041 — Compare two refs: choose the pair in the ref picker
 
-**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`58ca970`); in `## Unreleased` for 0.11.0. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, as 0.11.0's increment 5 (`.git-exclude/release/0-11-0-scope.md`,
+**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`58ca970`); released in **0.11.0**. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, as 0.11.0's increment 5 (`.git-exclude/release/0-11-0-scope.md`,
 authorized; *"the first to move to 0.12.0 if the cycle runs long"*). **No open question.**
 Grounded in RFC 038's delivered seam (`Comparison::Points`) and its measurement in delivery: renames pair across
 branches when the file is in the common base (RFC 038, *Corrected by measurement in delivery*). prikk's guide: a

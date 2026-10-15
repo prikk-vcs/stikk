@@ -84,12 +84,14 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.10.x release is (and is not)
+## What a v0.11.x release is (and is not)
 
-v0.10.x reads orientation, history, block detail — including the files at **any** block, with their
+v0.11.x reads orientation, history, block detail — including the files at **any** block, with their
 modes, at prikk ≥ 0.46 — worktree changes, the Queue view, **Patch detail** (what one patch changed,
 from prikk's own `show` report, with content shown byte for byte), **Compare** (what changed between
-two points, from prikk's own `diff` hunks, at prikk ≥ 0.46) and the
+two points, from prikk's own `diff` hunks, at prikk ≥ 0.46 — two blocks, a block and the one before
+it, any two refs, or the worktree), **Verify** (prikk's verdict on whether the repository is sound,
+with its failing conditions and every stage it ran, at prikk ≥ 0.39) and the
 refusal/glossary surfaces, and performs two mutations — **commit** (author a worktree capture) and **seal**
 (freeze the queue into signed history) — both preview-first with tiered confirmation, naming the key that
 will sign. A confirmed commit authors only the worktree its preview showed, and the seal confirmation
@@ -97,11 +99,13 @@ names the patches it freezes. It also notices a change made outside it and refre
 and its commit preview shows a declared rename as prikk's own verdict resolves it, makes commit
 unavailable where prikk would refuse a declaration, and names a ref with no published history.
 Every string it did not write is rendered so that what you read is what prikk reported.
-Signing readiness is read from prikk itself on prikk ≥ 0.41. **Comparing two different refs**, merge,
-sync, tag create, and branch create/close remain unbuilt, and so is a **Trust & Keys** view: the
-`Prikk` seam has fourteen methods — `handshake`, `readiness`, `orientation`, `history`,
-`block_state`, `refs`, `tags`, `worktree_status`, `queue`, `show`, `diff`, `change_token`, `commit`
-and `seal` — and none for any of them.
+Signing readiness is read from prikk itself on prikk ≥ 0.41. Merge, sync, tag create, and branch
+create/close remain unbuilt, and so is a **Trust & Keys** view, and a **doctor** or lock-inspector
+view (`doctor` has no JSON): the `Prikk` seam has fifteen methods — `handshake`, `readiness`,
+`orientation`, `history`, `block_state`, `refs`, `tags`, `worktree_status`, `queue`, `show`,
+`diff`, `verify`, `change_token`, `commit` and `seal` — and none for any of them.
+A release also publishes **the four installer scripts** (`install.sh`, `uninstall.sh`,
+`install.ps1`, `uninstall.ps1`), each with its own `.sha256`, filled with that release's version.
 It drives the external `prikk` binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.51.0** — so the release
 notes must state which prikk version it was validated against and how to install it — a
 `cargo install stikk` with no `prikk` on `PATH` will open and then explain that prikk is missing, by

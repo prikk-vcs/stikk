@@ -1,6 +1,6 @@
 # RFC 040 — Verify: whether the repository is sound, in prikk's own verdict
 
-**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`763f10b`, `95ffea5`); in `## Unreleased` for 0.11.0. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-14** by the architect, as 0.11.0's increment 4 (`.git-exclude/release/0-11-0-scope.md`,
+**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`763f10b`, `95ffea5`); released in **0.11.0**. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-14** by the architect, as 0.11.0's increment 4 (`.git-exclude/release/0-11-0-scope.md`,
 authorized). **No open question.**
 Measured against a real prikk **0.51.0**: a sound repository, one with a queued commit, one with a byte flipped inside
 an object container, and one with a queued commit's WAL record torn. Evidence: `.git-exclude/reports/040-verify/`

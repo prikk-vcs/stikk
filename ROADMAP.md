@@ -273,6 +273,39 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk installs in one command, prikk included, and tells you whether your repository is sound (0.11.0, breaking)
+
+- **One-command installation, on Linux, macOS and Windows** ([RFC 039](rfcs/done/039-installation-for-everyone.md)).
+  `curl … install.sh | sh`, or `irm … install.ps1 | iex`: each script downloads the release it was published
+  with, **checks it against the checksum published beside it and installs nothing if that check fails**, installs
+  into a directory you own, adds it to your own `PATH` once, and says what to type next. **When prikk is missing it
+  offers to install it — through prikk's own installer**, whose download prikk verifies itself, pinned to the prikk
+  version this stikk was tested against; where prikk has no installer, stikk says so and prints the alternative
+  rather than improvising one. Matching uninstallers remove the binary and the `PATH` entry and nothing else, and
+  never touch prikk. `cargo binstall stikk` fetches the same prebuilt binary. **The README and the guide lead with
+  installing, not `cargo build`** — every release since 0.1.0 had shipped binaries and nothing said so — and all
+  six archive checksum files now share one format.
+- **Verify (`V`): prikk's verdict on whether the repository is sound** (`FR-100`, in part;
+  [RFC 040](rfcs/done/040-verify.md)), at prikk ≥ 0.39, on demand. The verdict, every condition prikk currently
+  fails in prikk's own words, and every stage it ran — **no stage count or name is written down anywhere in
+  stikk**, because prikk 0.39 reports 14 and 0.51 reports 17. **A damaged repository reads as a verdict, never as a
+  refusal**: prikk exits non-zero *with* a complete report when it finds damage, and this is the one command whose
+  seam reads that exit as the report it carries. What prikk's JSON leaves out — which objects or refs failed, and
+  the unverifiable-signature count — is named on every report, sound or not, with where to find it; **stikk parses
+  no prose**. Verify repairs nothing and never runs on its own.
+- **Compare reaches any two refs** (`FR-033`, now delivered in full;
+  [RFC 041](rfcs/done/041-compare-two-refs.md)): `m` marks a ref in the picker and `d` compares it with the
+  selected one — branches, tags and received refs alike. **Two refs have no lineage order**, so stikk states the
+  one you chose rather than inventing one, and names the **block** each ref resolved to beside it, because a ref
+  can move and a block cannot. The branch you are on before its first seal cannot be a side, and says so in stikk's
+  own words: prikk answers its name with *"does not exist in this repository"*, the same sentence a never-created
+  ref gets. **No seam change** — prikk could always compare two refs.
+- **Long rows wrap under their own value** (RFC 037's carried polish, with RFC 036's). Block detail continued a
+  wrapped row at column 0, under the labels; **History wrapped nothing and cut instead** — a row carrying every
+  marker is 85 columns, so at 80 its `← tip` was off screen entirely and the tip of a lineage read as an ordinary
+  block — and its update-seq and kind columns ran together when either value filled its width.
+  `queued_elsewhere_clauses` returns `Piece`s, the last place core took text a frontend had already rendered.
+
 ## Shipped — stikk compares any two points in history, and shows every repository string as it is (0.10.0, breaking)
 
 - **Compare** (`FR-033`), the last named view unbuilt: what changed between two points, in **prikk's own `diff`
@@ -300,26 +333,14 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.11.0, scoped 2026-10-14 (authorized, amended the same day), in delivery order
+## Next — carried into 0.12.0, in order
 
-**0.11.0: anyone can install stikk in one command, and stikk shows whether a repository is sound.** Scope:
-`.git-exclude/release/0-11-0-scope.md`.
-
-1. **Installation docs — landed on `main`** ([RFC 039](rfcs/done/039-installation-for-everyone.md) A, `a452553`,
-   `9a523e4`): the README and the guide lead with installing, not building.
-2. **One-command installers — landed on `main`** (RFC 039 B, `c5e1b02`, `75bca86`; tests `d0db80e`): `install.sh` and
-   `install.ps1`, checksum-verified, offering prikk through prikk's own verified installer, with the static build on
-   Linux x86_64; `cargo binstall stikk`. **First published by the 0.11.0 release run.** Package managers are the
-   owner's decision, after the installers have been used.
-3. **Polish — landed on `main`** (RFC 037 Handoff C, `a6ac3c1`, `fa36111`): long rows in Block detail wrap under
-   their own value; History wraps instead of cutting (its tip marker had fallen off at 85 columns) and its columns no
-   longer run together; `queued_elsewhere_clauses` returns `Piece`s.
-4. **Verify — landed on `main`** (`FR-100`, [RFC 040](rfcs/done/040-verify.md), `763f10b`, `95ffea5`): verdict, failing conditions and stages from `verify-report-v1`, on demand.
-   Per-item findings are outside prikk's JSON (prikk's changelog), stated as such; stikk parses no prose. Doctor and
-   locks (`FR-101/102`) stay Later: `doctor` has no JSON.
-5. **Compare two different refs — landed on `main`** ([RFC 041](rfcs/done/041-compare-two-refs.md), `58ca970`): a pair mode of the ref picker. The first to move to 0.12.0 if needed.
-6. **Conditional: the prikk 0.52.0 re-baseline**, only if prikk publishes before the cut. The block-end label goes, or
-   is banded below 0.52 (RFC 035 A2).
+1. **The prikk 0.52.0 re-baseline** — **unconditional now**, and waiting only on prikk publishing it (crates.io is
+   still 0.51.0 at the 0.11.0 cut). The block-end label goes, or is banded below 0.52 (RFC 035 A2).
+2. **`block.rs`'s `said` to `wrap_hanging`** (RFC 040's carry): Block detail wraps an opening row and its hanging
+   rows to their own widths inline, which is exactly what the shared `view::wrap_hanging` does. Collapse it into the
+   helper so the wrap-to-the-wrong-width fault cannot be written a fourth time.
+3. **Package managers** — the owner's decision, after the installers have been used.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

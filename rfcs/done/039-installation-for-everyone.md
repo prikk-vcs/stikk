@@ -1,6 +1,6 @@
 # RFC 039 — Installation for everyone: one command, prikk included
 
-**Status.** **Done 2026-10-14**: Handoffs A and B delivered on `main` (`a452553`, `9a523e4`; `c5e1b02`, `75bca86`, and test fixes `010628c`..`d0db80e`); in `## Unreleased` for 0.11.0. **The installers' first real publication is the 0.11.0 release run.** **Accepted by the project owner 2026-10-14**, decision 4 included. **Proposed 2026-10-14** by the architect, after the project owner's direction the same day: *"Much
+**Status.** **Done 2026-10-14**: Handoffs A and B delivered on `main` (`a452553`, `9a523e4`; `c5e1b02`, `75bca86`, and test fixes `010628c`..`d0db80e`); released in **0.11.0**. **The installers' first real publication is the 0.11.0 release run.** **Accepted by the project owner 2026-10-14**, decision 4 included. **Proposed 2026-10-14** by the architect, after the project owner's direction the same day: *"Much
 easier installation for unskilled users is required in the near future."* Its first handoff, the documentation, was
 already accepted by the owner in conversation that day. **No open question**, but decision 4 reaches into another
 project, and accepting this RFC accepts it.

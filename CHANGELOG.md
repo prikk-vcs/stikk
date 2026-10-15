@@ -2,7 +2,21 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.11.0 — 2026-10-15
+
+**stikk now installs in one command, prikk included, and tells you whether your repository is
+sound.** **Installation** (RFC 039) is the change a new reader meets first: one line of `curl` or
+`irm` downloads stikk, checks it against the checksum published beside it, installs it where you
+own it, and offers to install **prikk** through prikk's own verified installer — and
+`cargo binstall stikk` fetches the same prebuilt binary. **Verify** (RFC 040, `FR-100` in part) is
+new: `V` shows prikk's verdict on whether the repository is sound, every condition it fails and
+every stage it ran, and says plainly what prikk's JSON leaves out. **Compare now answers the
+question a branch user asks first** (RFC 041): `m` and `d` in the ref picker compare any two
+branches, tags or received refs, which completes `FR-033`. Beside them, **long rows no longer
+spill under their labels or off the edge** (RFC 037's carried polish): History was cutting its tip
+marker off an 85-column row, so the tip of a lineage read as an ordinary block. The validated
+prikk range is unchanged — **≥ 0.28, through 0.51.0** — and the real-binary suite drives **51
+cases** against real prikk binaries at 0.28.0 and 0.51.0, on Linux, macOS and Windows.
 
 ### Breaking
 
@@ -59,26 +73,17 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
 
 - **`cargo binstall stikk`** downloads the same prebuilt binary instead of compiling it.
 
-- **Compare two refs, from the ref picker** (prikk ≥ 0.46). The comparison a branch user asks
-  first — *what is different between this branch and that one?* — was the one Compare could not
-  answer: it compared two blocks in a lineage, or your worktree, but there was no way to choose two
-  refs. Now there is. Open the picker with `b`, press `m` on one ref and `d` on another.
-
-  **The heading says which is which, and names the blocks.** Two refs have no lineage order, so
-  stikk does not invent one: the marked ref is the left side, the selected one is the right, and
-  the heading says so in those words. Beside each it names the **block** prikk resolved that ref
-  to — a ref can move, a block cannot — and `r` re-runs the comparison against wherever the refs
-  point then, with the block ids following.
-
-  **Branches, tags and received refs** (`remotes/…`, which prikk compares without adopting) can
-  all be a side. **The branch you are on before its first seal cannot**: it has no block, so `m`
-  and `d` there say that in stikk's own words and point at the comparison it does have — `w` then
-  `d`, your worktree against what `commit` would author against.
-
-  The mark survives closing and reopening the picker, since that is where both halves of a pair are
-  chosen, and is forgotten when you focus a different ref. **The Compare view itself is unchanged**,
-  and so is the seam: prikk could always compare two refs, and stikk was already asking the right
-  question.
+- **And the documentation leads with installing, not building.** The first thing a new reader saw
+  was `cargo build --release`, which needs a Rust toolchain and a clone of this repository — while
+  **every release since 0.1.0** has shipped ready-to-run binaries for six platforms, each with a
+  checksum, and nothing said so. `README.md` now opens with **Install**: the one-line installer
+  first, then, for anyone who would rather do it by hand, the right archive for their platform with
+  the exact download, checksum and extract commands for Linux, macOS and Windows separately — no
+  step asks you to translate one platform's command into another's. `cargo install` follows for
+  people who already have Rust, and `gh attestation verify` for anyone who wants to know who built
+  the file and not only that it arrived unaltered. **Quick start is now three lines**: `prikk
+  init`, `stikk`, and `?` for help. Building from source moved to `CONTRIBUTING.md`, and the guide
+  gained an [Install](docs/src/guide/install.md) page the rest of it starts from.
 
 - **Verify (`V`): whether the repository is sound, in prikk's own verdict** (prikk ≥ 0.39).
   stikk could show every block and patch in a repository and still not say whether the thing
@@ -104,6 +109,27 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
   scans the whole repository, so it runs only when you ask. Below prikk 0.39 stikk spawns nothing
   and says so, rather than reporting a repository it never checked as sound.
 
+- **Compare two refs, from the ref picker** (prikk ≥ 0.46). The comparison a branch user asks
+  first — *what is different between this branch and that one?* — was the one Compare could not
+  answer: it compared two blocks in a lineage, or your worktree, but there was no way to choose two
+  refs. Now there is. Open the picker with `b`, press `m` on one ref and `d` on another.
+
+  **The heading says which is which, and names the blocks.** Two refs have no lineage order, so
+  stikk does not invent one: the marked ref is the left side, the selected one is the right, and
+  the heading says so in those words. Beside each it names the **block** prikk resolved that ref
+  to — a ref can move, a block cannot — and `r` re-runs the comparison against wherever the refs
+  point then, with the block ids following.
+
+  **Branches, tags and received refs** (`remotes/…`, which prikk compares without adopting) can
+  all be a side. **The branch you are on before its first seal cannot**: it has no block, so `m`
+  and `d` there say that in stikk's own words and point at the comparison it does have — `w` then
+  `d`, your worktree against what `commit` would author against.
+
+  The mark survives closing and reopening the picker, since that is where both halves of a pair are
+  chosen, and is forgotten when you focus a different ref. **The Compare view itself is unchanged**,
+  and so is the seam: prikk could always compare two refs, and stikk was already asking the right
+  question.
+
 ### Changed
 
 - **Every release's checksum files now share one format.** The five Unix archives published
@@ -111,18 +137,6 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
   name and a CRLF, so `sha256sum -c` could not be used on Windows and anything reading them needed
   two parsers. All six now use the Unix shape. The documented Windows check reads the first field,
   which works on this format and on the older one, so the 0.10.0 instructions keep working.
-
-- **The README and the guide lead with installing stikk, not building it.** The first thing a new
-  reader saw was `cargo build --release`, which needs a Rust toolchain and a clone of this
-  repository — while **every release since 0.1.0** has shipped ready-to-run binaries for six platforms,
-  each with a checksum, and nothing said so. `README.md` now opens with **Install**: prikk in one
-  line through prikk's own installer, then the right archive for your platform with the exact
-  download, checksum and extract commands for Linux, macOS and Windows separately — no step asks
-  you to translate one platform's command into another's. `cargo install` follows for people who
-  already have Rust, and `gh attestation verify` for anyone who wants to know who built the file
-  and not only that it arrived unaltered. **Quick start is now three lines**: `prikk init`, `stikk`,
-  and `?` for help. Building from source moved to `CONTRIBUTING.md`, and the guide gained an
-  [Install](docs/src/guide/install.md) page the rest of it starts from.
 
 ### Fixed
 

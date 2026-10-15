@@ -35,8 +35,8 @@ _None: RFC 043 delivered and closed 2026-10-15._
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
-| 043 | [The prikk 0.52 re-baseline](./done/043-prikk-0-52-rebaseline.md) | 0.12.0 candidate (on `main`) | none | [A: the re-baseline](./handoffs/043-prikk-0-52-rebaseline/a-rebaseline-handoff-v1.md) |
-| 042 | [README key visuals](./done/042-readme-key-visuals.md) | 0.12.0 candidate (on `main`; GitHub's README now) | animated captures, if wanted, from the same generator | [A: README visuals](./handoffs/042-readme-key-visuals/a-readme-visuals-handoff-v1.md) |
+| 043 | [The prikk 0.52 re-baseline](./done/043-prikk-0-52-rebaseline.md) | **0.12.0** | none | [A: the re-baseline](./handoffs/043-prikk-0-52-rebaseline/a-rebaseline-handoff-v1.md) |
+| 042 | [README key visuals](./done/042-readme-key-visuals.md) | **0.12.0** (on GitHub's README since the push) | animated captures, if wanted, from the same generator | [A: README visuals](./handoffs/042-readme-key-visuals/a-readme-visuals-handoff-v1.md) |
 | 041 | [Compare two refs](./done/041-compare-two-refs.md) | **0.11.0** | arbitrary block-id entry and three-way views (not planned) | [A: compare two refs](./handoffs/041-compare-two-refs/a-compare-two-refs-handoff-v1.md) |
 | 040 | [Verify](./done/040-verify.md) | **0.11.0** | per-item findings, warnings and the unverifiable-signature count wait on prikk's JSON (held for a letter); `block.rs`'s `said` to `wrap_hanging`, carried into 0.12.0 | [A: Verify](./handoffs/040-verify/a-verify-handoff-v1.md) |
 | 039 | [Installation for everyone](./done/039-installation-for-everyone.md) | **0.11.0** | the installers' first publication is the 0.11.0 release run; package managers are the owner's decision; prikk's `uninstall.sh --prefix`, held for a letter | [A: installation docs](./handoffs/039-installation-for-everyone/a-installation-docs-handoff-v1.md) · [B: the installers](./handoffs/039-installation-for-everyone/b-installers-handoff-v1.md) |

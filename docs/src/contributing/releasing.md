@@ -84,9 +84,9 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.11.x release is (and is not)
+## What a v0.12.x release is (and is not)
 
-v0.11.x reads orientation, history, block detail — including the files at **any** block, with their
+v0.12.x reads orientation, history, block detail — including the files at **any** block, with their
 modes, at prikk ≥ 0.46 — worktree changes, the Queue view, **Patch detail** (what one patch changed,
 from prikk's own `show` report, with content shown byte for byte), **Compare** (what changed between
 two points, from prikk's own `diff` hunks, at prikk ≥ 0.46 — two blocks, a block and the one before

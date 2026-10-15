@@ -20,8 +20,8 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.11.x installs in one command, prikk included, and tells you whether your repository is
-sound.** One line installs stikk and offers prikk through prikk's own verified installer; **Verify**
+**0.12.x installs in one command, prikk included, and tells you whether your repository is
+sound — now against prikk 0.52.0.** One line installs stikk and offers prikk through prikk's own verified installer; **Verify**
 (`V`) shows prikk's verdict on whether the repository is sound; and **Compare** reaches any two
 points, including any two refs. Every repository string is still shown as it is.
 The security-critical

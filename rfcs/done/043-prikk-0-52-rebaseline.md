@@ -1,6 +1,6 @@
 # RFC 043 — The prikk 0.52 re-baseline: a sealed patch now names its own path
 
-**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`e570583`, `eb85ebe`); in `## Unreleased`. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, the day prikk 0.52.0 was published (the owner also updated
+**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`e570583`, `eb85ebe`); released in **0.12.0**. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, the day prikk 0.52.0 was published (the owner also updated
 their own machine to it). It delivers the item carried since 0.10.0: *"when prikk 0.52.0 publishes, validate it, and
 the block-end label goes or is banded"* (RFC 035 A2). **No open question.**
 Measured against real prikk **0.52.0** and **0.28.0** binaries. Evidence: `.git-exclude/reports/043-prikk-0-52-rebaseline/`.

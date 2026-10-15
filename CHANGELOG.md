@@ -2,7 +2,19 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.12.0 — 2026-10-15
+
+**stikk now works with prikk 0.52.0, which names each patch's files as they were at that patch, and
+the README shows stikk at work.** **The validated range reaches 0.52.0** (RFC 043), raised the day
+prikk published it: prikk 0.52 fixed the defect stikk reported upstream, so in a sealed block of
+several patches a patch's files are now reported under the names *that* patch saw, and Patch
+detail's *as at the end of this block* caution appears only below 0.52, where it is still true.
+**The README gained three images** of History, Compare and Verify (RFC 042), **rendered by stikk's
+own views from invented data rather than photographed**, so nothing of any maintainer's machine can
+appear in them — with a test that fails if they drift from the views or acquire anything private.
+Making them found **five view titles that were being cut off at 80 columns**, which is fixed here
+too. The real-binary suite drives **51 cases** against real prikk binaries at 0.28.0 and 0.52.0, on
+Linux, macOS and Windows.
 
 ### Breaking
 

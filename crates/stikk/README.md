@@ -56,8 +56,8 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.11.x installs in one command, prikk included, and tells you whether your repository is
-sound.** **One line installs stikk** — `curl … install.sh | sh`, or `irm … install.ps1 | iex` on
+**v0.12.x installs in one command, prikk included, and tells you whether your repository is
+sound — now against prikk 0.52.0.** **One line installs stikk** — `curl … install.sh | sh`, or `irm … install.ps1 | iex` on
 Windows — checking the download against the checksum published beside it, installing where you own
 it, and offering to install **prikk** through prikk's own verified installer; `cargo binstall
 stikk` fetches the same prebuilt binary. **Verify** (`V`, prikk ≥ 0.39) shows prikk's verdict on

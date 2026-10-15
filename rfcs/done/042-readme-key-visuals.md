@@ -1,6 +1,6 @@
 # RFC 042 — README key visuals, made from invented data so nothing private can appear
 
-**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`8a84c8b`, `991aebd`); on GitHub's README now, on crates.io at the next publish. **Accepted by the project owner 2026-10-15**, with the three views as proposed. **Proposed 2026-10-15** by the architect, on the project owner's suggestion the same day: *"It may be better
+**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`8a84c8b`, `991aebd`); released in **0.12.0** — on GitHub's README since the push, and on crates.io from this publish. **Accepted by the project owner 2026-10-15**, with the three views as proposed. **Proposed 2026-10-15** by the architect, on the project owner's suggestion the same day: *"It may be better
 to new user candidates to put a few screenshot(s) (key visual only) on `README.md`. However, when the screenshots taken,
 my privacy must be respected and the local secrets must not be exposed."* **No open question**; decision 2's choice of
 views is the owner's to change on acceptance.

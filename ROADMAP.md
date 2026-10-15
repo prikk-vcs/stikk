@@ -273,6 +273,25 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk works with prikk 0.52.0, and the README shows stikk at work (0.12.0, breaking)
+
+- **The prikk 0.52 re-baseline** ([RFC 043](rfcs/done/043-prikk-0-52-rebaseline.md)): **validated through 0.52.0**,
+  raised the day prikk published it and measured the same day against real 0.28.0 and 0.52.0 binaries. **prikk 0.52
+  fixed the defect stikk reported in letter 020**: in a sealed block of several patches, `show <block-id>` resolves
+  each patch's path **at that patch** rather than at the block's end, so a patch whose file a later patch renamed is
+  reported under the name that patch saw, and one whose file a later patch deleted has a path at all. **Patch
+  detail's *as at the end of this block* label is therefore banded below 0.52**, where it stays true, rather than
+  deleted. The raise came first and alone, red on exactly the one leg that pinned 0.51's answer. The installers pin
+  prikk 0.52.0 by themselves, deriving it from the same constant.
+- **README key visuals** ([RFC 042](rfcs/done/042-readme-key-visuals.md)): three images — History, Compare and
+  Verify — under the README's opening paragraph, **rendered by stikk's own views from invented data rather than
+  photographed**, so nothing of a maintainer's machine can be in them: there is nothing real in a scene to leak. A
+  test regenerates them and fails if they have drifted from the views; a second fails if an image carries a
+  home-directory path, a machine's user or host name, an email address, an undeclared object id or the words `seed`
+  or `secret`; a third plants a fault per rule and fails if the rule stays quiet. **Making them found five view
+  titles that ratatui was cutting at 80 columns** — Verify in all three states, and Patch detail's and Compare's
+  raw views — which lost the keys at the end of each title; those are fixed and tested.
+
 ## Shipped — stikk installs in one command, prikk included, and tells you whether your repository is sound (0.11.0, breaking)
 
 - **One-command installation, on Linux, macOS and Windows** ([RFC 039](rfcs/done/039-installation-for-everyone.md)).
@@ -333,16 +352,12 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — carried into 0.12.0, in order
+## Next — carried into 0.13.0, in order
 
-1. **The prikk 0.52.0 re-baseline — landed on `main`** ([RFC 043](rfcs/done/043-prikk-0-52-rebaseline.md), `e570583`, `eb85ebe`): validated through 0.52.0; Patch detail's block-end label banded to < 0.52.
-2. **README key visuals — landed on `main`** ([RFC 042](rfcs/done/042-readme-key-visuals.md), `8a84c8b`, `991aebd`): History,
-   Compare and Verify, rendered by stikk's own views from invented data, with a guard test against drift and anything
-   private. Five view titles that were cut at 80 columns now fit.
-3. **`block.rs`'s `said` to `wrap_hanging`** (RFC 040's carry): Block detail wraps an opening row and its hanging
+1. **`block.rs`'s `said` to `wrap_hanging`** (RFC 040's carry): Block detail wraps an opening row and its hanging
    rows to their own widths inline, which is exactly what the shared `view::wrap_hanging` does. Collapse it into the
    helper so the wrap-to-the-wrong-width fault cannot be written a fourth time.
-4. **Package managers** — the owner's decision, after the installers have been used.
+2. **Package managers** — the owner's decision, after the installers have been used.
 
 ## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
 

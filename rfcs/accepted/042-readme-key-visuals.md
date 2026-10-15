@@ -1,6 +1,6 @@
 # RFC 042 — README key visuals, made from invented data so nothing private can appear
 
-**Status.** **Proposed 2026-10-15** by the architect, on the project owner's suggestion the same day: *"It may be better
+**Status.** **Accepted by the project owner 2026-10-15**, with the three views as proposed. **Proposed 2026-10-15** by the architect, on the project owner's suggestion the same day: *"It may be better
 to new user candidates to put a few screenshot(s) (key visual only) on `README.md`. However, when the screenshots taken,
 my privacy must be respected and the local secrets must not be exposed."* **No open question**; decision 2's choice of
 views is the owner's to change on acceptance.
@@ -80,7 +80,7 @@ time. **None of them exists in an invented scene.**
 
 ## Delivery
 
-**One handoff, on acceptance.** It is not a release, and it can land at any time. GitHub shows the README on push, and
+**One handoff, issued on acceptance:** [Handoff A](../handoffs/042-readme-key-visuals/a-readme-visuals-handoff-v1.md). It is not a release, and it can land at any time. GitHub shows the README on push, and
 crates.io at the next publish.
 
 ## What this RFC does not do

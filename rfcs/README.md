@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 041 | [Compare two refs](./proposed/041-compare-two-refs.md) | `FR-033`'s last clause: in the ref picker, `m` marks a ref and `d` compares it with the selected one (marked = from, said in words; the heading names each side's resolved block). Branches, tags and received refs; not the unpublished current branch. No seam change. 0.11.0 increment 5 |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -30,7 +29,9 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 040 delivered and closed 2026-10-15._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 041 | [Compare two refs](./accepted/041-compare-two-refs.md) | `FR-033`'s last clause: `m` and `d` in the ref picker (marked = from, said in words; each side's resolved block shown). Branches, tags and received refs; not the unpublished current branch. No seam change. **Accepted 2026-10-15**; 0.11.0 increment 5 | [A: compare two refs](./handoffs/041-compare-two-refs/a-compare-two-refs-handoff-v1.md) |
 
 ## Done (implemented)
 

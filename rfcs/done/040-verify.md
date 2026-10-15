@@ -1,6 +1,6 @@
 # RFC 040 — Verify: whether the repository is sound, in prikk's own verdict
 
-**Status.** **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-14** by the architect, as 0.11.0's increment 4 (`.git-exclude/release/0-11-0-scope.md`,
+**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`763f10b`, `95ffea5`); in `## Unreleased` for 0.11.0. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-14** by the architect, as 0.11.0's increment 4 (`.git-exclude/release/0-11-0-scope.md`,
 authorized). **No open question.**
 Measured against a real prikk **0.51.0**: a sound repository, one with a queued commit, one with a byte flipped inside
 an object container, and one with a queued commit's WAL record torn. Evidence: `.git-exclude/reports/040-verify/`
@@ -116,3 +116,28 @@ author-signature outcomes (**not available**, F3), and a machine-readable export
 - **No doctor view and no lock inspector** (`FR-101/102`). `doctor` has no JSON.
 - **No per-item findings**, unless prikk adds them to the JSON.
 - **No verify of any session but the default**, which is prikk's limit too.
+
+## Delivered
+
+**One handoff, two commits, green on `main` at `95ffea5`**: CI, Docs, the real-binary suite on the full matrix (49 cases
+at prikk 0.28.0 and 0.51.0) and supply chain.
+
+- **Measured at both ends:** 0.51 reports **17** stages; **0.39, the floor, reports 14**, the three later stages absent
+  rather than renamed. Both are pinned as fixtures. Nothing the reader relies on differs.
+- **The exit-code rule**, in one `match` over a helper used by `verify` alone. Exit 0, or exit 1 with a readable
+  report, is a report. **Exit 1 with a `verify-report-v1` stikk cannot read is stikk's environment error** (review v1
+  §2; without it, a damaged repository would again have read as a refusal). Exit 1 with no report is prikk's refusal.
+  Exit 2 is stikk's bug. Any other code is a refusal even carrying a report. One test per row.
+- **The reader** checks `ok` against its conditions in both directions, keeps an unmeasured status as prikk's word, and
+  assumes no stage list.
+- **The view (`V`, Tier One)**: the verdict in stikk's words, conditions verbatim, **the standing sentence on what
+  prikk's JSON omits, shown on a sound report too**, the stages, active sessions, `v` bounded, and `r` re-runs. **A
+  damaged report never says "refused"**, and a report stikk did not check never says "sound", both asserted.
+- **A suite leg flips a byte in a real blob container**: prikk exits 1, and stikk returns a verdict.
+- **`view::wrap_hanging`**, shared, after this view reproduced Handoff C's fault and its own test caught it.
+
+## Carried forward
+
+- **Per-item findings, warnings and the unverifiable-signature count** (`FR-100`'s other clauses) wait on prikk's JSON.
+  The question is held for the next necessary letter (`.git-exclude/upstream/prikk/hold-for-next-letter.md`, item 3).
+- **`block.rs`'s `said` duplicates `wrap_hanging`**: fold it in when Block detail is next opened.

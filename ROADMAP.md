@@ -314,10 +314,10 @@ a fabricated worktree entry was fixed.
 3. **Polish — landed on `main`** (RFC 037 Handoff C, `a6ac3c1`, `fa36111`): long rows in Block detail wrap under
    their own value; History wraps instead of cutting (its tip marker had fallen off at 85 columns) and its columns no
    longer run together; `queued_elsewhere_clauses` returns `Piece`s.
-4. **Verify** (`FR-100`, [RFC 040](rfcs/accepted/040-verify.md), accepted 2026-10-15): verdict, failing conditions and stages from `verify-report-v1`, on demand.
+4. **Verify — landed on `main`** (`FR-100`, [RFC 040](rfcs/done/040-verify.md), `763f10b`, `95ffea5`): verdict, failing conditions and stages from `verify-report-v1`, on demand.
    Per-item findings are outside prikk's JSON (prikk's changelog), stated as such; stikk parses no prose. Doctor and
    locks (`FR-101/102`) stay Later: `doctor` has no JSON.
-5. **Compare two different refs** (RFC 041): a pair mode of the ref picker. The first to move to 0.12.0 if needed.
+5. **Compare two different refs** ([RFC 041](rfcs/proposed/041-compare-two-refs.md), proposed): a pair mode of the ref picker. The first to move to 0.12.0 if needed.
 6. **Conditional: the prikk 0.52.0 re-baseline**, only if prikk publishes before the cut. The block-end label goes, or
    is banded below 0.52 (RFC 035 A2).
 

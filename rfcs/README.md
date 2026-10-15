@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 041 | [Compare two refs](./proposed/041-compare-two-refs.md) | `FR-033`'s last clause: in the ref picker, `m` marks a ref and `d` compares it with the selected one (marked = from, said in words; the heading names each side's resolved block). Branches, tags and received refs; not the unpublished current branch. No seam change. 0.11.0 increment 5 |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
@@ -29,14 +30,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 040 | [Verify](./accepted/040-verify.md) | `FR-100`, partly: prikk's verdict, failing conditions and stages from `verify-report-v1`, on demand (`V`), prikk ≥ 0.39. **A damaged repository exits 1 with a complete report**: stikk reads that as a report, never a refusal. Item outcomes are only in prikk's prose, so stikk names where they are. **Accepted 2026-10-15**; 0.11.0 increment 4 | [A: Verify](./handoffs/040-verify/a-verify-handoff-v1.md) |
+_None: RFC 040 delivered and closed 2026-10-15._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 040 | [Verify](./done/040-verify.md) | 0.11.0 candidate (on `main`) | per-item findings, warnings and the unverifiable-signature count wait on prikk's JSON (held for a letter); `block.rs`'s `said` to `wrap_hanging` | [A: Verify](./handoffs/040-verify/a-verify-handoff-v1.md) |
 | 039 | [Installation for everyone](./done/039-installation-for-everyone.md) | 0.11.0 candidate (on `main`) | the installers' first publication is the 0.11.0 release run; package managers are the owner's decision; prikk's `uninstall.sh --prefix`, held for a letter | [A: installation docs](./handoffs/039-installation-for-everyone/a-installation-docs-handoff-v1.md) · [B: the installers](./handoffs/039-installation-for-everyone/b-installers-handoff-v1.md) |
 | 038 | [Compare](./done/038-compare.md) | **0.10.0** | comparing two different refs (Later) | [A: Compare](./handoffs/038-compare/a-compare-handoff-v1.md) |
 | 037 | [Read prikk's JSON where it now answers](./done/037-read-prikk-json-where-it-now-answers.md) | **0.10.0** | `UD-10` looks retired (`cat` at a bare block id, prikk 0.51), to RFC 038; Block detail's long id rows wrap to column 0 | [A: every block's files](./handoffs/037-read-prikk-json-where-it-now-answers/a-every-blocks-files-handoff-v1.md) · [B: the unpublished current branch](./handoffs/037-read-prikk-json-where-it-now-answers/b-unpublished-current-branch-handoff-v1.md) · [C: carried polish](./handoffs/037-read-prikk-json-where-it-now-answers/c-polish-handoff-v1.md) |

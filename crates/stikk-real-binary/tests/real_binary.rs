@@ -5724,3 +5724,200 @@ fn rfc040_below_the_band_verify_says_stikk_did_not_check() {
     // **Never a verdict.** A repository nobody checked is not a repository found sound.
     assert!(!reason.contains("sound"), "0.{}: {reason}", bin.minor);
 }
+
+/// **RFC 041: two diverged refs compared, against real binaries.**
+///
+/// The comparison a branch user asks first, driven the way the picker drives it:
+/// `Comparison::Points` with two **ref names**, not block ids. Measured first at 0.51
+/// (`.git-exclude/reports/041-compare-two-refs/measure041-0.51.txt`); this holds the product to
+/// what was measured.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc041_two_diverged_refs_compare_through_their_names_at_the_ceiling() {
+    let bin = PrikkBin::ceiling();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    let run = |args: &[&str]| {
+        let out = std::process::Command::new(&bin.path)
+            .args(args)
+            .current_dir(&repo)
+            .output()
+            .unwrap_or_else(|e| panic!("0.{}: spawn prikk {args:?}: {e}", bin.minor));
+        assert!(
+            out.status.success(),
+            "0.{}: prikk {args:?} failed: {}",
+            bin.minor,
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    };
+    let seal = |body: &str, path: &str, reff: &str| {
+        std::fs::write(repo.join(path), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {path}: {e}", bin.minor));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, reff, "x")
+            .unwrap_or_else(|e| panic!("0.{}: commit on {reff}: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, reff)
+            .unwrap_or_else(|e| panic!("0.{}: seal {reff}: {e}", bin.minor));
+    };
+
+    // A common base, then one block on each branch: a real divergence.
+    seal("base\n", "common.txt", "heads/main");
+    fixture.set_maintainer_env();
+    run(&["branch", "create", "heads/feature", "--from", "heads/main"]);
+    run(&["branch", "switch", "heads/feature"]);
+    Fixture::clear_env();
+    seal("only on feature\n", "feature.txt", "heads/feature");
+    fixture.set_maintainer_env();
+    run(&["branch", "switch", "heads/main"]);
+    Fixture::clear_env();
+    seal("only on main\n", "main.txt", "heads/main");
+    fixture.set_maintainer_env();
+    run(&[
+        "tag",
+        "create",
+        "tags/v1",
+        "--target",
+        "heads/main",
+        "-m",
+        "one",
+    ]);
+    Fixture::clear_env();
+
+    let compare = |from: &str, to: &str| {
+        stikk_core::compare(
+            &backend,
+            &repo,
+            &stikk_prikk::Comparison::Points {
+                from: from.to_string(),
+                to: to.to_string(),
+            },
+        )
+        .unwrap_or_else(|e| panic!("0.{}: compare {from} -> {to}: {e}", bin.minor))
+    };
+
+    // **Two diverged branches.** Both sides keep the name they were asked by, and each resolves
+    // to its own block -- which is what the heading names beside the ref (decision 3).
+    let view = compare("heads/main", "heads/feature");
+    let forward = view
+        .listed()
+        .unwrap_or_else(|| panic!("0.{}: 0.51 is above the band", bin.minor));
+    assert_eq!(forward.from.point, "heads/main");
+    assert_eq!(forward.to.point, "heads/feature");
+    let from_block = match &forward.from.target {
+        stikk_prikk::DiffTarget::Block(id) => id.clone(),
+        stikk_prikk::DiffTarget::Worktree => {
+            panic!("0.{}: a ref must resolve to a block", bin.minor)
+        }
+    };
+    let to_block = match &forward.to.target {
+        stikk_prikk::DiffTarget::Block(id) => id.clone(),
+        stikk_prikk::DiffTarget::Worktree => {
+            panic!("0.{}: a ref must resolve to a block", bin.minor)
+        }
+    };
+    assert_ne!(
+        from_block, to_block,
+        "0.{}: the two branches must have diverged",
+        bin.minor
+    );
+    assert!(
+        !forward.entries.is_empty(),
+        "0.{}: a divergence must show entries",
+        bin.minor
+    );
+    let statuses = |c: &stikk_core::Compared| {
+        let mut v: Vec<String> = c.entries.iter().map(|e| e.status.clone()).collect();
+        v.sort();
+        v
+    };
+
+    // **The same pair reversed swaps the sides**, as measured: `added` becomes `deleted`.
+    let view = compare("heads/feature", "heads/main");
+    let back = view
+        .listed()
+        .unwrap_or_else(|| panic!("0.{}: 0.51 is above the band", bin.minor));
+    assert_eq!(back.from.point, "heads/feature");
+    assert_eq!(back.to.point, "heads/main");
+    assert_eq!(
+        statuses(forward),
+        statuses(back),
+        "0.{}: the same two statuses, on opposite sides",
+        bin.minor
+    );
+    assert!(
+        statuses(forward).iter().any(|s| s == "added")
+            && statuses(forward).iter().any(|s| s == "deleted"),
+        "0.{}: measured as one added and one deleted, got {:?}",
+        bin.minor,
+        statuses(forward)
+    );
+
+    // **A tag is an ordinary side.** It resolves to the block it tags, which is `heads/main`'s.
+    let view = compare("tags/v1", "heads/feature");
+    let tagged = view
+        .listed()
+        .unwrap_or_else(|| panic!("0.{}: 0.51 is above the band", bin.minor));
+    assert_eq!(tagged.from.point, "tags/v1");
+    assert_eq!(
+        tagged.from.target,
+        stikk_prikk::DiffTarget::Block(from_block.clone()),
+        "0.{}: the tag resolves to the block heads/main is on",
+        bin.minor
+    );
+    assert_eq!(statuses(tagged), statuses(forward));
+
+    // **Two refs at the same block are no differences**, computed by prikk (decision 5).
+    let view = compare("heads/main", "tags/v1");
+    let same = view
+        .listed()
+        .unwrap_or_else(|| panic!("0.{}: 0.51 is above the band", bin.minor));
+    assert!(
+        same.is_empty(),
+        "0.{}: a ref and a tag on one block differ in nothing, got {:?}",
+        bin.minor,
+        same.entries
+    );
+}
+
+/// **RFC 041 below the band:** at 0.28 a ref pair is *not reported*, in stikk's own voice --
+/// never an empty comparison, which would say the two refs are the same.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc041_below_the_band_a_ref_pair_is_unreported_not_empty() {
+    let bin = PrikkBin::floor();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+
+    let view = stikk_core::compare(
+        &backend,
+        fixture.repo(),
+        &stikk_prikk::Comparison::Points {
+            from: "heads/main".to_string(),
+            to: "heads/feature".to_string(),
+        },
+    )
+    .unwrap_or_else(|e| panic!("0.{}: below the band must not be an error: {e}", bin.minor));
+    assert!(
+        view.listed().is_none(),
+        "0.{}: nothing should have been read",
+        bin.minor
+    );
+    let reason = view
+        .unreported_reason()
+        .unwrap_or_else(|| panic!("0.{}: a reason in stikk's own voice", bin.minor));
+    assert!(
+        reason.contains(&format!("0.{}", stikk_core::COMPARE_FROM_MINOR)),
+        "0.{}: {reason}",
+        bin.minor
+    );
+    assert!(
+        reason.contains(&format!("this is 0.{}", bin.minor)),
+        "0.{}: {reason}",
+        bin.minor
+    );
+}

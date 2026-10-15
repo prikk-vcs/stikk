@@ -48,7 +48,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     status_bar::render(app, frame, status);
 
     if let Some(top) = app.top_overlay() {
-        overlay::render(top, palette, frame, area);
+        overlay::render(top, app.marked_ref(), palette, frame, area);
     }
 }
 

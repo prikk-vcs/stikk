@@ -69,8 +69,9 @@ freezes) — both always preview-first, with tiered confirmation a compile error
 or branch switch made in another terminal** and refreshes what is on screen. **A `prikk mv` is shown
 as the rename prikk says it will author**, from prikk's own verdict at prikk ≥ 0.44, and a
 declaration prikk would refuse makes commit unavailable. **A ref with no published history is named
-as one**, and reads again on prikk 0.45 and 0.46, where prikk refused it by name. Comparing two
-different refs, merge, sync, and tag or branch creation are not built yet.
+as one**, and reads again on prikk 0.45 and 0.46, where prikk refused it by name. **Two refs
+compare from the ref picker** (`b`, then `m` to mark one and `d` to compare it with the selected
+one). Merge, sync, and tag or branch creation are not built yet.
 
 ## Links
 

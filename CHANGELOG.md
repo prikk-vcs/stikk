@@ -14,13 +14,15 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
 | `stikk-prikk` | **the `Prikk` trait gains `verify(&self, repo) -> Result<VerifyReport>`**, with no default — every implementor must add it |
 | `stikk-core` | **`queued_elsewhere_clauses` returns `[Vec<Piece>; 4]`** — one piece list per clause, with each of the two ref names a `Piece::Name` — instead of `[String; 4]`. It was the last place core took a string a frontend had already rendered: the caller handed in `identifier(queued_ref)`, deciding how a name is spelled in the one layer that cannot know how it will be drawn, so the same clauses could not be given to a GUI. **The words are unchanged** — flattening a clause gives back the sentence it gave before, and the clause-by-clause test against prikk's own captured sentence still holds every claim by name |
 | `stikk-tui` | **`Screen` gains `Verify { … }`** and **`Focus` gains `Verify(…)`** — breaking for an exhaustive `match` |
+| `stikk-tui` | **`CompareSource` gains `RefPair { from, to }`** — breaking for an exhaustive `match`. It carries the two ref names, so `r` can ask prikk again by name rather than re-running the blocks it resolved last time |
+| `stikk-tui` | **`overlay::render` takes the marked ref** (`Option<&str>`) before the palette. The ref picker draws the mark, and the mark outlives the picker — it survives closing and reopening — so `App` owns it and the renderer is handed it, the shape History's renderer already takes for its block mark |
 
 **Additive:** `stikk_prikk::VerifyReport`, `Verification`, `Verdict`, `FailedCondition`,
 `ActiveSessions`, `VerifyStage` and `StageStatus`, with `NullBackend`'s `with_verification` and
 `with_verify_refusal`; `stikk_core::verify` with `VerifyView`, `Checked`, `ConditionRow`,
 `StageRow`, `JSON_OMITS`, `VERIFY_FROM_MINOR`, `verify` and `checked`;
 `stikk_core::OperationContext::Verify`, on an enum that is already `#[non_exhaustive]`;
-`stikk_tui::app::App::open_verify`. **`stikk-model` and `stikk-state` are unchanged.**
+`stikk_tui::app::App::open_verify`; `stikk_core::ComparedSide::label_with_block` and `stikk_tui::app::App::marked_ref`. **`stikk-model`, `stikk-prikk` and `stikk-state` are unchanged** — RFC 041 needed no seam change at all.
 **No public item was removed.** The MSRV is unchanged at 1.88.
 
 ### Added
@@ -56,6 +58,27 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
   the installer added, and nothing else. **They never remove prikk**, which has its own uninstaller.
 
 - **`cargo binstall stikk`** downloads the same prebuilt binary instead of compiling it.
+
+- **Compare two refs, from the ref picker** (prikk ≥ 0.46). The comparison a branch user asks
+  first — *what is different between this branch and that one?* — was the one Compare could not
+  answer: it compared two blocks in a lineage, or your worktree, but there was no way to choose two
+  refs. Now there is. Open the picker with `b`, press `m` on one ref and `d` on another.
+
+  **The heading says which is which, and names the blocks.** Two refs have no lineage order, so
+  stikk does not invent one: the marked ref is the left side, the selected one is the right, and
+  the heading says so in those words. Beside each it names the **block** prikk resolved that ref
+  to — a ref can move, a block cannot — and `r` re-runs the comparison against wherever the refs
+  point then, with the block ids following.
+
+  **Branches, tags and received refs** (`remotes/…`, which prikk compares without adopting) can
+  all be a side. **The branch you are on before its first seal cannot**: it has no block, so `m`
+  and `d` there say that in stikk's own words and point at the comparison it does have — `w` then
+  `d`, your worktree against what `commit` would author against.
+
+  The mark survives closing and reopening the picker, since that is where both halves of a pair are
+  chosen, and is forgotten when you focus a different ref. **The Compare view itself is unchanged**,
+  and so is the seam: prikk could always compare two refs, and stikk was already asking the right
+  question.
 
 - **Verify (`V`): whether the repository is sound, in prikk's own verdict** (prikk ≥ 0.39).
   stikk could show every block and patch in a repository and still not say whether the thing

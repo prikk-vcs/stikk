@@ -214,6 +214,23 @@ pub enum CompareSource {
     PreviousInHistory,
     /// The worktree against what `commit` would author against.
     WorktreeAgainstBaseline,
+    /// Two refs chosen in the ref picker: the marked one against the selected one (RFC 041
+    /// decision 2).
+    ///
+    /// **No lineage order is invented.** Two blocks in one ref's history have an order -- prikk's
+    /// `update_seq` -- and [`Self::MarkedPair`] uses it. Two refs do not: neither is older in any
+    /// sense stikk can read off the pointers. So the order is the one the reader chose, marked
+    /// first, and the heading says which is which rather than implying a direction.
+    ///
+    /// **It carries the two names** so `r` can ask again. A ref moves; the comparison must follow
+    /// it (RFC 041 decision 3), and a screen that only remembered the blocks prikk resolved last
+    /// time would quietly re-run the old comparison for ever.
+    RefPair {
+        /// The marked ref.
+        from: String,
+        /// The selected ref.
+        to: String,
+    },
 }
 
 impl CompareSource {
@@ -227,6 +244,9 @@ impl CompareSource {
             }
             Self::WorktreeAgainstBaseline => {
                 "the worktree, against what `commit` would author against"
+            }
+            Self::RefPair { .. } => {
+                "the marked ref, against the selected one \u{2014} your order, not a lineage's"
             }
         }
     }
@@ -378,6 +398,19 @@ pub struct App {
     /// compared against a block the user then selected in another — the ref picker can move
     /// between the two presses.
     marked_block: Option<MarkedBlock>,
+    /// The ref marked in the picker for a comparison (RFC 041 decision 1).
+    ///
+    /// **A different thing from [`Self::marked_block`], deliberately kept apart.** `m` and `d`
+    /// mean "block" in History and "ref" in the picker, and one mark must never be read as the
+    /// other: comparing the block you marked yesterday against a ref you selected today is a pair
+    /// nobody asked for. Each key reads only its own mark.
+    ///
+    /// **Lifetime: it survives closing and reopening the picker, and is cleared by a ref change**
+    /// (decision 1's *"until the next ref change"*). Surviving a reopen is what makes the mark
+    /// usable at all -- the picker is where both halves of the pair are chosen, and a mark that
+    /// died on `Esc` could never be paired with anything. A ref change clears it because the
+    /// reader has moved on, and a stale pair is worse than an empty one.
+    marked_ref: Option<String>,
     pending_commit: Option<PendingCommit>,
     /// The seal flow's state between overlays (RFC 016 §5/§8) — the same reason [`Self::pending_commit`]
     /// exists, across the **three** round trips seal's own extra consent step needs (preview, then the
@@ -505,6 +538,7 @@ impl App {
             req_tx,
             operations: Vec::new(),
             marked_block: None,
+            marked_ref: None,
             pending_commit: None,
             pending_seal: None,
             stamp: None,
@@ -579,6 +613,22 @@ impl App {
                     comparison: stikk_prikk::Comparison::WorktreeAgainstBaseline,
                     opened: CompareSource::WorktreeAgainstBaseline,
                 }),
+                // **A pair of refs is re-asked by name** (RFC 041 decision 3): a ref moves, so
+                // `r` compares wherever they point *now*, and the heading's block ids change with
+                // it. Re-sending the blocks prikk resolved last time would re-run yesterday's
+                // comparison under today's heading.
+                CompareSource::RefPair { from, to } => Some(RequestKind::Compare {
+                    comparison: stikk_prikk::Comparison::Points {
+                        from: from.clone(),
+                        to: to.clone(),
+                    },
+                    opened: CompareSource::RefPair {
+                        from: from.clone(),
+                        to: to.clone(),
+                    },
+                }),
+                // Two sealed blocks cannot change, for the same reason a sealed block's detail
+                // cannot.
                 CompareSource::MarkedPair | CompareSource::PreviousInHistory => None,
             },
             // **`r` re-runs the verification** (RFC 040 decision 3). A verdict is about the
@@ -965,6 +1015,11 @@ impl App {
                 };
                 if let Some(name) = picked {
                     self.overlays.pop();
+                    // **The next ref change ends the mark's life** (RFC 041 decision 1). It
+                    // survives closing and reopening the picker -- that is where both halves of a
+                    // pair are chosen, so a mark that died on `Esc` could never be paired -- but
+                    // choosing a different ref means the reader has moved on.
+                    self.clear_ref_mark_on_ref_change(&name);
                     self.ref_focus = RefFocus::Ref(name);
                     if matches!(self.screens.last(), Some(Screen::History { .. })) {
                         self.screens.pop();
@@ -1126,6 +1181,13 @@ impl App {
     /// Only History has a lineage to mark in. Pressing `m` on the already-marked block clears the
     /// mark, which is the only way to take one back without making a comparison.
     pub fn mark_block(&mut self) {
+        // **The picker's `m` marks a ref, not a block** (RFC 041 decision 1). An overlay is what
+        // the reader is looking at, so it answers the key first -- and the two marks are stored
+        // apart, so neither key can ever read the other's.
+        if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
+            self.mark_ref();
+            return;
+        }
         let Some(Screen::History { view, cursor, .. }) = self.screens.last() else {
             return;
         };
@@ -1152,9 +1214,85 @@ impl App {
         self.marked_block.as_ref()
     }
 
+    /// **stikk's own words for the row that cannot be a side** (RFC 041 decision 4). The branch
+    /// you are on before its first seal has no block, so prikk has nothing to compare -- measured
+    /// at 0.51, where naming it is `exit 1`, *"ref heads/main does not exist in this
+    /// repository"*, the same words a ref that was never created gets. Passing that through would
+    /// tell a reader their branch does not exist, which is false and alarming; stikk says what is
+    /// actually true and points at the comparison that branch *does* have.
+    const UNPUBLISHED_CANNOT_COMPARE: &'static str = "this branch has no published history to compare yet \u{2014} w, then d, compares your \
+         worktree with what commit would author against";
+
+    /// Mark or unmark the selected **ref**, for a comparison (the `m` key in the picker; RFC 041
+    /// decision 1).
+    fn mark_ref(&mut self) {
+        let Some(Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+            unpublished_current,
+        }) = self.overlays.last()
+        else {
+            return;
+        };
+        // The guessed row of an empty picker names nothing prikk published either (RFC 029
+        // Handoff B §4), so it cannot be a side any more than the unpublished current branch can.
+        if *unpublished_main {
+            self.banner = Some(Self::UNPUBLISHED_CANNOT_COMPARE.to_string());
+            return;
+        }
+        let cursor = *cursor;
+        let first_is_unpublished = *unpublished_current;
+        let Some(name) = refs.get(cursor).cloned() else {
+            return;
+        };
+        if first_is_unpublished && cursor == 0 {
+            self.banner = Some(Self::UNPUBLISHED_CANNOT_COMPARE.to_string());
+            return;
+        }
+        // **The banner never names the ref.** It is repository text, and a banner is one line of
+        // stikk's own voice; the mark itself is visible on the row, under the identifier rule.
+        if self.marked_ref.as_deref() == Some(name.as_str()) {
+            self.marked_ref = None;
+            self.banner = Some("mark cleared".to_string());
+        } else {
+            self.marked_ref = Some(name);
+            self.banner = Some("marked \u{2014} d compares it with the selected ref".to_string());
+        }
+    }
+
+    /// The ref currently marked for a comparison, if any -- what the picker draws its mark from.
+    #[must_use]
+    pub fn marked_ref(&self) -> Option<&str> {
+        self.marked_ref.as_deref()
+    }
+
+    /// Forget the ref mark, because the reader moved to another ref (RFC 041 decision 1's
+    /// *"until the next ref change"*). **A stale pair is worse than an empty one.**
+    fn clear_ref_mark_on_ref_change(&mut self, new_ref: &str) {
+        if !matches!(&self.ref_focus, RefFocus::Ref(current) if current == new_ref) {
+            self.marked_ref = None;
+        }
+    }
+
     /// Compare (the `d` key; RFC 038 decision 3). What is compared depends on the screen.
     pub fn compare(&mut self) {
-        let Some((comparison, opened)) = self.comparison() else {
+        // **The picker's `d` compares two refs** (RFC 041 decision 1), and it closes the picker
+        // on its way, so the Compare screen is not drawn under an overlay.
+        let pair = if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
+            match self.ref_pair_comparison() {
+                Some(pair) => {
+                    self.overlays.pop();
+                    Some(pair)
+                }
+                // The reason is already in the banner, and the picker stays open so the reader
+                // can act on it.
+                None => return,
+            }
+        } else {
+            self.comparison()
+        };
+        let Some((comparison, opened)) = pair else {
             return;
         };
         let seq = self.dispatch(RequestKind::Compare { comparison, opened });
@@ -1162,6 +1300,47 @@ impl App {
             what: "compare",
             seq,
         });
+    }
+
+    /// The pair the picker's `d` means: **the marked ref against the selected one** (RFC 041
+    /// decision 2), or `None` with the reason said in the banner.
+    fn ref_pair_comparison(&mut self) -> Option<(stikk_prikk::Comparison, CompareSource)> {
+        let Some(Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+            unpublished_current,
+        }) = self.overlays.last()
+        else {
+            return None;
+        };
+        if *unpublished_main {
+            self.banner = Some(Self::UNPUBLISHED_CANNOT_COMPARE.to_string());
+            return None;
+        }
+        let cursor = *cursor;
+        let first_is_unpublished = *unpublished_current;
+        let to = refs.get(cursor).cloned()?;
+        // **Neither side may be the unpublished current branch** (decision 4). `m` already
+        // refuses it, so it can only arrive here as the *selected* side.
+        if first_is_unpublished && cursor == 0 {
+            self.banner = Some(Self::UNPUBLISHED_CANNOT_COMPARE.to_string());
+            return None;
+        }
+        let Some(from) = self.marked_ref.clone() else {
+            self.banner = Some("mark a ref with m first".to_string());
+            return None;
+        };
+        // **No order is invented** (decision 2): marked is `from`, selected is `to`, even when
+        // they are the same ref -- which prikk answers as "no differences" like any other pair,
+        // and is not special-cased here.
+        Some((
+            stikk_prikk::Comparison::Points {
+                from: from.clone(),
+                to: to.clone(),
+            },
+            CompareSource::RefPair { from, to },
+        ))
     }
 
     /// Which comparison `d` means here, or `None` with the reason said — the three entry points of

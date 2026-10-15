@@ -391,3 +391,136 @@ fn capture_rfc038_compare_at_80_columns() {
 
     assert!(draw(&text_entry, &CompareSource::MarkedPair).contains("100755"));
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 041: two refs, chosen in the ref picker.
+
+/// A comparison of two **refs**, each resolving to its own block — the shape prikk really
+/// returns, measured at 0.51 (`.git-exclude/reports/041-compare-two-refs/measure041-0.51.txt`).
+fn two_refs(from: &str, to: &str, from_block: char, to_block: char) -> CompareView {
+    CompareView::Listed(compared(Diff {
+        from: DiffSide {
+            point: from.to_string(),
+            target: DiffTarget::Block(block(from_block)),
+            queued: QueuedOnSide::NotApplicable,
+        },
+        to: DiffSide {
+            point: to.to_string(),
+            target: DiffTarget::Block(block(to_block)),
+            queued: QueuedOnSide::NotApplicable,
+        },
+        entries: Vec::new(),
+        unsupported_paths: Vec::new(),
+    }))
+}
+
+fn ref_pair(from: &str, to: &str) -> CompareSource {
+    CompareSource::RefPair {
+        from: from.to_string(),
+        to: to.to_string(),
+    }
+}
+
+#[test]
+fn a_ref_pairs_heading_names_both_refs_their_roles_and_the_blocks_they_resolved_to() {
+    let view = two_refs("heads/feature", "heads/main", 'a', 'b');
+    let text = draw(&view, &ref_pair("heads/feature", "heads/main"));
+    println!("--- RFC 041: the Compare heading for two refs, at 80 columns\n{text}");
+    let flat = text
+        .replace('\u{2502}', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // Both names, as identifiers, with the role the reader gave each.
+    assert!(flat.contains("heads/feature"), "{text}");
+    assert!(flat.contains("(marked)"), "{text}");
+    assert!(flat.contains("heads/main"), "{text}");
+    assert!(flat.contains("(selected)"), "{text}");
+    // **And the block each resolved to** (RFC 041 decision 3): a ref can move, a block cannot.
+    assert!(flat.contains(&"a".repeat(12)), "{text}");
+    assert!(flat.contains(&"b".repeat(12)), "{text}");
+    // The marked side is first, and the arrow points at the selected one.
+    let marked = flat.find("heads/feature").expect("the marked ref");
+    let selected = flat.find("heads/main").expect("the selected ref");
+    assert!(marked < selected, "marked first: {text}");
+    // stikk's own line about which key chose which, beneath it.
+    assert!(
+        flat.contains("the marked ref, against the selected one"),
+        "{text}"
+    );
+    // **No lineage order is claimed** (decision 2): two refs have none.
+    assert!(!flat.contains("older first"), "{text}");
+}
+
+#[test]
+fn re_running_a_ref_pair_shows_the_block_the_ref_now_points_at() {
+    // `r` re-asks by ref name, so the same heading describes a different block once a ref moves.
+    // Here that is the same two refs, the second resolving somewhere new.
+    let before = draw(
+        &two_refs("heads/feature", "heads/main", 'a', 'b'),
+        &ref_pair("heads/feature", "heads/main"),
+    );
+    assert!(before.contains(&"b".repeat(12)), "{before}");
+
+    let after = draw(
+        &two_refs("heads/feature", "heads/main", 'a', 'c'),
+        &ref_pair("heads/feature", "heads/main"),
+    );
+    assert!(after.contains(&"c".repeat(12)), "{after}");
+    assert!(
+        !after.contains(&"b".repeat(12)),
+        "the old block is gone: {after}"
+    );
+    // The names are unchanged — it is the same question, asked again.
+    assert!(
+        after.contains("heads/feature") && after.contains("heads/main"),
+        "{after}"
+    );
+}
+
+#[test]
+fn two_refs_at_the_same_block_read_as_no_differences() {
+    // Measured at 0.51: prikk answers this with an empty report, exit 0. Not special-cased here
+    // (RFC 041 decision 5) -- it is prikk's answer, rendered like any other.
+    let view = two_refs("heads/main", "tags/v1", 'a', 'a');
+    let text = draw(&view, &ref_pair("heads/main", "tags/v1"));
+    assert!(text.contains("no differences"), "{text}");
+    // Both sides still named, with the one block they share.
+    assert!(
+        text.contains("heads/main") && text.contains("tags/v1"),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_received_ref_is_an_ordinary_side() {
+    // Measured at 0.51 through `bundle export`/`bundle import`: prikk compares a received ref
+    // like any other point, so stikk renders it like any other name.
+    let view = two_refs("remotes/heads/feature", "heads/main", 'a', 'b');
+    let text = draw(&view, &ref_pair("remotes/heads/feature", "heads/main"));
+    assert!(text.contains("remotes/heads/feature"), "{text}");
+}
+
+#[test]
+fn a_hostile_ref_name_in_the_heading_is_an_identifier() {
+    let view = two_refs("heads/two  spaces", "heads/\u{202e}hidden", 'a', 'b');
+    let text = draw(
+        &view,
+        &ref_pair("heads/two  spaces", "heads/\u{202e}hidden"),
+    );
+    assert!(!text.contains('\u{202e}'), "{text}");
+    assert!(text.contains("\\u202e"), "{text}");
+    // The double space is spelled, so the wrap cannot collapse it into one.
+    assert!(!text.contains("two  spaces"), "{text}");
+    assert!(text.contains("\\u0020\\u0020"), "{text}");
+}
+
+#[test]
+fn a_block_pairs_heading_is_unchanged() {
+    // RFC 038's heading must not have moved: only the ref-pair source gets the new one.
+    let text = draw(&two_blocks(Vec::new()), &CompareSource::MarkedPair);
+    assert!(!text.contains("(marked)"), "{text}");
+    assert!(!text.contains("(selected)"), "{text}");
+    assert!(text.contains("older first"), "{text}");
+}

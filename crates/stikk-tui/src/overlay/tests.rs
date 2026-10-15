@@ -29,7 +29,7 @@ fn draw_at(overlay: &Overlay, w: u16, h: u16) -> String {
     let backend = TestBackend::new(w, h);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(overlay, &Palette::default(), f, f.area()))
+        .draw(|f| render(overlay, None, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -227,7 +227,7 @@ fn draw_80x24(overlay: &Overlay) -> String {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(overlay, &Palette::default(), f, f.area()))
+        .draw(|f| render(overlay, None, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -398,7 +398,7 @@ fn stale_next_step_is_reachable_at_80x12() {
     let backend = TestBackend::new(80, 12);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(&overlay, &Palette::default(), f, f.area()))
+        .draw(|f| render(&overlay, None, &Palette::default(), f, f.area()))
         .unwrap();
     let text = buffer_text(terminal.backend().buffer());
     assert!(text.contains("stikk stopped"));
@@ -1924,7 +1924,7 @@ fn continuation_rows_are_styled_like_the_first() {
     };
     let palette = Palette::default();
     terminal
-        .draw(|f| render(&overlay, &palette, f, f.area()))
+        .draw(|f| render(&overlay, None, &palette, f, f.area()))
         .unwrap();
     let buffer = terminal.backend().buffer();
     let mut checked = 0;

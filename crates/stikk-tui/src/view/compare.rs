@@ -35,6 +35,8 @@ use crate::theme::Palette;
 const TOP: &str = "  ";
 const ENTRY: &str = "  ";
 const DETAIL: &str = "    ";
+/// The heading's hanging indent: under the first side's name, past the opening margin.
+const HEADING_HANG: &str = "      ";
 
 /// Render Compare for `view` into `area`, scrolled to `offset` (clamped here and written back).
 /// `cursor` selects an entry — which `v` then shows prikk's own fields for.
@@ -108,12 +110,33 @@ fn compare_lines<'a>(
 
     // The heading names both sides. Core returns it as pieces, so a ref name renders under the
     // identifier rule and stikk's own words under the prose one (RFC 036).
-    say(
-        &mut lines,
-        &compose(&compared.heading()),
-        TOP,
-        Style::default().fg(palette.accent),
-    );
+    //
+    // **A pair of refs gets its own heading** (RFC 041 decision 3): each ref with the block prikk
+    // resolved it to, and which of the two the reader marked. The *names* are still core's
+    // pieces; only the role words are added here, because only this layer knows which key chose
+    // which side. `(marked)` and `(selected)` are stikk's own words, so they are `Said`.
+    let heading = match opened {
+        crate::app::CompareSource::RefPair { .. } => {
+            let mut pieces = compared.from.label_with_block();
+            pieces.push(stikk_core::Piece::said("  (marked)"));
+            pieces.push(stikk_core::Piece::said("  \u{2192}  "));
+            pieces.extend(compared.to.label_with_block());
+            pieces.push(stikk_core::Piece::said("  (selected)"));
+            pieces
+        }
+        _ => compared.heading(),
+    };
+    // **Wrapped with a hanging indent**, because a two-ref heading is long: two names, two block
+    // ids and two role words rarely fit 80 columns. Wrapped flat, the continuation starts at the
+    // left margin and `(selected)` reads as a new field rather than as the tail of the one above
+    // -- which is the column-0 fault RFC 037 Handoff C fixed in two other views, arriving here by
+    // a different route (seen in this view's own capture).
+    for row in crate::view::wrap_hanging(&compose(&heading), width, TOP, HEADING_HANG) {
+        lines.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.accent),
+        )));
+    }
     // **Which side is which, in stikk's own words.** prikk's report names two points and says
     // nothing about why they were chosen; only the entry point knows (RFC 038 decision 3).
     say(

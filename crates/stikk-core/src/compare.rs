@@ -143,6 +143,32 @@ impl ComparedSide {
     }
 }
 
+impl ComparedSide {
+    /// This side named **with the block prikk resolved it to** (RFC 041 decision 3).
+    ///
+    /// **A ref can move; a block cannot.** When the two sides are refs, the ref name alone says
+    /// what was asked for but not what was answered — re-run the same comparison tomorrow and the
+    /// same heading can describe a different pair of blocks. Naming the block beside the ref makes
+    /// the heading a record of what prikk actually compared.
+    ///
+    /// Falls back to [`Self::label`] where there is no block to name: the worktree side, and a
+    /// side whose point *is* already a block id, where repeating it would say the same thing
+    /// twice.
+    #[must_use]
+    pub fn label_with_block(&self) -> Vec<Piece> {
+        let mut pieces = self.label();
+        if is_object_id(&self.point) {
+            return pieces;
+        }
+        let DiffTarget::Block(block) = &self.target else {
+            return pieces;
+        };
+        pieces.push(Piece::said("  \u{00b7}  "));
+        pieces.push(Piece::name(short_id(block)));
+        pieces
+    }
+}
+
 /// One differing path, as a section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComparedEntry {

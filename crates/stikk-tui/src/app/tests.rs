@@ -1743,7 +1743,15 @@ fn status_line(app: &App) -> String {
 fn top_overlay_text(app: &App) -> String {
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
     terminal
-        .draw(|f| crate::overlay::render(app.top_overlay().unwrap(), app.palette(), f, f.area()))
+        .draw(|f| {
+            crate::overlay::render(
+                app.top_overlay().unwrap(),
+                app.marked_ref(),
+                app.palette(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     crate::test_util::buffer_text(terminal.backend().buffer())
 }
@@ -2671,4 +2679,262 @@ fn d_from_changes_compares_the_worktree_with_its_baseline() {
         &stikk_prikk::Comparison::WorktreeAgainstBaseline
     );
     assert_eq!(opened, &CompareSource::WorktreeAgainstBaseline);
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 041: compare two refs, from the ref picker.
+// ---------------------------------------------------------------------------------------------
+
+/// A picker holding three refs, with the cursor on the first.
+fn picker_with_refs(names: &[&str]) -> (App, mpsc::Receiver<Request>) {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(ref_list(names.iter().copied().map(ref_entry).collect()))),
+    });
+    (app, rx)
+}
+
+#[test]
+fn m_marks_a_ref_and_a_second_m_on_the_same_row_unmarks_it() {
+    let (mut app, _rx) = picker_with_refs(&["heads/main", "heads/feature"]);
+    assert_eq!(app.marked_ref(), None);
+
+    app.mark_block(); // `m` — the picker is open, so it marks a ref
+    assert_eq!(app.marked_ref(), Some("heads/main"));
+    let text = top_overlay_text(&app);
+    println!("--- RFC 041: the ref picker with a mark set, 80×24\n{text}");
+    // The mark is on its row, and the title says one is set (the row can scroll out of sight).
+    assert!(text.contains("● heads/main"), "{text}");
+    assert!(text.contains("● marked"), "{text}");
+
+    app.mark_block(); // `m` again on the same row
+    assert_eq!(app.marked_ref(), None);
+    let text = top_overlay_text(&app);
+    assert!(!text.contains("● heads/main"), "{text}");
+    assert!(text.contains("m marks a ref"), "{text}");
+}
+
+#[test]
+fn m_on_another_row_moves_the_mark_rather_than_adding_one() {
+    let (mut app, _rx) = picker_with_refs(&["heads/main", "heads/feature"]);
+    app.mark_block();
+    app.nav_down();
+    app.mark_block();
+    assert_eq!(app.marked_ref(), Some("heads/feature"));
+    let text = top_overlay_text(&app);
+    // Exactly one row carries the mark.
+    assert_eq!(
+        text.lines().filter(|l| l.contains('●')).count(),
+        // The row, plus the title's own `● marked`.
+        2,
+        "{text}"
+    );
+    assert!(text.contains("● heads/feature"), "{text}");
+}
+
+#[test]
+fn d_with_a_mark_compares_the_marked_ref_with_the_selected_one() {
+    let (mut app, rx) = picker_with_refs(&["heads/main", "heads/feature"]);
+    app.mark_block(); // mark heads/main
+    app.nav_down(); // select heads/feature
+    app.compare();
+
+    // The picker is closed and the comparison is on its way.
+    assert!(!app.has_overlay());
+    match next_request(&rx).kind {
+        RequestKind::Compare { comparison, opened } => {
+            // **Marked is `from`, selected is `to`** (RFC 041 decision 2) — the reader's order,
+            // not a lineage's.
+            assert_eq!(
+                comparison,
+                stikk_prikk::Comparison::Points {
+                    from: "heads/main".into(),
+                    to: "heads/feature".into(),
+                }
+            );
+            assert_eq!(
+                opened,
+                CompareSource::RefPair {
+                    from: "heads/main".into(),
+                    to: "heads/feature".into(),
+                }
+            );
+        }
+        other => panic!("expected a Compare request, got {other:?}"),
+    }
+    assert!(matches!(app.focus(), Focus::Loading("compare")));
+}
+
+#[test]
+fn d_with_no_mark_says_to_mark_one_and_sends_nothing() {
+    let (mut app, rx) = picker_with_refs(&["heads/main", "heads/feature"]);
+    app.compare();
+    // The picker stays open, so the reader can act on what the banner says.
+    assert!(matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })));
+    assert_eq!(app.banner(), Some("mark a ref with m first"));
+    assert!(rx.try_recv().is_err(), "nothing should have been sent");
+}
+
+#[test]
+fn the_unpublished_current_branch_refuses_both_keys_and_points_at_changes() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    // The branch prikk named is **prepended** by `apply_refs`, so it is not in `refs` here.
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(stikk_core::RefList {
+            refs: vec![ref_entry("heads/main")],
+            unpublished_current: stikk_prikk::UnpublishedBranch::Branch("heads/new".into()),
+        })),
+    });
+    // Land on the unpublished row, wherever the focused ref put the cursor.
+    app.nav_up();
+    app.nav_up();
+
+    app.mark_block();
+    assert_eq!(app.marked_ref(), None, "it must not become a side");
+    let banner = app.banner().expect("a reason in stikk's own words");
+    println!("--- RFC 041: the unpublished row's sentence\n{banner}");
+    assert!(
+        banner.contains("no published history to compare yet"),
+        "{banner}"
+    );
+    // **It points at the comparison that branch does have** (RFC 041 decision 4).
+    assert!(banner.contains("worktree"), "{banner}");
+    // Never prikk's words: measured at 0.51, prikk says the ref "does not exist", which is false
+    // and alarming for a branch the reader is standing on.
+    assert!(!banner.contains("does not exist"), "{banner}");
+
+    app.compare();
+    assert!(matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })));
+    assert!(rx.try_recv().is_err(), "nothing should have been sent");
+
+    // And it cannot be the **selected** side of a pair whose other half is fine either.
+    app.nav_down(); // heads/main
+    app.mark_block();
+    assert_eq!(app.marked_ref(), Some("heads/main"));
+    app.nav_up(); // back onto the unpublished row, as the selected side
+    app.compare();
+    assert!(matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })));
+    assert!(rx.try_recv().is_err(), "nothing should have been sent");
+}
+
+#[test]
+fn the_ref_mark_survives_reopening_the_picker_and_dies_on_a_ref_change() {
+    // **The lifetime I chose** (RFC 041 decision 1's *"until the next ref change"*): a mark
+    // survives closing and reopening, because the picker is where both halves of a pair are
+    // chosen and a mark that died on `Esc` could never be paired with anything.
+    let (mut app, rx) = picker_with_refs(&["heads/main", "heads/feature"]);
+    app.mark_block();
+    assert_eq!(app.marked_ref(), Some("heads/main"));
+
+    app.back(); // close the picker
+    assert!(!app.has_overlay());
+    assert_eq!(
+        app.marked_ref(),
+        Some("heads/main"),
+        "a reopen must find it"
+    );
+
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(ref_list(vec![
+            ref_entry("heads/main"),
+            ref_entry("heads/feature"),
+        ]))),
+    });
+    assert_eq!(app.marked_ref(), Some("heads/main"));
+    assert!(top_overlay_text(&app).contains("● heads/main"));
+
+    // **A ref change ends it.** A stale pair is worse than an empty one.
+    app.nav_down();
+    app.select(); // focus heads/feature
+    assert_eq!(app.focused_ref(), Some("heads/feature"));
+    assert_eq!(app.marked_ref(), None);
+}
+
+#[test]
+fn re_picking_the_ref_already_focused_is_not_a_ref_change() {
+    // The mark dies on a ref **change**, not on every `Enter`. Confirming the ref you are already
+    // on has moved nothing, so there is nothing to forget — and the pair you were building is
+    // still the pair you meant.
+    let (mut app, _rx) = picker_with_refs(&["heads/main", "heads/feature"]);
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+
+    app.nav_down();
+    app.mark_block(); // mark heads/feature
+    assert_eq!(app.marked_ref(), Some("heads/feature"));
+
+    app.nav_up();
+    app.select(); // pick heads/main, which is already the focused ref
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+    assert_eq!(
+        app.marked_ref(),
+        Some("heads/feature"),
+        "re-picking the focused ref is not a ref change"
+    );
+}
+
+#[test]
+fn a_ref_mark_and_a_block_mark_are_never_read_for_each_other() {
+    // **Two marks, kept apart** (handoff §2). `d` in History must never use a ref mark, and the
+    // picker's `d` must never use a block mark.
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_history();
+    let hist = next_request(&rx);
+    app.apply(Response {
+        seq: hist.seq,
+        kind: ResponseKind::History(Ok(two_block_history())),
+    });
+
+    // A block mark, made in History.
+    app.mark_block();
+    assert!(app.marked_block().is_some());
+    assert_eq!(app.marked_ref(), None, "History's `m` marks no ref");
+
+    // A ref mark, made in the picker, leaves the block mark alone.
+    app.open_ref_picker();
+    let refs_req = next_request(&rx);
+    app.apply(Response {
+        seq: refs_req.seq,
+        kind: ResponseKind::Refs(Ok(ref_list(vec![
+            ref_entry("heads/main"),
+            ref_entry("heads/feature"),
+        ]))),
+    });
+    app.mark_block(); // the picker is open: this marks a ref
+    assert_eq!(app.marked_ref(), Some("heads/main"));
+    assert!(
+        app.marked_block().is_some(),
+        "the block mark is untouched by the picker's `m`"
+    );
+
+    // The picker's `d` sends a **ref** pair, never the block mark.
+    app.nav_down();
+    app.compare();
+    match next_request(&rx).kind {
+        RequestKind::Compare { opened, .. } => assert!(
+            matches!(opened, CompareSource::RefPair { .. }),
+            "got {opened:?}"
+        ),
+        other => panic!("expected a Compare request, got {other:?}"),
+    }
 }

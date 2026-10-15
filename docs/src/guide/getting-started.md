@@ -150,7 +150,21 @@ bytes. `↑`/`↓` move between entries and `v` shows prikk's own fields for the
 prikk says its hunks are not the shortest edit script, stikk says so too. Below prikk 0.46, Compare
 says that stikk compares from 0.46 on and asks prikk nothing.
 
-**Comparing two different refs is not built yet**, and is on the roadmap.
+**To compare two refs**, open the ref picker with `b`, put the cursor on one ref and press `m` to
+mark it, then move to the other and press `d`. The marked ref is the left side and the selected one
+is the right, and the heading says which is which — two refs have no lineage order, so stikk states
+the one you chose rather than inventing one. Beside each ref the heading names the **block** prikk
+resolved it to, because a ref can move and a block cannot; `r` re-runs the comparison against
+wherever the refs point then, and those block ids change with it.
+
+A second `m` on the marked row clears the mark, and the picker's title says when one is set. The
+mark survives closing and reopening the picker — that is where you choose both halves of a pair —
+and is forgotten the moment you focus a different ref, because a stale pair is worse than none.
+
+Every ref the picker lists can be a side: branches, tags, and received refs (`remotes/…`), which
+prikk compares without adopting them. **The branch you are on before its first seal cannot**: it has
+no block for prikk to compare, so `m` and `d` there say so and point you at `w` then `d`, which
+compares your worktree with what `commit` would author against.
 
 ## Capability and signing
 

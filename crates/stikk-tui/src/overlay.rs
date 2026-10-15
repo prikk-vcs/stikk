@@ -237,7 +237,20 @@ impl Overlay {
 }
 
 /// Render the top overlay centred over `area`, clearing the region beneath it first (TU-02).
-pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rect) {
+/// Draw the top overlay.
+///
+/// `marked_ref` is the ref the picker has marked for a comparison (RFC 041 decision 1), or `None`.
+/// **It is passed in rather than stored in [`Overlay::RefPicker`]** because the mark outlives the
+/// picker -- it survives closing and reopening, and only a ref change ends it -- so `App` owns it
+/// and there is one source of truth. This is the shape History's renderer already takes for its
+/// block mark, for the same reason.
+pub fn render(
+    overlay: &Overlay,
+    marked_ref: Option<&str>,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
     match overlay {
         Overlay::Glossary { offset } => render_glossary(offset, palette, frame, area),
         Overlay::Loading { what, .. } => render_loading(what, palette, frame, area),
@@ -248,10 +261,13 @@ pub fn render(overlay: &Overlay, palette: &Palette, frame: &mut Frame, area: Rec
             unpublished_main,
             unpublished_current,
         } => render_ref_picker(
-            refs,
-            *cursor,
-            *unpublished_main,
-            *unpublished_current,
+            RefPickerRows {
+                refs,
+                cursor: *cursor,
+                unpublished_main: *unpublished_main,
+                unpublished_current: *unpublished_current,
+                marked_ref,
+            },
             palette,
             frame,
             area,
@@ -505,15 +521,26 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
     lines
 }
 
-fn render_ref_picker(
-    refs: &[String],
+/// Everything the ref picker's renderer needs. One struct rather than five positional arguments,
+/// for the reason [`crate::app::CompareFocus`] is one: four of these are `bool` and `usize` side
+/// by side, which is where a caller swaps two without the compiler noticing.
+struct RefPickerRows<'a> {
+    refs: &'a [String],
     cursor: usize,
     unpublished_main: bool,
     unpublished_current: bool,
-    palette: &Palette,
-    frame: &mut Frame,
-    area: Rect,
-) {
+    /// The ref marked for a comparison (RFC 041 decision 1), or `None`.
+    marked_ref: Option<&'a str>,
+}
+
+fn render_ref_picker(picker: RefPickerRows<'_>, palette: &Palette, frame: &mut Frame, area: Rect) {
+    let RefPickerRows {
+        refs,
+        cursor,
+        unpublished_main,
+        unpublished_current,
+        marked_ref,
+    } = picker;
     // RFC 029 Handoff B §4. The row states a fact — nothing named `heads/main` is published — and makes
     // no claim about what prikk would do there.
     if unpublished_main {
@@ -561,7 +588,7 @@ fn render_ref_picker(
             refs.iter()
                 .enumerate()
                 .map(|(i, name)| {
-                    // **The mark is stikk's own words; the name is the repository's** (RFC 037
+                    // **The tag is stikk's own words; the name is the repository's** (RFC 037
                     // decision 4, RFC 036). prikk reports the branch, not a sentence about it, so
                     // stikk says what it means in its own voice rather than inventing a quotation.
                     let label = if unpublished_current && i == 0 {
@@ -569,14 +596,25 @@ fn render_ref_picker(
                     } else {
                         identifier(name)
                     };
-                    selectable(palette, i == cursor, label)
+                    // **Two marks in two columns**, as History draws its own (RFC 038 decision
+                    // 3): the cursor is where you are, `\u{25cf}` is what you set, and one row can
+                    // be both -- which is the ordinary case right before `d`.
+                    let marked = marked_ref == Some(name.as_str());
+                    selectable_marked(palette, i == cursor, marked, label)
                 })
                 .collect(),
             Some(cursor),
         )
     };
+    // **The title says a mark is set** (RFC 041 decision 1), because the marked row can be
+    // scrolled out of sight -- the same reason History's title says it.
+    let title = if marked_ref.is_some() {
+        " Choose ref \u{00b7} \u{25cf} marked \u{2014} d compares it with the selected ref "
+    } else {
+        " Choose ref \u{00b7} m marks a ref to compare "
+    };
     ListPanel {
-        title: " Choose ref ",
+        title,
         // Wider than the 52 this panel used, so a ref name and its tag fit side by side. The
         // picker's names were already the longest thing this overlay draws.
         width: 64,
@@ -1761,6 +1799,33 @@ fn selectable<'a>(palette: &Palette, selected: bool, text: String) -> Line<'a> {
     };
     Line::from(vec![
         Span::styled(marker, Style::default().fg(palette.accent)),
+        Span::styled(text, style),
+    ])
+}
+
+/// A selectable row that can also carry a **mark** (RFC 041 decision 1).
+///
+/// Two columns, never one: the cursor says where you are and the mark says what you set, and a
+/// row is routinely both at once -- which is exactly the moment before `d`. This is the scheme
+/// History's own rows use.
+fn selectable_marked<'a>(
+    palette: &Palette,
+    selected: bool,
+    marked: bool,
+    text: String,
+) -> Line<'a> {
+    let cursor = if selected { "\u{25b6} " } else { "  " };
+    let mark = if marked { "\u{25cf} " } else { "  " };
+    let style = if selected {
+        Style::default()
+            .fg(palette.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(palette.fg)
+    };
+    Line::from(vec![
+        Span::styled(cursor, Style::default().fg(palette.accent)),
+        Span::styled(mark, Style::default().fg(palette.warn)),
         Span::styled(text, style),
     ])
 }

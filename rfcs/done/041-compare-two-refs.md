@@ -1,6 +1,6 @@
 # RFC 041 — Compare two refs: choose the pair in the ref picker
 
-**Status.** **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, as 0.11.0's increment 5 (`.git-exclude/release/0-11-0-scope.md`,
+**Status.** **Done 2026-10-15**: Handoff A delivered on `main` (`58ca970`); in `## Unreleased` for 0.11.0. **Accepted by the project owner 2026-10-15.** **Proposed 2026-10-15** by the architect, as 0.11.0's increment 5 (`.git-exclude/release/0-11-0-scope.md`,
 authorized; *"the first to move to 0.12.0 if the cycle runs long"*). **No open question.**
 Grounded in RFC 038's delivered seam (`Comparison::Points`) and its measurement in delivery: renames pair across
 branches when the file is in the common base (RFC 038, *Corrected by measurement in delivery*). prikk's guide: a
@@ -63,3 +63,21 @@ This RFC puts that choice in the ref picker, with the same two keys History uses
 
 - **No arbitrary block-id entry** (typing an id). The picker offers refs; History offers blocks.
 - **No three-way or merge-base view.** prikk's `diff` compares two points, and stikk shows that.
+
+## Delivered
+
+**One handoff, one commit, green on `main` at `58ca970`**: CI, Docs, the full-matrix suite (51 cases at prikk 0.28.0 and
+0.51.0) and supply chain. **No seam change** (`cargo public-api`).
+
+- **Measured at 0.51, every case for real:** diverged branches both ways (the entries swap sides), a tag, a **received
+  ref** (made with `bundle export` and `import`), and two refs at one block (no entries). `target_block_id` is the tip
+  **block**, not the RefState id.
+- **The unpublished current branch:** prikk answers *"ref heads/main does not exist in this repository"*, the same
+  sentence a never-created ref gets. **That makes decision 4's refusal in stikk's own words a necessity**, and a test
+  asserts prikk's sentence never appears.
+- **The picker:** `m` and `d`, two marker columns, the title saying a mark is set. **The mark survives reopening the
+  picker and dies on a ref change** (re-picking the focused ref is not a change). It is kept apart from History's block
+  mark in both directions.
+- **The heading:** both refs as identifiers, each with its resolved block, the role the reader gave it, a hanging
+  indent, and `r` re-asking by name.
+- **`FR-033` delivered in full**, and the three *"not built"* sentences are gone.

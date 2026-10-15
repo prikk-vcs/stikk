@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 043 | [The prikk 0.52 re-baseline](./proposed/043-prikk-0-52-rebaseline.md) | prikk 0.52.0 fixed letter 020's defect: a sealed block now resolves each patch at that patch. Suite 50/51 at 0.28+0.52 with only the ceiling raised, the one red leg pinning 0.51's wrong name. Ceiling to 52; Patch detail's block-end label banded to < 0.52; nothing else moves |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

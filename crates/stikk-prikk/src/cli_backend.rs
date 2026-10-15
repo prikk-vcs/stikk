@@ -543,10 +543,21 @@ impl Prikk for CliBackend {
             Some(1) => match parse_json::verify(&stdout) {
                 // A report. stderr only repeats the failing condition, so it is not read.
                 Ok(report) => Ok(crate::VerifyReport::Listed(report)),
-                // **Not a report, so it is a refusal** -- an absent or locked repository, say --
-                // and it classifies exactly as every other refusal does, in prikk's own words. The
-                // parse error is dropped on purpose: reporting "stikk could not read the report"
-                // would bury prikk's actual reason for a reader who needs to see it.
+                // **prikk printed a report and stikk could not read it** (review v1 §2). That is
+                // stikk's environment error, exactly as it is at exit 0 -- never a refusal. A
+                // future prikk could add a stage status this reader rejects, or print an `ok`
+                // disagreeing with its own conditions, on a repository that really is damaged;
+                // calling that *prikk refused* would be the one mistake this whole method exists
+                // to prevent, and it would do it while prikk's condition sat unread in stderr.
+                //
+                // The question asked is only whether prikk *printed* a report, never whether
+                // stikk can read it -- the reader has already answered that, and its error is the
+                // one that names the broken rule.
+                Err(error) if parse_json::announces_verify_report(&stdout) => Err(error),
+                // **Not a report at all, so it is a refusal** -- an absent or locked repository,
+                // say -- and it classifies exactly as every other refusal does, in prikk's own
+                // words. The parse error is dropped on purpose here: reporting "stikk could not
+                // read the report" would bury prikk's actual reason for a reader who needs it.
                 Err(_) => Err(classify::classify(
                     &stdout,
                     &stderr,

@@ -1314,6 +1314,42 @@ fn verify_exit_1_without_a_report_is_prikks_refusal() {
     );
 }
 
+/// **Row 3b: at exit 1, a report stikk cannot read is stikk's error, not prikk's refusal**
+/// (RFC 040 review v1 §2).
+///
+/// prikk exits 1 both when it refuses to verify and when it verified and found damage. Only the
+/// second prints a report — so an unreadable stdout that *is* a `verify-report-v1` means prikk
+/// verified a repository and stikk could not understand the answer. Calling that *prikk refused*
+/// would say the one thing Verify must never say about a damaged repository, and would do it
+/// while prikk's own condition sat unread in stderr.
+///
+/// The case used here is the one that can really happen: `ok` disagreeing with its own
+/// conditions, which the reader refuses rather than choosing between.
+#[cfg(unix)]
+#[test]
+fn verify_exit_1_with_an_unreadable_report_is_stikks_error_not_a_refusal() {
+    let unreadable = FAKE_ITEM_FAILURE.replace(r#""ok": false"#, r#""ok": true"#);
+    let script = fake_verify_prikk(
+        "exit1unreadable",
+        &unreadable,
+        "error: repository verification found at least one failed object, block, or ref; see item outcomes above",
+        1,
+    );
+    let backend = CliBackend::with_program(&script);
+    let err = retrying_transient_exec_busy(|| backend.verify(std::path::Path::new(".")))
+        .expect_err("a report stikk cannot read is an error");
+    assert_eq!(
+        err.class(),
+        "environment",
+        "a verify-report-v1 stikk cannot read must never be classified as prikk's refusal: {err}"
+    );
+    // It names the rule that broke, rather than echoing prikk's stderr as a refusal.
+    assert!(
+        err.to_string().contains("failing condition"),
+        "the error should name the broken rule: {err}"
+    );
+}
+
 /// **Row 4: exit 2 is stikk's bug**, as everywhere else in the seam.
 #[cfg(unix)]
 #[test]

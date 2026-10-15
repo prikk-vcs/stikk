@@ -470,6 +470,24 @@ fn stage(entry: &Json) -> Result<VerifyStage> {
     })
 }
 
+/// Whether `text` announces itself as a `verify-report-v1`, **without reading it**.
+///
+/// **This is how exit 1 tells a refusal from a report stikk cannot read** (RFC 040 review v1 §2).
+/// prikk exits 1 both when it refuses to verify at all and when it verified and found damage, and
+/// only the second prints a report. Treating every unreadable stdout as a refusal was right for
+/// the first and wrong for the second: a `verify-report-v1` whose shape this reader rejects — a
+/// future stage status, or an `ok` that disagrees with its own conditions — would have been shown
+/// as *prikk refused*, which is the one thing Verify must never say about a damaged repository.
+///
+/// So the question asked here is only *did prikk print a verify report*, not *can stikk read it*.
+/// [`verify`] answers the second, and its error is the honest one when this returns `true`.
+pub(super) fn announces_verify_report(text: &str) -> bool {
+    let Ok(value) = json::parse(text) else {
+        return false;
+    };
+    matches!(value.str_field("schema_version"), Ok(schema) if schema == VERIFY_SCHEMA)
+}
+
 fn verify_rule(detail: impl std::fmt::Display) -> StikkError {
     StikkError::environment_msg(format!("prikk's verify report {detail}"))
 }

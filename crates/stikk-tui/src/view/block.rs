@@ -379,7 +379,14 @@ fn field_rows<'a>(
     }
 }
 
-/// One of stikk's own sentences, word-wrapped: the first row at `indent`, the rest at `hang`.
+/// One of stikk's own sentences, word-wrapped and styled: the first row at `indent`, the rest at
+/// `hang`.
+///
+/// **The wrapping is [`crate::view::wrap_hanging`]'s**, not this module's. Giving the opening row
+/// and the hanging rows each the room its own indent leaves used to be written out here, and the
+/// same reasoning had been written twice more elsewhere -- which is how it came to be a shared
+/// helper (RFC 040) after the third copy. What is left here is the part that really is this
+/// view's: the style the rows are drawn in.
 fn said<'a>(
     lines: &mut Vec<Line<'a>>,
     palette: &Palette,
@@ -388,33 +395,11 @@ fn said<'a>(
     indent: &str,
     hang: &str,
 ) {
-    // **Each row gets the room its own indent leaves**, which is not the same number: the first row
-    // opens at `indent` and the rest hang at `hang`. Wrapping the whole sentence to one of the two
-    // is wrong in both directions — to the first row's room, and a continuation is laid out wider
-    // than it has and clips at the border (it did, on the first run); to the hanging room, and the
-    // first row stops short of the border for no reason a reader can see.
-    //
-    // So the first row is wrapped to its own room, and what is left over is wrapped again to the
-    // hanging one. Re-joining the leftover rows with single spaces loses nothing: `wrap_indented`
-    // has already collapsed this text's whitespace, and it is stikk's own prose either way.
-    let first_room = width.saturating_sub(indent.chars().count()).max(1);
-    let hang_room = width.saturating_sub(hang.chars().count()).max(1);
-
-    let mut first = wrap_indented(text, first_room, "").into_iter();
-    let head = first.next().unwrap_or_default();
-    lines.push(Line::from(Span::styled(
-        format!("{indent}{head}"),
-        Style::default().fg(palette.dim),
-    )));
-
-    let leftover = first.collect::<Vec<_>>().join(" ");
-    if !leftover.is_empty() {
-        for rest in wrap_indented(&leftover, hang_room, "") {
-            lines.push(Line::from(Span::styled(
-                format!("{hang}{rest}"),
-                Style::default().fg(palette.dim),
-            )));
-        }
+    for row in crate::view::wrap_hanging(text, width, indent, hang) {
+        lines.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
     }
 }
 

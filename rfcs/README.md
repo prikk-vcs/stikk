@@ -22,6 +22,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
+| 044 | [Branches and tags](./proposed/044-branches-and-tags.md) | `FR-070/071`: create a branch (from a ref's tip), create a tag (at any block), close a branch, preview-first at seal's tier (`Publication`, the publish capability), prikk ≥ 0.42. **Closing the current branch is not offered**: prikk allows it and the repository is left on a closed branch (measured). 0.13.0 increment 2 |
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |

@@ -1,11 +1,14 @@
 //! The real-binary integration suite's actual test functions (`TS-07`; RFC 019). See
 //! `stikk_real_binary`'s crate-level doc for the boundary this holds and why it lives in its own crate.
 //!
-//! **Coverage: all twelve `Prikk` seam methods, at both ends of the supported range** (RFC 022 §2).
+//! **Coverage: all eighteen `Prikk` seam methods, at both ends of the supported range** (RFC 022 §2).
 //! `handshake` is driven by the version guard every test runs through [`PrikkBin::resolve`];
 //! `orientation`, `history`, `commit` and `seal` since RFC 019; `worktree_status`, `block_state`,
-//! `refs`, `tags` and `change_token` since RFC 022; `readiness` since 0.6.0's preparation; and `queue`
-//! since RFC 028. (0.5.0's changelog said "four of the nine
+//! `refs`, `tags` and `change_token` since RFC 022; `readiness` since 0.6.0's preparation; `queue`
+//! since RFC 028; `show` since RFC 035; `diff` since RFC 038; `verify` since RFC 040; and
+//! `create_branch`, `create_tag` and `close_branch` since RFC 044. (The count read "twelve" from
+//! RFC 022 until RFC 044's sweep: `show`, `diff` and `verify` each arrived with legs of their own
+//! and none of them came back to this line.) (0.5.0's changelog said "four of the nine
 //! surfaces" — it undercounted `handshake` and there were always ten, not nine; the correction is in
 //! `## Unreleased`.) Two failure-classifier arms are provoked here as well rather than only cited: a
 //! genuinely held lock, and the full-queue precondition prikk 0.35 reclassified — see
@@ -5961,4 +5964,316 @@ fn rfc041_below_the_band_a_ref_pair_is_unreported_not_empty() {
         "0.{}: {reason}",
         bin.minor
     );
+}
+
+/// **RFC 044 at the ceiling: the three ref writes against a real repository.**
+///
+/// Each one goes through the shipped path — preview, confirm, execute — and is then asserted by
+/// **re-reading the lists**, never by reading prikk's own success prose (trap 2). The duplicate
+/// name is here for the other half: prikk's refusal has to arrive verbatim, not be pre-empted by a
+/// naming rule stikk invented (decision 5).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc044_the_three_ref_writes_change_the_lists_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::REF_WRITES_FROM_MINOR {
+        eprintln!(
+            "RFC 044 SKIPPED at 0.{} — the three writes are banded at 0.{}. Announced rather than \
+             silent (RFC 022 §3).",
+            bin.minor,
+            stikk_core::REF_WRITES_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    // Two sealed blocks, so there is a tip and an older block id to tag.
+    let mut blocks: Vec<String> = Vec::new();
+    for (name, body) in [("one.txt", "one\n"), ("two.txt", "two\n")] {
+        std::fs::write(repo.join(name), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", "x")
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        let sealed = backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+        blocks.push(sealed.block_id);
+    }
+    let older = blocks
+        .first()
+        .unwrap_or_else(|| panic!("0.{}: two blocks were sealed", bin.minor))
+        .clone();
+
+    // Every write runs with MAINTAINER readiness in the environment, as the UI's own gate requires.
+    let write = |run: &dyn Fn(stikk_core::PreviewToken, stikk_model::Readiness) -> _,
+                 preview: stikk_core::RefWritePreview,
+                 what: &str| {
+        let stikk_core::RefWritePreview::Ready { token } = preview else {
+            panic!(
+                "0.{}: {what}: expected a Ready preview, got {preview:?}",
+                bin.minor
+            );
+        };
+        fixture.set_maintainer_env();
+        let readiness = backend
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness;
+        let out = run(*token, readiness);
+        Fixture::clear_env();
+        out
+    };
+
+    // ── 1. create a branch from heads/main, and see it listed ───────────────────────────────
+    fixture.set_maintainer_env();
+    let preview = stikk_core::create_branch_preview(&backend, &repo, "heads/feature", "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: create_branch_preview: {e}", bin.minor));
+    Fixture::clear_env();
+    let created = write(
+        &|token, readiness| {
+            stikk_core::create_branch_confirm_and_execute(
+                &backend,
+                &repo,
+                token,
+                readiness,
+                stikk_core::Evidence::ExplicitYes,
+                "heads/feature",
+                "heads/main",
+            )
+        },
+        preview,
+        "create a branch",
+    )
+    .unwrap_or_else(|e| panic!("0.{}: create a branch: {e}", bin.minor));
+    let stikk_prikk::RefWrite::Done(lines) = created.result else {
+        panic!("0.{}: the ceiling is above the band", bin.minor);
+    };
+    assert!(
+        !lines.is_empty(),
+        "0.{}: prikk's own lines are what the result screen shows",
+        bin.minor
+    );
+    let listed = |backend: &CliBackend| {
+        stikk_core::list_refs(backend, &repo)
+            .unwrap_or_else(|e| panic!("0.{}: list_refs: {e}", bin.minor))
+    };
+    assert!(
+        listed(&backend)
+            .refs
+            .iter()
+            .any(|entry| entry.name == "heads/feature" && !entry.closed),
+        "0.{}: the new branch must be in the list prikk reports, open",
+        bin.minor
+    );
+
+    // ── 2. tag an older block id, and see the tag at that block ─────────────────────────────
+    fixture.set_maintainer_env();
+    let tag = stikk_core::NewTag {
+        name: "tags/v1",
+        target: older.as_str(),
+        message: "first release",
+    };
+    let preview = stikk_core::create_tag_preview(&backend, &repo, tag)
+        .unwrap_or_else(|e| panic!("0.{}: create_tag_preview: {e}", bin.minor));
+    Fixture::clear_env();
+    write(
+        &|token, readiness| {
+            stikk_core::create_tag_confirm_and_execute(
+                &backend,
+                &repo,
+                token,
+                readiness,
+                stikk_core::Evidence::ExplicitYes,
+                tag,
+            )
+        },
+        preview,
+        "create a tag",
+    )
+    .unwrap_or_else(|e| panic!("0.{}: create a tag: {e}", bin.minor));
+    let tags = backend
+        .tags(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: tags: {e}", bin.minor));
+    assert!(
+        tags.iter().any(|entry| entry.name == "tags/v1"),
+        "0.{}: the new tag must be in prikk's own tag list, got {:?}",
+        bin.minor,
+        tags.iter().map(|t| &t.name).collect::<Vec<_>>()
+    );
+    // **At that block, not at the tip**: a tag of a block id is the one thing `--target` takes
+    // that a branch's `--from` does not (F2), so the pointer is checked, not just the name.
+    let at = stikk_core::compare(
+        &backend,
+        &repo,
+        &stikk_prikk::Comparison::Points {
+            from: "tags/v1".to_string(),
+            to: older.clone(),
+        },
+    )
+    .unwrap_or_else(|e| panic!("0.{}: compare the tag with its block: {e}", bin.minor));
+    assert!(
+        at.listed().is_some_and(stikk_core::Compared::is_empty),
+        "0.{}: the tag and the block it names differ in nothing; got {at:?}",
+        bin.minor
+    );
+
+    // ── 3. a duplicate name is prikk's refusal, verbatim ────────────────────────────────────
+    fixture.set_maintainer_env();
+    let preview = stikk_core::create_branch_preview(&backend, &repo, "heads/feature", "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: duplicate preview: {e}", bin.minor));
+    Fixture::clear_env();
+    let refused = write(
+        &|token, readiness| {
+            stikk_core::create_branch_confirm_and_execute(
+                &backend,
+                &repo,
+                token,
+                readiness,
+                stikk_core::Evidence::ExplicitYes,
+                "heads/feature",
+                "heads/main",
+            )
+        },
+        preview,
+        "a duplicate name",
+    );
+    match refused {
+        Err(StikkError::Refusal { message }) => {
+            assert!(
+                message.contains("heads/feature") && message.contains("exists"),
+                "0.{}: prikk's own words, unaltered: {message}",
+                bin.minor
+            );
+            println!("0.{}: duplicate branch refusal — {message}", bin.minor);
+        }
+        other => panic!(
+            "0.{}: a duplicate name must arrive as prikk's refusal; got {other:?}",
+            bin.minor
+        ),
+    }
+
+    // ── 4. close a non-current branch, and see it closed ────────────────────────────────────
+    fixture.set_maintainer_env();
+    let preview = stikk_core::close_branch_preview(&backend, &repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: close_branch_preview: {e}", bin.minor));
+    Fixture::clear_env();
+    write(
+        &|token, readiness| {
+            stikk_core::close_branch_confirm_and_execute(
+                &backend,
+                &repo,
+                token,
+                readiness,
+                stikk_core::Evidence::ExplicitYes,
+                "heads/feature",
+            )
+        },
+        preview,
+        "close a branch",
+    )
+    .unwrap_or_else(|e| panic!("0.{}: close a branch: {e}", bin.minor));
+    assert!(
+        listed(&backend)
+            .refs
+            .iter()
+            .any(|entry| entry.name == "heads/feature" && entry.closed),
+        "0.{}: prikk's own list must now mark it closed",
+        bin.minor
+    );
+
+    // ── 5. the branch the repository is on is refused, and nothing runs ─────────────────────
+    //
+    // **F3 is why**: with an empty WAL prikk closes it, and a default-source `branch create`
+    // then refuses because `.prikk/current-branch` names a closed branch. The proof that stikk
+    // spawned nothing is that `heads/main` is still open afterwards, by prikk's own list.
+    fixture.set_maintainer_env();
+    let blocked = stikk_core::close_branch_preview(&backend, &repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: close_branch_preview on main: {e}", bin.minor));
+    Fixture::clear_env();
+    match blocked {
+        stikk_core::RefWritePreview::Blocked(reason) => {
+            assert_eq!(
+                reason,
+                stikk_core::CLOSING_THE_CURRENT_BRANCH,
+                "0.{}: stikk's own words, not prikk's",
+                bin.minor
+            );
+        }
+        stikk_core::RefWritePreview::Ready { .. } => panic!(
+            "0.{}: closing the current branch must never reach a confirmation",
+            bin.minor
+        ),
+    }
+    assert!(
+        listed(&backend)
+            .refs
+            .iter()
+            .any(|entry| entry.name == "heads/main" && !entry.closed),
+        "0.{}: heads/main must still be open — nothing was spawned",
+        bin.minor
+    );
+}
+
+/// **RFC 044 below the band:** at 0.28 the three writes are *unavailable*, in stikk's own voice,
+/// and **nothing is spawned** — the seam answers from the handshake alone.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc044_below_the_band_the_three_ref_writes_are_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    for (what, answer) in [
+        (
+            "create a branch",
+            backend.create_branch(&repo, "heads/feature", "heads/main"),
+        ),
+        (
+            "create a tag",
+            backend.create_tag(&repo, "tags/v1", "heads/main", ""),
+        ),
+        ("close a branch", backend.close_branch(&repo, "heads/main")),
+    ] {
+        let answer = answer.unwrap_or_else(|e| {
+            panic!("0.{}: {what} below the band must not error: {e}", bin.minor)
+        });
+        assert!(
+            matches!(answer, stikk_prikk::RefWrite::Unavailable),
+            "0.{}: {what} must answer Unavailable, got {answer:?}",
+            bin.minor
+        );
+    }
+    // Nothing was created, by prikk's own list — the seam never spawned it.
+    let refs = stikk_core::list_refs(&backend, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: list_refs: {e}", bin.minor));
+    assert!(
+        !refs.refs.iter().any(|entry| entry.name == "heads/feature"),
+        "0.{}: nothing may have been created, got {:?}",
+        bin.minor,
+        refs.refs.iter().map(|r| &r.name).collect::<Vec<_>>()
+    );
+
+    // And stikk's own words for it, with the band's number and this prikk's.
+    let reason = stikk_core::ref_writes_unavailable(bin.minor);
+    assert!(
+        reason.contains(&format!("0.{}", stikk_core::REF_WRITES_FROM_MINOR)),
+        "{reason}"
+    );
+    assert!(reason.contains(&format!("0.{}", bin.minor)), "{reason}");
+    println!("0.{}: {reason}", bin.minor);
 }

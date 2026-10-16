@@ -139,8 +139,8 @@ Notation: each requirement is "stikk shall …". *[M/S/C]* = v1 priority. *(→ 
 
 ### 2.5 Refs: branches & tags (FR-070 …)
 
-- **FR-070** *[M]* Branch create (name validation feedback incl. case-collision refusals surfaced with prikk's reason; `--from` any ref), branch list (FR-014/015 presentation), branch close with an explanation of closure semantics (pointer retained, history retained, reopenable only by a future core verb — none exists today).
-- **FR-071** *[M]* Tag create targeting a ref or block, with message (persisted by core); tag list. Tag deletion does not exist and must not be offered.
+- **FR-070** *[M]* Branch create (name validation feedback incl. case-collision refusals surfaced with prikk's reason; `--from` any ref), branch list (FR-014/015 presentation), branch close with an explanation of closure semantics (pointer retained, history retained, reopenable only by a future core verb — none exists today). *(**Delivered 2026-10-17, RFC 044:** create and close delivered at prikk ≥ 0.42, preview-first at `Publication`'s tier, with prikk's refusals verbatim; stikk adds no naming rules of its own, and the branch the repository is on is never offered for closing (F3). Switching is RFC 045.)*
+- **FR-071** *[M]* Tag create targeting a ref or block, with message (persisted by core); tag list. Tag deletion does not exist and must not be offered. *(**Delivered 2026-10-17, RFC 044:** tag create delivered at prikk ≥ 0.42, targeting a ref or a block id, with an optional message — an empty one sends no `-m`.)*
 - **FR-072** *[S]* Received-tag review and adoption flow (`sync tags` / `adopt-tag`): show the sender's signature standing, require MAINTAINER confirmation, explain that adoption re-signs under the local key.
 
 ### 2.6 Merge & rollback (FR-080 …)

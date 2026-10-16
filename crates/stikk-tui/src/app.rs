@@ -33,7 +33,7 @@ use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 use stikk_state::Config;
 
-use crate::overlay::Overlay;
+use crate::overlay::{Overlay, RefNameKind, RefWriteKind};
 use crate::theme::Palette;
 use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
@@ -412,10 +412,26 @@ pub struct App {
     /// reader has moved on, and a stale pair is worse than an empty one.
     marked_ref: Option<String>,
     pending_commit: Option<PendingCommit>,
+    /// The ref pointers the last [`RequestKind::Refs`] read, kept beside the picker's own list of
+    /// names (RFC 044).
+    ///
+    /// **The picker offers names; three of its keys need facts about them** — whether a branch is
+    /// already closed, and whether a row is a published ref at all. Those facts are read with the
+    /// list and belong with it, not re-read per key press, and never guessed from the name. Looked
+    /// up **by name**, so this cannot drift out of step with the picker's row order.
+    ///
+    /// The unpublished current branch is deliberately absent: it is not a published pointer, so a
+    /// lookup for it finds nothing and the three keys decline it in stikk's own words (decision 7).
+    ref_rows: Vec<stikk_prikk::RefEntry>,
     /// The seal flow's state between overlays (RFC 016 §5/§8) — the same reason [`Self::pending_commit`]
     /// exists, across the **three** round trips seal's own extra consent step needs (preview, then the
     /// consent act, then confirm+execute).
     pending_seal: Option<PendingSeal>,
+    /// The ref-write flow's state between overlays (RFC 044) — the same reason
+    /// [`Self::pending_commit`] exists, across the two round trips the flow needs (preview, then
+    /// confirm+execute). The prompts that precede the preview carry their own text on the overlay;
+    /// only what prikk will be handed travels here.
+    pending_ref_write: Option<PendingRefWrite>,
     /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
     /// check compares against it; `None` until the first stamp, and no check is sent before it.
     stamp: Option<ChangeToken>,
@@ -471,6 +487,88 @@ enum PendingSeal {
         token: stikk_core::PreviewToken,
         /// The ref this seal targets.
         reff: String,
+    },
+}
+
+/// What one ref write will hand prikk (RFC 044) — built when the user finishes the prompt, carried
+/// unchanged through the preview and the confirmation, so the call that runs is the call that was
+/// previewed and nothing re-derives it in between.
+///
+/// **The names are already prefixed.** The prompt shows `heads/`/`tags/` fixed and joins it to what
+/// was typed, so by the time one of these exists there is one name, passed to prikk as **one
+/// argument** whatever is in it (trap 3: a space is legal to prikk).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RefWriteOp {
+    /// `branch create <name> --from <from_ref>`. **`--from` is always passed** (trap 1): the user
+    /// chose a ref, and prikk's default source is a different question.
+    CreateBranch {
+        /// The new branch's full name.
+        name: String,
+        /// The ref whose tip it starts at.
+        from_ref: String,
+    },
+    /// `tag create <name> --target <target>`, plus `-m <message>` when the message is non-empty.
+    CreateTag {
+        /// The new tag's full name.
+        name: String,
+        /// A ref name or a block id (F2: `--target` takes either).
+        target: String,
+        /// The message, possibly empty.
+        message: String,
+    },
+    /// `branch close <name>`.
+    CloseBranch {
+        /// The branch to close.
+        name: String,
+    },
+}
+
+impl RefWriteOp {
+    /// Which write this is, for the result card's own words.
+    pub(crate) fn kind(&self) -> RefWriteKind {
+        match self {
+            Self::CreateBranch { .. } => RefWriteKind::CreateBranch,
+            Self::CreateTag { .. } => RefWriteKind::CreateTag,
+            Self::CloseBranch { .. } => RefWriteKind::CloseBranch,
+        }
+    }
+
+    /// The prompt to reopen when this write fails, so **a failure keeps the user's typed name**
+    /// (RFC 044 §3) and the correction is one edit rather than a retype. A close has no prompt to
+    /// reopen — its name was a row the user selected, not something they wrote.
+    fn prompt(&self) -> Option<Overlay> {
+        let (kind, source, name) = match self {
+            Self::CreateBranch { name, from_ref } => (RefNameKind::Branch, from_ref, name),
+            Self::CreateTag { name, target, .. } => (RefNameKind::Tag, target, name),
+            Self::CloseBranch { .. } => return None,
+        };
+        Some(Overlay::RefName {
+            kind,
+            source: source.clone(),
+            // What the user typed is the name less the prefix the prompt showed them. It is
+            // always there (the prompt is what joined it on), and `unwrap_or` keeps the whole
+            // name rather than losing it if that ever stops being true.
+            typed: name.strip_prefix(kind.prefix()).unwrap_or(name).to_string(),
+        })
+    }
+}
+
+/// See [`App::pending_ref_write`].
+enum PendingRefWrite {
+    /// `Overlay::Loading` is on the stack; a [`RequestKind::RefWritePreview`] is in flight.
+    AwaitingPreview {
+        /// What the preview is for.
+        op: RefWriteOp,
+    },
+    /// The preview succeeded; `token` is armed and `Overlay::Confirmation` awaits evidence.
+    Confirming {
+        /// Feed this into the matching `stikk_core` execution once evidence is supplied.
+        ///
+        /// Boxed for the reason the commit flow boxes its own: a token is far larger than the
+        /// operation beside it, and `clippy::large_enum_variant` is right about the imbalance.
+        token: Box<stikk_core::PreviewToken>,
+        /// Carried through from `AwaitingPreview` unchanged — **the previewed call, executed**.
+        op: RefWriteOp,
     },
 }
 
@@ -541,6 +639,8 @@ impl App {
             marked_ref: None,
             pending_commit: None,
             pending_seal: None,
+            pending_ref_write: None,
+            ref_rows: Vec::new(),
             stamp: None,
             check_pending: None,
             interval_from: None,
@@ -986,12 +1086,243 @@ impl App {
         self.overlays.pop();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::SealConfirmExecute {
-            token,
+            token: Box::new(token),
             readiness,
             evidence: stikk_core::Evidence::ExplicitYes,
             reff,
         });
         self.overlays.push(Overlay::Loading { what: "seal", seq });
+    }
+
+    /// **stikk's own words for a row with no tip** (RFC 044 decision 7, following RFC 041
+    /// decision 4's precedent). The branch you are on before its first seal names nothing prikk
+    /// published, so there is nothing to branch from, tag or close -- and prikk's own answer for
+    /// it is *"ref heads/main does not exist in this repository"*, which is false and alarming.
+    const UNPUBLISHED_HAS_NO_TIP: &'static str = "this branch has no published history yet \u{2014} there is no tip to branch from, to tag, or \
+         to close. Commit and seal on it first.";
+
+    /// **stikk's own words for `x` on a row that is already closed** (RFC 044 §3), read from the
+    /// list's own `closed` flag, so prikk is never asked a question stikk already has the answer
+    /// to -- and the reader is never shown prikk's *"is already closed"* for a state the picker
+    /// was showing them at the moment they pressed the key.
+    const ALREADY_CLOSED: &'static str = "this branch is already closed.";
+
+    /// **stikk's own words for `x` on a tag** (RFC 044 decision 4): closing is a branch
+    /// operation, and prikk has no delete for either.
+    const TAGS_ARE_NOT_CLOSED: &'static str =
+        "only a branch can be closed; a tag has no open or closed state, and prikk has no delete.";
+
+    /// Begin creating a branch at the selected ref's tip (the `n` key in the ref picker; RFC 044
+    /// decision 4). Opens the name prompt; **nothing is dispatched until a name exists**.
+    pub fn begin_create_branch(&mut self) {
+        let Some(from_ref) = self.ref_write_source() else {
+            return;
+        };
+        self.overlays.pop(); // the picker closes on its way, as `d` does
+        self.overlays.push(Overlay::RefName {
+            kind: RefNameKind::Branch,
+            source: from_ref,
+            typed: String::new(),
+        });
+    }
+
+    /// Begin creating a tag (the `t` key; RFC 044 decision 4): **at the selected ref's tip** in
+    /// the picker, and **at the selected block, by block id**, in History and Block detail. Those
+    /// are the two things prikk's `--target` takes (F2), and the key means the one the reader is
+    /// looking at.
+    pub fn begin_create_tag(&mut self) {
+        let target = if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
+            let Some(reff) = self.ref_write_source() else {
+                return;
+            };
+            self.overlays.pop();
+            reff
+        } else {
+            if !self.overlays.is_empty() || !self.ref_writes_offered() {
+                return;
+            }
+            match self.screens.last() {
+                Some(Screen::History { view, cursor, .. }) => {
+                    let Some(row) = view.blocks.get(*cursor) else {
+                        return;
+                    };
+                    row.block_id.clone()
+                }
+                Some(Screen::BlockDetail { view, .. }) => view.row.block_id.clone(),
+                _ => return,
+            }
+        };
+        self.overlays.push(Overlay::RefName {
+            kind: RefNameKind::Tag,
+            source: target,
+            typed: String::new(),
+        });
+    }
+
+    /// Begin closing the selected branch (the `x` key in the ref picker; RFC 044 decision 4).
+    ///
+    /// **Three answers come from what stikk already knows**, before any preview: a tag cannot be
+    /// closed, an already-closed branch says so from the list's own flag, and a row with no
+    /// published tip has nothing to close. **The fourth -- closing the branch you are on -- is
+    /// core's** ([`stikk_core::CLOSING_THE_CURRENT_BRANCH`]), because only the preview's own read
+    /// knows which branch that is at the moment the key is pressed.
+    pub fn begin_close_branch(&mut self) {
+        let Some(name) = self.ref_write_source() else {
+            return;
+        };
+        let flags = self
+            .ref_rows
+            .iter()
+            .find(|entry| entry.name == name)
+            .map_or((false, false), |entry| (entry.is_tag(), entry.closed));
+        match flags {
+            (true, _) => {
+                self.banner = Some(Self::TAGS_ARE_NOT_CLOSED.to_string());
+                return;
+            }
+            (_, true) => {
+                self.banner = Some(Self::ALREADY_CLOSED.to_string());
+                return;
+            }
+            _ => {}
+        }
+        self.overlays.pop(); // the picker closes on its way, as `d` does
+        self.start_ref_write(RefWriteOp::CloseBranch { name });
+    }
+
+    /// The selected published ref the three keys act on, or `None` with stikk's own reason already
+    /// in the banner.
+    ///
+    /// **Everything the three keys share** -- the band, the capability, and the rows that name no
+    /// published tip -- so none of them can answer one of those differently from the others.
+    fn ref_write_source(&mut self) -> Option<String> {
+        self.banner = None;
+        let Some(Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+            unpublished_current,
+        }) = self.overlays.last()
+        else {
+            return None;
+        };
+        let (cursor, unpublished_main, first_is_unpublished) =
+            (*cursor, *unpublished_main, *unpublished_current);
+        let name = refs.get(cursor).cloned();
+        if !self.ref_writes_offered() {
+            return None;
+        }
+        // The guessed row of an empty picker (RFC 029 Handoff B §4) and the unpublished current
+        // branch (RFC 037 decision 3) are the same case here: neither names a published tip.
+        if unpublished_main || (first_is_unpublished && cursor == 0) {
+            self.banner = Some(Self::UNPUBLISHED_HAS_NO_TIP.to_string());
+            return None;
+        }
+        name
+    }
+
+    /// Whether the three ref writes are offered at all: the band first, then the capability.
+    ///
+    /// **The band comes first** because below it the operations do not exist -- telling a reader
+    /// they need a maintainer key for something their prikk cannot do either way would send them
+    /// to fix the wrong thing. Above it, [`stikk_core::capability_gate`] is the same check the
+    /// palette's own entries use, in stikk's words and **before prikk runs** (decision 2), so
+    /// prikk's signature refusal is the fallback and never the first thing a user meets.
+    fn ref_writes_offered(&mut self) -> bool {
+        self.banner = None;
+        if let Some(minor) = self.prikk_minor()
+            && minor < stikk_core::REF_WRITES_FROM_MINOR
+        {
+            self.banner = Some(stikk_core::ref_writes_unavailable(minor));
+            return false;
+        }
+        let readiness = self.readiness();
+        match stikk_core::capability_gate(
+            stikk_core::CREATE_BRANCH_OPERATION,
+            Tier::Three,
+            readiness,
+        ) {
+            Ok(()) => true,
+            Err(stikk_model::StikkError::NotReady { detail }) => {
+                self.banner = Some(detail);
+                false
+            }
+            // `capability_gate` only ever returns `NotReady`; kept exhaustive so a future change to
+            // that contract fails here loudly rather than silently swallowing a new error shape.
+            Err(other) => {
+                self.banner = Some(other.to_string());
+                false
+            }
+        }
+    }
+
+    /// The name prompt's `Enter` (RFC 044 decision 5). **An empty name is not sent** -- the one
+    /// rule stikk applies to a name -- and a tag goes on to its message prompt before anything is
+    /// previewed, because `-m` is part of the call the preview restates.
+    fn submit_ref_name(&mut self, kind: RefNameKind, source: String, typed: &str) {
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return;
+        }
+        let name = format!("{}{typed}", kind.prefix());
+        self.overlays.pop();
+        match kind {
+            RefNameKind::Branch => self.start_ref_write(RefWriteOp::CreateBranch {
+                name,
+                from_ref: source,
+            }),
+            RefNameKind::Tag => self.overlays.push(Overlay::TagMessage {
+                name,
+                target: source,
+                typed: String::new(),
+            }),
+        }
+    }
+
+    /// The tag message prompt's `Enter` (RFC 044 decision 5). **Empty is a valid answer**: it
+    /// sends no `-m`, which is what prikk does for a tag without a message.
+    fn submit_tag_message(&mut self, name: String, target: String, typed: &str) {
+        self.overlays.pop();
+        self.start_ref_write(RefWriteOp::CreateTag {
+            name,
+            target,
+            message: typed.trim().to_string(),
+        });
+    }
+
+    /// Dispatch the preview for `op` and park the flow on it.
+    fn start_ref_write(&mut self, op: RefWriteOp) {
+        let seq = self.dispatch(RequestKind::RefWritePreview { op: op.clone() });
+        self.overlays.push(Overlay::Loading {
+            what: "ref write preview",
+            seq,
+        });
+        self.pending_ref_write = Some(PendingRefWrite::AwaitingPreview { op });
+    }
+
+    /// The confirmation step's `Enter` for a pending ref write (RFC 044; RFC 013 §6). Tier Three,
+    /// as seal is, so the evidence is an explicit yes; the typed shape is accepted for parity with
+    /// the other two flows and never produced here.
+    fn submit_ref_write_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingRefWrite::Confirming { token, op }) = self.pending_ref_write.take() else {
+            return; // no ref write is actually pending -- a stray Enter on a Confirmation this app did not open
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let seq = self.dispatch(RequestKind::RefWriteConfirmExecute {
+            token,
+            readiness,
+            evidence,
+            op,
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "ref write",
+            seq,
+        });
     }
 
     /// The context-sensitive select/drill-in action (the `Enter` key). Overlays take priority.
@@ -1071,6 +1402,22 @@ impl App {
                 let (reff, typed) = (reff.clone(), typed.clone());
                 self.submit_commit_message(reff, &typed);
             }
+            Some(Overlay::RefName {
+                kind,
+                source,
+                typed,
+            }) => {
+                let (kind, source, typed) = (*kind, source.clone(), typed.clone());
+                self.submit_ref_name(kind, source, &typed);
+            }
+            Some(Overlay::TagMessage {
+                name,
+                target,
+                typed,
+            }) => {
+                let (name, target, typed) = (name.clone(), target.clone(), typed.clone());
+                self.submit_tag_message(name, target, &typed);
+            }
             // Shared by commit (RFC 014 §3, this overlay's first consumer) and seal (RFC 016 §5) —
             // routed by whichever pending flow is actually waiting, never by the overlay's own content
             // (both use tier/typed identically; only what happens next differs). Neither should ever be
@@ -1082,6 +1429,8 @@ impl App {
                     self.submit_commit_confirmation(tier, &typed);
                 } else if self.pending_seal.is_some() {
                     self.submit_seal_confirmation(tier, &typed);
+                } else if self.pending_ref_write.is_some() {
+                    self.submit_ref_write_confirmation(tier, &typed);
                 }
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
@@ -1097,7 +1446,8 @@ impl App {
                 | Overlay::CommitWouldRefuse { .. }
                 | Overlay::CommitWouldRefuseDeclarations { .. }
                 | Overlay::CommitResult { .. }
-                | Overlay::SealResult { .. },
+                | Overlay::SealResult { .. }
+                | Overlay::RefWriteResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -1491,7 +1841,11 @@ impl App {
             Some(Overlay::Confirmation { tier, typed, .. }) if *tier == Tier::ThreeTyped => {
                 typed.push(ch);
             }
-            Some(Overlay::CommitMessage { typed, .. }) => typed.push(ch),
+            Some(
+                Overlay::CommitMessage { typed, .. }
+                | Overlay::RefName { typed, .. }
+                | Overlay::TagMessage { typed, .. },
+            ) => typed.push(ch),
             _ => {}
         }
     }
@@ -1507,7 +1861,11 @@ impl App {
             Some(Overlay::Confirmation { tier, typed, .. }) if *tier == Tier::ThreeTyped => {
                 typed.pop();
             }
-            Some(Overlay::CommitMessage { typed, .. }) => {
+            Some(
+                Overlay::CommitMessage { typed, .. }
+                | Overlay::RefName { typed, .. }
+                | Overlay::TagMessage { typed, .. },
+            ) => {
                 typed.pop();
             }
             _ => {}
@@ -1521,7 +1879,12 @@ impl App {
     pub fn wants_text_input(&self) -> bool {
         matches!(
             self.overlays.last(),
-            Some(Overlay::Palette { .. } | Overlay::CommitMessage { .. })
+            Some(
+                Overlay::Palette { .. }
+                    | Overlay::CommitMessage { .. }
+                    | Overlay::RefName { .. }
+                    | Overlay::TagMessage { .. }
+            )
         ) || matches!(
             self.overlays.last(),
             Some(Overlay::Confirmation { tier, .. }) if *tier == Tier::ThreeTyped
@@ -1550,7 +1913,10 @@ impl App {
                 | Overlay::CommitMessage { .. }
                 | Overlay::CommitResult { .. }
                 | Overlay::SealConsent { .. }
-                | Overlay::SealResult { .. },
+                | Overlay::SealResult { .. }
+                | Overlay::RefName { .. }
+                | Overlay::TagMessage { .. }
+                | Overlay::RefWriteResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
@@ -1606,7 +1972,10 @@ impl App {
                 | Overlay::CommitMessage { .. }
                 | Overlay::CommitResult { .. }
                 | Overlay::SealConsent { .. }
-                | Overlay::SealResult { .. },
+                | Overlay::SealResult { .. }
+                | Overlay::RefName { .. }
+                | Overlay::TagMessage { .. }
+                | Overlay::RefWriteResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { view, cursor, .. }) => {
@@ -1657,6 +2026,17 @@ impl App {
                 self.pending_commit = None;
                 self.pending_seal = None;
             }
+            // The same posture for RFC 044's prompts and its share of `Confirmation`: cancelling
+            // any step of the flow abandons the write it belonged to. The prompts come *before*
+            // anything is dispatched, so there is usually nothing pending to clear — clearing it
+            // anyway is what keeps a token from a flow the user walked away from out of the next
+            // one's path.
+            if matches!(
+                overlay,
+                Overlay::RefName { .. } | Overlay::TagMessage { .. } | Overlay::Confirmation { .. }
+            ) {
+                self.pending_ref_write = None;
+            }
             // Cancelling the consent step abandons the seal it belonged to (RFC 016 §8) — the same
             // posture, one step later in seal's own flow.
             if matches!(overlay, Overlay::SealConsent { .. }) {
@@ -1697,6 +2077,8 @@ impl App {
             ResponseKind::CommitConfirmExecute(r) => r.is_ok(),
             ResponseKind::SealPreview(r) => r.is_ok(),
             ResponseKind::SealConfirmExecute(r) => r.is_ok(),
+            ResponseKind::RefWritePreview(r) => r.is_ok(),
+            ResponseKind::RefWriteConfirmExecute { result, .. } => result.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -1718,6 +2100,10 @@ impl App {
             ResponseKind::SealPreview(result) => self.apply_seal_preview(seq, result),
             ResponseKind::SealConfirmExecute(result) => {
                 self.apply_seal_confirm_execute(seq, result);
+            }
+            ResponseKind::RefWritePreview(result) => self.apply_ref_write_preview(seq, result),
+            ResponseKind::RefWriteConfirmExecute { kind, result } => {
+                self.apply_ref_write_confirm_execute(seq, kind, result);
             }
         }
     }
@@ -2175,6 +2561,10 @@ impl App {
         if let Some(index) = index {
             match result {
                 Ok(list) => {
+                    // **The rows, kept beside the names** (RFC 044): `n`, `t` and `x` need to
+                    // know whether a row is a tag and whether a branch is already closed, and
+                    // those facts arrive with this read and nowhere else.
+                    self.ref_rows.clone_from(&list.refs);
                     let named = list.unpublished_current.name().map(ToString::to_string);
                     // **The branch prikk named goes first** (RFC 037 decision 4). It is the branch
                     // the user is standing on, and in a fresh repository it is the only row — so
@@ -2381,6 +2771,124 @@ impl App {
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
+        }
+    }
+
+    /// Answers [`RequestKind::RefWritePreview`] (RFC 044). The same three-outcome shape commit's
+    /// and seal's previews have: blocked (stikk's own words, never routed through `present()` --
+    /// nothing was attempted and nothing refused), ready (arms the confirmation), or a genuine
+    /// seam failure.
+    fn apply_ref_write_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::RefWritePreview>,
+    ) {
+        let index = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
+        let Some(index) = index else {
+            return; // stale: the user navigated away before the preview resolved
+        };
+        // Consumed regardless of outcome, as commit's is: a blocked or failed preview leaves
+        // nothing to confirm, and a ready one hands its pieces to `Confirming` below.
+        let pending = self.pending_ref_write.take();
+        match result {
+            Ok(stikk_core::RefWritePreview::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+                // **The typed name survives a block too** (RFC 044 §3). A blocked close has no
+                // prompt to come back to; a blocked create does, and retyping it would be the
+                // reader's second attempt at a name stikk never sent.
+                if let Some(PendingRefWrite::AwaitingPreview { op }) = pending
+                    && let Some(prompt) = op.prompt()
+                {
+                    self.overlays.push(prompt);
+                }
+            }
+            Ok(stikk_core::RefWritePreview::Ready { token }) => {
+                let Some(PendingRefWrite::AwaitingPreview { op }) = pending else {
+                    self.overlays.remove(index);
+                    return; // defensive: should not happen, but nothing to confirm without this
+                };
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::Confirmation {
+                        summary: Box::new(token.summary().clone()),
+                        tier: token.tier(),
+                        typed: String::new(),
+                        error: None,
+                    };
+                }
+                self.pending_ref_write = Some(PendingRefWrite::Confirming { token, op });
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.restore_prompt(pending);
+                self.surface(&error, OperationContext::Other);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::RefWriteConfirmExecute`] (RFC 044 decision 8).
+    ///
+    /// On success: prikk's lines verbatim, and **the ref lists are re-read**, so the new branch or
+    /// tag is in the picker the next time it opens and a closed branch has moved to the closed
+    /// rows. Nothing is parsed out of the lines themselves (trap 2) -- the lists are the state.
+    ///
+    /// On failure: the usual `present()` routing, with **the name prompt put back underneath it**
+    /// carrying what the user typed, so dismissing prikk's refusal lands on the name again.
+    fn apply_ref_write_confirm_execute(
+        &mut self,
+        seq: u64,
+        kind: RefWriteKind,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::RefWrite>>,
+    ) {
+        let index = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
+        let Some(index) = index else {
+            return; // stale: the user navigated away before the response arrived
+        };
+        // Taken here and not at dispatch: this is the one place that knows whether the flow is
+        // over (it succeeded) or the user is being handed their name back (it did not).
+        let pending = self.pending_ref_write.take();
+        match result {
+            Ok(outcome) => match outcome.result {
+                stikk_prikk::RefWrite::Done(lines) => {
+                    if let Some(slot) = self.overlays.get_mut(index) {
+                        *slot = Overlay::RefWriteResult { kind, lines };
+                    }
+                    self.dispatch(RequestKind::Refs);
+                }
+                // The band is checked before the keys offer anything, so this is only reachable
+                // if prikk changed under the session. stikk's own words, never prikk's silence.
+                stikk_prikk::RefWrite::Unavailable => {
+                    self.overlays.remove(index);
+                    self.banner = Some(stikk_core::ref_writes_unavailable(
+                        self.prikk_minor().unwrap_or_default(),
+                    ));
+                }
+            },
+            Err(error) => {
+                self.overlays.remove(index);
+                self.restore_prompt(pending);
+                self.surface(&error, OperationContext::Other);
+            }
+        }
+    }
+
+    /// Put a create's name prompt back, carrying what the user typed (RFC 044 §3). A close has no
+    /// prompt, and a flow with nothing pending has nothing to restore.
+    fn restore_prompt(&mut self, pending: Option<PendingRefWrite>) {
+        let op = match pending {
+            Some(
+                PendingRefWrite::AwaitingPreview { op } | PendingRefWrite::Confirming { op, .. },
+            ) => op,
+            None => return,
+        };
+        if let Some(prompt) = op.prompt() {
+            self.overlays.push(prompt);
         }
     }
 

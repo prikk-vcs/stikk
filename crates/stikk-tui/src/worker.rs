@@ -8,7 +8,8 @@
 use std::path::Path;
 use std::sync::mpsc;
 
-use crate::app::CompareSource;
+use crate::app::{CompareSource, RefWriteOp};
+use crate::overlay::RefWriteKind;
 use stikk_core::{
     BlockDetailView, ChangesRead, CommitPreviewOutcome, CommitToken, Evidence, HistoryView,
     OrientationView, Outcome, PreviewToken, SealPreviewOutcome, block_detail, change_token,
@@ -119,14 +120,35 @@ pub(crate) enum RequestKind {
     /// Confirm and execute a seal in one round trip (RFC 016 §5) — the no-audit consent step (§8) has
     /// already happened client-side, as its own act, before this request is ever built.
     SealConfirmExecute {
-        /// The token [`RequestKind::SealPreview`] minted.
-        token: PreviewToken,
+        /// The token [`RequestKind::SealPreview`] minted. Boxed, as commit's and RFC 044's are: a
+        /// token is far larger than anything else that crosses this channel, and an unboxed one
+        /// sets the size of every request the worker ever receives.
+        token: Box<PreviewToken>,
         /// The session's signing readiness, read on the UI thread immediately before dispatch.
         readiness: Readiness,
         /// The user's confirmation evidence (an explicit yes, at seal's tier 3 — untyped, RFC 013 Q3).
         evidence: Evidence,
         /// The ref to seal (must match the preview's).
         reff: String,
+    },
+    /// Build the preview for one of RFC 044's three ref writes.
+    RefWritePreview {
+        /// What would be written. It names the operation **and** every argument prikk will be
+        /// handed, so the preview restates the call that will actually run.
+        op: RefWriteOp,
+    },
+    /// Confirm and execute a ref write in one round trip (RFC 044) — as commit does, and for the
+    /// same reason: nothing happens between the confirmation succeeding and the write starting.
+    RefWriteConfirmExecute {
+        /// The token [`RequestKind::RefWritePreview`] minted. Boxed as the commit flow boxes its
+        /// own, to keep this variant from dwarfing the rest of the enum.
+        token: Box<PreviewToken>,
+        /// The session's signing readiness, read on the UI thread immediately before dispatch.
+        readiness: Readiness,
+        /// The user's confirmation evidence (an explicit yes, at Publication's tier 3).
+        evidence: Evidence,
+        /// The previewed call, executed unchanged.
+        op: RefWriteOp,
     },
 }
 
@@ -178,6 +200,16 @@ pub(crate) enum ResponseKind {
     SealPreview(Result<SealPreviewOutcome>),
     /// Answers [`RequestKind::SealConfirmExecute`].
     SealConfirmExecute(Result<Outcome<SealResult>>),
+    /// Answers [`RequestKind::RefWritePreview`].
+    RefWritePreview(Result<stikk_core::RefWritePreview>),
+    /// Answers [`RequestKind::RefWriteConfirmExecute`].
+    RefWriteConfirmExecute {
+        /// Echoed from the request, so the result card can title itself without the UI thread
+        /// keeping a second copy of what it already sent.
+        kind: RefWriteKind,
+        /// prikk's lines, or whatever stopped the write.
+        result: Result<Outcome<stikk_prikk::RefWrite>>,
+    },
 }
 
 /// What one [`RequestKind::Orient`] read found (RFC 031 §3): the change token, **read first**, and the
@@ -229,6 +261,8 @@ impl RequestKind {
             Self::CommitConfirmExecute { .. } => "commit",
             Self::SealPreview { .. } => "seal preview",
             Self::SealConfirmExecute { .. } => "seal",
+            Self::RefWritePreview { .. } => "ref write preview",
+            Self::RefWriteConfirmExecute { .. } => "ref write",
         }
     }
 }
@@ -297,8 +331,65 @@ pub(crate) fn run(
                 evidence,
                 reff,
             } => ResponseKind::SealConfirmExecute(seal_confirm_and_execute(
-                prikk, repo, token, readiness, evidence, &reff,
+                prikk, repo, *token, readiness, evidence, &reff,
             )),
+            RequestKind::RefWritePreview { op } => ResponseKind::RefWritePreview(match &op {
+                RefWriteOp::CreateBranch { name, from_ref } => {
+                    stikk_core::create_branch_preview(prikk, repo, name, from_ref)
+                }
+                RefWriteOp::CreateTag {
+                    name,
+                    target,
+                    message,
+                } => stikk_core::create_tag_preview(
+                    prikk,
+                    repo,
+                    stikk_core::NewTag {
+                        name,
+                        target,
+                        message,
+                    },
+                ),
+                RefWriteOp::CloseBranch { name } => {
+                    stikk_core::close_branch_preview(prikk, repo, name)
+                }
+            }),
+            RequestKind::RefWriteConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                op,
+            } => ResponseKind::RefWriteConfirmExecute {
+                kind: op.kind(),
+                result: match &op {
+                    RefWriteOp::CreateBranch { name, from_ref } => {
+                        stikk_core::create_branch_confirm_and_execute(
+                            prikk, repo, *token, readiness, evidence, name, from_ref,
+                        )
+                    }
+                    RefWriteOp::CreateTag {
+                        name,
+                        target,
+                        message,
+                    } => stikk_core::create_tag_confirm_and_execute(
+                        prikk,
+                        repo,
+                        *token,
+                        readiness,
+                        evidence,
+                        stikk_core::NewTag {
+                            name,
+                            target,
+                            message,
+                        },
+                    ),
+                    RefWriteOp::CloseBranch { name } => {
+                        stikk_core::close_branch_confirm_and_execute(
+                            prikk, repo, *token, readiness, evidence, name,
+                        )
+                    }
+                },
+            },
         };
         // The UI thread has quit and dropped its receiver; nothing left to deliver to.
         if res_tx.send(Response { seq, kind }).is_err() {

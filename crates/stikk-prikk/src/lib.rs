@@ -1402,8 +1402,8 @@ pub trait Prikk: Send + Sync {
     /// a ref in the picker, and that is the ref this branch must start at. Omitting the flag would
     /// silently substitute prikk's answer for theirs.
     ///
-    /// **`from_ref` is a ref name, never a block id.** prikk refuses a block id here — *"--from ref
-    /// <id> does not resolve to a published ref"* (F2, measured) — and stikk does not imitate the
+    /// **`from_ref` is a ref name, never a block id.** prikk refuses a block id here —
+    /// *`--from ref <id> does not resolve to a published ref`* (F2, measured) — and stikk does not imitate the
     /// missing feature by tagging the block first and branching from the tag.
     ///
     /// **Banded at [`crate::CURRENT_BRANCH_FROM_MINOR`]**: below it nothing is spawned and the

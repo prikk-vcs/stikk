@@ -2,6 +2,61 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-state` and the `stikk` launcher are unchanged.**
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | **The `Prikk` trait gained three methods with no defaults** — `create_branch`, `create_tag` and `close_branch`. Any outside implementor of the trait must add them |
+| `stikk-core` | **`ConfirmationSummary` gained a public field**, `message_note: Option<String>` — the message a new tag will carry, in its own field because it is the one string on that card the user wrote. Any outside code constructing a `ConfirmationSummary` as a literal must add it |
+| `stikk-tui` | **`Overlay` gained three variants** — `RefName`, `TagMessage` and `RefWriteResult`. Any outside exhaustive `match` on it must cover them |
+
+**Additive:** `stikk_prikk::RefWrite` and `stikk_prikk::CURRENT_BRANCH_FROM_MINOR`;
+`stikk_core::refs` with `RefWritePreview`, `NewTag`, the three previews, the three
+confirm-and-executes, `ref_writes_unavailable`, `REF_WRITES_FROM_MINOR`,
+`CLOSING_THE_CURRENT_BRANCH` and the three operation names; `NullBackend::with_ref_write` and
+`with_ref_write_refusal`; `stikk_tui::overlay::RefNameKind`/`RefWriteKind` and
+`App::begin_create_branch`/`begin_create_tag`/`begin_close_branch`. **No public item was removed.**
+The MSRV is unchanged at 1.88.
+
+### Added
+
+- **Create a branch, create a tag, close a branch** (RFC 044) — stikk's first writes since seal,
+  and the first that create or retire **refs**. They change pointers and nothing else: no file in
+  the worktree moves, no history is rewritten, and nothing is deleted.
+
+  In the ref picker, **`n`** creates a branch at the selected ref's tip, **`t`** tags it, and
+  **`x`** closes the selected branch. In History and Block detail, **`t`** tags the selected
+  block, by block id. Each one previews first, at seal's tier and capability, and runs exactly the
+  one prikk command the preview restated — **`--from` is always passed**, because the ref you
+  chose is not the same question as prikk's default source.
+
+  **stikk adds no naming rules of its own.** The prefix (`heads/` or `tags/`) is shown fixed and
+  the rest is typed; an empty name is not sent, and that is the only rule. Everything else is
+  prikk's to judge, and its refusal is shown verbatim — including for a name with a space in it,
+  which prikk accepts. A refusal hands the name back so the correction is one edit.
+
+  **The branch you are on is never offered for closing.** prikk allows it when nothing is queued,
+  and the repository is then on a closed branch where even a default `branch create` refuses.
+  stikk says so in its own words and names the way out. A branch the list already marks closed,
+  and a row for a branch with no published tip, are answered the same way — from what stikk
+  already read, without running prikk.
+
+  Available at **prikk ≥ 0.42**, where prikk keeps a current-branch pointer; below that the keys
+  say so in stikk's own words and spawn nothing. The real-binary suite drives **53 cases** at
+  0.28.0 and 0.52.0.
+
+### Changed
+
+- **A banner wraps instead of losing its tail.** It was one row, which was enough for *"mark
+  cleared"* and not for a refusal that names the command to run next: at 80 columns the end of
+  the sentence was simply cut off. A banner that fits keeps exactly the shape it always had; one
+  that does not now takes the rows it needs (RFC 024's rule, wrap and never clip).
+
 ## 0.12.0 — 2026-10-15
 
 **stikk now works with prikk 0.52.0, which names each patch's files as they were at that patch, and

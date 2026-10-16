@@ -114,6 +114,16 @@ pub struct ConfirmationSummary {
     /// RFC 032 decision 2: one sentence per declaration prikk will not author as a rename, from
     /// [`crate::DeclaredRename::notice`]. Carries paths: render each inert.
     pub declaration_notices: Vec<String>,
+    /// RFC 044 decision 6: the message a new tag will carry, restated so the confirmation shows
+    /// what is about to be recorded. `None` for every other operation, and for a tag with no
+    /// message -- which is a different fact from an empty one, and the consequence says so in
+    /// stikk's own words.
+    ///
+    /// **The one string here the user wrote**, rather than stikk or prikk. It is held in its own
+    /// field for exactly that reason: it must reach the card through `inert` like every
+    /// repository-sourced string, and burying it inside [`Self::consequence`] -- which this
+    /// type's own contract says a repository can never influence -- would smuggle it past that.
+    pub message_note: Option<String>,
 }
 
 /// How many characters of an object id a short id shows — the form History's block rows use, shared so a

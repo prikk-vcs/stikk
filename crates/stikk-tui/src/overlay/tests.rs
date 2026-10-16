@@ -112,9 +112,18 @@ fn flattened(screen: &str) -> String {
 
 #[test]
 fn glossary_shows_keys_and_the_terminology_mapping() {
-    let text = draw(&Overlay::Glossary {
-        offset: std::cell::Cell::new(0),
-    });
+    // **Taller than `draw`'s default**, which the Keys section outgrew when RFC 044 added `n`,
+    // `t` and `x`: this test is about what the panel *contains*, and the default size exists so
+    // that content tests do not fail for a reason they are not testing. Whether the panel scrolls
+    // honestly when it does not fit is the gate's assertion and
+    // `the_last_terminology_entry_is_reachable_by_scrolling_at_80x24`'s, both at the real floor.
+    let text = draw_at(
+        &Overlay::Glossary {
+            offset: std::cell::Cell::new(0),
+        },
+        90,
+        60,
+    );
     assert!(text.contains("Glossary"));
     assert!(text.contains("Git")); // the Git → prikk section
     assert!(text.contains("HEAD")); // a load-bearing redirect
@@ -526,6 +535,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        message_note: None,
     }
 }
 
@@ -1015,6 +1025,7 @@ fn summary_with_key_id(
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        message_note: None,
     }
 }
 
@@ -1237,6 +1248,12 @@ fn coverage(overlay: &Overlay) -> Coverage {
         Overlay::CommitResult { .. } => Coverage::NoSelection,
         Overlay::SealConsent { .. } => Coverage::NoSelection,
         Overlay::SealResult { .. } => Coverage::NoSelection,
+        // RFC 044 decision 5: a prompt. Its prose is fixed and its input is one row; the affordance
+        // region holds both, so there is nothing selectable and nothing that grows without bound.
+        Overlay::RefName { .. } | Overlay::TagMessage { .. } => Coverage::NoSelection,
+        // RFC 044 decision 8: a content card. prikk prints four lines at most today, but the count
+        // is prikk's, not stikk's, so it is treated as content that can grow.
+        Overlay::RefWriteResult { .. } => Coverage::NoSelection,
     }
 }
 
@@ -1279,6 +1296,7 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        message_note: None,
     }
 }
 
@@ -1482,6 +1500,37 @@ fn cases() -> Vec<Case> {
             entry: None,
         },
         Case {
+            name: "RefName",
+            build: Box::new(|_| Overlay::RefName {
+                kind: crate::overlay::RefNameKind::Branch,
+                source: "heads/".to_string() + &"long-source-ref-".repeat(4),
+                typed: "feature".to_string(),
+            }),
+            last_row: "Enter to continue".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "TagMessage",
+            build: Box::new(|_| Overlay::TagMessage {
+                name: "tags/v1".to_string(),
+                target: "d".repeat(64),
+                typed: "a tag message".to_string(),
+            }),
+            last_row: "Enter to continue".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "RefWriteResult",
+            build: Box::new(|_| Overlay::RefWriteResult {
+                kind: crate::overlay::RefWriteKind::CreateTag,
+                lines: (0..30)
+                    .map(|i| format!("target block: {}", format!("{i:02}").repeat(32)))
+                    .collect(),
+            }),
+            last_row: "Enter · Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
             name: "SealResult",
             build: Box::new(move |_| Overlay::SealResult {
                 result: stikk_prikk::SealResult {
@@ -1611,21 +1660,21 @@ fn the_gate_is_fed_content_that_actually_overflows() {
 
 /// Coverage is complete, and stays complete.
 ///
-/// `coverage()`'s match is exhaustive with no `_` arm, so a fourteenth `Overlay` variant **will not
+/// `coverage()`'s match is exhaustive with no `_` arm, so a nineteenth `Overlay` variant **will not
 /// compile** until it is classified there. This asserts the second half: that it also gets a case.
 #[test]
 fn the_gate_covers_every_overlay_variant() {
     assert_eq!(
         cases().len(),
-        14,
-        "Overlay has fourteen variants and the gate must have one case each. If a variant was added, \
-         `coverage()` will already have refused to compile; add its case to `cases()` too — built \
-         oversized, or the new case asserts nothing."
+        17,
+        "The gate carries seventeen cases. If an `Overlay` variant was added, `coverage()` will \
+         already have refused to compile; add its case to `cases()` too — built oversized, or the \
+         new case asserts nothing."
     );
     let mut names: Vec<&str> = cases().iter().map(|c| c.name).collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 14, "duplicate case names: {names:?}");
+    assert_eq!(names.len(), 17, "duplicate case names: {names:?}");
 }
 
 // --- RFC 024 F1/F2/F5: the three shipped defects, each pinned by its own named test -------------
@@ -1739,6 +1788,7 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        message_note: None,
     }
 }
 
@@ -2753,4 +2803,179 @@ fn capture_rfc037_ref_picker_at_80_columns() {
     }
     assert!(draw_at(&fresh, 80, 16).contains("(not yet published)"));
     assert!(!draw_at(&sealed, 80, 16).contains("(not yet published)"));
+}
+
+// =============================================================================================
+// RFC 044 — the name prompts and the result card.
+// =============================================================================================
+
+/// A maintainer-ready 0.52 session, so the previews below carry the summary a real reader sees
+/// rather than the Viewer's missing-key warning.
+fn ref_write_backend() -> stikk_prikk::NullBackend {
+    let current = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse("heads/main").expect("a ref name"),
+    );
+    stikk_prikk::NullBackend::supported()
+        .with_version(0, 52, 0)
+        .with_orientation(stikk_prikk::Orientation {
+            interrupted_materialization: None,
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: current.clone(),
+        })
+        .with_change_token(stikk_model::ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            0,
+            None,
+            &current,
+        ))
+        .with_readiness(stikk_prikk::ReadinessReport {
+            readiness: stikk_model::Readiness {
+                author: RoleReadiness::Unknown,
+                maintainer: RoleReadiness::Unknown,
+                read_only: false,
+            },
+            author: stikk_prikk::RoleDetail::default(),
+            maintainer: stikk_prikk::RoleDetail::default(),
+        })
+}
+
+fn ref_write_confirmation(preview: stikk_core::RefWritePreview) -> Overlay {
+    match preview {
+        stikk_core::RefWritePreview::Ready { token } => Overlay::Confirmation {
+            summary: Box::new(token.summary().clone()),
+            tier: token.tier(),
+            typed: String::new(),
+            error: None,
+        },
+        stikk_core::RefWritePreview::Blocked(reason) => panic!("expected Ready, got {reason}"),
+    }
+}
+
+/// **The prefix is shown, never typed** (decision 5), and the prompt names what it targets.
+#[test]
+fn the_branch_name_prompt_shows_the_prefix_and_the_source() {
+    let text = draw(&Overlay::RefName {
+        kind: RefNameKind::Branch,
+        source: "heads/main".to_string(),
+        typed: "feature".to_string(),
+    });
+    assert!(text.contains("heads/feature"), "{text}");
+    assert!(text.contains("Branch from"), "{text}");
+    assert!(text.contains("A name is required"), "{text}");
+}
+
+/// A tag's message prompt says plainly that **empty is an answer** — the commit message prompt's
+/// `Enter` refuses an empty line, and a reader carrying that habit here would never find out.
+#[test]
+fn the_tag_message_prompt_says_an_empty_message_is_allowed() {
+    let text = draw(&Overlay::TagMessage {
+        name: "tags/v1".to_string(),
+        target: "heads/main".to_string(),
+        typed: String::new(),
+    });
+    assert!(text.contains("optional"), "{text}");
+    assert!(text.contains("carries none"), "{text}");
+}
+
+/// The result card shows **prikk's lines, in order and unaltered**, in the quoted region the
+/// refusal card uses for prikk's own prose -- and nothing stikk wrote is inside it.
+#[test]
+fn the_result_card_quotes_prikks_lines_verbatim() {
+    let text = draw(&Overlay::RefWriteResult {
+        kind: RefWriteKind::CreateBranch,
+        lines: vec![
+            "created branch heads/feature".to_string(),
+            "update_seq: 1".to_string(),
+        ],
+    });
+    assert!(text.contains("prikk reported"), "{text}");
+    assert!(text.contains("created branch heads/feature"), "{text}");
+    assert!(text.contains("update_seq: 1"), "{text}");
+    let quoted = text.lines().filter(|l| l.contains('\u{2502}')).count();
+    assert!(quoted >= 2, "both lines carry the quote bar:\n{text}");
+}
+
+/// **Repository text is inert** (`C-T2a`): a line prikk printed cannot carry a control character
+/// into the terminal, even on the success path.
+#[test]
+fn a_result_line_is_inert() {
+    let text = draw(&Overlay::RefWriteResult {
+        kind: RefWriteKind::CreateTag,
+        lines: vec!["created tag tags/\u{202e}evil".to_string()],
+    });
+    assert!(
+        text.contains("\\u202e"),
+        "it is written as its escape: {text}"
+    );
+}
+
+/// **RFC 044's captures, at exactly 80 columns**: the three previews, both prompts, and a result
+/// screen. Reproduce with `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+#[test]
+fn capture_rfc044_ref_writes_at_80_columns() {
+    let backend = ref_write_backend();
+    let repo = std::path::Path::new("/repo");
+    let create_branch = ref_write_confirmation(
+        stikk_core::create_branch_preview(&backend, repo, "heads/feature", "heads/main")
+            .expect("reads"),
+    );
+    let create_tag = ref_write_confirmation(
+        stikk_core::create_tag_preview(
+            &backend,
+            repo,
+            stikk_core::NewTag {
+                name: "tags/v1",
+                target: "heads/main",
+                message: "first release",
+            },
+        )
+        .expect("reads"),
+    );
+    let close_branch = ref_write_confirmation(
+        stikk_core::close_branch_preview(&backend, repo, "heads/old").expect("reads"),
+    );
+    let name_prompt = Overlay::RefName {
+        kind: RefNameKind::Branch,
+        source: "heads/main".to_string(),
+        typed: "feature".to_string(),
+    };
+    let tag_message = Overlay::TagMessage {
+        name: "tags/v1".to_string(),
+        target: "heads/main".to_string(),
+        typed: "first release".to_string(),
+    };
+    let result = Overlay::RefWriteResult {
+        kind: RefWriteKind::CloseBranch,
+        lines: vec![
+            "closed branch heads/old".to_string(),
+            format!("RefState: {}", "7f3a9c21".repeat(8)),
+            "nothing was reclaimed; the pointer, its history, and every object remain, and the \
+             branch is recoverable"
+                .to_string(),
+        ],
+    };
+    for (label, overlay, height) in [
+        ("create a branch \u{2014} the preview", &create_branch, 22),
+        ("create a tag \u{2014} the preview", &create_tag, 22),
+        ("close a branch \u{2014} the preview", &close_branch, 22),
+        ("the name prompt", &name_prompt, 14),
+        ("the tag message prompt", &tag_message, 14),
+        ("close a branch \u{2014} the result", &result, 16),
+    ] {
+        println!(
+            "--- {label} (80 columns) ---\n{}",
+            draw_at(overlay, 80, height)
+        );
+    }
+    // The captures are evidence, not decoration: each one has to actually hold its content.
+    assert!(draw_at(&create_branch, 80, 22).contains("heads/feature"));
+    assert!(draw_at(&create_tag, 80, 22).contains("tags/v1"));
+    assert!(draw_at(&close_branch, 80, 22).contains("Nothing is reclaimed"));
+    assert!(draw_at(&name_prompt, 80, 14).contains("heads/feature"));
+    assert!(draw_at(&tag_message, 80, 14).contains("first release"));
+    assert!(draw_at(&result, 80, 16).contains("closed branch heads/old"));
 }

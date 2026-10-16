@@ -26,6 +26,7 @@ pub mod patch;
 pub mod piece;
 pub mod present;
 pub mod queue;
+pub mod refs;
 pub mod refusal_history;
 pub mod seal;
 pub mod verify;
@@ -67,6 +68,13 @@ pub use present::{
     stale_gloss, stale_headline,
 };
 pub use queue::{QueueView, QueuedPatchView, queue_view};
+pub use refs::{
+    CLOSE_BRANCH_OPERATION, CLOSING_THE_CURRENT_BRANCH, CREATE_BRANCH_OPERATION,
+    CREATE_TAG_OPERATION, NewTag, REF_WRITES_FROM_MINOR, RefWritePreview,
+    close_branch_confirm_and_execute, close_branch_preview, create_branch_confirm_and_execute,
+    create_branch_preview, create_tag_confirm_and_execute, create_tag_preview,
+    ref_writes_unavailable,
+};
 pub use refusal_history::{RefusalHistory, RefusalRecord};
 pub use seal::{
     SEAL_CONSENT_COPY, SEAL_OPERATION, SealPreviewOutcome, seal_confirm_and_execute, seal_preview,

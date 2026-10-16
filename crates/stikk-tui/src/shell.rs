@@ -1,5 +1,6 @@
 //! The shell frame (design TU-02; handoff §2 `shell.rs`): header, active view, status bar, and the
-//! overlay layer above them. Pure layout — it draws whatever the app hands it and computes nothing.
+//! overlay layer above them. Layout, and the one wrap only the renderer can do: the banner's own
+//! height (RFC 023 F2 — only the renderer knows how many rows a sentence occupies).
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, HorizontalAlignment, Layout, Rect};
@@ -26,8 +27,19 @@ pub fn render(app: &App, frame: &mut Frame) {
         return;
     }
 
-    // A banner row appears between the body and the status bar only when there is a banner.
-    let banner_height = u16::from(app.banner().is_some());
+    // A banner appears between the body and the status bar only when there is one, and it is as
+    // tall as its own text needs (RFC 024: wrap, never clip). **Wrapped once, here**, so the rows
+    // reserved and the rows drawn are the same list and cannot drift — the fault RFC 024 found in
+    // every overlay that guessed its height instead.
+    let banner_lines = app
+        .banner()
+        .map(|text| banner_lines(palette, text, area.width as usize))
+        .unwrap_or_default();
+    // A banner is a notice, never the screen: the header, a row of body and the status bar keep
+    // their places whatever a caller puts in it.
+    let banner_height = u16::try_from(banner_lines.len())
+        .unwrap_or(1)
+        .min(area.height.saturating_sub(3));
     let [header, body, banner, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
@@ -42,8 +54,8 @@ pub fn render(app: &App, frame: &mut Frame) {
     } else {
         render_body(app, frame, body);
     }
-    if let Some(text) = app.banner() {
-        render_banner(palette, frame, banner, text);
+    if !banner_lines.is_empty() {
+        frame.render_widget(Paragraph::new(banner_lines), banner);
     }
     status_bar::render(app, frame, status);
 
@@ -52,19 +64,57 @@ pub fn render(app: &App, frame: &mut Frame) {
     }
 }
 
-/// A one-line non-modal banner (design OP-03 banner/inline classes). prikk-sourced text is inert.
-fn render_banner(palette: &Palette, frame: &mut Frame, area: Rect, text: &str) {
-    let line = Line::from(vec![
-        Span::styled(
-            " ! ",
-            Style::default()
-                .fg(palette.warn)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(inert(text), Style::default().fg(palette.warn)),
-        Span::styled("   (Esc dismisses)", Style::default().fg(palette.dim)),
-    ]);
-    frame.render_widget(Paragraph::new(line), area);
+/// The banner's mark, the indent its wrapped rows hang at, and the dismiss hint. **The first two
+/// are the same three columns**, which is what lets a continuation line up under the text rather
+/// than under the mark.
+const BANNER_MARK: &str = " ! ";
+/// See [`BANNER_MARK`].
+const BANNER_HANG: &str = "   ";
+/// See [`BANNER_MARK`].
+const BANNER_HINT: &str = "   (Esc dismisses)";
+
+/// A non-modal banner (design OP-03 banner/inline classes), **wrapped rather than clipped**.
+///
+/// It was one row, and a sentence longer than the terminal lost its tail — which is tolerable for
+/// *"mark cleared"* and is not for a refusal that names the way out of the state it describes
+/// (RFC 044 decision 7's is 118 characters and ends in the command to run). RFC 024's rule applies
+/// here as everywhere else: wrap, never clip.
+///
+/// **A banner that fits keeps exactly the shape it always had** — mark, text and hint on one row —
+/// so nothing that was already short moves. Only a banner that did not fit changes, and what
+/// changes is that the reader can now read it.
+///
+/// prikk-sourced text is inert (`C-T2a`).
+fn banner_lines<'a>(palette: &Palette, text: &str, width: usize) -> Vec<Line<'a>> {
+    let text = inert(text);
+    let mark = Style::default()
+        .fg(palette.warn)
+        .add_modifier(Modifier::BOLD);
+    let body = Style::default().fg(palette.warn);
+    let hint = Span::styled(BANNER_HINT, Style::default().fg(palette.dim));
+    if BANNER_MARK.len() + text.chars().count() + BANNER_HINT.len() <= width {
+        return vec![Line::from(vec![
+            Span::styled(BANNER_MARK, mark),
+            Span::styled(text, body),
+            hint,
+        ])];
+    }
+    let mut lines: Vec<Line<'a>> = view::wrap_hanging(&text, width, BANNER_MARK, BANNER_HANG)
+        .into_iter()
+        .map(|row| {
+            // `BANNER_MARK` and `BANNER_HANG` are three ASCII columns each, so the split is a
+            // byte split at the same place on every row.
+            let (head, rest) = row.split_at(BANNER_MARK.len());
+            Line::from(vec![
+                Span::styled(head.to_string(), mark),
+                Span::styled(rest.to_string(), body),
+            ])
+        })
+        .collect();
+    // On its own row once the text has taken more than one: beside the last word it would read as
+    // part of the sentence.
+    lines.push(Line::from(hint));
+    lines
 }
 
 /// The stikk-internal fault screen (design ER-04): the repository was not touched; continue read-only.

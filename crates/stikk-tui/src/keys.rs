@@ -50,6 +50,14 @@ pub enum Action {
     Commit,
     /// Begin the seal flow (`FL-06` step 1; RFC 016).
     Seal,
+    /// Create a branch at the selected ref's tip (the ref picker; RFC 044 decision 4).
+    CreateBranch,
+    /// Create a tag: at the selected ref's tip in the ref picker, or at the selected block in
+    /// History and Block detail (RFC 044 decision 4).
+    CreateTag,
+    /// Close the selected branch (the ref picker; RFC 044 decision 4). **Never the branch the
+    /// repository is on** — that one is refused, in stikk's own words.
+    CloseBranch,
     /// Toggle the seal consent acknowledgement (RFC 016 §8) — meaningful only while
     /// [`crate::overlay::Overlay::SealConsent`] is on top; a no-op everywhere else.
     ToggleSealConsent,
@@ -103,6 +111,9 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('v') => Action::ToggleRaw,
         KeyCode::Char('C') => Action::Commit,
         KeyCode::Char('S') => Action::Seal,
+        KeyCode::Char('n') => Action::CreateBranch,
+        KeyCode::Char('t') => Action::CreateTag,
+        KeyCode::Char('x') => Action::CloseBranch,
         KeyCode::Char(' ') => Action::ToggleSealConsent,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,

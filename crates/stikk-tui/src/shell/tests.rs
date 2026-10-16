@@ -354,3 +354,103 @@ fn picking_the_unpublished_heads_main_opens_its_empty_history_at_80x24() {
     assert!(text.contains("no sealed blocks on this ref yet"), "{text}");
     assert!(text.contains("heads/main"), "{text}");
 }
+
+/// **RFC 044 decision 7's capture, at exactly 80 columns**: `x` on the branch the repository is
+/// on, refused in stikk's own voice and **without prikk running** — driven end to end through the
+/// real preview, so the sentence on screen is the one `stikk-core` decided. Reproduce with
+/// `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+#[test]
+fn capture_rfc044_closing_the_current_branch_at_80_columns() {
+    let current = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse("heads/main").expect("a ref name"),
+    );
+    let backend = NullBackend::supported()
+        .with_version(0, 52, 0)
+        .with_orientation(Orientation {
+            interrupted_materialization: None,
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: current.clone(),
+        })
+        .with_change_token(stikk_model::ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            0,
+            None,
+            &current,
+        ))
+        .with_readiness(stikk_prikk::ReadinessReport {
+            readiness: stikk_model::Readiness {
+                author: stikk_model::RoleReadiness::Unknown,
+                maintainer: stikk_model::RoleReadiness::Unknown,
+                read_only: false,
+            },
+            author: stikk_prikk::RoleDetail::default(),
+            maintainer: stikk_prikk::RoleDetail::default(),
+        })
+        .with_refs(vec![stikk_prikk::RefEntry {
+            name: "heads/main".to_string(),
+            id: "e".repeat(64),
+            closed: false,
+            received: false,
+        }])
+        // **The guard that matters**: if the preview ever let this through, the write would
+        // succeed here and the assertion below would fail on a screen showing prikk's lines.
+        .with_ref_write(vec!["closed branch heads/main".to_string()]);
+    let (mut app, rx) = open("/repo", &Config::default());
+    drain(&mut app, &rx, &backend);
+    app.open_ref_picker();
+    drain(&mut app, &rx, &backend);
+    app.begin_close_branch();
+    drain(&mut app, &rx, &backend);
+    let text = draw(&app, 80, 24);
+    println!("--- closing the current branch, refused (80 columns) ---\n{text}");
+    assert!(text.contains("the branch you are on"), "{text}");
+    assert!(text.contains("prikk branch switch"), "{text}");
+    assert!(
+        !text.contains("closed branch heads/main"),
+        "nothing ran: {text}"
+    );
+}
+
+/// **A banner wraps rather than clipping** (RFC 024). A short one keeps exactly the shape it
+/// always had; a long one keeps every word.
+#[test]
+fn a_long_banner_wraps_and_a_short_one_does_not_move() {
+    let backend = NullBackend::supported();
+    let (mut app, rx) = open("/repo", &Config::default());
+    drain(&mut app, &rx, &backend);
+
+    app.surface_error(
+        &stikk_model::StikkError::LockConflict {
+            message: "lock held".into(),
+        },
+        stikk_core::OperationContext::Orient,
+    );
+    let short = draw(&app, 80, 24);
+    assert!(
+        short
+            .lines()
+            .any(|l| l.contains("lock held") && l.contains("Esc dismisses")),
+        "a banner that fits keeps the mark, the text and the hint on one row:\n{short}"
+    );
+
+    app.surface_error(
+        &stikk_model::StikkError::LockConflict {
+            message: stikk_core::CLOSING_THE_CURRENT_BRANCH.into(),
+        },
+        stikk_core::OperationContext::Orient,
+    );
+    let long = draw(&app, 80, 24);
+    assert!(long.contains("prikk branch switch"), "{long}");
+    assert!(
+        long.lines().any(|l| l.trim() == "(Esc dismisses)"),
+        "the hint takes its own row once the text has taken more than one:\n{long}"
+    );
+    assert!(
+        long.lines().filter(|l| l.contains("closed branch")).count() == 1,
+        "wrapped once, not repeated:\n{long}"
+    );
+}

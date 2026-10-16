@@ -209,6 +209,87 @@ pub enum Overlay {
         /// prikk's result, transported unchanged.
         result: stikk_prikk::SealResult,
     },
+    /// RFC 044 decision 5: the name of a branch or tag about to be created, typed after a **fixed
+    /// prefix the user cannot edit**. Modelled on [`Self::CommitMessage`] — mutable input the user
+    /// is still composing, so its own overlay rather than part of the confirmation that restates it.
+    ///
+    /// **stikk adds no naming rules.** An empty name is not sent, and that is the only one; every
+    /// other judgement is prikk's, and its refusal is shown verbatim (`ER-02`).
+    RefName {
+        /// Which ref is being named, which is what fixes the prefix.
+        kind: RefNameKind,
+        /// The ref the branch will start at, or the ref or block the tag will point at — repository
+        /// text, rendered as an identifier (RFC 036), shown so the prompt names what it targets.
+        source: String,
+        /// The part after the prefix, typed so far.
+        typed: String,
+    },
+    /// RFC 044 decision 5: a tag's message, prompted after its name and **allowed to be empty** —
+    /// an empty one sends no `-m`, which is prikk's own shape for a tag without a message.
+    TagMessage {
+        /// The full tag name, prefix included, as it will be passed to prikk.
+        name: String,
+        /// The ref or block the tag will point at.
+        target: String,
+        /// The message typed so far.
+        typed: String,
+    },
+    /// RFC 044 decision 8: prikk's own lines after a ref write, **verbatim and in order**. There is
+    /// no `--format json` for these three commands (F1), so there is nothing to parse and nothing
+    /// is parsed: the new state is read back from the ref lists, and this card only shows what
+    /// prikk said.
+    RefWriteResult {
+        /// Which write this was — stikk's own word for it, in the title and the heading.
+        kind: RefWriteKind,
+        /// prikk's printed lines, exactly as it printed them.
+        lines: Vec<String>,
+    },
+}
+
+/// Which ref an [`Overlay::RefName`] prompt is naming (RFC 044 decision 5). It decides the fixed
+/// prefix and the prompt's own words, and nothing else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefNameKind {
+    /// A new branch: `heads/`.
+    Branch,
+    /// A new tag: `tags/`.
+    Tag,
+}
+
+impl RefNameKind {
+    /// The prefix shown fixed in front of what the user types — prikk's own namespace, never
+    /// stikk's invention (F2: a name without it is refused, verbatim).
+    #[must_use]
+    pub fn prefix(self) -> &'static str {
+        match self {
+            Self::Branch => "heads/",
+            Self::Tag => "tags/",
+        }
+    }
+}
+
+/// Which of RFC 044's three writes an [`Overlay::RefWriteResult`] is reporting — stikk's own
+/// naming of its own operation, never a reading of prikk's prose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefWriteKind {
+    /// `branch create`.
+    CreateBranch,
+    /// `tag create`.
+    CreateTag,
+    /// `branch close`.
+    CloseBranch,
+}
+
+impl RefWriteKind {
+    /// The title bar text for the result card.
+    #[must_use]
+    pub fn done_title(self) -> &'static str {
+        match self {
+            Self::CreateBranch => " Branch created ",
+            Self::CreateTag => " Tag created ",
+            Self::CloseBranch => " Branch closed ",
+        }
+    }
 }
 
 impl Overlay {
@@ -232,6 +313,16 @@ impl Overlay {
             Self::CommitResult { .. } => " Commit recorded ",
             Self::SealConsent { .. } => " Before you seal ",
             Self::SealResult { .. } => " Sealed ",
+            Self::RefName {
+                kind: RefNameKind::Branch,
+                ..
+            } => " New branch ",
+            Self::RefName {
+                kind: RefNameKind::Tag,
+                ..
+            } => " New tag ",
+            Self::TagMessage { .. } => " Tag message ",
+            Self::RefWriteResult { kind, .. } => kind.done_title(),
         }
     }
 }
@@ -332,6 +423,19 @@ pub fn render(
             render_seal_consent(reff, *acknowledged, palette, frame, area);
         }
         Overlay::SealResult { result } => render_seal_result(result, palette, frame, area),
+        Overlay::RefName {
+            kind,
+            source,
+            typed,
+        } => render_ref_name(*kind, source, typed, palette, frame, area),
+        Overlay::TagMessage {
+            name,
+            target,
+            typed,
+        } => render_tag_message(name, target, typed, palette, frame, area),
+        Overlay::RefWriteResult { kind, lines } => {
+            render_ref_write_result(*kind, lines, palette, frame, area);
+        }
     }
 }
 
@@ -434,6 +538,17 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
         key_line(palette, "Q", "queue — patches waiting to be sealed"),
         key_line(palette, "C", "commit worktree changes"),
         key_line(palette, "S", "seal the active WAL"),
+        key_line(
+            palette,
+            "n",
+            "new branch at this ref's tip (in the ref picker)",
+        ),
+        key_line(
+            palette,
+            "t",
+            "tag this ref's tip, or this block (History, Block detail)",
+        ),
+        key_line(palette, "x", "close this branch (in the ref picker)"),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
         key_line(palette, "o", "background operations"),
@@ -1325,6 +1440,22 @@ fn render_confirmation(
             Style::default().fg(palette.fg),
         )));
     }
+    // RFC 044 decision 6: the tag message the write will carry, restated under the consequence
+    // that said what the write does. **Inert and on its own rows**, because unlike everything else
+    // on this card it is text the user wrote, and it is about to become repository content.
+    if let Some(message) = &summary.message_note {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Message:",
+            Style::default().fg(palette.dim),
+        )));
+        for row in wrap_indented(&inert(message), PANEL_TEXT_WIDTH, "    ") {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.fg),
+            )));
+        }
+    }
     lines.push(Line::from(""));
 
     // The affordances, anchored: whatever runs out of room is prose, never the thing the user must
@@ -1768,6 +1899,200 @@ fn render_seal_result(
         title: " Sealed ",
         width: SEAL_WIDTH,
         prose: lines,
+        // The dismiss hint is the only affordance here; a result card the user cannot leave is the
+        // worst thing this overlay could clip.
+        actions: vec![Line::from(Span::styled(
+            "  Enter · Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 044 decision 5: the name prompt for a new branch or tag — the prefix fixed, the rest typed.
+///
+/// **The prefix is shown, never typed.** prikk refuses an unprefixed name (F2), and a prompt that
+/// made the user remember `heads/` would be collecting that refusal on purpose. Everything after it
+/// is the user's: stikk applies no rule of its own beyond refusing to send nothing at all.
+fn render_ref_name(
+    kind: RefNameKind,
+    source: &str,
+    typed: &str,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let (heading, notice) = match kind {
+        RefNameKind::Branch => (
+            "Branch from",
+            "A name is required. It will start at that ref's tip; nothing in the worktree \
+             changes. stikk adds no naming rules of its own — prikk judges the name, and says so \
+             in its own words.",
+        ),
+        RefNameKind::Tag => (
+            "Tag",
+            "A name is required. The tag will point there and nothing else moves. stikk adds no \
+             naming rules of its own — prikk judges the name, and says so in its own words.",
+        ),
+    };
+    let mut prose = labelled(
+        &format!("{heading} "),
+        &identifier(source),
+        PANEL_TEXT_WIDTH,
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        Style::default().fg(palette.accent),
+    );
+    prose.push(Line::from(""));
+    for row in wrap_indented(notice, PANEL_TEXT_WIDTH, "  ") {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+    prose.push(Line::from(""));
+
+    // The prompt is the whole point of this overlay, so it sits with the footer in the region that
+    // is never clipped — the commit message prompt's own reasoning.
+    let actions = vec![
+        Line::from(vec![
+            Span::styled("  › ", Style::default().fg(palette.accent)),
+            Span::styled(kind.prefix(), Style::default().fg(palette.dim)),
+            Span::styled(inert(typed), Style::default().fg(palette.fg)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Enter to continue · Esc to cancel",
+            Style::default().fg(palette.accent),
+        )),
+    ];
+
+    Panel {
+        title: match kind {
+            RefNameKind::Branch => " New branch ",
+            RefNameKind::Tag => " New tag ",
+        },
+        width: CONFIRM_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 044 decision 5: a tag's message, prompted after its name. **Empty is a valid answer** — it
+/// sends no `-m`, which is prikk's own shape for a tag that carries no message, so the footer says
+/// so rather than leaving the reader to guess that Enter on an empty line is allowed here and
+/// refused on the commit prompt.
+fn render_tag_message(
+    name: &str,
+    target: &str,
+    typed: &str,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose = labelled(
+        "Tag ",
+        &identifier(name),
+        PANEL_TEXT_WIDTH,
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        Style::default().fg(palette.accent),
+    );
+    prose.extend(labelled(
+        "at ",
+        &identifier(target),
+        PANEL_TEXT_WIDTH,
+        Style::default().fg(palette.dim),
+        Style::default().fg(palette.accent),
+    ));
+    prose.push(Line::from(""));
+    for row in wrap_indented(
+        "A message is optional. Leave it empty and the tag carries none.",
+        PANEL_TEXT_WIDTH,
+        "  ",
+    ) {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+    prose.push(Line::from(""));
+
+    let actions = vec![
+        Line::from(vec![
+            Span::styled("  › ", Style::default().fg(palette.accent)),
+            Span::styled(inert(typed), Style::default().fg(palette.fg)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Enter to continue · Esc to cancel",
+            Style::default().fg(palette.accent),
+        )),
+    ];
+
+    Panel {
+        title: " Tag message ",
+        width: CONFIRM_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 044 decision 8: what prikk printed after a ref write, **verbatim** (`C-T4a`/`ER-02`).
+///
+/// Unlike the commit and seal result cards, which relabel fields prikk reported in JSON, there is
+/// no JSON here (F1) — this is prikk's own prose, unparsed. So it is rendered the way the refusal
+/// card renders prikk's own prose: a quoted region, inert, visibly distinct from stikk's chrome
+/// (`C-T2a`/`C-T2b`), under one line of stikk's own saying whose words these are.
+///
+/// **Wrapped verbatim, not word-wrapped**: these lines are mostly 64-hex ids beside a short label,
+/// and the word wrap collapses runs of whitespace, which would make prikk's line a line prikk did
+/// not print.
+fn render_ref_write_result(
+    kind: RefWriteKind,
+    lines: &[String],
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            match kind {
+                RefWriteKind::CreateBranch => "  the branch exists",
+                RefWriteKind::CreateTag => "  the tag exists",
+                RefWriteKind::CloseBranch => "  the branch is closed",
+            },
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  prikk reported —",
+            Style::default().fg(palette.dim),
+        )),
+    ];
+    for line in lines {
+        let inert_line = inert(line);
+        for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
+            prose.push(Line::from(vec![
+                Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
+                Span::styled(
+                    row.get(QUOTE_INDENT.len()..)
+                        .unwrap_or_default()
+                        .to_string(),
+                    Style::default().fg(palette.fg),
+                ),
+            ]));
+        }
+    }
+    prose.push(Line::from(""));
+
+    Panel {
+        title: kind.done_title(),
+        width: SEAL_WIDTH,
+        prose,
         // The dismiss hint is the only affordance here; a result card the user cannot leave is the
         // worst thing this overlay could clip.
         actions: vec![Line::from(Span::styled(

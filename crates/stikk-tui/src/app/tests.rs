@@ -958,6 +958,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        message_note: None,
     }
 }
 
@@ -2937,5 +2938,408 @@ fn a_ref_mark_and_a_block_mark_are_never_read_for_each_other() {
             "got {opened:?}"
         ),
         other => panic!("expected a Compare request, got {other:?}"),
+    }
+}
+
+// =============================================================================================
+// RFC 044 — create a branch, create a tag, close a branch.
+//
+// The three keys are checked where they are decided: **what reaches prikk** (the prefixed name as
+// one argument, `--from` always present, `-m` only when a message was typed) and **what never
+// reaches it at all** (an empty name, a tag asked to close, a branch already closed, a row with no
+// published tip, a prikk below the band, a session without a maintainer key).
+//
+// The current-branch refusal is core's, not this layer's, and `stikk-core::refs::tests` owns it:
+// only the preview's own read knows which branch that is when the key is pressed.
+// =============================================================================================
+
+/// A session that may write refs: MAINTAINER readiness and a prikk at the band.
+fn ref_write_view(minor: u32) -> stikk_core::OrientationView {
+    let mut view = maintainer_orientation_view(0, None);
+    view.prikk_minor = minor;
+    view
+}
+
+fn entry(name: &str, closed: bool) -> stikk_prikk::RefEntry {
+    stikk_prikk::RefEntry {
+        name: name.to_string(),
+        id: "e".repeat(64),
+        closed,
+        received: false,
+    }
+}
+
+/// The picker, open and populated, with `cursor` on the row the keys will act on.
+fn picker(
+    view: stikk_core::OrientationView,
+    rows: Vec<stikk_prikk::RefEntry>,
+    unpublished: stikk_prikk::UnpublishedBranch,
+    cursor: usize,
+) -> (App, mpsc::Receiver<Request>) {
+    let (mut app, rx) = from_state("/repo", loaded(view), Palette::default());
+    app.open_ref_picker();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::Refs(Ok(stikk_core::RefList {
+            refs: rows,
+            unpublished_current: unpublished,
+        })),
+    });
+    for _ in 0..cursor {
+        app.nav_down();
+    }
+    (app, rx)
+}
+
+fn open_picker(cursor: usize) -> (App, mpsc::Receiver<Request>) {
+    picker(
+        ref_write_view(52),
+        vec![
+            entry("heads/main", false),
+            entry("heads/old", true),
+            entry("tags/v1", false),
+        ],
+        stikk_prikk::UnpublishedBranch::None,
+        cursor,
+    )
+}
+
+/// `n` opens the prompt and **dispatches nothing**: a name has to exist before there is a call to
+/// preview.
+#[test]
+fn n_opens_the_branch_name_prompt_with_the_prefix_fixed() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_create_branch();
+    match app.top_overlay() {
+        Some(Overlay::RefName {
+            kind,
+            source,
+            typed,
+        }) => {
+            assert_eq!(*kind, crate::overlay::RefNameKind::Branch);
+            assert_eq!(kind.prefix(), "heads/");
+            assert_eq!(source, "heads/main", "the selected ref is the --from");
+            assert!(typed.is_empty());
+        }
+        other => panic!("expected a RefName prompt, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "nothing is dispatched by the key");
+}
+
+/// **An empty name is not sent** — the one rule stikk applies to a name (decision 5).
+#[test]
+fn an_empty_name_is_not_sent() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_create_branch();
+    app.select();
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::RefName { .. })),
+        "the prompt stays open"
+    );
+    assert!(rx.try_recv().is_err(), "and nothing is dispatched");
+}
+
+/// The prefix is joined on here, and `--from` carries the ref the user actually selected (trap 1).
+#[test]
+fn a_branch_name_reaches_the_preview_prefixed_and_with_its_source() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_create_branch();
+    for ch in "bad name".chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    match next_request(&rx).kind {
+        RequestKind::RefWritePreview {
+            op: RefWriteOp::CreateBranch { name, from_ref },
+        } => {
+            assert_eq!(
+                name, "heads/bad name",
+                "a space is prikk's to judge, not stikk's"
+            );
+            assert_eq!(from_ref, "heads/main");
+        }
+        other => panic!("expected a CreateBranch preview, got {other:?}"),
+    }
+}
+
+/// A tag's message prompt follows its name, and **an empty message is a valid answer**: it sends
+/// no `-m`, which is prikk's own shape for a tag that carries none.
+#[test]
+fn a_tag_is_named_then_messaged_and_an_empty_message_is_allowed() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_create_tag();
+    for ch in "v1".chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    match app.top_overlay() {
+        Some(Overlay::TagMessage {
+            name,
+            target,
+            typed,
+        }) => {
+            assert_eq!(name, "tags/v1");
+            assert_eq!(target, "heads/main");
+            assert!(typed.is_empty());
+        }
+        other => panic!("expected a TagMessage prompt, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "the name step dispatches nothing");
+    app.select(); // Enter on an empty message
+    match next_request(&rx).kind {
+        RequestKind::RefWritePreview {
+            op:
+                RefWriteOp::CreateTag {
+                    name,
+                    target,
+                    message,
+                },
+        } => {
+            assert_eq!(name, "tags/v1");
+            assert_eq!(target, "heads/main");
+            assert!(message.is_empty(), "no -m is what an empty message means");
+        }
+        other => panic!("expected a CreateTag preview, got {other:?}"),
+    }
+}
+
+/// In History, `t` tags **the selected block, by block id** (decision 4) — not the ref.
+#[test]
+fn t_in_history_tags_the_selected_block_by_id() {
+    let (mut app, rx) = from_state("/repo", loaded(ref_write_view(52)), Palette::default());
+    app.open_history();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::History(Ok(HistoryView {
+            reff: "heads/main".to_string(),
+            queued: 0,
+            queued_target: None,
+            blocks: vec![block(&"a".repeat(64), 2), block(&"b".repeat(64), 1)],
+        })),
+    });
+    app.nav_down(); // the second block
+    app.begin_create_tag();
+    match app.top_overlay() {
+        Some(Overlay::RefName { kind, source, .. }) => {
+            assert_eq!(*kind, crate::overlay::RefNameKind::Tag);
+            assert_eq!(source, &"b".repeat(64), "the block id is the --target");
+        }
+        other => panic!("expected a RefName prompt, got {other:?}"),
+    }
+}
+
+/// `x` on a tag, and `x` on a branch the list already marks closed: **stikk's own words, and
+/// prikk is never asked** (RFC 044 §3).
+#[test]
+fn x_declines_a_tag_and_an_already_closed_branch_without_running_prikk() {
+    for (cursor, fragment) in [(1, "already closed"), (2, "only a branch can be closed")] {
+        let (mut app, rx) = open_picker(cursor);
+        app.begin_close_branch();
+        assert!(
+            app.banner().is_some_and(|b| b.contains(fragment)),
+            "cursor {cursor}: got {:?}",
+            app.banner()
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "cursor {cursor}: nothing was dispatched"
+        );
+        assert!(
+            matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })),
+            "the picker stays open"
+        );
+    }
+}
+
+/// The unpublished current branch has no tip, so **none of the three is offered on it** — with
+/// stikk's own reason, never prikk's *"does not exist"* (RFC 041 decision 4's precedent).
+#[test]
+fn none_of_the_three_is_offered_on_a_row_with_no_published_tip() {
+    for key in ["n", "t", "x"] {
+        let (mut app, rx) = picker(
+            ref_write_view(52),
+            Vec::new(),
+            stikk_prikk::UnpublishedBranch::Branch("heads/main".into()),
+            0,
+        );
+        match key {
+            "n" => app.begin_create_branch(),
+            "t" => app.begin_create_tag(),
+            _ => app.begin_close_branch(),
+        }
+        assert!(
+            app.banner()
+                .is_some_and(|b| b.contains("no published history yet")),
+            "{key}: got {:?}",
+            app.banner()
+        );
+        assert!(rx.try_recv().is_err(), "{key}: nothing was dispatched");
+    }
+}
+
+/// Below the band the keys answer in stikk's words and **spawn nothing** (`C-T4d`).
+#[test]
+fn below_the_band_the_keys_give_stikks_own_reason() {
+    let (mut app, rx) = picker(
+        ref_write_view(41),
+        vec![entry("heads/main", false)],
+        stikk_prikk::UnpublishedBranch::None,
+        0,
+    );
+    app.begin_create_branch();
+    let banner = app.banner().expect("a reason").to_string();
+    assert!(banner.contains("0.42"), "{banner}");
+    assert!(banner.contains("this prikk is 0.41"), "{banner}");
+    assert!(
+        !banner.contains("signature"),
+        "prikk's words are not stikk's: {banner}"
+    );
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+}
+
+/// **Readiness first** (trap 5): without a maintainer key the reason is stikk's, before prikk runs.
+#[test]
+fn without_a_maintainer_key_the_keys_say_so_before_prikk_runs() {
+    let mut view = author_orientation_view();
+    view.prikk_minor = 52;
+    let (mut app, rx) = picker(
+        view,
+        vec![entry("heads/main", false)],
+        stikk_prikk::UnpublishedBranch::None,
+        0,
+    );
+    app.begin_create_branch();
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("needs MAINTAINER signing readiness")),
+        "got {:?}",
+        app.banner()
+    );
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+}
+
+/// A ready preview arms the confirmation at Tier Three, as seal's does.
+#[test]
+fn a_ready_ref_write_preview_opens_the_confirmation_at_tier_three() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_create_branch();
+    for ch in "feature".chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    let req = next_request(&rx);
+    let backend = NullBackend::supported();
+    let preview = stikk_core::create_branch_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        "heads/feature",
+        "heads/main",
+    )
+    .expect("a scripted backend's preview always succeeds");
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::RefWritePreview(Ok(preview)),
+    });
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { tier, summary, .. }) => {
+            assert_eq!(*tier, Tier::Three);
+            assert!(summary.target_ids.contains(&"heads/feature".to_string()));
+        }
+        other => panic!("expected a Confirmation, got {other:?}"),
+    }
+}
+
+/// Success: prikk's lines verbatim, and **the ref lists are re-read** (decision 8).
+#[test]
+fn a_successful_ref_write_shows_prikks_lines_and_re_reads_the_refs() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_close_branch();
+    // `heads/main` is open and not the current branch here, so the picker's guards pass.
+    let preview_req = next_request(&rx);
+    let backend = NullBackend::supported();
+    let preview =
+        stikk_core::close_branch_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+            .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::RefWritePreview(Ok(preview)),
+    });
+    app.select(); // confirm
+    let exec_req = next_request(&rx);
+    let lines = vec![
+        "closed branch heads/main".to_string(),
+        "nothing was reclaimed; the pointer, its history, and every object remain".to_string(),
+    ];
+    app.apply(Response {
+        seq: exec_req.seq,
+        kind: ResponseKind::RefWriteConfirmExecute {
+            kind: crate::overlay::RefWriteKind::CloseBranch,
+            result: Ok(Outcome {
+                operation: stikk_core::CLOSE_BRANCH_OPERATION.to_string(),
+                result: stikk_prikk::RefWrite::Done(lines.clone()),
+            }),
+        },
+    });
+    match app.top_overlay() {
+        Some(Overlay::RefWriteResult { kind, lines: shown }) => {
+            assert_eq!(*kind, crate::overlay::RefWriteKind::CloseBranch);
+            assert_eq!(shown, &lines, "prikk's lines, in order, unaltered");
+        }
+        other => panic!("expected a RefWriteResult, got {other:?}"),
+    }
+    assert!(
+        matches!(next_request(&rx).kind, RequestKind::Refs),
+        "the ref lists are re-read"
+    );
+}
+
+/// **A failure keeps the user's typed name** (§3), so the correction is one edit and not a retype.
+#[test]
+fn a_refused_create_hands_the_typed_name_back() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_create_branch();
+    for ch in "feature".chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::RefWritePreview(Err(StikkError::Refusal {
+            message: "branch heads/feature already exists".to_string(),
+        })),
+    });
+    // prikk's refusal is on top; the prompt is underneath it, still holding what was typed.
+    app.back();
+    match app.top_overlay() {
+        Some(Overlay::RefName { typed, source, .. }) => {
+            assert_eq!(
+                typed, "feature",
+                "without the prefix the prompt shows itself"
+            );
+            assert_eq!(source, "heads/main");
+        }
+        other => panic!("expected the prompt back, got {other:?}"),
+    }
+}
+
+/// Cancelling any step abandons the write, so no armed token outlives it.
+#[test]
+fn back_on_a_ref_write_prompt_clears_the_pending_write() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_create_branch();
+    app.back();
+    assert!(!app.has_overlay());
+    // A stray Enter at the root opens History (that is what `Enter` means there) — what it must
+    // never do is resurrect the write the user just cancelled.
+    app.select();
+    while let Ok(req) = rx.try_recv() {
+        assert!(
+            !matches!(req.kind, RequestKind::RefWritePreview { .. }),
+            "the cancelled write came back: {:?}",
+            req.kind
+        );
     }
 }

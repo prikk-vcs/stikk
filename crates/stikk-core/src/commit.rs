@@ -370,6 +370,7 @@ fn compute(
                     .or_else(|| declaration.content_sentence())
             })
             .collect(),
+        message_note: None,
     };
     let preview = CommitPreview {
         changes: view,
@@ -398,6 +399,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        message_note: None,
     }
 }
 

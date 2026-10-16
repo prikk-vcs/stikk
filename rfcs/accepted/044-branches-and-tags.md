@@ -1,6 +1,6 @@
 # RFC 044 — Branches and tags: create a branch, create a tag, close a branch
 
-**Status.** **Proposed 2026-10-17** by the architect, as 0.13.0's increment 2 (`.git-exclude/release/0-13-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-17.** **Proposed 2026-10-17** by the architect, as 0.13.0's increment 2 (`.git-exclude/release/0-13-0-scope.md`,
 authorized). **No open question.**
 Measured against a real prikk **0.52.0**, plus `--help` at **0.28.0** for the floor. Evidence:
 `.git-exclude/reports/044-branches-and-tags/` (`measure044.sh`, `measure044-0.52.txt`).
@@ -94,7 +94,7 @@ pointer**. stikk reads the current branch from prikk 0.42 (`CURRENT_BRANCH_FROM_
 
 ## Delivery
 
-**One handoff, on acceptance, in two commits**: the seam methods with their tests, then the previews, prompts, keys and
+**One handoff, issued on acceptance** ([Handoff A](../handoffs/044-branches-and-tags/a-branches-and-tags-handoff-v1.md)), **in two commits**: the seam methods with their tests, then the previews, prompts, keys and
 views. It re-measures F1–F3 at 0.52 first. **The 0.42 floor is not measured** (the owner's rule: no effort on bands no user
 is on). It is safe because every refusal is prikk's, shown verbatim, and success is read back from the JSON lists. An
 older prikk can produce an error, never a wrong picture.

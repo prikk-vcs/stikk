@@ -357,7 +357,7 @@ a fabricated worktree entry was fixed.
 **0.13.0: stikk manages branches and tags, not only browses them.** Scope: `.git-exclude/release/0-13-0-scope.md`.
 
 1. **Block detail's `said` onto `view::wrap_hanging`** (RFC 040's carry; [Handoff B](rfcs/handoffs/040-verify/b-wrap-hanging-tidy-handoff-v1.md)). A pure refactor.
-2. **Branches and tags** (`FR-070/071`, RFC 044): create a branch, create a tag, close a branch, each preview-first
+2. **Branches and tags** (`FR-070/071`, [RFC 044](rfcs/accepted/044-branches-and-tags.md), accepted 2026-10-17): create a branch, create a tag, close a branch, each preview-first
    through the existing confirmation machinery. They write refs only, not files.
 3. **Switch branch** (`FR-053`, RFC 045): rewrites the worktree, so it gets its own RFC, the highest confirmation tier,
    and a preview of what will change. **The first to move to 0.14.0** if the cycle runs long.

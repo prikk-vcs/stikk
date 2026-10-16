@@ -1418,3 +1418,266 @@ fn verify_below_the_band_spawns_nothing_and_is_not_sound() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// -------------------------------------------------------------------------------------------
+// RFC 044: the three ref-writing commands.
+//
+// **The argument vector is the thing to pin.** These commands have no `--format json`, so the
+// only machine-checkable facts about a call are the arguments stikk builds -- and three of RFC
+// 044's traps live there: `--from` must always be present, `-m` must be absent for an empty
+// message, and a name must arrive as one argument even when it holds a space. A fake prikk that
+// records its own argv is how those become test failures rather than review findings.
+
+/// A fake `prikk` answering `--version` with 0.52.0 and `key status` as a ready maintainer, which
+/// logs every call's argv one-per-line to `argv`, and answers anything else with `lines`.
+#[cfg(unix)]
+fn fake_ref_write_prikk(
+    tag: &str,
+    lines: &str,
+    code: i32,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-refwrite-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let argv = dir.join("argv");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk 0.52.0'; exit 0; fi\n\
+             if [ \"$2\" = \"status\" ]; then\n\
+             printf '%s\\n' '{{\"schema_version\":\"key-status-v1\",\"roles\":[{{\"role\":\"author\",\"usable\":true,\"key_id\":\"a\",\"binding\":\"matches\"}},{{\"role\":\"maintainer\",\"usable\":true,\"key_id\":\"m\",\"binding\":\"matches\"}}]}}'\n\
+             exit 0\n\
+             fi\n\
+             : > \"{argv}\"\n\
+             for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"{argv}\"; done\n\
+             printf '%s' '{lines}'\n\
+             exit {code}\n",
+            argv = argv.display(),
+            lines = lines,
+            code = code,
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (script, argv)
+}
+
+#[cfg(unix)]
+fn recorded_argv(path: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .expect("the fake prikk recorded its argv")
+        .lines()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// **`--from` is always passed** (RFC 044 §6 trap 1), and the name is **one** argument.
+#[cfg(unix)]
+#[test]
+fn create_branch_always_passes_from_and_keeps_a_spaced_name_whole() {
+    let (script, argv) = fake_ref_write_prikk("branch", "created branch heads/bad name\n", 0);
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.create_branch(std::path::Path::new("."), "heads/bad name", "heads/main")
+    })
+    .expect("a create reads");
+    assert_eq!(
+        out,
+        crate::RefWrite::Done(vec!["created branch heads/bad name".to_string()])
+    );
+    assert_eq!(
+        recorded_argv(&argv),
+        vec!["branch", "create", "heads/bad name", "--from", "heads/main"],
+        "`--from` must be present and the name must stay one argument"
+    );
+}
+
+/// **An empty message sends no `-m`**, and a non-empty one sends exactly one.
+#[cfg(unix)]
+#[test]
+fn create_tag_sends_m_only_for_a_non_empty_message() {
+    let (script, argv) = fake_ref_write_prikk("tagempty", "created tag tags/v1\n", 0);
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| {
+        backend.create_tag(std::path::Path::new("."), "tags/v1", "heads/main", "")
+    })
+    .expect("a tag with no message");
+    assert_eq!(
+        recorded_argv(&argv),
+        vec!["tag", "create", "tags/v1", "--target", "heads/main"],
+        "an empty message must send no -m at all"
+    );
+
+    let (script, argv) = fake_ref_write_prikk("tagmsg", "created tag tags/v2\n", 0);
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| {
+        backend.create_tag(
+            std::path::Path::new("."),
+            "tags/v2",
+            "heads/main",
+            "first release",
+        )
+    })
+    .expect("a tag with a message");
+    assert_eq!(
+        recorded_argv(&argv),
+        vec![
+            "tag",
+            "create",
+            "tags/v2",
+            "--target",
+            "heads/main",
+            "-m",
+            "first release"
+        ],
+        "the message must be one argument, with its space"
+    );
+}
+
+/// A block id is a legal `--target`, unlike `--from` (F2).
+#[cfg(unix)]
+#[test]
+fn create_tag_takes_a_block_id_as_its_target() {
+    let (script, argv) = fake_ref_write_prikk("tagblock", "created tag tags/old\n", 0);
+    let backend = CliBackend::with_program(&script);
+    let block = "e".repeat(64);
+    retrying_transient_exec_busy(|| {
+        backend.create_tag(std::path::Path::new("."), "tags/old", &block, "")
+    })
+    .expect("a tag at a block");
+    assert_eq!(recorded_argv(&argv)[3], "--target");
+    assert_eq!(recorded_argv(&argv)[4], block);
+}
+
+#[cfg(unix)]
+#[test]
+fn close_branch_passes_the_name_as_one_argument() {
+    let (script, argv) = fake_ref_write_prikk("close", "closed branch heads/old\n", 0);
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| backend.close_branch(std::path::Path::new("."), "heads/old"))
+        .expect("a close");
+    assert_eq!(recorded_argv(&argv), vec!["branch", "close", "heads/old"]);
+}
+
+/// **Every printed line is kept, in order, and none is parsed** (§6 trap 2).
+#[cfg(unix)]
+#[test]
+fn a_ref_writes_printed_lines_are_kept_verbatim_and_in_order() {
+    let printed = "closed branch heads/old\nRefState: abc123\nnothing was reclaimed; the pointer, its history, and every object remain, and the branch is recoverable\n";
+    let (script, _argv) = fake_ref_write_prikk("verbatim", printed, 0);
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.close_branch(std::path::Path::new("."), "heads/old")
+    })
+    .expect("a close");
+    assert_eq!(
+        out,
+        crate::RefWrite::Done(vec![
+            "closed branch heads/old".to_string(),
+            "RefState: abc123".to_string(),
+            "nothing was reclaimed; the pointer, its history, and every object remain, and the branch is recoverable".to_string(),
+        ])
+    );
+}
+
+/// **A refusal is prikk's, verbatim** (`ER-02`), through the usual classification.
+#[cfg(unix)]
+#[test]
+fn a_ref_writes_refusal_carries_prikks_words() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-refwrite-refuse-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\n\
+         if [ \"$1\" = \"--version\" ]; then echo 'prikk 0.52.0'; exit 0; fi\n\
+         if [ \"$2\" = \"status\" ]; then\n\
+         printf '%s\\n' '{\"schema_version\":\"key-status-v1\",\"roles\":[{\"role\":\"author\",\"usable\":true,\"key_id\":\"a\",\"binding\":\"matches\"},{\"role\":\"maintainer\",\"usable\":true,\"key_id\":\"m\",\"binding\":\"matches\"}]}'\n\
+         exit 0\n\
+         fi\n\
+         echo 'error: branch heads/feature already exists' 1>&2\n\
+         exit 1\n",
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make it executable");
+
+    let backend = CliBackend::with_program(&script);
+    let err = retrying_transient_exec_busy(|| {
+        backend.create_branch(std::path::Path::new("."), "heads/feature", "heads/main")
+    })
+    .expect_err("a duplicate name is a refusal");
+    assert_eq!(err.class(), "refusal");
+    assert!(
+        err.to_string()
+            .contains("branch heads/feature already exists"),
+        "{err}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **Below the band nothing is spawned**, and *unavailable* is not *failed*.
+#[cfg(unix)]
+#[test]
+fn below_the_band_a_ref_write_spawns_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-refwrite-band-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let log = dir.join("calls");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             echo \"$1\" >> \"{log}\"\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk 0.41.0'; exit 0; fi\n\
+             exit 0\n",
+            log = log.display(),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make it executable");
+
+    let backend = CliBackend::with_program(&script);
+    for out in [
+        retrying_transient_exec_busy(|| backend.create_branch(&dir, "heads/x", "heads/main")),
+        retrying_transient_exec_busy(|| backend.create_tag(&dir, "tags/x", "heads/main", "")),
+        retrying_transient_exec_busy(|| backend.close_branch(&dir, "heads/x")),
+    ] {
+        assert_eq!(
+            out.expect("below the band is not an error"),
+            crate::RefWrite::Unavailable
+        );
+    }
+    let calls = std::fs::read_to_string(&log).expect("read the call log");
+    assert!(!calls.contains("branch"), "no branch command: {calls:?}");
+    assert!(!calls.contains("tag"), "no tag command: {calls:?}");
+    // Not even a readiness read: the band is checked first.
+    assert!(
+        !calls.contains("status"),
+        "no readiness read either: {calls:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

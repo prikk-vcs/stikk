@@ -72,6 +72,29 @@ impl Prikk for SlowOrientation {
         self.0.verify(repo)
     }
 
+    fn create_branch(
+        &self,
+        repo: &Path,
+        name: &str,
+        from_ref: &str,
+    ) -> Result<stikk_prikk::RefWrite> {
+        self.0.create_branch(repo, name, from_ref)
+    }
+
+    fn create_tag(
+        &self,
+        repo: &Path,
+        name: &str,
+        target: &str,
+        message: &str,
+    ) -> Result<stikk_prikk::RefWrite> {
+        self.0.create_tag(repo, name, target, message)
+    }
+
+    fn close_branch(&self, repo: &Path, name: &str) -> Result<stikk_prikk::RefWrite> {
+        self.0.close_branch(repo, name)
+    }
+
     fn diff(
         &self,
         repo: &Path,

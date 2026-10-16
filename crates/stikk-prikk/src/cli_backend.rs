@@ -253,6 +253,40 @@ impl CliBackend {
         Ok((stdout, stderr, output.status.code()))
     }
 
+    /// Run one ref-writing command, and keep what it printed (RFC 044 decision 1).
+    ///
+    /// The three operations differ only in their argument vector, and share everything that
+    /// matters: the band, the readiness check, the category, and that **prikk's output is kept
+    /// verbatim and never parsed for state** (§6 trap 2). One helper, so the three cannot drift
+    /// in any of it.
+    ///
+    /// **Readiness is checked before prikk runs** (decision 2), the same fold [`Prikk::seal`]
+    /// applies and for the same reason: adoption can change between orientation and this call.
+    /// prikk's own signature refusal is the fallback, never the first thing a reader sees.
+    ///
+    /// `what` names the operation in that readiness message, in stikk's words.
+    fn write_ref(&self, repo: &Path, args: &[&str], what: &str) -> Result<crate::RefWrite> {
+        if Prikk::handshake(self)?.version.minor < crate::CURRENT_BRANCH_FROM_MINOR {
+            return Ok(crate::RefWrite::Unavailable);
+        }
+        let readiness = Prikk::readiness(self, repo)?.readiness;
+        if !Capability::derive(readiness).may_publish() {
+            return Err(StikkError::NotReady {
+                detail: format!("{what} needs MAINTAINER signing readiness"),
+            });
+        }
+        let out = self.run(Some(repo), RequestCategory::Publication, args)?;
+        // Every non-empty line prikk printed, in order. Trailing blank lines are the shell's, not
+        // prikk's, and a result screen should not show them.
+        Ok(crate::RefWrite::Done(
+            out.lines()
+                .map(str::trim_end)
+                .filter(|line| !line.is_empty())
+                .map(ToString::to_string)
+                .collect(),
+        ))
+    }
+
     /// Build the [`StikkError::Internal`] for a usage-error exit (RFC 009 F6): the repository was not
     /// touched (no repository work runs before prikk validates its arguments), so the fault-screen
     /// framing `present()` already gives `Internal` ("the repository was not touched") is accurate
@@ -803,6 +837,37 @@ impl Prikk for CliBackend {
             ["seal", "--allow-no-audit", "--ref", reff],
         )?;
         parse::seal(&out)
+    }
+
+    fn create_branch(&self, repo: &Path, name: &str, from_ref: &str) -> Result<crate::RefWrite> {
+        // **`--from`, always** (RFC 044 §6 trap 1): the user chose this ref, and prikk's default
+        // is the current branch, which is a different question.
+        self.write_ref(
+            repo,
+            &["branch", "create", name, "--from", from_ref],
+            "create a branch",
+        )
+    }
+
+    fn create_tag(
+        &self,
+        repo: &Path,
+        name: &str,
+        target: &str,
+        message: &str,
+    ) -> Result<crate::RefWrite> {
+        let mut args = vec!["tag", "create", name, "--target", target];
+        // **No `-m` at all for an empty message**, rather than an empty one: those are not the
+        // same tag, and only the user says which they meant.
+        if !message.is_empty() {
+            args.push("-m");
+            args.push(message);
+        }
+        self.write_ref(repo, &args, "create a tag")
+    }
+
+    fn close_branch(&self, repo: &Path, name: &str) -> Result<crate::RefWrite> {
+        self.write_ref(repo, &["branch", "close", name], "close a branch")
     }
 }
 

@@ -25,8 +25,9 @@ pub mod version;
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
 pub use version::{
-    DIFF_FROM_MINOR, JSON_REPORTS_FROM_MINOR, PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR,
-    UNPUBLISHED_BRANCH_FROM_MINOR, Version, validated_ceiling_display,
+    CURRENT_BRANCH_FROM_MINOR, DIFF_FROM_MINOR, JSON_REPORTS_FROM_MINOR,
+    PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR, UNPUBLISHED_BRANCH_FROM_MINOR, Version,
+    validated_ceiling_display,
 };
 
 use std::path::Path;
@@ -521,6 +522,24 @@ pub enum Comparison {
     /// would author against, which is the sealed tip **plus any queued patches** — a state no block
     /// id names, and the reason this is a variant rather than a point someone could spell.
     WorktreeAgainstBaseline,
+}
+
+/// What a ref-writing command printed, or why stikk did not run one (RFC 044 decision 1).
+///
+/// **Two variants, for the reason every banded read has two**: below prikk 0.42 stikk does not
+/// run the command at all, and *unavailable* is not *failed*. A caller must not read silence as
+/// a refusal, nor as a success.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RefWrite {
+    /// prikk ran and exited 0. **Its printed lines, verbatim**, for the result screen.
+    ///
+    /// **Never parsed for state** (RFC 044 §6 trap 2). These commands have no `--format json`
+    /// (F1), and prose is not a schema: what the repository now holds is read back from
+    /// `branch list` and `tag list`, which stikk already parses.
+    Done(Vec<String>),
+    /// Below [`crate::CURRENT_BRANCH_FROM_MINOR`]. stikk spawned nothing and says so in its own
+    /// voice (`C-T4d`).
+    Unavailable,
 }
 
 /// What [`Prikk::verify`] can say (RFC 040 decision 1).
@@ -1374,6 +1393,61 @@ pub trait Prikk: Send + Sync {
     /// classification; the ceremony's guidance is RFC 016 §9). Otherwise classified as for
     /// [`Prikk::orientation`].
     fn seal(&self, repo: &Path, reff: &str) -> Result<SealResult>;
+
+    /// Publish a branch at an existing ref's tip (design `FR-070`; category `Publication`; RFC 044
+    /// decision 1) — `branch create <name> --from <from_ref>`.
+    ///
+    /// **`--from` is always passed**, never omitted (§6 trap 1). prikk's default source is the
+    /// *current branch*, which is a different question from the one the user answered: they chose
+    /// a ref in the picker, and that is the ref this branch must start at. Omitting the flag would
+    /// silently substitute prikk's answer for theirs.
+    ///
+    /// **`from_ref` is a ref name, never a block id.** prikk refuses a block id here — *"--from ref
+    /// <id> does not resolve to a published ref"* (F2, measured) — and stikk does not imitate the
+    /// missing feature by tagging the block first and branching from the tag.
+    ///
+    /// **Banded at [`crate::CURRENT_BRANCH_FROM_MINOR`]**: below it nothing is spawned and the
+    /// answer is [`RefWrite::Unavailable`]. The command exists further back, but [`Prikk::close_branch`]
+    /// cannot be offered safely without knowing the current branch, and the three travel together.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::seal`]: a name that already exists,
+    /// a missing `heads/` prefix and a `--from` that resolves to nothing are prikk's refusals,
+    /// verbatim (`ER-02`). An absent MAINTAINER key is [`stikk_model::StikkError::NotReady`],
+    /// raised by stikk **before prikk runs** (decision 2).
+    fn create_branch(&self, repo: &Path, name: &str, from_ref: &str) -> Result<RefWrite>;
+
+    /// Publish a tag at a block (design `FR-071`; category `Publication`; RFC 044 decision 1) —
+    /// `tag create <name> --target <target>`, with `-m <message>` only when `message` is non-empty.
+    ///
+    /// **`target` may be a ref name or a bare block id**, unlike [`Prikk::create_branch`]'s
+    /// `--from`: prikk accepts both here (F2, measured), which is what lets History tag the block
+    /// a reader is looking at.
+    ///
+    /// **An empty message sends no `-m` at all**, rather than an empty one: a tag with no message
+    /// and a tag with an empty message are not the same object, and only the user says which they
+    /// meant.
+    ///
+    /// # Errors
+    /// As [`Prikk::create_branch`].
+    fn create_tag(&self, repo: &Path, name: &str, target: &str, message: &str) -> Result<RefWrite>;
+
+    /// Close a branch (design `FR-070`; category `Publication`; RFC 044 decision 1) —
+    /// `branch close <name>`.
+    ///
+    /// **Closing reclaims nothing**: prikk's own line says the pointer, its history and every
+    /// object remain, and the branch is recoverable (F1). There is no delete.
+    ///
+    /// **This method will close the branch the repository is on, and the caller must not ask it
+    /// to** (§6 trap 4). Measured at 0.52.0 with an empty WAL: the close succeeds, and the
+    /// repository is then on a closed branch where a default-source `branch create` refuses
+    /// (F3). prikk polices the *queued-work* case itself and refuses; it does not police this
+    /// one. The frontend therefore does not offer it, and says why.
+    ///
+    /// # Errors
+    /// As [`Prikk::create_branch`]. A branch that is already closed, one that does not exist, and
+    /// one owning a non-empty active WAL are prikk's refusals, verbatim.
+    fn close_branch(&self, repo: &Path, name: &str) -> Result<RefWrite>;
 }
 
 #[cfg(test)]

@@ -157,6 +157,17 @@ pub const UNPUBLISHED_BRANCH_FROM_MINOR: u32 = 47;
 /// [`stikk_core`'s `AS_AT_BLOCK_END`]: https://docs.rs/stikk-core
 pub const PATCH_PATH_AT_PATCH_FROM_MINOR: u32 = 52;
 
+/// The first prikk minor that keeps a **current branch** pointer: prikk 0.42, whose `status`
+/// prints `current branch:` (RFC 030 decision 1).
+///
+/// **It bands the ref-writing operations too** (RFC 044 decision 3). Creating a branch or a tag
+/// and closing a branch exist further back than this — prikk 0.28 has all three — but closing
+/// one safely does not: prikk lets you close **the branch you are on**, and the repository is
+/// then on a closed branch, where a default-source `branch create` refuses (RFC 044 F3, measured
+/// at 0.52.0). stikk declines to offer that, and it can only know which branch you are on from
+/// 0.42. **One constant for both facts**, rather than a second literal that could drift from it.
+pub const CURRENT_BRANCH_FROM_MINOR: u32 = 42;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

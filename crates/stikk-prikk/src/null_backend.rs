@@ -53,6 +53,9 @@ pub struct NullBackend {
     state: Scripted<StateReport>,
     diff: Scripted<crate::DiffReport>,
     verify: Scripted<crate::VerifyReport>,
+    /// What a ref write answers. One slot for all three (RFC 044): a test drives one
+    /// operation at a time, and sharing it keeps the builder small.
+    ref_write: Scripted<crate::RefWrite>,
     refs: Scripted<Vec<RefEntry>>,
     /// The unpublished current branch this backend reports beside the list (RFC 037 decision 3).
     unpublished_current: UnpublishedBranch,
@@ -124,6 +127,8 @@ impl NullBackend {
             // The default is the band below 0.39: a backend that has not been given a report
             // has not checked, which is not the same as finding the repository sound.
             verify: Ok(crate::VerifyReport::Unreported),
+            // The default matches this backend's default version, which is below 0.42.
+            ref_write: Ok(crate::RefWrite::Unavailable),
             state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
@@ -347,6 +352,21 @@ impl NullBackend {
         self
     }
 
+    /// Answer the three ref writes with prikk's printed lines (RFC 044).
+    #[must_use]
+    pub fn with_ref_write(mut self, lines: Vec<String>) -> Self {
+        self.ref_write = Ok(crate::RefWrite::Done(lines));
+        self
+    }
+
+    /// Fail the three ref writes, so a test can show prikk's refusal reaching the usual path
+    /// verbatim.
+    #[must_use]
+    pub fn with_ref_write_refusal(mut self, message: impl Into<String>) -> Self {
+        self.ref_write = Err(message.into());
+        self
+    }
+
     /// Answer [`Prikk::verify`] with `verification` (RFC 040).
     #[must_use]
     pub fn with_verification(mut self, verification: crate::Verification) -> Self {
@@ -541,6 +561,24 @@ impl Prikk for NullBackend {
 
     fn verify(&self, _repo: &Path) -> Result<crate::VerifyReport> {
         deliver(&self.verify)
+    }
+
+    fn create_branch(&self, _repo: &Path, _name: &str, _from_ref: &str) -> Result<crate::RefWrite> {
+        deliver(&self.ref_write)
+    }
+
+    fn create_tag(
+        &self,
+        _repo: &Path,
+        _name: &str,
+        _target: &str,
+        _message: &str,
+    ) -> Result<crate::RefWrite> {
+        deliver(&self.ref_write)
+    }
+
+    fn close_branch(&self, _repo: &Path, _name: &str) -> Result<crate::RefWrite> {
+        deliver(&self.ref_write)
     }
 
     fn block_state(

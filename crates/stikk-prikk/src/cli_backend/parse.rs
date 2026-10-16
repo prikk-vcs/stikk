@@ -84,9 +84,6 @@ pub(super) fn orientation(status: &str, prikk_minor: u32) -> Result<Orientation>
     })
 }
 
-/// The first prikk minor whose `status` prints `current branch:` (prikk 0.42).
-const CURRENT_BRANCH_FROM_MINOR: u32 = 42;
-
 /// prikk's unresolved form, byte for byte as prikk 0.42.0 prints it (`main.rs:490` at that tag; captured
 /// in `STATUS_QUEUED_UNRESOLVED_0_42_FIXTURE`). Matched exactly: a different text is a shape stikk has not
 /// seen, and refusing it is how that becomes a test failure rather than a guess.
@@ -97,11 +94,12 @@ const CURRENT_BRANCH_UNRESOLVED: &str = "<unresolved; run `prikk doctor`>";
 /// unresolved form is [`CurrentBranch::Unresolved`], verbatim; a valid ref name is
 /// [`CurrentBranch::Branch`]; anything else is a parse error.
 fn current_branch(status: &str, prikk_minor: u32) -> Result<CurrentBranch> {
+    let from = crate::CURRENT_BRANCH_FROM_MINOR;
     match field(status, "current branch:") {
-        None if prikk_minor < CURRENT_BRANCH_FROM_MINOR => Ok(CurrentBranch::NotReported),
+        None if prikk_minor < from => Ok(CurrentBranch::NotReported),
         None => Err(StikkError::environment_msg(format!(
             "prikk 0.{prikk_minor}'s status is missing its \"current branch:\" line, which prikk \
-             0.{CURRENT_BRANCH_FROM_MINOR} and later always print"
+             0.{from} and later always print"
         ))),
         Some(value) if value == CURRENT_BRANCH_UNRESOLVED => {
             Ok(CurrentBranch::Unresolved(value.to_string()))

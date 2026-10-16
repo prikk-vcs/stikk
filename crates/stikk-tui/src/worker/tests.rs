@@ -161,6 +161,32 @@ impl Prikk for Recording {
         self.inner.verify(repo)
     }
 
+    fn create_branch(
+        &self,
+        repo: &Path,
+        name: &str,
+        from_ref: &str,
+    ) -> Result<stikk_prikk::RefWrite> {
+        self.record("create_branch");
+        self.inner.create_branch(repo, name, from_ref)
+    }
+
+    fn create_tag(
+        &self,
+        repo: &Path,
+        name: &str,
+        target: &str,
+        message: &str,
+    ) -> Result<stikk_prikk::RefWrite> {
+        self.record("create_tag");
+        self.inner.create_tag(repo, name, target, message)
+    }
+
+    fn close_branch(&self, repo: &Path, name: &str) -> Result<stikk_prikk::RefWrite> {
+        self.record("close_branch");
+        self.inner.close_branch(repo, name)
+    }
+
     fn diff(
         &self,
         repo: &Path,

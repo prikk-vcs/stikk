@@ -378,10 +378,10 @@ a fabricated worktree entry was fixed.
 
 **0.14.0: stikk remembers where you were, and is easier to install.** Scope: `.git-exclude/release/0-14-0-scope.md`.
 
-1. **Two carried items** ([Handoff C](rfcs/handoffs/040-verify/c-two-carries-handoff-v1.md)): the Glossary lists `V`; the
-   overlay clipping gate builds its missing `CommitWouldRefuseDeclarations` case.
-2. **A workspace-wide seed-read guard** ([Handoff C](rfcs/handoffs/023-what-stikk-has-and-does-not-show/c-workspace-seed-guard-handoff-v1.md)):
-   the README's *"enforced by test"* holds over all six shipped crates, not two files.
+1. **Two carried items — landed on `main`** ([Handoff C](rfcs/handoffs/040-verify/c-two-carries-handoff-v1.md), `67d0b65`,
+   `1498736`): the Glossary lists `V`; the overlay clipping gate builds every variant, counted from the enum.
+2. **A workspace-wide seed-read guard — landed on `main`** ([Handoff C](rfcs/handoffs/023-what-stikk-has-and-does-not-show/c-workspace-seed-guard-handoff-v1.md),
+   `402ddf0`, `01a33b8`): the README's *"enforced by test"* holds over all six shipped crates; `SECURITY.md` says so.
 3. **Session persistence** (`FR-122`, RFC 046): reopen each repository on its focused ref, last view and filters,
    stored outside the repository; the first production caller of `C-E2`.
 4. **A package manager** (RFC 047), **on the owner's decision** (a Homebrew tap recommended).

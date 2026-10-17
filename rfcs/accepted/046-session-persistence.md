@@ -1,6 +1,6 @@
 # RFC 046 — Session persistence
 
-**Status.** **Proposed 2026-10-18** by the architect, as 0.14.0's increment 3 (`.git-exclude/release/0-14-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-18**; [Handoff A](../handoffs/046-session-persistence/a-session-persistence-handoff-v1.md) issued. **Proposed 2026-10-18** by the architect, as 0.14.0's increment 3 (`.git-exclude/release/0-14-0-scope.md`,
 authorized). **No open question.**
 **Measures nothing in prikk**: every prikk read it uses already exists. It is design against the data model's own
 entities (`DM-02`, `DM-04`) and lifecycle (`LC-3`, `LC-5`, `LC-6`, `LC-8`), which were written before the code and are

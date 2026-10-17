@@ -2841,6 +2841,24 @@ fn ref_write_backend() -> stikk_prikk::NullBackend {
             author: stikk_prikk::RoleDetail::default(),
             maintainer: stikk_prikk::RoleDetail::default(),
         })
+        // The preview resolves the source's tip itself (RFC 044 decision 6), so the captures
+        // need a lineage to resolve against or they would show a card no real session shows.
+        .with_history(stikk_prikk::History {
+            reff: "heads/main".to_string(),
+            blocks: vec![stikk_prikk::BlockRow {
+                block_id: "7f3a9c21".repeat(8),
+                ref_state_id: "6bfe4884".repeat(8),
+                update_seq: 2,
+                kind: "Normal".to_string(),
+                rollback_block: false,
+                parents: 1,
+                patches: 1,
+                rollback_patches: 0,
+                required_attestations: 0,
+                messages: Vec::new(),
+                previous_ref_state: None,
+            }],
+        })
 }
 
 fn ref_write_confirmation(preview: stikk_core::RefWritePreview) -> Overlay {
@@ -2975,6 +2993,14 @@ fn capture_rfc044_ref_writes_at_80_columns() {
     assert!(draw_at(&create_branch, 80, 22).contains("heads/feature"));
     assert!(draw_at(&create_tag, 80, 22).contains("tags/v1"));
     assert!(draw_at(&close_branch, 80, 22).contains("Nothing is reclaimed"));
+    // **The block the source is on is on the card** (decision 6; review v1 C2).
+    for preview in [&create_branch, &create_tag, &close_branch] {
+        assert!(
+            draw_at(preview, 80, 22).contains("7f3a9c217f3a"),
+            "every preview names the block its ref is on:\n{}",
+            draw_at(preview, 80, 22)
+        );
+    }
     assert!(draw_at(&name_prompt, 80, 14).contains("heads/feature"));
     assert!(draw_at(&tag_message, 80, 14).contains("first release"));
     assert!(draw_at(&result, 80, 16).contains("closed branch heads/old"));

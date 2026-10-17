@@ -79,7 +79,7 @@ fn creating_a_branch_restates_the_name_the_source_and_what_does_not_change() {
     assert_eq!(s.target_ids, vec!["heads/feature", "heads/main"]);
     assert!(
         s.consequence
-            .contains("heads/feature will point at heads/main's tip"),
+            .contains("The new branch will point at the source's tip"),
         "{s:?}"
     );
     // **What a ref write does not touch** is the half a reader most needs to be told.
@@ -143,7 +143,10 @@ fn closing_a_branch_restates_prikks_promise_that_nothing_is_reclaimed() {
     let s = summary(close_branch_preview(&ready(), repo(), "heads/old").expect("reads"));
     assert_eq!(s.operation, "Close a branch");
     assert!(s.consequence.contains("Nothing is reclaimed"), "{s:?}");
-    assert!(s.consequence.contains("can be reopened"), "{s:?}");
+    // **prikk's word, not an upgrade of it** (review v1 C3): prikk says *recoverable*, and has
+    // no reopen command for stikk to point a reader at.
+    assert!(s.consequence.contains("is recoverable"), "{s:?}");
+    assert!(!s.consequence.contains("reopen"), "{s:?}");
 }
 
 /// **The one guard stikk adds** (RFC 044 decision 7, F3): prikk would close the branch the
@@ -287,5 +290,151 @@ fn a_maintainer_ready_session_is_not_warned_about_a_missing_key() {
         create_branch_preview(&maintainer_ready(), repo(), "heads/f", "heads/main").expect("reads"),
     );
     assert!(!s.consequence.contains("MAINTAINER signing key"), "{s:?}");
-    assert!(s.consequence.contains("heads/main"), "{s:?}");
+    assert!(s.consequence.contains("the source's tip"), "{s:?}");
+}
+
+/// **No name is ever inside the consequence** (review v1 C1).
+///
+/// `consequence` is drawn unescaped, because [`crate::ConfirmationSummary`]'s contract is that
+/// nothing a repository or a user wrote is in it. A ref name is both: prikk rejects `Cc` in a ref
+/// name but not `Cf`, bidi controls or default-ignorables, so a received branch could reorder the
+/// very sentence that says what is about to happen. Every name belongs in `target_ids`, which the
+/// frontend renders through the identifier rule.
+#[test]
+fn no_name_reaches_the_consequence() {
+    let cases = [
+        (
+            create_branch_preview(&ready(), repo(), "heads/feature", "heads/source")
+                .expect("reads"),
+            vec!["heads/feature", "heads/source"],
+        ),
+        (
+            create_tag_preview(
+                &ready(),
+                repo(),
+                NewTag {
+                    name: "tags/v1",
+                    target: "heads/source",
+                    message: "a message",
+                },
+            )
+            .expect("reads"),
+            vec!["tags/v1", "heads/source"],
+        ),
+        (
+            close_branch_preview(&ready(), repo(), "heads/old").expect("reads"),
+            vec!["heads/old"],
+        ),
+    ];
+    for (preview, names) in cases {
+        let s = summary(preview);
+        for name in &names {
+            assert!(
+                !s.consequence.contains(name),
+                "{name:?} is in the consequence: {s:?}"
+            );
+            assert!(
+                s.target_ids.iter().any(|id| id == name),
+                "{name:?} must still be restated, in the targets: {s:?}"
+            );
+        }
+        // The tag's message is the user's text too, and has its own inert field.
+        assert!(!s.consequence.contains("a message"), "{s:?}");
+    }
+}
+
+/// **The source or target names the block it is on** (decision 6; review v1 C2), read **in the
+/// preview** -- the read that can notice a ref moving since the picker listed it.
+#[test]
+fn the_source_and_target_name_the_block_they_are_on() {
+    let tip = "a1b2c3d4e5f6".to_string() + &"0".repeat(52);
+    let backend = ready().with_history(stikk_prikk::History {
+        reff: "heads/main".to_string(),
+        blocks: vec![stikk_prikk::BlockRow {
+            block_id: tip.clone(),
+            ref_state_id: "r".repeat(64),
+            update_seq: 2,
+            kind: "Normal".to_string(),
+            rollback_block: false,
+            parents: 1,
+            patches: 1,
+            rollback_patches: 0,
+            required_attestations: 0,
+            messages: Vec::new(),
+            previous_ref_state: None,
+        }],
+    });
+    let short_tip: String = tip.chars().take(crate::SHORT_ID_CHARS).collect();
+
+    let branch = summary(
+        create_branch_preview(&backend, repo(), "heads/feature", "heads/main").expect("reads"),
+    );
+    assert_eq!(
+        branch.target_ids,
+        vec![
+            "heads/feature".to_string(),
+            "heads/main".to_string(),
+            short_tip.clone()
+        ],
+        "the source's block follows the source"
+    );
+
+    let closed = summary(close_branch_preview(&backend, repo(), "heads/old").expect("reads"));
+    assert_eq!(
+        closed.target_ids,
+        vec!["heads/old".to_string(), short_tip.clone()]
+    );
+
+    // **A tag of a block id needs no read, and shows the id once.**
+    let at_block = summary(
+        create_tag_preview(
+            &backend,
+            repo(),
+            NewTag {
+                name: "tags/v1",
+                target: &tip,
+                message: "",
+            },
+        )
+        .expect("reads"),
+    );
+    assert_eq!(
+        at_block.target_ids,
+        vec!["tags/v1".to_string(), short_tip.clone()],
+        "the block is the target; a second row would only repeat it"
+    );
+
+    // **And a ref that reports no block says nothing**, rather than inventing one.
+    let silent = summary(
+        create_branch_preview(&ready(), repo(), "heads/feature", "heads/main").expect("reads"),
+    );
+    assert_eq!(
+        silent.target_ids,
+        vec!["heads/feature".to_string(), "heads/main".to_string()]
+    );
+}
+
+/// **prikk refuses a blank tag message** (review v1 C4), so a blank one is a tag with no message
+/// here too -- never an empty `-m` that would come back as a usage error.
+#[test]
+fn a_blank_tag_message_is_no_message() {
+    for message in ["", "   ", "\t\n"] {
+        let s = summary(
+            create_tag_preview(
+                &ready(),
+                repo(),
+                NewTag {
+                    name: "tags/v1",
+                    target: "heads/main",
+                    message,
+                },
+            )
+            .expect("reads"),
+        );
+        assert!(
+            s.consequence.contains("It carries no message"),
+            "{message:?}: {s:?}"
+        );
+        assert!(s.message_note.is_none(), "{message:?}: {s:?}");
+    }
 }

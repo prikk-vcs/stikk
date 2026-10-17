@@ -1500,21 +1500,28 @@ fn create_branch_always_passes_from_and_keeps_a_spaced_name_whole() {
     );
 }
 
-/// **An empty message sends no `-m`**, and a non-empty one sends exactly one.
+/// **An empty *or blank* message sends no `-m`**, and a non-empty one sends exactly one.
+///
+/// The blank case is prikk's rule, not stikk's: `tag create -m "   "` is `error: tag message must
+/// not be empty`, exit 2 — a *usage* error, which would reach a reader as an internal fault
+/// (measured at 0.52.0; `prikk-cli/src/tag.rs:280`). There is no second kind of tag to choose
+/// between here, so a blank message is a tag with none.
 #[cfg(unix)]
 #[test]
 fn create_tag_sends_m_only_for_a_non_empty_message() {
-    let (script, argv) = fake_ref_write_prikk("tagempty", "created tag tags/v1\n", 0);
-    let backend = CliBackend::with_program(&script);
-    retrying_transient_exec_busy(|| {
-        backend.create_tag(std::path::Path::new("."), "tags/v1", "heads/main", "")
-    })
-    .expect("a tag with no message");
-    assert_eq!(
-        recorded_argv(&argv),
-        vec!["tag", "create", "tags/v1", "--target", "heads/main"],
-        "an empty message must send no -m at all"
-    );
+    for (label, message) in [("tagempty", ""), ("tagblank", "   "), ("tagtab", "\t\n")] {
+        let (script, argv) = fake_ref_write_prikk(label, "created tag tags/v1\n", 0);
+        let backend = CliBackend::with_program(&script);
+        retrying_transient_exec_busy(|| {
+            backend.create_tag(std::path::Path::new("."), "tags/v1", "heads/main", message)
+        })
+        .expect("a tag with no message");
+        assert_eq!(
+            recorded_argv(&argv),
+            vec!["tag", "create", "tags/v1", "--target", "heads/main"],
+            "{message:?} must send no -m at all"
+        );
+    }
 
     let (script, argv) = fake_ref_write_prikk("tagmsg", "created tag tags/v2\n", 0);
     let backend = CliBackend::with_program(&script);

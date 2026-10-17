@@ -857,9 +857,12 @@ impl Prikk for CliBackend {
         message: &str,
     ) -> Result<crate::RefWrite> {
         let mut args = vec!["tag", "create", name, "--target", target];
-        // **No `-m` at all for an empty message**, rather than an empty one: those are not the
-        // same tag, and only the user says which they meant.
-        if !message.is_empty() {
+        // **No `-m` at all for an empty or blank message.** This is prikk's rule, not stikk's:
+        // `tag create -m "   "` is `error: tag message must not be empty`, exit 2 — a *usage*
+        // error, which would reach a reader as stikk's Internal fault framing (measured at
+        // 0.52.0; `prikk-cli/src/tag.rs:280`). A tag with no message is prikk's own shape for a
+        // tag that carries none, and `trim` is what keeps a blank one from becoming an exit 2.
+        if !message.trim().is_empty() {
             args.push("-m");
             args.push(message);
         }

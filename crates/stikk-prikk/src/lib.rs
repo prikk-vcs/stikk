@@ -1418,15 +1418,18 @@ pub trait Prikk: Send + Sync {
     fn create_branch(&self, repo: &Path, name: &str, from_ref: &str) -> Result<RefWrite>;
 
     /// Publish a tag at a block (design `FR-071`; category `Publication`; RFC 044 decision 1) —
-    /// `tag create <name> --target <target>`, with `-m <message>` only when `message` is non-empty.
+    /// `tag create <name> --target <target>`, with `-m <message>` only when `message` has
+    /// non-whitespace content.
     ///
     /// **`target` may be a ref name or a bare block id**, unlike [`Prikk::create_branch`]'s
     /// `--from`: prikk accepts both here (F2, measured), which is what lets History tag the block
     /// a reader is looking at.
     ///
-    /// **An empty message sends no `-m` at all**, rather than an empty one: a tag with no message
-    /// and a tag with an empty message are not the same object, and only the user says which they
-    /// meant.
+    /// **prikk refuses an empty message, so an empty or blank one sends no `-m`.** There is no
+    /// second kind of tag here to choose between: `tag create -m "   "` is `error: tag message
+    /// must not be empty`, exit 2 (measured at 0.52.0) — a *usage* error, which classifies as an
+    /// internal fault rather than as anything a reader could act on. A tag without `-m` is prikk's
+    /// own shape for a tag that carries no message.
     ///
     /// # Errors
     /// As [`Prikk::create_branch`].

@@ -15,6 +15,12 @@
 //!   rule. Everything else prikk polices, and its refusal is shown verbatim: a missing prefix, a
 //!   name that exists, a `--from` that resolves to nothing. A space in a branch name is legal to
 //!   prikk, so it is legal here.
+//! - **No name is inside a `consequence`** (review v1 C1). That field is drawn unescaped, because
+//!   [`crate::ConfirmationSummary`]'s own contract is that nothing a repository or a user wrote
+//!   reaches it. Every name here is one or the other — prikk rejects `Cc` in a ref name but not
+//!   `Cf`, bidi controls or default-ignorables — so the names are restated in `target_ids`, which
+//!   the frontend renders through the identifier rule (RFC 036), and the sentences speak of *the
+//!   new branch*, *the source* and *the target*.
 //! - **Closing the branch you are on is not offered** (decision 7, F3). prikk allows it with an
 //!   empty WAL, and the repository is then on a closed branch where even a default `branch
 //!   create` refuses. prikk polices the queued-work case itself; it does not police this one.
@@ -86,22 +92,31 @@ pub fn create_branch_preview(
 ) -> Result<RefWritePreview> {
     let name = name.to_string();
     let from_ref = from_ref.to_string();
-    preview(prikk, repo, CREATE_BRANCH_OPERATION, move |facts| {
-        if name.is_empty() {
-            return Blocked("a branch needs a name.".to_string());
-        }
-        Summary {
+    let resolve = Some(from_ref.clone());
+    preview(
+        prikk,
+        repo,
+        CREATE_BRANCH_OPERATION,
+        resolve,
+        move |facts| {
+            if name.is_empty() {
+                return Blocked("a branch needs a name.".to_string());
+            }
+            Summary {
             operation: "Create a branch".to_string(),
-            target_ids: vec![name.clone(), from_ref.clone()],
+            // The new name, then the source and the block the source is on **right now**
+            // (decision 6). The new branch has no id of its own to show: it does not exist yet.
+            target_ids: with_tip(vec![name.clone(), from_ref.clone()], facts),
             consequence: format!(
-                "{name} will point at {from_ref}'s tip. Nothing in the worktree changes, and no \
-                 other ref moves.{}",
+                "The new branch will point at the source's tip. Nothing in the worktree changes, \
+                 and no other ref moves.{}",
                 facts.unready
             ),
             message: None,
         }
         .into()
-    })
+        },
+    )
 }
 
 /// What a new tag names, points at and carries (RFC 044 decision 5).
@@ -115,8 +130,9 @@ pub struct NewTag<'a> {
     pub name: &'a str,
     /// A ref name or a block id -- prikk's `--target` takes either (F2).
     pub target: &'a str,
-    /// The message, possibly empty. **An empty one sends no `-m`**, which is prikk's own shape
-    /// for a tag that carries none.
+    /// The message, possibly empty. **prikk refuses an empty message, so an empty or blank one
+    /// sends no `-m`** — a tag without one is prikk's own shape for a tag that carries no
+    /// message, and a blank `-m` is a usage error (measured at 0.52.0).
     pub message: &'a str,
 }
 
@@ -132,24 +148,35 @@ pub fn create_tag_preview(
     let name = tag.name.to_string();
     let target = tag.target.to_string();
     let message = tag.message.to_string();
-    preview(prikk, repo, CREATE_TAG_OPERATION, move |facts| {
+    // **A block id needs no read; a ref does.** `--target` takes either (F2), and the two are
+    // told apart by prikk's own object-id grammar, never by guessing at the shape of a name.
+    let targets_a_block = stikk_model::ObjectId::parse(&target).is_ok();
+    let resolve = (!targets_a_block).then(|| target.clone());
+    preview(prikk, repo, CREATE_TAG_OPERATION, resolve, move |facts| {
         if name.is_empty() {
             return Blocked("a tag needs a name.".to_string());
         }
-        let said = if message.is_empty() {
+        let said = if message.trim().is_empty() {
             " It carries no message.".to_string()
         } else {
             String::new()
         };
+        let targets = if targets_a_block {
+            // Shown **once**, short: the target already is the block, so a second row would
+            // repeat it rather than add anything.
+            vec![name.clone(), short(&target)]
+        } else {
+            with_tip(vec![name.clone(), target.clone()], facts)
+        };
         Summary {
             operation: "Create a tag".to_string(),
-            target_ids: vec![name.clone(), target.clone()],
+            target_ids: targets,
             consequence: format!(
-                "{name} will point at {target}.{said} Nothing in the worktree changes, and no \
+                "The tag will point at the target.{said} Nothing in the worktree changes, and no \
                  other ref moves.{}",
                 facts.unready
             ),
-            message: (!message.is_empty()).then(|| message.clone()),
+            message: (!message.trim().is_empty()).then(|| message.clone()),
         }
         .into()
     })
@@ -167,7 +194,8 @@ pub fn close_branch_preview(
     name: &str,
 ) -> Result<RefWritePreview> {
     let name = name.to_string();
-    preview(prikk, repo, CLOSE_BRANCH_OPERATION, move |facts| {
+    let resolve = Some(name.clone());
+    preview(prikk, repo, CLOSE_BRANCH_OPERATION, resolve, move |facts| {
         if name.is_empty() {
             return Blocked("a branch needs a name.".to_string());
         }
@@ -178,11 +206,11 @@ pub fn close_branch_preview(
         }
         Summary {
             operation: "Close a branch".to_string(),
-            target_ids: vec![name.clone()],
+            target_ids: with_tip(vec![name.clone()], facts),
             // prikk's own promise (F1), in stikk's restatement (decision 6).
             consequence: format!(
-                "{name} will be closed. Nothing is reclaimed: the pointer, its history and every \
-                 object remain, and the branch can be reopened.{}",
+                "The branch will be closed. Nothing is reclaimed: the pointer, its history and \
+                 every object remain, and the branch is recoverable.{}",
                 facts.unready
             ),
             message: None,
@@ -252,6 +280,45 @@ struct Facts {
     current_branch: CurrentBranch,
     /// The sentence appended when MAINTAINER readiness is missing -- empty when it is present.
     unready: String,
+    /// The **short block id the source or target is on**, read fresh inside this preview
+    /// (decision 6). `None` when there is nothing to resolve, or when prikk would not say.
+    ///
+    /// **Read here, not carried from the picker.** The reason the id is on the card at all is
+    /// that a ref can move between the list being read and the key being pressed; an id copied
+    /// from that same stale list could never show the move. This is the read that can.
+    ///
+    /// **Not from the ref list's own id either.** Measured at 0.52.0
+    /// (`.git-exclude/reports/044-branches-and-tags/measure044-c2-0.52.txt`): `branch list`
+    /// reports a **RefState** id, which is not the tip's block id -- the two differ on the same
+    /// branch in the same repository. `tag list` does report a block id, but one field filled
+    /// from two commands with two meanings is not a fact this card may assert.
+    tip: Option<String>,
+}
+
+/// An object id, shortened the way History and seal already shorten one.
+fn short(id: &str) -> String {
+    id.chars().take(crate::confirm::SHORT_ID_CHARS).collect()
+}
+
+/// Append the resolved tip to a target list, when there is one.
+///
+/// **Adjacent to the ref it belongs to**, which is the last row before it -- the ids are hex and
+/// the refs are prefixed names, so the two never read as the same kind of row.
+fn with_tip(mut targets: Vec<String>, facts: &Facts) -> Vec<String> {
+    if let Some(tip) = &facts.tip {
+        targets.push(tip.clone());
+    }
+    targets
+}
+
+/// The block a ref is on, short, or `None` if prikk will not say.
+///
+/// **A failure here is silence, never an error.** This id is a courtesy on the card; a ref that
+/// has gone missing between the picker and the key press will be refused by the write itself, in
+/// prikk's own words, and a cosmetic read must not pre-empt that with a failure of its own.
+fn tip_of(prikk: &impl Prikk, repo: &Path, reff: &str) -> Option<String> {
+    let history = prikk.history(repo, reff, 1).ok()?;
+    history.blocks.first().map(|block| short(&block.block_id))
 }
 
 /// The parts of a summary each operation supplies; everything else is the same for all three.
@@ -284,6 +351,7 @@ fn preview(
     prikk: &impl Prikk,
     repo: &Path,
     operation: &'static str,
+    resolve: Option<String>,
     compute: impl FnOnce(&Facts) -> Computed,
 ) -> Result<RefWritePreview> {
     let intent = Intent {
@@ -297,6 +365,9 @@ fn preview(
         let report = prikk.readiness(repo)?;
         let ready = Capability::derive(report.readiness).may_publish();
         let facts = Facts {
+            tip: resolve
+                .as_deref()
+                .and_then(|reff| tip_of(prikk, repo, reff)),
             current_branch: orientation.current_branch.clone(),
             unready: if ready {
                 String::new()

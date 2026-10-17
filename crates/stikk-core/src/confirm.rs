@@ -116,8 +116,8 @@ pub struct ConfirmationSummary {
     pub declaration_notices: Vec<String>,
     /// RFC 044 decision 6: the message a new tag will carry, restated so the confirmation shows
     /// what is about to be recorded. `None` for every other operation, and for a tag with no
-    /// message -- which is a different fact from an empty one, and the consequence says so in
-    /// stikk's own words.
+    /// message — prikk refuses an empty one, so a blank message is no message, and the
+    /// consequence says so in stikk's own words.
     ///
     /// **The one string here the user wrote**, rather than stikk or prikk. It is held in its own
     /// field for exactly that reason: it must reach the card through `inert` like every

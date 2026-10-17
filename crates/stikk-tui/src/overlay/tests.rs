@@ -1347,6 +1347,34 @@ fn cases() -> Vec<Case> {
             entry: None,
         },
         Case {
+            name: "CommitWouldRefuseDeclarations",
+            // Six declarations, one of them a path long enough to wrap twice — far more than
+            // 80×24 holds. prikk's refusal is its real 0.44 shape (RFC 034 §5), repeated per
+            // declaration as the card repeats it.
+            build: Box::new(|_| Overlay::CommitWouldRefuseDeclarations {
+                declarations: (0..6)
+                    .map(|i| stikk_core::RefusedDeclaration {
+                        old_path: if i == 0 {
+                            format!(
+                                "crates/stikk-core/src/{}/old-name-{i:02}.rs",
+                                "nested".repeat(6)
+                            )
+                        } else {
+                            format!("src/old-{i:02}.rs")
+                        },
+                        new_path: format!("src/new-{i:02}.rs"),
+                        reason: format!(
+                            "precondition not met: declared rename src/old-{i:02}.rs -> \
+                             src/new-{i:02}.rs: the destination already exists in the baseline; \
+                             drop the declaration or remove the destination"
+                        ),
+                    })
+                    .collect(),
+            }),
+            last_row: "src/new-05.rs".to_string(),
+            entry: None,
+        },
+        Case {
             name: "Glossary",
             build: Box::new(|_| Overlay::Glossary {
                 offset: std::cell::Cell::new(0),
@@ -1695,21 +1723,55 @@ fn the_gate_is_fed_content_that_actually_overflows() {
 
 /// Coverage is complete, and stays complete.
 ///
-/// `coverage()`'s match is exhaustive with no `_` arm, so a twentieth `Overlay` variant **will not
-/// compile** until it is classified there. This asserts the second half: that it also gets a case.
+/// `coverage()`'s match is exhaustive with no `_` arm, so a new `Overlay` variant **will not
+/// compile** until it is classified there. This asserts the second half: that it also gets a
+/// case — counted against the enum itself, not against a number written here.
 #[test]
 fn the_gate_covers_every_overlay_variant() {
+    let variants = overlay_variants();
     assert_eq!(
         cases().len(),
-        18,
-        "The gate carries eighteen cases. If an `Overlay` variant was added, `coverage()` will \
-         already have refused to compile; add its case to `cases()` too — built oversized, or the \
-         new case asserts nothing."
+        variants,
+        "`Overlay` has {variants} variants and the gate has {} cases. If a variant was added, \
+         `coverage()` will already have refused to compile; add its case to `cases()` too — built \
+         oversized, or the new case asserts nothing.",
+        cases().len()
     );
     let mut names: Vec<&str> = cases().iter().map(|c| c.name).collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 18, "duplicate case names: {names:?}");
+    assert_eq!(names.len(), variants, "duplicate case names: {names:?}");
+}
+
+/// How many variants `Overlay` has, **counted from the enum itself**.
+///
+/// The assertion above carried the number as a literal, and a literal is a second place to
+/// forget: it read 17 against 18 variants for an entire increment, which is exactly how
+/// `CommitWouldRefuseDeclarations` went uncovered while the test it should have failed stayed
+/// green. Rust cannot enumerate a plain enum's variants, so this reads the source — the idiom
+/// `rfc_index` and the key/setup command-surface guard already use in this project.
+///
+/// A variant line is the only thing at the enum's own indent that begins with a capital: a
+/// field sits two levels in, a doc comment begins with `/`, and a variant's closing `},` begins
+/// with `}`.
+fn overlay_variants() -> usize {
+    const SOURCE: &str = include_str!("../overlay.rs");
+    let body = SOURCE
+        .split_once("pub enum Overlay {")
+        .expect("the enum is in this file")
+        .1
+        .split_once("\n}\n")
+        .expect("and it closes at column zero")
+        .0;
+    body.lines()
+        .filter(|line| {
+            let Some(rest) = line.strip_prefix("    ") else {
+                return false;
+            };
+            rest.starts_with(|c: char| c.is_ascii_uppercase())
+                && rest.trim_end().ends_with(['{', ','])
+        })
+        .count()
 }
 
 // --- RFC 024 F1/F2/F5: the three shipped defects, each pinned by its own named test -------------

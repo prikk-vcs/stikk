@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 045 | [Switch branch](./proposed/045-switch-branch.md) | `FR-053`: switch prikk's current branch and worktree from the ref picker (`s`), previewed as the exact files written and deleted (from Compare), Tier Three, prikk ≥ 0.46; not offered while work is queued for the target. **Proposed 2026-10-17**; 0.13.0 increment 3 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

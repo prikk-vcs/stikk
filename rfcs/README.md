@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 046 | [Session persistence](./proposed/046-session-persistence.md) | `FR-122`: reopen each repository on its focused ref, last top-level view and untracked filter, stored outside the repository through `C-E2` (its first production caller), re-checked against prikk before shown; `STIKK_PRIVATE=1` remembers nothing. **Proposed 2026-10-18**; 0.14.0 increment 3 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

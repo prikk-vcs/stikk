@@ -374,11 +374,18 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.14.0, not yet scoped
+## Next — 0.14.0, scoped 2026-10-18 (authorized), in delivery order
 
-1. **Package managers** — the owner's decision (a Homebrew tap recommended; Scoop and winget compared in the 0.13.0
-   scope).
-2. **Session persistence** (`FR-122`).
+**0.14.0: stikk remembers where you were, and is easier to install.** Scope: `.git-exclude/release/0-14-0-scope.md`.
+
+1. **Two carried items** ([Handoff C](rfcs/handoffs/040-verify/c-two-carries-handoff-v1.md)): the Glossary lists `V`; the
+   overlay clipping gate builds its missing `CommitWouldRefuseDeclarations` case.
+2. **A workspace-wide seed-read guard** ([Handoff C](rfcs/handoffs/023-what-stikk-has-and-does-not-show/c-workspace-seed-guard-handoff-v1.md)):
+   the README's *"enforced by test"* holds over all six shipped crates, not two files.
+3. **Session persistence** (`FR-122`, RFC 046): reopen each repository on its focused ref, last view and filters,
+   stored outside the repository; the first production caller of `C-E2`.
+4. **A package manager** (RFC 047), **on the owner's decision** (a Homebrew tap recommended).
+5. **Conditional: the prikk 0.53.0 re-baseline**, only if prikk publishes before the cut.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 

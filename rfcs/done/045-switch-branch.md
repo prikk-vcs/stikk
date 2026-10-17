@@ -1,6 +1,6 @@
 # RFC 045 — Switch branch
 
-**Status.** **Accepted by the project owner 2026-10-17**, decision 3 (Tier Three rather than the scope's typed name)
+**Status.** **Done 2026-10-17**: Handoff A delivered on `main` (`c652405`, `86c4c85`, `0c7606e`); a **0.13.0** candidate. **Accepted by the project owner 2026-10-17**, decision 3 (Tier Three rather than the scope's typed name)
 with it; [Handoff A](../handoffs/045-switch-branch/a-switch-branch-handoff-v1.md) issued. **Proposed 2026-10-17** by the
 architect, as 0.13.0's increment 3 (`.git-exclude/release/0-13-0-scope.md`, authorized). **No open question.**
 Measured against a real prikk **0.52.0**. Evidence: `.git-exclude/reports/045-switch-branch/` (`measure045.sh`,
@@ -148,3 +148,23 @@ prikk can produce an error, never a wrong picture.
 - **No checkout** of a block or a path, and **no switch to a block**: `branch switch` takes a branch.
 - **No "switch and carry my changes"**: prikk refuses a dirty worktree, and stikk does not stash on its behalf.
 - **No creating and switching in one step**: `n` then `s`.
+
+## Delivered
+
+**One handoff, three commits, green on `main` at `0c7606e`**: CI, Docs, the real-binary suite (55 cases at 0.28.0 and
+0.52.0), supply chain and `installers.yml`. Both measurement scripts reproduced F1–F5 before any code moved.
+
+- **`RequestCategory::Materialization`**, appended to keep the derived order stable, at Tier Three. **The signing
+  requirement is now the category's, not the tier's** (`RequestCategory::signing_requirement`): left tier-keyed, a
+  switch would have demanded a maintainer key it does not use. A test holds every other category to its old
+  requirement and asserts `Materialization` still differs.
+- **The seam** runs `branch switch <name>` banded at `DIFF_FROM_MINOR`, checks read-write only, and keeps stdout and
+  stderr apart, verbatim.
+- **The plan** is classified by prikk's own `DiffStatus` vocabulary; `symlink`, any unmeasured status, and any
+  unsupported path block it as incomplete. Only a comparison **prikk refused** (or `Unreported`) means *no file plan*;
+  a lock or environment fault travels as itself (review v1 C1). The overflow row names RFC 041's route to the full list
+  (review v1 C2).
+- **F5 is blocked in stikk's words** with no `branch switch` spawned, proved in the suite by prikk's own `status`; the
+  suite also proves the preview's paths equal what the switch did, and that switching back restores the bytes.
+- **After success** focus moves to the new branch and Changes is re-read against it; RFC 044's refusal now names `s`.
+- **Decision 10**: F5 is held for the next necessary letter to prikk.

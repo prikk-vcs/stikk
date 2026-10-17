@@ -1,6 +1,6 @@
 # Handoff A — RFC 045: switch branch (v1)
 
-**Companion to:** [RFC 045](../../accepted/045-switch-branch.md), **accepted 2026-10-17**, no open question; decision 3
+**Companion to:** [RFC 045](../../done/045-switch-branch.md), **accepted 2026-10-17**, no open question; decision 3
 (**Tier Three**, not a typed name) accepted with it. **Read the RFC first**, F2, F4 and F5 especially.
 **Covers:** decisions 1–9 (10 is the architect's). 0.13.0's increment 3.
 **Not a release.**

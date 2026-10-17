@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 045 | [Switch branch](./accepted/045-switch-branch.md) | `FR-053`: switch prikk's current branch and worktree from the ref picker (`s`), previewed as the exact files written and deleted (from Compare), Tier Three with no key required, prikk ≥ 0.46; not offered while work is queued for the target. **Accepted 2026-10-17**; 0.13.0 increment 3 | [A: switch branch](./handoffs/045-switch-branch/a-switch-branch-handoff-v1.md) |
+_None: RFC 045 delivered and closed 2026-10-17._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 045 | [Switch branch](./done/045-switch-branch.md) | 0.13.0 candidate (on `main`) | checkout of a block or path (not planned); F5 held for a letter to prikk | [A: switch branch](./handoffs/045-switch-branch/a-switch-branch-handoff-v1.md) |
 | 044 | [Branches and tags](./done/044-branches-and-tags.md) | 0.13.0 candidate (on `main`) | Glossary's `V`; a clipping-gate case; one re-indent (all carried, small) | [A: branches and tags](./handoffs/044-branches-and-tags/a-branches-and-tags-handoff-v1.md) |
 | 043 | [The prikk 0.52 re-baseline](./done/043-prikk-0-52-rebaseline.md) | **0.12.0** | none | [A: the re-baseline](./handoffs/043-prikk-0-52-rebaseline/a-rebaseline-handoff-v1.md) |
 | 042 | [README key visuals](./done/042-readme-key-visuals.md) | **0.12.0** (on GitHub's README since the push) | animated captures, if wanted, from the same generator | [A: README visuals](./handoffs/042-readme-key-visuals/a-readme-visuals-handoff-v1.md) |

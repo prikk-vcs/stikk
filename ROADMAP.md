@@ -360,9 +360,8 @@ a fabricated worktree entry was fixed.
 2. **Branches and tags — landed on `main`** (`FR-070/071`, [RFC 044](rfcs/done/044-branches-and-tags.md), `88bb7d1`, `f938b58`, `126d4a5`): create a branch,
    create a tag, close a branch, each preview-first at seal's tier, prikk ≥ 0.42. The current branch is never offered for
    closing. The shell banner now wraps.
-3. **Switch branch** (`FR-053`, [RFC 045](rfcs/accepted/045-switch-branch.md), accepted 2026-10-17): rewrites the worktree,
-   previewed as the exact files written and deleted, Tier Three (measured lossless, so no typed name), prikk ≥ 0.46.
-   **The first to move to 0.14.0** if the cycle runs long.
+3. **Switch branch — landed on `main`** (`FR-053`, [RFC 045](rfcs/done/045-switch-branch.md), `c652405`, `86c4c85`, `0c7606e`): `s` in the
+   ref picker, previewed as the exact files written and deleted, Tier Three with no key required, prikk ≥ 0.46.
 4. **Conditional: the prikk 0.53.0 re-baseline**, only if prikk publishes before the cut.
 
 **Open, the owner's decision for 0.14.0: package managers** (a Homebrew tap recommended; Scoop and winget compared in the

@@ -128,6 +128,24 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
     assert!(text.contains("Git")); // the Git → prikk section
     assert!(text.contains("HEAD")); // a load-bearing redirect
     assert!(text.contains("rollback")); // revert → rollback
+    // **Every key the panel claims to document.** `V` shipped in 0.11.0 and the Keys section
+    // listed `Q` beside it and not `V` until RFC 040 Handoff C; a key a reader cannot find in
+    // the one place that lists keys may as well not exist.
+    for key in ["b", "w", "d", "Q", "V", "C", "S", "n", "t", "x", "s", "r"] {
+        // The row exactly as `key_line` lays it out, with the panel's border dropped — so a key
+        // word appearing in a *description*, or in the terminology table below, cannot stand in
+        // for the row that is missing.
+        let row = format!("{key:<13}");
+        assert!(
+            text.lines().any(|line| line
+                .chars()
+                .filter(|c| !"│┌┐└┘─".contains(*c))
+                .collect::<String>()
+                .trim_start()
+                .starts_with(&row)),
+            "the Keys section does not list {key:?}:\n{text}"
+        );
+    }
 }
 
 /// Review v1, C1: a literal `{:<22}` pad broke the moment a term ran 24 chars ("checkout / switch

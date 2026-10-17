@@ -549,6 +549,7 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
         ),
         key_line(palette, "d", "compare — what changed between two points"),
         key_line(palette, "Q", "queue — patches waiting to be sealed"),
+        key_line(palette, "V", "verify — prikk's verdict on the repository"),
         key_line(palette, "C", "commit worktree changes"),
         key_line(palette, "S", "seal the active WAL"),
         key_line(

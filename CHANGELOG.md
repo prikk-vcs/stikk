@@ -2,6 +2,14 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Fixed
+
+- **The Glossary lists `V`.** *Verify* has had its own key since 0.11.0, and the one panel that
+  lists stikk's keys named every other one and not that. A reader who never pressed `V` by
+  accident had no way to learn it existed.
+
 ## 0.13.0 — 2026-10-17
 
 **stikk can now create, tag, close and switch branches, and shows exactly what each will do before

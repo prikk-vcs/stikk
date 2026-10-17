@@ -392,9 +392,6 @@ a fabricated worktree entry was fixed.
 - **Orientation on `status --format json`** (prikk ≥ 0.35). A refactor with no visible change: it would unify
   Orientation's read with the queue's and retire a prose parser. RFC 034's interrupted-materialization marker is read
   from prikk's prose line, by ruling (2026-09-22: prose carries prikk's whole sentence, `ER-02`). Nothing waits on it.
-- **A workspace-wide seed-read guard.** 0.6.0's notes say no seed value is read anywhere in stikk, and a source-level
-  test holds that only in the two modules that name those variables. A guard over every shipped crate would let the
-  sentence say *enforced by test* without a qualifier.
 - *Dropped 2026-10-14 (scope 0.10.0; no user is on those bands):* the prose `worktree-status` parse-failure
   attribution (prikk < 0.39), and the would-refuse overlay's absolute-path case (prikk 0.39–0.41).
 - **Verify report browser and doctor/recovery** (`FR-100/101/102`), with the three-valued

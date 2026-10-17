@@ -356,9 +356,10 @@ a fabricated worktree entry was fixed.
 
 **0.13.0: stikk manages branches and tags, not only browses them.** Scope: `.git-exclude/release/0-13-0-scope.md`.
 
-1. **Block detail's `said` onto `view::wrap_hanging`** (RFC 040's carry; [Handoff B](rfcs/handoffs/040-verify/b-wrap-hanging-tidy-handoff-v1.md)). A pure refactor.
-2. **Branches and tags** (`FR-070/071`, [RFC 044](rfcs/accepted/044-branches-and-tags.md), accepted 2026-10-17): create a branch, create a tag, close a branch, each preview-first
-   through the existing confirmation machinery. They write refs only, not files.
+1. **Block detail's `said` onto `view::wrap_hanging` — landed on `main`** (RFC 040's carry; [Handoff B](rfcs/handoffs/040-verify/b-wrap-hanging-tidy-handoff-v1.md), `d47553a`). A pure refactor.
+2. **Branches and tags — landed on `main`** (`FR-070/071`, [RFC 044](rfcs/done/044-branches-and-tags.md), `88bb7d1`, `f938b58`, `126d4a5`): create a branch,
+   create a tag, close a branch, each preview-first at seal's tier, prikk ≥ 0.42. The current branch is never offered for
+   closing. The shell banner now wraps.
 3. **Switch branch** (`FR-053`, RFC 045): rewrites the worktree, so it gets its own RFC, the highest confirmation tier,
    and a preview of what will change. **The first to move to 0.14.0** if the cycle runs long.
 4. **Conditional: the prikk 0.53.0 re-baseline**, only if prikk publishes before the cut.

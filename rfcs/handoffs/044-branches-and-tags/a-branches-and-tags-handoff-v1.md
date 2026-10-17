@@ -1,6 +1,6 @@
 # Handoff A — RFC 044: create a branch, create a tag, close a branch (v1)
 
-**Companion to:** [RFC 044](../../accepted/044-branches-and-tags.md), **accepted 2026-10-17**, no open question. **Read the
+**Companion to:** [RFC 044](../../done/044-branches-and-tags.md), **accepted 2026-10-17**, no open question. **Read the
 RFC first**, F2 and F3 especially.
 **Covers:** decisions 1–8. 0.13.0's increment 2.
 **Not a release.**

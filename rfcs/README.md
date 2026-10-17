@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 044 | [Branches and tags](./accepted/044-branches-and-tags.md) | `FR-070/071`: create a branch (from a ref's tip), create a tag (at any block), close a branch, preview-first at seal's tier, prikk ≥ 0.42; the current branch is never offered for closing. **Accepted 2026-10-17**; 0.13.0 increment 2 | [A: branches and tags](./handoffs/044-branches-and-tags/a-branches-and-tags-handoff-v1.md) |
+_None: RFC 044 delivered and closed 2026-10-17._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 044 | [Branches and tags](./done/044-branches-and-tags.md) | 0.13.0 candidate (on `main`) | Glossary's `V`; a clipping-gate case; one re-indent (all carried, small) | [A: branches and tags](./handoffs/044-branches-and-tags/a-branches-and-tags-handoff-v1.md) |
 | 043 | [The prikk 0.52 re-baseline](./done/043-prikk-0-52-rebaseline.md) | **0.12.0** | none | [A: the re-baseline](./handoffs/043-prikk-0-52-rebaseline/a-rebaseline-handoff-v1.md) |
 | 042 | [README key visuals](./done/042-readme-key-visuals.md) | **0.12.0** (on GitHub's README since the push) | animated captures, if wanted, from the same generator | [A: README visuals](./handoffs/042-readme-key-visuals/a-readme-visuals-handoff-v1.md) |
 | 041 | [Compare two refs](./done/041-compare-two-refs.md) | **0.11.0** | arbitrary block-id entry and three-way views (not planned) | [A: compare two refs](./handoffs/041-compare-two-refs/a-compare-two-refs-handoff-v1.md) |

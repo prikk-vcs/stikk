@@ -1,6 +1,6 @@
 # RFC 044 — Branches and tags: create a branch, create a tag, close a branch
 
-**Status.** **Accepted by the project owner 2026-10-17.** **Proposed 2026-10-17** by the architect, as 0.13.0's increment 2 (`.git-exclude/release/0-13-0-scope.md`,
+**Status.** **Done 2026-10-17**: Handoff A delivered on `main` (`88bb7d1`, `f938b58`, `126d4a5`); a **0.13.0** candidate. **Accepted by the project owner 2026-10-17.** **Proposed 2026-10-17** by the architect, as 0.13.0's increment 2 (`.git-exclude/release/0-13-0-scope.md`,
 authorized). **No open question.**
 Measured against a real prikk **0.52.0**, plus `--help` at **0.28.0** for the floor. Evidence:
 `.git-exclude/reports/044-branches-and-tags/` (`measure044.sh`, `measure044-0.52.txt`).
@@ -104,3 +104,24 @@ older prikk can produce an error, never a wrong picture.
 - **No branch switch** (RFC 045).
 - **No deleting** a branch or tag: prikk has no delete, and closing reclaims nothing.
 - **No branch from an arbitrary block.**
+
+## Delivered
+
+**One handoff, three commits, green on `main` at `126d4a5`**: CI, Docs, the real-binary suite (53 cases at 0.28.0 and
+0.52.0), supply chain and `installers.yml`.
+
+- **F3 re-measured on its own.** The committed `measure044.sh` could only reach the *queued* case of closing the current
+  branch; `measure044-f3.sh` measures the empty-WAL case, which reproduces F3 exactly. Nothing in the RFC changed.
+- **The seam**: three `Publication` methods sharing one helper; `--from` always; `-m` only for a message that is not blank
+  (prikk refuses a blank one as a usage error, measured); one argument per name; prikk's lines kept verbatim, never
+  parsed; `CURRENT_BRANCH_FROM_MINOR` promoted to `version.rs` rather than duplicated.
+- **The previews** name no ref in stikk's unescaped prose (review v1 C1): every name is in `target_ids`, through the
+  identifier rule. **The source's or target's block id is read fresh inside the preview** (`history(…, 1)`), because
+  `branch list` reports a RefState id, not a block id (`measure044-c2-0.52.txt`), and an id from the picker's own read
+  could never show a move. A close restates prikk's word, *recoverable*.
+- **The current branch is refused in core**, before anything is spawned; the suite proves it on an empty WAL. Its reason
+  names `prikk branch switch` until RFC 045 lands.
+- **Beyond the handoff, accepted in review**: the shell banner wraps instead of clipping (RFC 024's rule), and `t` is
+  declined on the unpublished current branch as `n` and `x` are.
+- **Carried**: the Glossary's Keys section lacks `V`; the overlay clipping gate has no `CommitWouldRefuseDeclarations`
+  case; one closure in `refs.rs` needs a hand re-indent.

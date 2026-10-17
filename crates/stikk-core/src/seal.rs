@@ -159,7 +159,7 @@ fn compute(
         operation: "Seal the active WAL".to_string(),
         target_ids: vec![reff.to_string()],
         counts: vec![("patches", queued_patches)],
-        capability: Capability::Maintainer,
+        capability: Some(Capability::Maintainer),
         consequence: consequence(report.readiness.maintainer),
         target_name: None,
         // RFC 026 §5: the id comes from prikk where prikk has it. `key_id.rs` still answers on the
@@ -180,6 +180,7 @@ fn compute(
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     };
     Ok((SealReadView::Ready, summary))
 }
@@ -226,7 +227,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         operation: String::new(),
         target_ids: Vec::new(),
         counts: Vec::new(),
-        capability: Capability::Maintainer,
+        capability: Some(Capability::Maintainer),
         consequence: String::new(),
         target_name: None,
         signing_key_id: None,
@@ -238,6 +239,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 

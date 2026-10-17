@@ -432,6 +432,9 @@ pub struct App {
     /// confirm+execute). The prompts that precede the preview carry their own text on the overlay;
     /// only what prikk will be handed travels here.
     pending_ref_write: Option<PendingRefWrite>,
+    /// The switch flow's state between overlays (RFC 045) — the same reason
+    /// [`Self::pending_ref_write`] exists, across the two round trips the flow needs.
+    pending_switch: Option<PendingSwitch>,
     /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
     /// check compares against it; `None` until the first stamp, and no check is sent before it.
     stamp: Option<ChangeToken>,
@@ -553,6 +556,29 @@ impl RefWriteOp {
     }
 }
 
+/// See [`App::pending_switch`].
+enum PendingSwitch {
+    /// `Overlay::Loading` is on the stack; a [`RequestKind::SwitchPreview`] is in flight.
+    AwaitingPreview {
+        /// The branch to switch to.
+        target: String,
+    },
+    /// The preview succeeded; `token` is armed and `Overlay::Confirmation` awaits an explicit yes.
+    Confirming {
+        /// Feed this into [`stikk_core::switch_confirm_and_execute`]. Boxed as every other
+        /// armed token here is: a token dwarfs the name beside it.
+        token: Box<stikk_core::PreviewToken>,
+        /// The branch to switch to (must match the preview's).
+        target: String,
+    },
+    /// Confirm+execute is in flight. **The target is kept** because success moves focus to it
+    /// (decision 8), and by then the request that carried it is gone.
+    Executing {
+        /// The branch being switched to.
+        target: String,
+    },
+}
+
 /// See [`App::pending_ref_write`].
 enum PendingRefWrite {
     /// `Overlay::Loading` is on the stack; a [`RequestKind::RefWritePreview`] is in flight.
@@ -640,6 +666,7 @@ impl App {
             pending_commit: None,
             pending_seal: None,
             pending_ref_write: None,
+            pending_switch: None,
             ref_rows: Vec::new(),
             stamp: None,
             check_pending: None,
@@ -1264,6 +1291,137 @@ impl App {
         }
     }
 
+    /// **stikk's own words for `s` on a tag** (RFC 045 decision 7): a switch moves the current
+    /// branch, and a tag is not one.
+    const TAGS_ARE_NOT_SWITCHED_TO: &'static str =
+        "only a branch can be switched to; a tag names a point in history, not a place to work.";
+
+    /// **stikk's own words for `s` on the branch already current** — the same fact
+    /// [`stikk_core::ALREADY_THE_CURRENT_BRANCH`] states, said here so prikk is never asked.
+    const ALREADY_HERE: &'static str = stikk_core::ALREADY_THE_CURRENT_BRANCH;
+
+    /// **stikk's own words for `s` on a closed branch**, from the list's own flag — prikk refuses
+    /// it too, and being told by the list you are looking at beats being told by a spawn.
+    const CLOSED_CANNOT_BE_SWITCHED_TO: &'static str =
+        "this branch is closed; switch to an open one.";
+
+    /// Begin switching to the selected branch (the `s` key in the ref picker; RFC 045 decision 7).
+    ///
+    /// **Four answers come from what stikk already knows**, before any preview: a tag cannot be
+    /// switched to, a closed branch says so from the list's own flag, the branch already current
+    /// says so from orientation, and a row with no published tip has nothing to switch to. The
+    /// band is checked first, as RFC 044's keys check theirs.
+    pub fn begin_switch_branch(&mut self) {
+        let Some(target) = self.switch_target() else {
+            return;
+        };
+        self.overlays.pop(); // the picker closes on its way, as `d` and `n` do
+        let seq = self.dispatch(RequestKind::SwitchPreview {
+            target: target.clone(),
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "switch preview",
+            seq,
+        });
+        self.pending_switch = Some(PendingSwitch::AwaitingPreview { target });
+    }
+
+    /// The branch `s` acts on, or `None` with stikk's own reason already in the banner.
+    fn switch_target(&mut self) -> Option<String> {
+        self.banner = None;
+        let Some(Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+            unpublished_current,
+        }) = self.overlays.last()
+        else {
+            return None;
+        };
+        let (cursor, unpublished_main, first_is_unpublished) =
+            (*cursor, *unpublished_main, *unpublished_current);
+        let name = refs.get(cursor).cloned();
+        if let Some(minor) = self.prikk_minor()
+            && minor < stikk_core::SWITCH_FROM_MINOR
+        {
+            self.banner = Some(stikk_core::switch_unavailable(minor));
+            return None;
+        }
+        // A switch needs read-write and no key (RFC 045 decision 2) — the gate reads that from
+        // `Materialization` itself, so read-only is the only session this refuses.
+        let readiness = self.readiness();
+        if let Err(error) = stikk_core::capability_gate(
+            stikk_core::SWITCH_OPERATION,
+            stikk_model::RequestCategory::Materialization,
+            readiness,
+        ) {
+            self.banner = Some(error.to_string());
+            return None;
+        }
+        if unpublished_main || (first_is_unpublished && cursor == 0) {
+            self.banner = Some(Self::UNPUBLISHED_HAS_NO_TIP.to_string());
+            return None;
+        }
+        let name = name?;
+        if stikk_model::CurrentBranch::Branch(stikk_model::RefName::parse(&name).ok()?)
+            == self.current_branch()
+        {
+            self.banner = Some(Self::ALREADY_HERE.to_string());
+            return None;
+        }
+        match self
+            .ref_rows
+            .iter()
+            .find(|entry| entry.name == name)
+            .map_or((false, false), |entry| (entry.is_tag(), entry.closed))
+        {
+            (true, _) => {
+                self.banner = Some(Self::TAGS_ARE_NOT_SWITCHED_TO.to_string());
+                None
+            }
+            (_, true) => {
+                self.banner = Some(Self::CLOSED_CANNOT_BE_SWITCHED_TO.to_string());
+                None
+            }
+            _ => Some(name),
+        }
+    }
+
+    /// prikk's current branch, as the last orientation read reported it.
+    fn current_branch(&self) -> stikk_model::CurrentBranch {
+        match &self.state {
+            OrientationState::Loaded(view) => view.current_branch.clone(),
+            OrientationState::Loading | OrientationState::Failed(_) => {
+                stikk_model::CurrentBranch::NotReported
+            }
+        }
+    }
+
+    /// The confirmation step's `Enter` for a pending switch (RFC 045 decision 3): Tier Three, so
+    /// an explicit yes and no typed name.
+    fn submit_switch_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingSwitch::Confirming { token, target }) = self.pending_switch.take() else {
+            return; // no switch is actually pending
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let seq = self.dispatch(RequestKind::SwitchConfirmExecute {
+            token,
+            readiness,
+            evidence,
+            target: target.clone(),
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "switch",
+            seq,
+        });
+        self.pending_switch = Some(PendingSwitch::Executing { target });
+    }
+
     /// The name prompt's `Enter` (RFC 044 decision 5). **An empty name is not sent** -- the one
     /// rule stikk applies to a name -- and a tag goes on to its message prompt before anything is
     /// previewed, because `-m` is part of the call the preview restates.
@@ -1439,6 +1597,8 @@ impl App {
                     self.submit_seal_confirmation(tier, &typed);
                 } else if self.pending_ref_write.is_some() {
                     self.submit_ref_write_confirmation(tier, &typed);
+                } else if self.pending_switch.is_some() {
+                    self.submit_switch_confirmation(tier, &typed);
                 }
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
@@ -1455,7 +1615,8 @@ impl App {
                 | Overlay::CommitWouldRefuseDeclarations { .. }
                 | Overlay::CommitResult { .. }
                 | Overlay::SealResult { .. }
-                | Overlay::RefWriteResult { .. },
+                | Overlay::RefWriteResult { .. }
+                | Overlay::SwitchResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -1924,7 +2085,8 @@ impl App {
                 | Overlay::SealResult { .. }
                 | Overlay::RefName { .. }
                 | Overlay::TagMessage { .. }
-                | Overlay::RefWriteResult { .. },
+                | Overlay::RefWriteResult { .. }
+                | Overlay::SwitchResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
@@ -1983,7 +2145,8 @@ impl App {
                 | Overlay::SealResult { .. }
                 | Overlay::RefName { .. }
                 | Overlay::TagMessage { .. }
-                | Overlay::RefWriteResult { .. },
+                | Overlay::RefWriteResult { .. }
+                | Overlay::SwitchResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { view, cursor, .. }) => {
@@ -2045,6 +2208,10 @@ impl App {
             ) {
                 self.pending_ref_write = None;
             }
+            // RFC 045: the same posture for a switch, which shares `Confirmation` with the rest.
+            if matches!(overlay, Overlay::Confirmation { .. }) {
+                self.pending_switch = None;
+            }
             // Cancelling the consent step abandons the seal it belonged to (RFC 016 §8) — the same
             // posture, one step later in seal's own flow.
             if matches!(overlay, Overlay::SealConsent { .. }) {
@@ -2087,6 +2254,8 @@ impl App {
             ResponseKind::SealConfirmExecute(r) => r.is_ok(),
             ResponseKind::RefWritePreview(r) => r.is_ok(),
             ResponseKind::RefWriteConfirmExecute { result, .. } => result.is_ok(),
+            ResponseKind::SwitchPreview(r) => r.is_ok(),
+            ResponseKind::SwitchConfirmExecute(r) => r.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -2112,6 +2281,10 @@ impl App {
             ResponseKind::RefWritePreview(result) => self.apply_ref_write_preview(seq, result),
             ResponseKind::RefWriteConfirmExecute { kind, result } => {
                 self.apply_ref_write_confirm_execute(seq, kind, result);
+            }
+            ResponseKind::SwitchPreview(result) => self.apply_switch_preview(seq, result),
+            ResponseKind::SwitchConfirmExecute(result) => {
+                self.apply_switch_confirm_execute(seq, result);
             }
         }
     }
@@ -2898,6 +3071,136 @@ impl App {
         if let Some(prompt) = op.prompt() {
             self.overlays.push(prompt);
         }
+    }
+
+    /// Answers [`RequestKind::SwitchPreview`] (RFC 045). The three-outcome shape commit, seal and
+    /// the ref writes already have: blocked (stikk's own words, never through `present()` —
+    /// nothing was attempted), ready (arms the confirmation), or a genuine seam failure.
+    fn apply_switch_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::SwitchPreview>,
+    ) {
+        let index = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
+        let Some(index) = index else {
+            return; // stale: the user navigated away before the preview resolved
+        };
+        let pending = self.pending_switch.take();
+        match result {
+            Ok(stikk_core::SwitchPreview::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            Ok(stikk_core::SwitchPreview::Ready { token }) => {
+                let Some(PendingSwitch::AwaitingPreview { target }) = pending else {
+                    self.overlays.remove(index);
+                    return; // defensive: nothing to confirm without this
+                };
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::Confirmation {
+                        summary: Box::new(token.summary().clone()),
+                        tier: token.tier(),
+                        typed: String::new(),
+                        error: None,
+                    };
+                }
+                self.pending_switch = Some(PendingSwitch::Confirming { token, target });
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Other);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::SwitchConfirmExecute`] (RFC 045 decision 8).
+    ///
+    /// On success: prikk's two streams verbatim, then **orientation, the ref lists and Changes
+    /// are re-read**, and **focus moves to the branch switched to**. `FR-055` says a later *read*
+    /// never moves focus; this is the user's own action, and leaving History on the old branch
+    /// would show a worktree that is no longer its files.
+    ///
+    /// On failure: the usual `present()` routing. Every refusal here wrote nothing (F2).
+    fn apply_switch_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::SwitchResult>>,
+    ) {
+        let index = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
+        let Some(index) = index else {
+            return; // stale: the user navigated away before the response arrived
+        };
+        let target = match self.pending_switch.take() {
+            Some(
+                PendingSwitch::Executing { target } | PendingSwitch::Confirming { target, .. },
+            ) => Some(target),
+            Some(PendingSwitch::AwaitingPreview { .. }) | None => None,
+        };
+        match result {
+            Ok(outcome) => match outcome.result {
+                stikk_prikk::SwitchResult::Done { printed, noted } => {
+                    if let Some(slot) = self.overlays.get_mut(index) {
+                        *slot = Overlay::SwitchResult { printed, noted };
+                    }
+                    if let Some(target) = target {
+                        self.clear_ref_mark_on_ref_change(&target);
+                        self.ref_focus = RefFocus::Ref(target.clone());
+                        // **Changes is the one screen a switch makes wrong** (§3e). It compares
+                        // the worktree against a baseline, and the worktree is now another
+                        // branch's files -- so it is re-read against the branch switched to, not
+                        // refreshed against the one that was left. History below it is not
+                        // wrong: a screen shows its own ref, never the focused one (RFC 031
+                        // review v1 §2.2), and that branch's lineage is unchanged.
+                        if matches!(self.screens.last(), Some(Screen::Changes { .. })) {
+                            let seq = self.dispatch(RequestKind::Changes {
+                                reff: target.clone(),
+                            });
+                            if let Some(Screen::Changes {
+                                view, refreshing, ..
+                            }) = self.screens.last_mut()
+                            {
+                                view.reff = target;
+                                *refreshing = Some(seq);
+                            }
+                        }
+                    }
+                    self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
+                    self.dispatch(RequestKind::Refs);
+                }
+                // The band is checked before the key offers anything, so this is only reachable
+                // if prikk changed under the session.
+                stikk_prikk::SwitchResult::Unavailable => {
+                    self.overlays.remove(index);
+                    self.banner = Some(stikk_core::switch_unavailable(
+                        self.prikk_minor().unwrap_or_default(),
+                    ));
+                }
+            },
+            Err(error) => {
+                self.overlays.remove(index);
+                // **Back to the picker, under prikk's refusal** (§3e). A dirty worktree or a
+                // file in the way is something the reader fixes and tries again, and the picker
+                // is where the second attempt starts; the list is re-read on the way, because
+                // the refusal may be about a ref that moved.
+                self.reopen_ref_picker();
+                self.surface(&error, OperationContext::Other);
+            }
+        }
+    }
+
+    /// Re-read the ref list and leave the picker where the reader left it.
+    ///
+    /// Pushed **under** whatever is surfaced next, so dismissing a refusal lands on the picker
+    /// rather than on the screen behind it.
+    fn reopen_ref_picker(&mut self) {
+        let seq = self.dispatch(RequestKind::Refs);
+        self.overlays.push(Overlay::Loading { what: "refs", seq });
     }
 
     /// Record that the worker thread itself has stopped (RFC 010 §7/ER-04) — there is no

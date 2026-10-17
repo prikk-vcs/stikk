@@ -34,7 +34,7 @@ fn summary(target_name: Option<&str>) -> ConfirmationSummary {
         operation: "Test operation".to_string(),
         target_ids: vec!["abc123".to_string()],
         counts: vec![("items", 1)],
-        capability: Capability::Viewer,
+        capability: Some(Capability::Viewer),
         consequence: "Nothing real happens — this is the scripted test vehicle".to_string(),
         target_name: target_name.map(str::to_string),
         signing_key_id: None,
@@ -46,6 +46,7 @@ fn summary(target_name: Option<&str>) -> ConfirmationSummary {
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 

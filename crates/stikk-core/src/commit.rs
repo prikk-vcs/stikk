@@ -341,7 +341,7 @@ fn compute(
         operation: "Commit worktree changes".to_string(),
         target_ids: vec![reff.to_string()],
         counts,
-        capability: Capability::Author,
+        capability: Some(Capability::Author),
         consequence: consequence(orientation.active_patch_warning.as_deref()),
         target_name: None,
         signing_key_id: signing_key_id.clone(),
@@ -371,6 +371,7 @@ fn compute(
             })
             .collect(),
         message_note: None,
+        materializes: None,
     };
     let preview = CommitPreview {
         changes: view,
@@ -388,7 +389,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         operation: String::new(),
         target_ids: Vec::new(),
         counts: Vec::new(),
-        capability: Capability::Author,
+        capability: Some(Capability::Author),
         consequence: String::new(),
         target_name: None,
         signing_key_id: None,
@@ -400,6 +401,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 

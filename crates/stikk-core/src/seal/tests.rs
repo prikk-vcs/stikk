@@ -81,7 +81,7 @@ fn a_ready_preview_carries_the_patch_count_and_tier_three() {
             assert_eq!(token.summary().counts, vec![("patches", 1)]);
             assert_eq!(
                 token.summary().capability,
-                stikk_model::Capability::Maintainer
+                Some(stikk_model::Capability::Maintainer)
             );
         }
         SealPreviewOutcome::Blocked(reason) => panic!("expected Ready, got Blocked({reason})"),

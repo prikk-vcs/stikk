@@ -6277,3 +6277,256 @@ fn rfc044_below_the_band_the_three_ref_writes_are_unavailable() {
     assert!(reason.contains(&format!("0.{}", bin.minor)), "{reason}");
     println!("0.{}: {reason}", bin.minor);
 }
+
+/// **RFC 045 at the ceiling: a switch against a real repository.**
+///
+/// The load-bearing assertion is F4's: **the preview's own written and deleted paths are what
+/// the switch then did**, checked against the worktree's file list afterwards — not against
+/// prikk's counts, which this test never reads for state. The rest are the refusals that must
+/// write nothing, and the case stikk does not offer.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc045_the_preview_is_what_the_switch_does_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::SWITCH_FROM_MINOR {
+        eprintln!(
+            "RFC 045 SKIPPED at 0.{} — a switch is banded at 0.{}. Announced rather than silent \
+             (RFC 022 §3).",
+            bin.minor,
+            stikk_core::SWITCH_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    let write = |name: &str, body: &str| {
+        std::fs::write(repo.join(name), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+    };
+    let seal = |reff: &str| {
+        fixture.set_author_env();
+        backend
+            .commit(&repo, reff, "x")
+            .unwrap_or_else(|e| panic!("0.{}: commit on {reff}: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, reff)
+            .unwrap_or_else(|e| panic!("0.{}: seal {reff}: {e}", bin.minor));
+        Fixture::clear_env();
+    };
+    let worktree_files = || {
+        let mut out: Vec<String> = std::fs::read_dir(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: read the worktree: {e}", bin.minor))
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                (name != ".prikk").then_some(name)
+            })
+            .collect();
+        out.sort();
+        out
+    };
+    let current = || match backend
+        .orientation(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor))
+        .current_branch
+    {
+        stikk_model::CurrentBranch::Branch(name) => name.as_str().to_string(),
+        other => panic!("0.{}: expected a current branch, got {other:?}", bin.minor),
+    };
+    // Each switch runs through the shipped path: preview, confirm, execute.
+    let switch =
+        |target: &str| -> stikk_model::Result<stikk_core::Outcome<stikk_prikk::SwitchResult>> {
+            let preview = stikk_core::switch_preview(&backend, &repo, target)
+                .unwrap_or_else(|e| panic!("0.{}: switch_preview {target}: {e}", bin.minor));
+            let stikk_core::SwitchPreview::Ready { token } = preview else {
+                panic!("0.{}: expected a Ready preview, got {preview:?}", bin.minor);
+            };
+            let plan = token
+                .summary()
+                .materializes
+                .clone()
+                .unwrap_or_else(|| panic!("0.{}: a Ready preview carries a plan", bin.minor));
+            let readiness = backend
+                .readiness(&repo)
+                .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+                .readiness;
+            PLAN.with(|slot| *slot.borrow_mut() = Some(plan));
+            stikk_core::switch_confirm_and_execute(
+                &backend,
+                &repo,
+                *token,
+                readiness,
+                stikk_core::Evidence::ExplicitYes,
+                target,
+            )
+        };
+    let previewed = || PLAN.with(|slot| slot.borrow().clone().expect("a plan was previewed"));
+
+    // heads/main: a.txt, b.txt. heads/feature: a.txt changed, b.txt gone, c.txt new.
+    write("a.txt", "one\n");
+    write("b.txt", "two\n");
+    seal("heads/main");
+    fixture.set_maintainer_env();
+    prikk_ok(
+        &bin,
+        &repo,
+        &["branch", "create", "heads/feature", "--from", "heads/main"],
+    );
+    Fixture::clear_env();
+    let main_a = std::fs::read_to_string(repo.join("a.txt")).expect("a.txt");
+    let main_files = worktree_files();
+
+    switch("heads/feature").unwrap_or_else(|e| panic!("0.{}: switch: {e}", bin.minor));
+    assert_eq!(current(), "heads/feature", "0.{}", bin.minor);
+    write("a.txt", "one, changed\n");
+    std::fs::remove_file(repo.join("b.txt")).expect("remove b.txt");
+    write("c.txt", "three\n");
+    seal("heads/feature");
+
+    // ── 1. the plan is the switch ───────────────────────────────────────────────────────────
+    switch("heads/main").unwrap_or_else(|e| panic!("0.{}: switch back: {e}", bin.minor));
+    let plan = previewed();
+    assert_eq!(
+        plan.written,
+        vec!["a.txt".to_string(), "b.txt".to_string()],
+        "0.{}: the preview's written paths",
+        bin.minor
+    );
+    assert_eq!(
+        plan.deleted,
+        vec!["c.txt".to_string()],
+        "0.{}: the preview's deleted paths",
+        bin.minor
+    );
+    assert_eq!(
+        worktree_files(),
+        main_files,
+        "0.{}: the worktree is exactly what the plan said it would be",
+        bin.minor
+    );
+    // **Switching back restores every byte** (F3), checked by content and not by a count.
+    assert_eq!(
+        std::fs::read_to_string(repo.join("a.txt")).expect("a.txt"),
+        main_a,
+        "0.{}: the bytes are back",
+        bin.minor
+    );
+    assert_eq!(current(), "heads/main", "0.{}", bin.minor);
+
+    // ── 2. a dirty worktree is refused verbatim, and nothing is written ─────────────────────
+    write("a.txt", "dirty\n");
+    let err = switch("heads/feature").expect_err("a dirty worktree is refused");
+    assert_eq!(err.class(), "refusal", "0.{}: {err}", bin.minor);
+    assert!(
+        err.to_string().contains("the worktree is not clean"),
+        "0.{}: prikk's own words: {err}",
+        bin.minor
+    );
+    assert_eq!(current(), "heads/main", "0.{}: nothing moved", bin.minor);
+    assert_eq!(
+        std::fs::read_to_string(repo.join("a.txt")).expect("a.txt"),
+        "dirty\n",
+        "0.{}: nothing was written over",
+        bin.minor
+    );
+    write("a.txt", &main_a);
+
+    // ── 3. an untracked file the target does not need is left alone ─────────────────────────
+    write("notes.md", "mine\n");
+    switch("heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: switch with an untracked file: {e}", bin.minor));
+    assert_eq!(
+        std::fs::read_to_string(repo.join("notes.md")).expect("notes.md"),
+        "mine\n",
+        "0.{}: an untracked file is never touched",
+        bin.minor
+    );
+    std::fs::remove_file(repo.join("notes.md")).expect("remove notes.md");
+    switch("heads/main").unwrap_or_else(|e| panic!("0.{}: switch back: {e}", bin.minor));
+
+    // ── 4. work queued for the target is not offered, and nothing is spawned ────────────────
+    //
+    // **F5**: prikk allows this and writes the target's sealed files only, leaving the queued
+    // work absent from the worktree. The proof that stikk spawned nothing is that the current
+    // branch is unchanged afterwards, by prikk's own report.
+    write("queued.txt", "for feature\n");
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/feature", "queued for feature")
+        .unwrap_or_else(|e| panic!("0.{}: commit onto heads/feature: {e}", bin.minor));
+    Fixture::clear_env();
+    std::fs::remove_file(repo.join("queued.txt")).expect("remove queued.txt");
+    let blocked = stikk_core::switch_preview(&backend, &repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: switch_preview: {e}", bin.minor));
+    match blocked {
+        stikk_core::SwitchPreview::Blocked(reason) => assert_eq!(
+            reason,
+            stikk_core::WORK_IS_QUEUED_FOR_THIS_BRANCH,
+            "0.{}: stikk's own words",
+            bin.minor
+        ),
+        stikk_core::SwitchPreview::Ready { .. } => panic!(
+            "0.{}: a switch to a branch the queue holds work for must not reach a confirmation",
+            bin.minor
+        ),
+    }
+    assert_eq!(
+        current(),
+        "heads/main",
+        "0.{}: nothing was spawned — the current branch is unchanged",
+        bin.minor
+    );
+}
+
+thread_local! {
+    /// The plan the last previewed switch carried, so the leg above can compare it with what the
+    /// switch then did without threading it back through a closure's return type.
+    static PLAN: std::cell::RefCell<Option<stikk_core::FilePlan>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// **RFC 045 below the band:** at 0.28 a switch is *unavailable*, in stikk's own voice, and
+/// nothing is spawned — the seam answers from the handshake alone.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc045_below_the_band_a_switch_is_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    let answer = backend
+        .switch_branch(&repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: below the band must not error: {e}", bin.minor));
+    assert!(
+        matches!(answer, stikk_prikk::SwitchResult::Unavailable),
+        "0.{}: got {answer:?}",
+        bin.minor
+    );
+    // And the preview says the same thing without a plan to show.
+    let preview = stikk_core::switch_preview(&backend, &repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: switch_preview: {e}", bin.minor));
+    assert!(
+        matches!(preview, stikk_core::SwitchPreview::Blocked(_)),
+        "0.{}: got {preview:?}",
+        bin.minor
+    );
+    let reason = stikk_core::switch_unavailable(bin.minor);
+    assert!(
+        reason.contains(&format!("0.{}", stikk_core::SWITCH_FROM_MINOR)),
+        "{reason}"
+    );
+    assert!(reason.contains(&format!("0.{}", bin.minor)), "{reason}");
+    println!("0.{}: {reason}", bin.minor);
+}

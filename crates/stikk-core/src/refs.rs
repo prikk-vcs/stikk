@@ -51,9 +51,11 @@ pub use stikk_prikk::CURRENT_BRANCH_FROM_MINOR as REF_WRITES_FROM_MINOR;
 /// create` refuses because `.prikk/current-branch` names a closed branch. That is a repository a
 /// reader has to dig out of, from a key press that looked ordinary.
 ///
-/// Until stikk can switch branches itself, the way out is prikk's own command, named here.
+/// **The way out is stikk's own, since RFC 045** (decision 9). It named `prikk branch switch`
+/// while stikk could not switch; it names the key now, because sending a reader to the command
+/// line for something two keys away would be stikk under-selling what it does.
 pub const CLOSING_THE_CURRENT_BRANCH: &str = "this is the branch you are on; closing it would leave the repository on a closed branch. \
-     Switch to another branch first, with `prikk branch switch heads/<name>`.";
+     Switch to another branch first (`s` in the ref picker).";
 
 /// **stikk's own reason, below the band** (decision 3; `C-T4d`), given the minor prikk reported.
 ///
@@ -103,18 +105,19 @@ pub fn create_branch_preview(
                 return Blocked("a branch needs a name.".to_string());
             }
             Summary {
-            operation: "Create a branch".to_string(),
-            // The new name, then the source and the block the source is on **right now**
-            // (decision 6). The new branch has no id of its own to show: it does not exist yet.
-            target_ids: with_tip(vec![name.clone(), from_ref.clone()], facts),
-            consequence: format!(
-                "The new branch will point at the source's tip. Nothing in the worktree changes, \
-                 and no other ref moves.{}",
-                facts.unready
-            ),
-            message: None,
-        }
-        .into()
+                operation: "Create a branch".to_string(),
+                // The new name, then the source and the block the source is on **right now**
+                // (decision 6). The new branch has no id of its own to show: it does not exist
+                // yet.
+                target_ids: with_tip(vec![name.clone(), from_ref.clone()], facts),
+                consequence: format!(
+                    "The new branch will point at the source's tip. Nothing in the worktree \
+                     changes, and no other ref moves.{}",
+                    facts.unready
+                ),
+                message: None,
+            }
+            .into()
         },
     )
 }
@@ -393,7 +396,7 @@ fn preview(
                     operation: summary.operation,
                     target_ids: summary.target_ids,
                     counts: Vec::new(),
-                    capability: Capability::Maintainer,
+                    capability: Some(Capability::Maintainer),
                     consequence: summary.consequence,
                     target_name: None,
                     signing_key_id,
@@ -410,6 +413,7 @@ fn preview(
                     rename_note: None,
                     declaration_notices: Vec::new(),
                     message_note: summary.message,
+                    materializes: None,
                 },
             ),
         })
@@ -437,7 +441,7 @@ fn blocked_summary(reason: String) -> ConfirmationSummary {
         operation: "Blocked".to_string(),
         target_ids: Vec::new(),
         counts: Vec::new(),
-        capability: Capability::Maintainer,
+        capability: Some(Capability::Maintainer),
         consequence: reason,
         target_name: None,
         signing_key_id: None,
@@ -449,6 +453,7 @@ fn blocked_summary(reason: String) -> ConfirmationSummary {
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 

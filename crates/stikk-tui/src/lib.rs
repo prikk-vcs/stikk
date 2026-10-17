@@ -142,6 +142,7 @@ fn ui_loop(
                     Action::CreateBranch => app.begin_create_branch(),
                     Action::CreateTag => app.begin_create_tag(),
                     Action::CloseBranch => app.begin_close_branch(),
+                    Action::SwitchBranch => app.begin_switch_branch(),
                     Action::ToggleSealConsent => app.toggle_seal_consent(),
                     Action::OpenGlossary => app.open_glossary(),
                     Action::OpenPalette => app.open_palette(),

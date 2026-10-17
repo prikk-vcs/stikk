@@ -58,6 +58,9 @@ pub enum Action {
     /// Close the selected branch (the ref picker; RFC 044 decision 4). **Never the branch the
     /// repository is on** — that one is refused, in stikk's own words.
     CloseBranch,
+    /// Switch the repository to the selected branch (the ref picker; RFC 045 decision 7).
+    /// **`Enter` is not this**: `Enter` focuses stikk on a ref and touches nothing.
+    SwitchBranch,
     /// Toggle the seal consent acknowledgement (RFC 016 §8) — meaningful only while
     /// [`crate::overlay::Overlay::SealConsent`] is on top; a no-op everywhere else.
     ToggleSealConsent,
@@ -114,6 +117,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('n') => Action::CreateBranch,
         KeyCode::Char('t') => Action::CreateTag,
         KeyCode::Char('x') => Action::CloseBranch,
+        KeyCode::Char('s') => Action::SwitchBranch,
         KeyCode::Char(' ') => Action::ToggleSealConsent,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,

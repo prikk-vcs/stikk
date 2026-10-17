@@ -408,7 +408,9 @@ fn capture_rfc044_closing_the_current_branch_at_80_columns() {
     let text = draw(&app, 80, 24);
     println!("--- closing the current branch, refused (80 columns) ---\n{text}");
     assert!(text.contains("the branch you are on"), "{text}");
-    assert!(text.contains("prikk branch switch"), "{text}");
+    // RFC 045 decision 9: the way out is stikk's own key now, not prikk's command.
+    assert!(text.contains("`s` in the ref picker"), "{text}");
+    assert!(!text.contains("prikk branch switch"), "{text}");
     assert!(
         !text.contains("closed branch heads/main"),
         "nothing ran: {text}"
@@ -444,7 +446,7 @@ fn a_long_banner_wraps_and_a_short_one_does_not_move() {
         stikk_core::OperationContext::Orient,
     );
     let long = draw(&app, 80, 24);
-    assert!(long.contains("prikk branch switch"), "{long}");
+    assert!(long.contains("`s` in the ref picker"), "{long}");
     assert!(
         long.lines().any(|l| l.trim() == "(Esc dismisses)"),
         "the hint takes its own row once the text has taken more than one:\n{long}"
@@ -452,5 +454,69 @@ fn a_long_banner_wraps_and_a_short_one_does_not_move() {
     assert!(
         long.lines().filter(|l| l.contains("closed branch")).count() == 1,
         "wrapped once, not repeated:\n{long}"
+    );
+}
+
+/// **RFC 045 F5's capture, at exactly 80 columns**: `s` on a branch the queue holds work for,
+/// refused in stikk's own voice and **without prikk running** — driven end to end through the
+/// real preview, so the sentence on screen is the one `stikk-core` decided. Reproduce with
+/// `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+#[test]
+fn capture_rfc045_work_queued_for_the_target_at_80_columns() {
+    let current = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse("heads/main").expect("a ref name"),
+    );
+    let backend = NullBackend::supported()
+        .with_version(0, 52, 0)
+        .with_orientation(Orientation {
+            interrupted_materialization: None,
+            queued_patches: 1,
+            queued_target: Some("heads/feature".to_string()),
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: current.clone(),
+        })
+        .with_change_token(stikk_model::ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            1,
+            Some("heads/feature"),
+            &current,
+        ))
+        .with_refs(vec![
+            stikk_prikk::RefEntry {
+                name: "heads/main".to_string(),
+                id: "e".repeat(64),
+                closed: false,
+                received: false,
+            },
+            stikk_prikk::RefEntry {
+                name: "heads/feature".to_string(),
+                id: "f".repeat(64),
+                closed: false,
+                received: false,
+            },
+        ])
+        // **The guard that matters**: if the preview ever let this through, the switch would
+        // succeed here and the assertion below would fail on a screen showing prikk's lines.
+        .with_switch(
+            vec!["switched from heads/main to heads/feature".to_string()],
+            Vec::new(),
+        );
+    let (mut app, rx) = open("/repo", &Config::default());
+    drain(&mut app, &rx, &backend);
+    app.open_ref_picker();
+    drain(&mut app, &rx, &backend);
+    app.nav_down(); // heads/feature
+    app.begin_switch_branch();
+    drain(&mut app, &rx, &backend);
+    let text = draw(&app, 80, 24);
+    println!("--- work queued for the target, refused (80 columns) ---\n{text}");
+    assert!(text.contains("work is queued for this branch"), "{text}");
+    // The tail wraps onto the next row, so the fragment checked here must not cross the wrap.
+    assert!(text.contains("the worktree would not show"), "{text}");
+    assert!(
+        !text.contains("switched from heads/main"),
+        "nothing ran: {text}"
     );
 }

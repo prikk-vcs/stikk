@@ -947,7 +947,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         operation: "Test operation".to_string(),
         target_ids: vec!["abc123".to_string()],
         counts: vec![("items", 1)],
-        capability: Capability::Author,
+        capability: Some(Capability::Author),
         consequence: "Nothing real happens".to_string(),
         target_name: target_name.map(str::to_string),
         signing_key_id: None,
@@ -959,6 +959,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 
@@ -3342,4 +3343,270 @@ fn back_on_a_ref_write_prompt_clears_the_pending_write() {
             req.kind
         );
     }
+}
+
+// =============================================================================================
+// RFC 045 — `s`, the switch key.
+//
+// What is checked here is what the key decides **before** anything is dispatched: the rows it
+// declines, each with its own reason, and the fact that none of them spawns. The plan itself,
+// and every blocked case that needs a read, are `stikk-core::switch::tests`'.
+// =============================================================================================
+
+/// A session that may switch: prikk 0.52 and a current branch.
+fn switch_view(minor: u32, current: &str) -> stikk_core::OrientationView {
+    let mut view = maintainer_orientation_view(0, None);
+    view.prikk_minor = minor;
+    view.current_branch = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse(current).expect("a ref name"),
+    );
+    view
+}
+
+fn switch_picker(
+    view: stikk_core::OrientationView,
+    cursor: usize,
+) -> (App, mpsc::Receiver<Request>) {
+    picker(
+        view,
+        vec![
+            entry("heads/main", false),
+            entry("heads/feature", false),
+            entry("heads/old", true),
+            entry("tags/v1", false),
+        ],
+        stikk_prikk::UnpublishedBranch::None,
+        cursor,
+    )
+}
+
+/// `s` on an open branch that is not the current one dispatches the preview and nothing else.
+#[test]
+fn s_previews_the_selected_branch() {
+    let (mut app, rx) = switch_picker(switch_view(52, "heads/main"), 1);
+    app.begin_switch_branch();
+    match next_request(&rx).kind {
+        RequestKind::SwitchPreview { target } => assert_eq!(target, "heads/feature"),
+        other => panic!("expected a SwitchPreview, got {other:?}"),
+    }
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::Loading {
+            what: "switch preview",
+            ..
+        })
+    ));
+}
+
+/// **Each row `s` declines has its own reason, and none of them spawns** (decision 7).
+#[test]
+fn s_declines_each_row_kind_without_dispatching() {
+    for (cursor, fragment) in [
+        (0, "already the current branch"),
+        (2, "this branch is closed"),
+        (3, "only a branch can be switched to"),
+    ] {
+        let (mut app, rx) = switch_picker(switch_view(52, "heads/main"), cursor);
+        app.begin_switch_branch();
+        assert!(
+            app.banner().is_some_and(|b| b.contains(fragment)),
+            "cursor {cursor}: got {:?}",
+            app.banner()
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "cursor {cursor}: nothing dispatched"
+        );
+        assert!(
+            matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })),
+            "cursor {cursor}: the picker stays open"
+        );
+    }
+}
+
+/// The unpublished current branch has no tip, so `s` declines it too — with the same words `n`,
+/// `t` and `x` use (RFC 037 B; RFC 041 decision 4's precedent).
+#[test]
+fn s_declines_the_unpublished_row() {
+    let (mut app, rx) = picker(
+        switch_view(52, "heads/main"),
+        Vec::new(),
+        stikk_prikk::UnpublishedBranch::Branch("heads/main".into()),
+        0,
+    );
+    app.begin_switch_branch();
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("no published history yet")),
+        "got {:?}",
+        app.banner()
+    );
+    assert!(rx.try_recv().is_err());
+}
+
+/// Below the band `s` gives stikk's reason and spawns nothing (`C-T4d`).
+#[test]
+fn below_the_band_s_gives_stikks_own_reason() {
+    let (mut app, rx) = switch_picker(switch_view(45, "heads/main"), 1);
+    app.begin_switch_branch();
+    let banner = app.banner().expect("a reason").to_string();
+    assert!(banner.contains("0.46"), "{banner}");
+    assert!(banner.contains("0.45"), "{banner}");
+    assert!(rx.try_recv().is_err());
+}
+
+/// A ready preview arms the confirmation at Tier Three, with **no capability row to consume**.
+#[test]
+fn a_ready_switch_preview_opens_the_confirmation_at_tier_three() {
+    let (mut app, rx) = switch_picker(switch_view(52, "heads/main"), 1);
+    app.begin_switch_branch();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::SwitchPreview(Ok(switch_core_preview())),
+    });
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { tier, summary, .. }) => {
+            assert_eq!(*tier, Tier::Three);
+            assert_eq!(summary.capability, None, "a switch signs nothing");
+            assert!(summary.materializes.is_some(), "the plan is on the card");
+        }
+        other => panic!("expected a Confirmation, got {other:?}"),
+    }
+}
+
+/// A real preview from `stikk-core`, so this file never hand-builds one.
+fn switch_core_preview() -> stikk_core::SwitchPreview {
+    let current = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse("heads/main").expect("a ref name"),
+    );
+    let backend = NullBackend::supported()
+        .with_version(0, 52, 0)
+        .with_orientation(Orientation {
+            interrupted_materialization: None,
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: current.clone(),
+        })
+        .with_change_token(stikk_model::ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            0,
+            None,
+            &current,
+        ))
+        .with_diff(stikk_prikk::Diff {
+            from: switch_side("heads/main"),
+            to: switch_side("heads/feature"),
+            entries: vec![
+                switch_entry("a.txt", "modified"),
+                switch_entry("b.txt", "deleted"),
+            ],
+            unsupported_paths: Vec::new(),
+        });
+    stikk_core::switch_preview(&backend, std::path::Path::new("/repo"), "heads/feature")
+        .expect("a scripted backend's preview always succeeds")
+}
+
+fn switch_side(point: &str) -> stikk_prikk::DiffSide {
+    stikk_prikk::DiffSide {
+        point: point.to_string(),
+        target: stikk_prikk::DiffTarget::Block("b".repeat(64)),
+        queued: stikk_prikk::QueuedOnSide::NotApplicable,
+    }
+}
+
+fn switch_entry(path: &str, status: &str) -> stikk_prikk::DiffEntry {
+    stikk_prikk::DiffEntry {
+        path: path.to_string(),
+        status: status.to_string(),
+        from_path: None,
+        from: None,
+        to: None,
+        minimal: true,
+        hunks: Vec::new(),
+        raw: "{}".to_string(),
+    }
+}
+
+/// **Success moves focus and re-reads** (decision 8): `FR-055` keeps a later *read* from moving
+/// focus; this is the user's own action, and History on the branch left behind would describe a
+/// worktree that is no longer its files.
+#[test]
+fn a_successful_switch_moves_focus_and_re_reads() {
+    let (mut app, rx) = switch_picker(switch_view(52, "heads/main"), 1);
+    app.begin_switch_branch();
+    let preview_req = next_request(&rx);
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SwitchPreview(Ok(switch_core_preview())),
+    });
+    app.select(); // confirm
+    let exec_req = next_request(&rx);
+    app.apply(Response {
+        seq: exec_req.seq,
+        kind: ResponseKind::SwitchConfirmExecute(Ok(Outcome {
+            operation: stikk_core::SWITCH_OPERATION.to_string(),
+            result: stikk_prikk::SwitchResult::Done {
+                printed: vec![
+                    "switched from heads/main to heads/feature".to_string(),
+                    "files written: 1".to_string(),
+                ],
+                noted: Vec::new(),
+            },
+        })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::SwitchResult { printed, noted }) => {
+            assert_eq!(printed[0], "switched from heads/main to heads/feature");
+            assert!(noted.is_empty());
+        }
+        other => panic!("expected a SwitchResult, got {other:?}"),
+    }
+    assert_eq!(
+        app.focused_ref(),
+        Some("heads/feature"),
+        "focus follows the switch"
+    );
+    let kinds: Vec<&'static str> = std::iter::from_fn(|| rx.try_recv().ok())
+        .map(|r| r.kind.label())
+        .collect();
+    assert!(kinds.contains(&"orientation"), "{kinds:?}");
+    assert!(kinds.contains(&"refs"), "{kinds:?}");
+}
+
+/// **A refusal hands the reader back to the picker** (§3e), with the list re-read: a dirty
+/// worktree is something they fix and try again from where they chose.
+#[test]
+fn a_refused_switch_hands_back_to_the_picker() {
+    let (mut app, rx) = switch_picker(switch_view(52, "heads/main"), 1);
+    app.begin_switch_branch();
+    let preview_req = next_request(&rx);
+    app.apply(Response {
+        seq: preview_req.seq,
+        kind: ResponseKind::SwitchPreview(Ok(switch_core_preview())),
+    });
+    app.select();
+    let exec_req = next_request(&rx);
+    app.apply(Response {
+        seq: exec_req.seq,
+        kind: ResponseKind::SwitchConfirmExecute(Err(StikkError::Refusal {
+            message: "error: precondition not met: the worktree is not clean against heads/main"
+                .to_string(),
+        })),
+    });
+    // prikk's refusal is on top; the picker's own read is underneath it.
+    let refs_req = next_request(&rx);
+    assert!(matches!(refs_req.kind, RequestKind::Refs));
+    app.back();
+    assert!(
+        matches!(
+            app.top_overlay(),
+            Some(Overlay::Loading { what: "refs", .. })
+        ),
+        "got {:?}",
+        app.top_overlay()
+    );
 }

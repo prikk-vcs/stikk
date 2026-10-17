@@ -11,17 +11,24 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
 
 | Crate | Change |
 |---|---|
-| `stikk-prikk` | **The `Prikk` trait gained three methods with no defaults** — `create_branch`, `create_tag` and `close_branch`. Any outside implementor of the trait must add them |
-| `stikk-core` | **`ConfirmationSummary` gained a public field**, `message_note: Option<String>` — the message a new tag will carry, in its own field because it is the one string on that card the user wrote. Any outside code constructing a `ConfirmationSummary` as a literal must add it |
-| `stikk-tui` | **`Overlay` gained three variants** — `RefName`, `TagMessage` and `RefWriteResult`. Any outside exhaustive `match` on it must cover them |
+| `stikk-model` | **`RequestCategory` gained `Materialization`**, so `RequestCategory::ALL` is `[Self; 10]` and no longer `[Self; 9]`. Any outside exhaustive `match` on the enum, or code depending on `ALL`'s length, must account for it. The new variant is **appended**, so no existing variant's derived `Ord` position moves |
+| `stikk-prikk` | **The `Prikk` trait gained four methods with no defaults** — `create_branch`, `create_tag`, `close_branch` and `switch_branch`. Any outside implementor of the trait must add them |
+| `stikk-core` | **`capability_gate` takes a `RequestCategory` where it took a `Tier`.** The signing requirement is a property of the category now, not of the tier — `Materialization` is Tier Three and needs no key, which a tier-keyed gate could not express. Every pre-existing category keeps exactly the requirement its tier used to imply |
+| `stikk-core` | **`ConfirmationSummary` gained two public fields and changed one.** `message_note: Option<String>` is the message a new tag will carry; `materializes: Option<FilePlan>` is the files a switch will write and delete; and `capability` is now `Option<Capability>`, where `None` means the operation consumes none. Any outside code constructing a `ConfirmationSummary` as a literal must be updated |
+| `stikk-core` | **`palette::Command::tier` is gone**, replaced by `category: Option<RequestCategory>` and a `tier()` method that reads the tier off it. The two can no longer disagree |
+| `stikk-tui` | **`Overlay` gained four variants** — `RefName`, `TagMessage`, `RefWriteResult` and `SwitchResult`. Any outside exhaustive `match` on it must cover them |
 
-**Additive:** `stikk_prikk::RefWrite` and `stikk_prikk::CURRENT_BRANCH_FROM_MINOR`;
+**Additive:** `stikk_model::SigningRequirement` and `RequestCategory::signing_requirement`;
+`stikk_prikk::RefWrite`, `stikk_prikk::SwitchResult` and `stikk_prikk::CURRENT_BRANCH_FROM_MINOR`;
 `stikk_core::refs` with `RefWritePreview`, `NewTag`, the three previews, the three
 confirm-and-executes, `ref_writes_unavailable`, `REF_WRITES_FROM_MINOR`,
-`CLOSING_THE_CURRENT_BRANCH` and the three operation names; `NullBackend::with_ref_write` and
-`with_ref_write_refusal`; `stikk_tui::overlay::RefNameKind`/`RefWriteKind` and
-`App::begin_create_branch`/`begin_create_tag`/`begin_close_branch`. **No public item was removed.**
-The MSRV is unchanged at 1.88.
+`CLOSING_THE_CURRENT_BRANCH` and the three operation names; `stikk_core::switch` with
+`SwitchPreview`, `switch_preview`, `switch_confirm_and_execute`, `switch_unavailable`,
+`SWITCH_FROM_MINOR`, `SWITCH_OPERATION` and its three blocked reasons; `stikk_core::FilePlan` and
+`unshown_paths_line`; `NullBackend::with_ref_write`, `with_ref_write_refusal`, `with_switch` and
+`with_switch_refusal`; `stikk_tui::overlay::RefNameKind`/`RefWriteKind` and
+`App::begin_create_branch`/`begin_create_tag`/`begin_close_branch`/`begin_switch_branch`.
+**No public item was removed except the three listed above.** The MSRV is unchanged at 1.88.
 
 ### Added
 
@@ -47,10 +54,40 @@ The MSRV is unchanged at 1.88.
   already read, without running prikk.
 
   Available at **prikk ≥ 0.42**, where prikk keeps a current-branch pointer; below that the keys
-  say so in stikk's own words and spawn nothing. The real-binary suite drives **53 cases** at
+  say so in stikk's own words and spawn nothing. Two new real-binary suite legs cover it at
   0.28.0 and 0.52.0.
 
+- **Switch branch** (RFC 045) — the last of prikk's branch operations, and **the first stikk
+  operation that changes files on disk**. `s` in the ref picker switches to the selected branch;
+  `Enter` keeps its meaning and only moves stikk's focus.
+
+  **The preview is the file plan.** Before anything runs, the card lists exactly which files the
+  switch will write and which it will delete, from stikk's own comparison of the two branches,
+  read at that moment — measured against prikk: a comparison listing one modified, one deleted
+  and one added file was followed by a switch reporting written 2, deleted 1, with the worktree
+  then holding exactly the target's files. A plan that is not whole does not become a shorter
+  plan: an unmeasured kind of change, or a path prikk could not look at, blocks the switch and
+  says so.
+
+  **It asks for no signing key**, because prikk needs none — the confirmation says so in place of
+  naming a capability. And **nothing can be lost**: prikk refuses rather than overwrite a tracked
+  file you have changed, never touches an untracked file, and switching back restores every byte.
+
+  Three cases stikk does not offer, each with its own reason and without running prikk: the
+  branch you are already on, a closed branch, and **a branch the queue holds work for** — prikk
+  allows that one and writes only the sealed files, which leaves the worktree describing
+  something that is not true. After a success prikk's own lines are shown, the lists are re-read,
+  and stikk's focus follows you to the new branch.
+
+  Available at **prikk ≥ 0.46**, where stikk can read the comparison the plan is made of; below
+  that the key says so and spawns nothing. The real-binary suite drives **55 cases** at 0.28.0
+  and 0.52.0.
+
 ### Changed
+
+- **Closing the current branch now points at stikk's own way out.** The refusal said *"Switch to
+  another branch first, with `prikk branch switch heads/<name>`"* because stikk could not switch;
+  it says *"Switch to another branch first (`s` in the ref picker)"* now.
 
 - **A banner wraps instead of losing its tail.** It was one row, which was enough for *"mark
   cleared"* and not for a refusal that names the command to run next: at 80 columns the end of

@@ -150,6 +150,24 @@ pub(crate) enum RequestKind {
         /// The previewed call, executed unchanged.
         op: RefWriteOp,
     },
+    /// Build the preview for a branch switch — **including its file plan**, which is a `diff`
+    /// read inside the preview, not here (RFC 045 decision 5).
+    SwitchPreview {
+        /// The branch to switch to.
+        target: String,
+    },
+    /// Confirm and execute a branch switch in one round trip (RFC 045).
+    SwitchConfirmExecute {
+        /// The token [`RequestKind::SwitchPreview`] minted.
+        token: Box<PreviewToken>,
+        /// The session's signing readiness, read on the UI thread immediately before dispatch.
+        /// **Not a key**: `Materialization` needs read-write and nothing more (decision 2).
+        readiness: Readiness,
+        /// The user's confirmation evidence (an explicit yes, at Tier Three).
+        evidence: Evidence,
+        /// The branch to switch to (must match the preview's).
+        target: String,
+    },
 }
 
 /// The worker's answer to one [`Request`], echoing its `seq`.
@@ -202,6 +220,10 @@ pub(crate) enum ResponseKind {
     SealConfirmExecute(Result<Outcome<SealResult>>),
     /// Answers [`RequestKind::RefWritePreview`].
     RefWritePreview(Result<stikk_core::RefWritePreview>),
+    /// Answers [`RequestKind::SwitchPreview`].
+    SwitchPreview(Result<stikk_core::SwitchPreview>),
+    /// Answers [`RequestKind::SwitchConfirmExecute`].
+    SwitchConfirmExecute(Result<Outcome<stikk_prikk::SwitchResult>>),
     /// Answers [`RequestKind::RefWriteConfirmExecute`].
     RefWriteConfirmExecute {
         /// Echoed from the request, so the result card can title itself without the UI thread
@@ -263,6 +285,8 @@ impl RequestKind {
             Self::SealConfirmExecute { .. } => "seal",
             Self::RefWritePreview { .. } => "ref write preview",
             Self::RefWriteConfirmExecute { .. } => "ref write",
+            Self::SwitchPreview { .. } => "switch preview",
+            Self::SwitchConfirmExecute { .. } => "switch",
         }
     }
 }
@@ -390,6 +414,17 @@ pub(crate) fn run(
                     }
                 },
             },
+            RequestKind::SwitchPreview { target } => {
+                ResponseKind::SwitchPreview(stikk_core::switch_preview(prikk, repo, &target))
+            }
+            RequestKind::SwitchConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                target,
+            } => ResponseKind::SwitchConfirmExecute(stikk_core::switch_confirm_and_execute(
+                prikk, repo, *token, readiness, evidence, &target,
+            )),
         };
         // The UI thread has quit and dropped its receiver; nothing left to deliver to.
         if res_tx.send(Response { seq, kind }).is_err() {

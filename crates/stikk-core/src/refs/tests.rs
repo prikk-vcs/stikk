@@ -155,8 +155,10 @@ fn closing_a_branch_restates_prikks_promise_that_nothing_is_reclaimed() {
 fn closing_the_current_branch_is_blocked_with_stikks_own_reason() {
     let reason = blocked(close_branch_preview(&ready(), repo(), "heads/main").expect("reads"));
     assert!(reason.contains("this is the branch you are on"), "{reason}");
-    // It names the way out, since stikk cannot switch branches yet.
-    assert!(reason.contains("prikk branch switch"), "{reason}");
+    // **It names stikk's own way out** (RFC 045 decision 9), not prikk's command: `s` in the ref
+    // picker does the switch now.
+    assert!(reason.contains("`s` in the ref picker"), "{reason}");
+    assert!(!reason.contains("prikk branch switch"), "{reason}");
     // Never prikk's words: prikk does not refuse this at all with an empty WAL.
     assert!(!reason.contains("non-empty active WAL"), "{reason}");
 }
@@ -238,7 +240,7 @@ fn every_ref_write_is_tier_three_and_maintainer() {
                 assert_eq!(token.tier(), Tier::Three);
                 assert_eq!(
                     token.summary().capability,
-                    stikk_model::Capability::Maintainer
+                    Some(stikk_model::Capability::Maintainer)
                 );
             }
             RefWritePreview::Blocked(reason) => panic!("{reason}"),

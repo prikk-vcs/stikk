@@ -56,7 +56,12 @@ pub struct ConfirmationSummary {
     pub counts: Vec<(&'static str, u64)>,
     /// The capability this operation consumes (`AUTHOR`/`MAINTAINER`) — informative only for
     /// tier-3-typed, which is gated on Operator readiness (`AC-04`), not the signing ladder.
-    pub capability: Capability,
+    ///
+    /// **`None` means the operation consumes none**, and the card says so (RFC 045 §3c). A branch
+    /// switch signs nothing: prikk needs no key for it (F1, measured), so naming a capability
+    /// here would state a requirement stikk invented. It is an absence of consumption, never an
+    /// absence of information.
+    pub capability: Option<Capability>,
     /// What becomes permanent, and what does not — in stikk's own words.
     pub consequence: String,
     /// The exact name the user must type back for a tier-3-typed confirmation (`FR-102`/`FR-103`).
@@ -127,6 +132,104 @@ pub struct ConfirmationSummary {
     /// repository-sourced string, and burying it inside [`Self::consequence`] -- which this
     /// type's own contract says a repository can never influence -- would smuggle it past that.
     pub message_note: Option<String>,
+    /// RFC 045 decision 5: the files a switch will write and delete. `None` for every operation
+    /// that writes no file.
+    ///
+    /// **The one part of a switch's card allowed to give up height**, as [`Self::freezes`] is for
+    /// seal: the counts, the consequence and the affordances are never clipped to make room for
+    /// paths, and when paths give up rows the card says how many, in
+    /// [`unshown_paths_line`]'s words. Every path is repository text: render each inert
+    /// (`C-T2a`).
+    pub materializes: Option<FilePlan>,
+}
+
+/// What a switch will do to the worktree, from stikk's own Compare (RFC 045 decision 5).
+///
+/// **stikk classifies prikk's entries; it computes no part of the comparison** (RFC 038 §7 trap
+/// 1). The mapping is measured, not assumed: at 0.52.0 a `diff` listing one `modified`, one
+/// `deleted` and one `added` was followed by a switch reporting **written 2, deleted 1**, with
+/// the worktree then holding exactly the target's files (RFC 045 F4).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct FilePlan {
+    /// Paths the switch will write — prikk's `added` and `modified`, and a rename's destination.
+    pub written: Vec<String>,
+    /// Paths the switch will delete — prikk's `deleted`, and a rename's source.
+    pub deleted: Vec<String>,
+}
+
+impl FilePlan {
+    /// Classify a comparison into the files a switch will write and delete, or `None` when the
+    /// plan would not be whole (RFC 045 §6 trap 2).
+    ///
+    /// **`None` for anything unmeasured.** A status word stikk has not measured is kept and shown
+    /// by Compare, which is right there — it is prikk's word about a difference, and a reader
+    /// loses nothing by seeing it. Here it would be a **hole in a plan the user is about to
+    /// confirm**, and `FR-053` asks them to confirm what will happen. The same for any
+    /// `unsupported_paths`: prikk could not look at that path, which is not the same fact as
+    /// having looked and found nothing (`C-T2c′`).
+    #[must_use]
+    pub fn classify(diff: &stikk_prikk::Diff) -> Option<Self> {
+        if !diff.unsupported_paths.is_empty() {
+            return None;
+        }
+        let mut plan = Self::default();
+        for entry in &diff.entries {
+            match entry.status.as_str() {
+                // A rename moves the bytes: the destination is written and the source goes.
+                // prikk reports it as one entry carrying both paths.
+                "renamed" => {
+                    plan.written.push(entry.path.clone());
+                    plan.deleted.push(
+                        entry
+                            .from_path
+                            .clone()
+                            .unwrap_or_else(|| entry.path.clone()),
+                    );
+                }
+                "added" | "modified" | "mode" | "binary" => plan.written.push(entry.path.clone()),
+                "deleted" => plan.deleted.push(entry.path.clone()),
+                // Measured status words are the five above and `renamed` (RFC 038 decision 2).
+                // Anything else is a change stikk cannot place in the plan.
+                _ => return None,
+            }
+        }
+        Some(plan)
+    }
+
+    /// True when the switch writes and deletes nothing — the two branches hold the same files.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.written.is_empty() && self.deleted.is_empty()
+    }
+
+    /// Every path, written first then deleted, each with stikk's own one-word mark.
+    ///
+    /// **The mark is stikk's and the path is prikk's**, which is why they are returned apart: the
+    /// frontend styles the mark as chrome and renders the path inert.
+    #[must_use]
+    pub fn rows(&self) -> Vec<(&'static str, &str)> {
+        self.written
+            .iter()
+            .map(|path| ("written", path.as_str()))
+            .chain(self.deleted.iter().map(|path| ("deleted", path.as_str())))
+            .collect()
+    }
+}
+
+/// The line a switch confirmation shows when it cannot hold every path row (RFC 045 §3c):
+/// `unshown` is exactly the rows not shown, and `total` every path in the plan. The frontend
+/// decides only how many rows fit, never what this says.
+///
+/// **A fact, and no key**, for the reason [`unshown_patches_line`] gives: `Esc` cancels, so
+/// telling a reader to press it mid-confirmation would send them out of the flow. Where the plan
+/// can be seen whole is Compare, which is the same comparison this plan was made from.
+#[must_use]
+pub fn unshown_paths_line(unshown: usize, total: usize) -> String {
+    if unshown >= total {
+        format!("none shown here — d, between these two refs, lists all {total}")
+    } else {
+        format!("and {unshown} more not shown — d, between these two refs, lists all {total}")
+    }
 }
 
 /// How many characters of an object id a short id shows — the form History's block rows use, shared so a

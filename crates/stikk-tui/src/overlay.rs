@@ -244,6 +244,15 @@ pub enum Overlay {
         /// prikk's printed lines, exactly as it printed them.
         lines: Vec<String>,
     },
+    /// RFC 045 decision 8: what prikk printed after a switch, **both streams, verbatim and
+    /// apart**. prikk can name a snapshot fallback on stderr at exit 0, and that is a different
+    /// kind of statement from the counts on stdout.
+    SwitchResult {
+        /// stdout's lines, in order.
+        printed: Vec<String>,
+        /// stderr's lines at exit 0, in order — usually empty.
+        noted: Vec<String>,
+    },
 }
 
 /// Which ref an [`Overlay::RefName`] prompt is naming (RFC 044 decision 5). It decides the fixed
@@ -323,6 +332,7 @@ impl Overlay {
             } => " New tag ",
             Self::TagMessage { .. } => " Tag message ",
             Self::RefWriteResult { kind, .. } => kind.done_title(),
+            Self::SwitchResult { .. } => " Switched ",
         }
     }
 }
@@ -435,6 +445,9 @@ pub fn render(
         } => render_tag_message(name, target, typed, palette, frame, area),
         Overlay::RefWriteResult { kind, lines } => {
             render_ref_write_result(*kind, lines, palette, frame, area);
+        }
+        Overlay::SwitchResult { printed, noted } => {
+            render_switch_result(printed, noted, palette, frame, area);
         }
     }
 }
@@ -549,6 +562,11 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
             "tag this ref's tip, or this block (History, Block detail)",
         ),
         key_line(palette, "x", "close this branch (in the ref picker)"),
+        key_line(
+            palette,
+            "s",
+            "switch to this branch — rewrites the worktree (ref picker)",
+        ),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
         key_line(palette, "o", "background operations"),
@@ -1381,8 +1399,14 @@ fn render_confirmation(
         lines.len() - 1
     };
 
+    // **An operation that consumes no capability says so** (RFC 045 §3c). A branch switch signs
+    // nothing, and prikk needs no key for it — an absent row would read as an omission, and a
+    // `Consumes:` row naming a capability would state a requirement stikk invented.
     lines.push(Line::from(Span::styled(
-        format!("  Consumes: {}", capability_label(summary.capability)),
+        match summary.capability {
+            Some(capability) => format!("  Consumes: {}", capability_label(capability)),
+            None => "  Consumes: no signing key".to_string(),
+        },
         Style::default().fg(palette.dim),
     )));
     // `FL-05` step 5, unmet since before 0.4.0: the confirmation must name **which key** will sign,
@@ -1503,6 +1527,14 @@ fn render_confirmation(
         let list = frozen_lines(freezes, available, palette);
         lines.splice(frozen_at..frozen_at, list);
     }
+    // RFC 045 §3c: a switch's file plan gives up height the same way, in the same place, for the
+    // same reason — and **never silently**: what it gives up, it says.
+    if let Some(plan) = &summary.materializes {
+        let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(actions.len());
+        let available = prose_rows.saturating_sub(lines.len());
+        let list = plan_lines(plan, available, palette);
+        lines.splice(frozen_at..frozen_at, list);
+    }
 
     Panel {
         title: " Confirm ",
@@ -1512,6 +1544,81 @@ fn render_confirmation(
         style: Style::default().fg(palette.warn),
     }
     .render(frame, area);
+}
+
+/// The rows naming the files a switch will write and delete, fitted to `available` rows
+/// (RFC 045 §3c) — [`frozen_lines`]'s shape, for the same reason and with the same rule.
+///
+/// - **Every row fits:** every row.
+/// - **Otherwise:** as many rows as fit with room kept for the remainder line, then that line —
+///   its count exactly the rows not shown, in [`stikk_core::unshown_paths_line`]'s words.
+/// - **Not even one row and the remainder fit:** the remainder line alone.
+///
+/// **The mark is stikk's and the path is prikk's.** The mark is a fixed word this module styles;
+/// the path is repository text and is rendered inert (`C-T2a`), wrapped by cells so a path in a
+/// wide script cannot draw past the card while counting as one row.
+fn plan_lines(
+    plan: &stikk_core::FilePlan,
+    available: usize,
+    palette: &Palette,
+) -> Vec<Line<'static>> {
+    let rows = plan.rows();
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    let drawn = |(mark, path): &(&'static str, &str)| -> Vec<Line<'static>> {
+        let style = if *mark == "deleted" {
+            Style::default().fg(palette.warn)
+        } else {
+            Style::default().fg(palette.fg)
+        };
+        let head = format!("    {mark}  ");
+        let text = inert(path);
+        if Span::raw(text.as_str()).width() + Span::raw(head.as_str()).width() <= PANEL_TEXT_WIDTH {
+            return vec![Line::from(vec![
+                Span::styled(head, Style::default().fg(palette.dim)),
+                Span::styled(text, style),
+            ])];
+        }
+        // Too wide beside its mark: the mark takes its own row so the path keeps the full width.
+        let mut out = vec![Line::from(Span::styled(
+            format!("    {mark}"),
+            Style::default().fg(palette.dim),
+        ))];
+        for row in wrap_cells(&text, PANEL_TEXT_WIDTH, "      ") {
+            out.push(Line::from(Span::styled(row, style)));
+        }
+        out
+    };
+    let remainder = |unshown: usize| -> Vec<Line<'static>> {
+        wrap_indented(
+            &stikk_core::unshown_paths_line(unshown, rows.len()),
+            PANEL_TEXT_WIDTH,
+            "    ",
+        )
+        .into_iter()
+        .map(|row| Line::from(Span::styled(row, Style::default().fg(palette.dim))))
+        .collect()
+    };
+    let every: Vec<Vec<Line<'static>>> = rows.iter().map(drawn).collect();
+    if every.iter().map(Vec::len).sum::<usize>() <= available {
+        return every.into_iter().flatten().collect();
+    }
+    // Room is kept for the remainder line **first**: a list that silently stops is the defect
+    // this whole shape exists to prevent.
+    let foot = remainder(rows.len());
+    let room = available.saturating_sub(foot.len());
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut shown = 0usize;
+    for row in &every {
+        if out.len() + row.len() > room {
+            break;
+        }
+        out.extend(row.clone());
+        shown += 1;
+    }
+    out.extend(remainder(rows.len() - shown));
+    out
 }
 
 /// The rows naming what a seal freezes, fitted to `available` rows (RFC 028 Handoff B §4), in core's words.
@@ -2097,6 +2204,67 @@ fn render_ref_write_result(
         // worst thing this overlay could clip.
         actions: vec![Line::from(Span::styled(
             "  Enter · Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 045 decision 8: what prikk printed after a switch, **verbatim** (`C-T4a`/`ER-02`), in the
+/// quoted region [`render_ref_write_result`] uses and for the same reason: there is no JSON here
+/// (F1), so this is prikk's own prose, unparsed.
+///
+/// **The two streams are labelled and kept apart.** stdout carries the result — which branch, and
+/// the three counts. stderr, at exit 0, carries a note about *how* prikk got there (a snapshot
+/// fallback). Running them together would make one sentence out of two different statements.
+fn render_switch_result(
+    printed: &[String],
+    noted: &[String],
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            "  the worktree is the new branch's files",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    let quoted = |label: &str, lines: &[String], prose: &mut Vec<Line<'static>>| {
+        if lines.is_empty() {
+            return;
+        }
+        prose.push(Line::from(Span::styled(
+            format!("  {label}"),
+            Style::default().fg(palette.dim),
+        )));
+        for line in lines {
+            let inert_line = inert(line);
+            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
+                prose.push(Line::from(vec![
+                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
+                    Span::styled(
+                        row.get(QUOTE_INDENT.len()..)
+                            .unwrap_or_default()
+                            .to_string(),
+                        Style::default().fg(palette.fg),
+                    ),
+                ]));
+            }
+        }
+        prose.push(Line::from(""));
+    };
+    quoted("prikk reported \u{2014}", printed, &mut prose);
+    quoted("and noted \u{2014}", noted, &mut prose);
+
+    Panel {
+        title: " Switched ",
+        width: SEAL_WIDTH,
+        prose,
+        actions: vec![Line::from(Span::styled(
+            "  Enter \u{b7} Esc to dismiss",
             Style::default().fg(palette.accent),
         ))],
         style: Style::default().fg(palette.fg),

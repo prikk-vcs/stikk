@@ -524,7 +524,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         operation: "Commit worktree changes".to_string(),
         target_ids: target_ids.into_iter().map(str::to_string).collect(),
         counts: vec![("patches", 3)],
-        capability: Capability::Author,
+        capability: Some(Capability::Author),
         consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
         target_name: target_name.map(str::to_string),
         signing_key_id: None,
@@ -536,6 +536,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 
@@ -1014,7 +1015,7 @@ fn summary_with_key_id(
         operation: operation.to_string(),
         target_ids: vec!["heads/main".to_string()],
         counts: vec![("patches", 3)],
-        capability,
+        capability: Some(capability),
         consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
         target_name: None,
         signing_key_id: key_id.map(str::to_string),
@@ -1026,6 +1027,7 @@ fn summary_with_key_id(
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 
@@ -1254,6 +1256,9 @@ fn coverage(overlay: &Overlay) -> Coverage {
         // RFC 044 decision 8: a content card. prikk prints four lines at most today, but the count
         // is prikk's, not stikk's, so it is treated as content that can grow.
         Overlay::RefWriteResult { .. } => Coverage::NoSelection,
+        // RFC 045 decision 8: a content card carrying prikk's two streams. Four lines today, but
+        // the count is prikk's, so it is treated as content that can grow.
+        Overlay::SwitchResult { .. } => Coverage::NoSelection,
     }
 }
 
@@ -1285,7 +1290,7 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         operation: "Seal the active WAL".to_string(),
         target_ids: vec!["heads/main".to_string()],
         counts: vec![("patches", 3)],
-        capability: Capability::Maintainer,
+        capability: Some(Capability::Maintainer),
         consequence: consequence.to_string(),
         target_name: None,
         signing_key_id: Some("dev-maintainer".to_string()),
@@ -1297,6 +1302,7 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 
@@ -1531,6 +1537,17 @@ fn cases() -> Vec<Case> {
             entry: None,
         },
         Case {
+            name: "SwitchResult",
+            build: Box::new(|_| Overlay::SwitchResult {
+                printed: (0..30)
+                    .map(|i| format!("files written: {i:02} in some long accounting line"))
+                    .collect(),
+                noted: vec!["note: replayed from the snapshot fallback".to_string()],
+            }),
+            last_row: "Enter · Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
             name: "SealResult",
             build: Box::new(move |_| Overlay::SealResult {
                 result: stikk_prikk::SealResult {
@@ -1660,21 +1677,21 @@ fn the_gate_is_fed_content_that_actually_overflows() {
 
 /// Coverage is complete, and stays complete.
 ///
-/// `coverage()`'s match is exhaustive with no `_` arm, so a nineteenth `Overlay` variant **will not
+/// `coverage()`'s match is exhaustive with no `_` arm, so a twentieth `Overlay` variant **will not
 /// compile** until it is classified there. This asserts the second half: that it also gets a case.
 #[test]
 fn the_gate_covers_every_overlay_variant() {
     assert_eq!(
         cases().len(),
-        17,
-        "The gate carries seventeen cases. If an `Overlay` variant was added, `coverage()` will \
+        18,
+        "The gate carries eighteen cases. If an `Overlay` variant was added, `coverage()` will \
          already have refused to compile; add its case to `cases()` too — built oversized, or the \
          new case asserts nothing."
     );
     let mut names: Vec<&str> = cases().iter().map(|c| c.name).collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 17, "duplicate case names: {names:?}");
+    assert_eq!(names.len(), 18, "duplicate case names: {names:?}");
 }
 
 // --- RFC 024 F1/F2/F5: the three shipped defects, each pinned by its own named test -------------
@@ -1775,7 +1792,7 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         operation: "Commit worktree changes".to_string(),
         target_ids: vec!["heads/main".to_string()],
         counts: vec![("modified", 1)],
-        capability: Capability::Author,
+        capability: Some(Capability::Author),
         consequence: "Queues this worktree capture as a new patch in the active WAL; nothing is \
                       sealed until you run Seal."
             .to_string(),
@@ -1789,6 +1806,7 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         rename_note: None,
         declaration_notices: Vec::new(),
         message_note: None,
+        materializes: None,
     }
 }
 
@@ -3004,4 +3022,233 @@ fn capture_rfc044_ref_writes_at_80_columns() {
     assert!(draw_at(&name_prompt, 80, 14).contains("heads/feature"));
     assert!(draw_at(&tag_message, 80, 14).contains("first release"));
     assert!(draw_at(&result, 80, 16).contains("closed branch heads/old"));
+}
+
+// =============================================================================================
+// RFC 045 — the switch card and its result.
+// =============================================================================================
+
+fn switch_side(point: &str) -> stikk_prikk::DiffSide {
+    stikk_prikk::DiffSide {
+        point: point.to_string(),
+        target: stikk_prikk::DiffTarget::Block("b".repeat(64)),
+        queued: stikk_prikk::QueuedOnSide::NotApplicable,
+    }
+}
+
+fn switch_entry(path: &str, status: &str) -> stikk_prikk::DiffEntry {
+    stikk_prikk::DiffEntry {
+        path: path.to_string(),
+        status: status.to_string(),
+        from_path: None,
+        from: None,
+        to: None,
+        minimal: true,
+        hunks: Vec::new(),
+        raw: "{}".to_string(),
+    }
+}
+
+/// A 0.52 session on `heads/main` whose comparison with `heads/feature` is `entries`.
+fn switch_backend(entries: Vec<stikk_prikk::DiffEntry>) -> stikk_prikk::NullBackend {
+    let current = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse("heads/main").expect("a ref name"),
+    );
+    stikk_prikk::NullBackend::supported()
+        .with_version(0, 52, 0)
+        .with_orientation(stikk_prikk::Orientation {
+            interrupted_materialization: None,
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: current.clone(),
+        })
+        .with_change_token(stikk_model::ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            0,
+            None,
+            &current,
+        ))
+        .with_history(stikk_prikk::History {
+            reff: "heads/feature".to_string(),
+            blocks: vec![stikk_prikk::BlockRow {
+                block_id: "7f3a9c21".repeat(8),
+                ref_state_id: "6bfe4884".repeat(8),
+                update_seq: 2,
+                kind: "Normal".to_string(),
+                rollback_block: false,
+                parents: 1,
+                patches: 1,
+                rollback_patches: 0,
+                required_attestations: 0,
+                messages: Vec::new(),
+                previous_ref_state: None,
+            }],
+        })
+        .with_diff(stikk_prikk::Diff {
+            from: switch_side("heads/main"),
+            to: switch_side("heads/feature"),
+            entries,
+            unsupported_paths: Vec::new(),
+        })
+}
+
+fn switch_card(entries: Vec<stikk_prikk::DiffEntry>) -> Overlay {
+    let backend = switch_backend(entries);
+    match stikk_core::switch_preview(&backend, std::path::Path::new("/repo"), "heads/feature")
+        .expect("reads")
+    {
+        stikk_core::SwitchPreview::Ready { token } => Overlay::Confirmation {
+            summary: Box::new(token.summary().clone()),
+            tier: token.tier(),
+            typed: String::new(),
+            error: None,
+        },
+        stikk_core::SwitchPreview::Blocked(reason) => panic!("expected Ready, got {reason}"),
+    }
+}
+
+/// **The card says no signing key is used**, rather than naming a capability the switch never
+/// consumes (RFC 045 §3c).
+#[test]
+fn a_switch_card_consumes_no_signing_key() {
+    let text = draw(&switch_card(vec![switch_entry("a.txt", "modified")]));
+    assert!(text.contains("Consumes: no signing key"), "{text}");
+    assert!(!text.contains("MAINTAINER"), "{text}");
+}
+
+/// Every path is marked written or deleted, and the counts agree with the rows.
+#[test]
+fn a_switch_card_marks_every_path_written_or_deleted() {
+    let text = draw(&switch_card(vec![
+        switch_entry("a.txt", "modified"),
+        switch_entry("c.txt", "added"),
+        switch_entry("b.txt", "deleted"),
+    ]));
+    assert!(text.contains("2 written, 1 deleted"), "{text}");
+    for (mark, path) in [
+        ("written", "a.txt"),
+        ("written", "c.txt"),
+        ("deleted", "b.txt"),
+    ] {
+        assert!(
+            text.lines().any(|l| l.contains(mark) && l.contains(path)),
+            "{mark} {path} is not on the card:\n{text}"
+        );
+    }
+}
+
+/// **A plan too tall for the card says what it is not showing** (§3c) — never a silent cut.
+#[test]
+fn a_switch_card_that_cannot_hold_every_path_says_how_many_it_hid() {
+    let entries: Vec<_> = (0..40)
+        .map(|i| switch_entry(&format!("src/file-{i:03}.rs"), "modified"))
+        .collect();
+    let card = switch_card(entries);
+    let text = draw_at(&card, 80, 24);
+    assert!(
+        text.contains("more not shown") || text.contains("none shown here"),
+        "a plan that does not fit must say so:\n{text}"
+    );
+    assert!(
+        text.contains("Enter to confirm"),
+        "and the affordance is never what gives way:\n{text}"
+    );
+}
+
+/// **An empty plan says the switch writes nothing**, rather than showing a blank list.
+#[test]
+fn an_empty_plan_says_the_switch_writes_nothing() {
+    let text = draw(&switch_card(Vec::new()));
+    assert!(text.contains("writes nothing"), "{text}");
+    assert!(text.contains("0 written, 0 deleted"), "{text}");
+}
+
+/// A path is repository text, so it is inert on the card too (`C-T2a`).
+#[test]
+fn a_planned_path_is_inert() {
+    let text = draw(&switch_card(vec![switch_entry(
+        "src/\u{202e}evil.rs",
+        "modified",
+    )]));
+    assert!(text.contains("\\u202e"), "{text}");
+}
+
+/// The result card keeps prikk's two streams apart and labelled (decision 8).
+#[test]
+fn the_switch_result_keeps_the_two_streams_apart() {
+    let text = draw(&Overlay::SwitchResult {
+        printed: vec![
+            "switched from heads/main to heads/feature".to_string(),
+            "files written: 2".to_string(),
+        ],
+        noted: vec!["note: replayed from the snapshot fallback".to_string()],
+    });
+    assert!(text.contains("prikk reported"), "{text}");
+    assert!(text.contains("and noted"), "{text}");
+    assert!(text.contains("switched from heads/main"), "{text}");
+    assert!(text.contains("snapshot fallback"), "{text}");
+}
+
+/// An ordinary switch notes nothing, and the card shows no empty section for it.
+#[test]
+fn a_switch_result_with_no_notes_shows_no_note_section() {
+    let text = draw(&Overlay::SwitchResult {
+        printed: vec!["switched from heads/main to heads/feature".to_string()],
+        noted: Vec::new(),
+    });
+    assert!(text.contains("prikk reported"), "{text}");
+    assert!(!text.contains("and noted"), "{text}");
+}
+
+/// **RFC 045's captures, at exactly 80 columns**: the preview with a few paths, the preview with
+/// overflow, an empty plan, and the result card. Reproduce with
+/// `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+#[test]
+fn capture_rfc045_switch_at_80_columns() {
+    let few = switch_card(vec![
+        switch_entry("src/app.rs", "modified"),
+        switch_entry("src/switch.rs", "added"),
+        switch_entry("src/old.rs", "deleted"),
+    ]);
+    let many = switch_card(
+        (0..40)
+            .map(|i| switch_entry(&format!("crates/stikk-core/src/file-{i:03}.rs"), "modified"))
+            .collect(),
+    );
+    let empty = switch_card(Vec::new());
+    let result = Overlay::SwitchResult {
+        printed: vec![
+            "switched from heads/main to heads/feature".to_string(),
+            "files written: 2".to_string(),
+            "files unchanged: 0".to_string(),
+            "files deleted: 1".to_string(),
+        ],
+        noted: vec!["note: replayed from the snapshot fallback".to_string()],
+    };
+    for (label, overlay, height) in [
+        ("switch \u{2014} the preview, a few paths", &few, 24),
+        (
+            "switch \u{2014} the preview, more paths than fit",
+            &many,
+            24,
+        ),
+        (
+            "switch \u{2014} two branches with the same files",
+            &empty,
+            20,
+        ),
+        ("switch \u{2014} the result", &result, 18),
+    ] {
+        println!(
+            "--- {label} (80 columns) ---\n{}",
+            draw_at(overlay, 80, height)
+        );
+    }
+    assert!(draw_at(&few, 80, 24).contains("src/switch.rs"));
+    assert!(draw_at(&many, 80, 24).contains("not shown"));
+    assert!(draw_at(&empty, 80, 20).contains("writes nothing"));
+    assert!(draw_at(&result, 80, 18).contains("files deleted: 1"));
 }

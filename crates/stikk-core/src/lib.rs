@@ -29,6 +29,7 @@ pub mod queue;
 pub mod refs;
 pub mod refusal_history;
 pub mod seal;
+pub mod switch;
 pub mod verify;
 
 pub use change_token::{change_token, staleness_notice};
@@ -47,9 +48,9 @@ pub use compare::{
     compared,
 };
 pub use confirm::{
-    ConfirmationSummary, ConfirmedToken, Evidence, FrozenPatches, Intent, KeyClaim, Outcome,
-    PreviewToken, SHORT_ID_CHARS, branch_notice, capability_gate, confirm, execute, preview,
-    signing_key_claim, unshown_patches_line,
+    ConfirmationSummary, ConfirmedToken, Evidence, FilePlan, FrozenPatches, Intent, KeyClaim,
+    Outcome, PreviewToken, SHORT_ID_CHARS, branch_notice, capability_gate, confirm, execute,
+    preview, signing_key_claim, unshown_patches_line, unshown_paths_line,
 };
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{
@@ -78,6 +79,11 @@ pub use refs::{
 pub use refusal_history::{RefusalHistory, RefusalRecord};
 pub use seal::{
     SEAL_CONSENT_COPY, SEAL_OPERATION, SealPreviewOutcome, seal_confirm_and_execute, seal_preview,
+};
+pub use switch::{
+    ALREADY_THE_CURRENT_BRANCH, INCOMPLETE_PLAN, NO_FILE_PLAN, SWITCH_FROM_MINOR, SWITCH_OPERATION,
+    SwitchPreview, WORK_IS_QUEUED_FOR_THIS_BRANCH, switch_confirm_and_execute, switch_preview,
+    switch_unavailable,
 };
 pub use verify::{
     Checked, ConditionRow, JSON_OMITS, StageRow, VERIFY_FROM_MINOR, VerifyView, checked, verify,

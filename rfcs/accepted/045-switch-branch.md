@@ -1,8 +1,8 @@
 # RFC 045 — Switch branch
 
-**Status.** **Proposed 2026-10-17** by the architect, as 0.13.0's increment 3 (`.git-exclude/release/0-13-0-scope.md`,
-authorized). **No open question.** **One departure from the scope's wording** (decision 3), for the owner's ruling on
-acceptance.
+**Status.** **Accepted by the project owner 2026-10-17**, decision 3 (Tier Three rather than the scope's typed name)
+with it; [Handoff A](../handoffs/045-switch-branch/a-switch-branch-handoff-v1.md) issued. **Proposed 2026-10-17** by the
+architect, as 0.13.0's increment 3 (`.git-exclude/release/0-13-0-scope.md`, authorized). **No open question.**
 Measured against a real prikk **0.52.0**. Evidence: `.git-exclude/reports/045-switch-branch/` (`measure045.sh`,
 `measure045-0.52.txt`; `measure045-queued-target.sh`, `measure045-queued-target-0.52.txt`). prikk's source was read in
 the clone (`prikk-store/src/branch_switch.rs`, `prikk-cli/src/branch.rs`).

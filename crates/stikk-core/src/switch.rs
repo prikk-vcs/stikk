@@ -24,7 +24,7 @@
 
 use std::path::Path;
 
-use stikk_model::{CurrentBranch, RequestCategory, Result};
+use stikk_model::{CurrentBranch, RequestCategory, Result, StikkError};
 use stikk_prikk::{Comparison, DiffReport, Prikk, SwitchResult};
 
 use crate::confirm::{
@@ -96,9 +96,10 @@ pub fn switch_unavailable(minor: u32) -> String {
 /// switch stikk will not make never costs a `diff`.
 ///
 /// # Errors
-/// Propagates any [`stikk_model::StikkError`] the orientation read raises. **A failed comparison
-/// is not an error here**: it is the fourth blocked case, because a switch stikk cannot describe
-/// is one stikk does not offer.
+/// Propagates any [`StikkError`] the orientation read raises, and every one the comparison
+/// raises **except a refusal**. A comparison prikk *refused* is the fourth blocked case, because
+/// a switch stikk cannot describe is one stikk does not offer; a comparison a **lock** or the
+/// environment stopped is not a fact about the plan at all, and travels as itself.
 pub fn switch_preview(prikk: &impl Prikk, repo: &Path, target: &str) -> Result<SwitchPreview> {
     let target = target.to_string();
     let intent = Intent {
@@ -127,12 +128,21 @@ pub fn switch_preview(prikk: &impl Prikk, repo: &Path, target: &str) -> Result<S
             from: current.clone(),
             to: target.clone(),
         };
-        let Ok(DiffReport::Listed(diff)) = prikk.diff(repo, &comparison) else {
-            // Below the band, or a comparison prikk would not make -- an unpublished current
-            // branch among them, which refuses with *"does not exist"*. Either way there is no
-            // plan, and stikk says that rather than passing on a sentence about the branch the
-            // reader is standing on.
-            return Ok(blocked(NO_FILE_PLAN));
+        let diff = match prikk.diff(repo, &comparison) {
+            Ok(DiffReport::Listed(diff)) => diff,
+            // **Below the band, or a comparison prikk refused** -- an unpublished current branch
+            // among them, which refuses with *"does not exist"*. Either way there is no plan,
+            // and stikk says that rather than passing on a sentence about the branch the reader
+            // is standing on.
+            Ok(DiffReport::Unreported) | Err(StikkError::Refusal { .. }) => {
+                return Ok(blocked(NO_FILE_PLAN));
+            }
+            // **Everything else travels as itself** (review v1 C1). A lock conflict, an
+            // environment fault or an internal error says nothing about whether a plan exists:
+            // the way out of a held lock is not `prikk branch switch`, and a lock has its own
+            // handling everywhere else in stikk. Answering *no file plan* here would hide a
+            // failure behind a sentence about something that is not wrong.
+            Err(other) => return Err(other),
         };
         let Some(plan) = FilePlan::classify(&diff) else {
             return Ok(blocked(INCOMPLETE_PLAN));

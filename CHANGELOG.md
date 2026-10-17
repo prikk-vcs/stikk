@@ -25,8 +25,8 @@ confirm-and-executes, `ref_writes_unavailable`, `REF_WRITES_FROM_MINOR`,
 `CLOSING_THE_CURRENT_BRANCH` and the three operation names; `stikk_core::switch` with
 `SwitchPreview`, `switch_preview`, `switch_confirm_and_execute`, `switch_unavailable`,
 `SWITCH_FROM_MINOR`, `SWITCH_OPERATION` and its three blocked reasons; `stikk_core::FilePlan` and
-`unshown_paths_line`; `NullBackend::with_ref_write`, `with_ref_write_refusal`, `with_switch` and
-`with_switch_refusal`; `stikk_tui::overlay::RefNameKind`/`RefWriteKind` and
+`unshown_paths_line`; `NullBackend::with_ref_write`, `with_ref_write_refusal`, `with_switch`,
+`with_switch_refusal` and `with_diff_lock_conflict`; `stikk_tui::overlay::RefNameKind`/`RefWriteKind` and
 `App::begin_create_branch`/`begin_create_tag`/`begin_close_branch`/`begin_switch_branch`.
 **No public item was removed except the three listed above.** The MSRV is unchanged at 1.88.
 

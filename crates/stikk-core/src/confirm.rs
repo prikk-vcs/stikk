@@ -220,15 +220,21 @@ impl FilePlan {
 /// `unshown` is exactly the rows not shown, and `total` every path in the plan. The frontend
 /// decides only how many rows fit, never what this says.
 ///
-/// **A fact, and no key**, for the reason [`unshown_patches_line`] gives: `Esc` cancels, so
-/// telling a reader to press it mid-confirmation would send them out of the flow. Where the plan
-/// can be seen whole is Compare, which is the same comparison this plan was made from.
+/// **A fact, and no key to press now**, for the reason [`unshown_patches_line`] gives: `Esc`
+/// cancels, so telling a reader to press it mid-confirmation would send them out of the flow.
+///
+/// **It names the whole route, not one key** (RFC 045 review v1 C2). Where the plan can be seen
+/// whole is Compare, over the same two refs this plan was made from — and `d` alone does not get
+/// there: in the ref picker it answers *"mark a ref with m first"*. RFC 041's route is **`m` on
+/// one branch, then `d` on the other**, so that is what this says.
 #[must_use]
 pub fn unshown_paths_line(unshown: usize, total: usize) -> String {
+    let route =
+        format!("Compare lists all {total} (in the ref picker: m on one branch, d on the other)");
     if unshown >= total {
-        format!("none shown here — d, between these two refs, lists all {total}")
+        format!("none shown here — {route}")
     } else {
-        format!("and {unshown} more not shown — d, between these two refs, lists all {total}")
+        format!("and {unshown} more not shown — {route}")
     }
 }
 

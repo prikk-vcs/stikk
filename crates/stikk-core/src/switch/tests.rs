@@ -229,6 +229,29 @@ fn without_a_comparison_there_is_no_switch_and_stikk_says_why() {
     assert_eq!(reason, NO_FILE_PLAN);
 }
 
+/// **A comparison a lock stopped is not "no file plan"** (review v1 C1).
+///
+/// `NO_FILE_PLAN` sends the reader to `prikk branch switch`, which is the way out of an
+/// uncomparable current branch and of nothing else. A held lock, an environment fault or an
+/// internal error says nothing about whether a plan exists, and each has its own handling
+/// everywhere else in stikk — so each travels as itself.
+#[test]
+fn a_comparison_stopped_by_a_lock_travels_as_itself() {
+    let locked =
+        on_main().with_diff_lock_conflict("another prikk process holds the repository lock");
+    let error = switch_preview(&locked, repo(), "heads/feature")
+        .expect_err("a lock is not a blocked preview");
+    assert_eq!(error.class(), "lock-conflict", "{error}");
+    assert!(
+        error.to_string().contains("holds the repository lock"),
+        "prikk's own words reach the caller: {error}"
+    );
+    assert!(
+        !error.to_string().contains("prikk branch switch"),
+        "and never the no-plan reason: {error}"
+    );
+}
+
 /// **Tier Three, and no key** (decisions 2 and 3).
 #[test]
 fn a_switch_is_tier_three_and_consumes_no_signing_key() {
@@ -344,5 +367,10 @@ fn the_unshown_line_counts_what_it_hides() {
     ] {
         assert!(line.contains("10"), "{line}");
         assert!(!line.contains("Esc"), "{line}");
+        // **The whole route, not one key** (review v1 C2): `d` alone, in the picker, answers
+        // "mark a ref with m first".
+        assert!(line.contains("ref picker"), "{line}");
+        assert!(line.contains("m on one branch"), "{line}");
+        assert!(line.contains("d on the other"), "{line}");
     }
 }

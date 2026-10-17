@@ -41,6 +41,18 @@ enum ScriptedSeal {
     NotReady(String),
 }
 
+/// A scripted comparison. Not `Scripted<T>`, for the reason [`ScriptedCommit`] is not: the switch
+/// preview (RFC 045) must tell a comparison prikk **refused** — which means there is no file plan
+/// to confirm — from one a lock or the environment stopped, which is not a fact about the plan at
+/// all. [`deliver`] only ever produces [`StikkError::Refusal`], so that distinction needs its own
+/// shape here.
+#[derive(Debug, Clone)]
+enum ScriptedDiff {
+    Ok(crate::DiffReport),
+    Refusal(String),
+    LockConflict(String),
+}
+
 /// A [`Prikk`] whose answers are set up front.
 #[derive(Debug, Clone)]
 pub struct NullBackend {
@@ -51,7 +63,7 @@ pub struct NullBackend {
     orientation: Scripted<Orientation>,
     history: Scripted<History>,
     state: Scripted<StateReport>,
-    diff: Scripted<crate::DiffReport>,
+    diff: ScriptedDiff,
     verify: Scripted<crate::VerifyReport>,
     /// What a ref write answers. One slot for all three (RFC 044): a test drives one
     /// operation at a time, and sharing it keeps the builder small.
@@ -126,7 +138,7 @@ impl NullBackend {
                 blocks: Vec::new(),
             }),
             // The default is the band below 0.46, matching this backend's default version.
-            diff: Ok(crate::DiffReport::Unreported),
+            diff: ScriptedDiff::Ok(crate::DiffReport::Unreported),
             // The default is the band below 0.39: a backend that has not been given a report
             // has not checked, which is not the same as finding the repository sound.
             verify: Ok(crate::VerifyReport::Unreported),
@@ -353,7 +365,7 @@ impl NullBackend {
     /// Replace the comparison this backend returns from [`Prikk::diff`] (RFC 038).
     #[must_use]
     pub fn with_diff(mut self, diff: crate::Diff) -> Self {
-        self.diff = Ok(crate::DiffReport::Listed(diff));
+        self.diff = ScriptedDiff::Ok(crate::DiffReport::Listed(diff));
         self
     }
 
@@ -405,7 +417,16 @@ impl NullBackend {
     /// Fail [`Prikk::diff`], so a test can show a refusal reaching the usual path verbatim.
     #[must_use]
     pub fn with_diff_refusal(mut self, message: impl Into<String>) -> Self {
-        self.diff = Err(message.into());
+        self.diff = ScriptedDiff::Refusal(message.into());
+        self
+    }
+
+    /// Make [`Prikk::diff`] fail with a **lock conflict** rather than a refusal (RFC 045 review
+    /// v1 C1). A comparison stopped by a lock says nothing about whether a plan exists, so the
+    /// switch preview must let it travel as itself instead of answering *no file plan*.
+    #[must_use]
+    pub fn with_diff_lock_conflict(mut self, message: impl Into<String>) -> Self {
+        self.diff = ScriptedDiff::LockConflict(message.into());
         self
     }
 
@@ -576,7 +597,11 @@ impl Prikk for NullBackend {
     }
 
     fn diff(&self, _repo: &Path, _comparison: &crate::Comparison) -> Result<crate::DiffReport> {
-        deliver(&self.diff)
+        match self.diff.clone() {
+            ScriptedDiff::Ok(report) => Ok(report),
+            ScriptedDiff::Refusal(message) => Err(StikkError::Refusal { message }),
+            ScriptedDiff::LockConflict(message) => Err(StikkError::LockConflict { message }),
+        }
     }
 
     fn verify(&self, _repo: &Path) -> Result<crate::VerifyReport> {

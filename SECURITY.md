@@ -17,7 +17,8 @@ prikk action.
 
 Two invariants are enforced by test, not just review:
 
-- The seam's environment module materializes **no** signing-key value — only presence.
+- No shipped crate reads a signing-key value. Only `stikk-prikk`'s environment module touches
+  those variables, for presence alone, and a test over all six shipped crates enforces it.
 - stikk's path resolver refuses any repository-internal write target. This is the *primary* control,
   because prikk has no general foreign-file scan of `.prikk/` to catch a stray file.
 

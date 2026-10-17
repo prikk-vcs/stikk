@@ -1,6 +1,6 @@
 # RFC 045 — Switch branch
 
-**Status.** **Done 2026-10-17**: Handoff A delivered on `main` (`c652405`, `86c4c85`, `0c7606e`); a **0.13.0** candidate. **Accepted by the project owner 2026-10-17**, decision 3 (Tier Three rather than the scope's typed name)
+**Status.** **Done 2026-10-17**: Handoff A delivered on `main` (`c652405`, `86c4c85`, `0c7606e`); **released in 0.13.0**. **Accepted by the project owner 2026-10-17**, decision 3 (Tier Three rather than the scope's typed name)
 with it; [Handoff A](../handoffs/045-switch-branch/a-switch-branch-handoff-v1.md) issued. **Proposed 2026-10-17** by the
 architect, as 0.13.0's increment 3 (`.git-exclude/release/0-13-0-scope.md`, authorized). **No open question.**
 Measured against a real prikk **0.52.0**. Evidence: `.git-exclude/reports/045-switch-branch/` (`measure045.sh`,

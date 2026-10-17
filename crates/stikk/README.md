@@ -56,7 +56,7 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.12.x installs in one command, prikk included, and tells you whether your repository is
+**v0.13.x installs in one command, prikk included, and tells you whether your repository is
 sound — now against prikk 0.52.0.** **One line installs stikk** — `curl … install.sh | sh`, or `irm … install.ps1 | iex` on
 Windows — checking the download against the checksum published beside it, installing where you own
 it, and offering to install **prikk** through prikk's own verified installer; `cargo binstall
@@ -77,16 +77,19 @@ Block detail, which lists every block's patches **and the files present at that 
 modes** (prikk ≥ 0.46), or from the Queue. `v` shows prikk's own fields instead. Around that it
 reads orientation, ref history, worktree changes and the **Queue view**, with refusal explanations
 and a glossary; the **ref picker offers the branch you are on before its first seal** (prikk ≥
-0.47). It performs two mutations: **commit** (author a worktree capture into the active queue) and
+0.47). It performs six mutations: **commit** (author a worktree capture into the active queue),
 **seal** (freeze that queue into permanent, MAINTAINER-signed history, naming the patches it
-freezes) — both always preview-first, with tiered confirmation a compile error can't let you skip.
+freezes), and — from the ref picker — **create a branch** (`n`), **create a tag** (`t`, or at any
+block from History), **close a branch** (`x`) and **switch to a branch** (`s`, previewed as the
+exact files it will write and delete), at prikk ≥ 0.42 and ≥ 0.46 for a switch — every one of
+them always preview-first, with tiered confirmation a compile error can't let you skip.
 **A confirmed commit authors only the worktree its preview showed.** **stikk notices a commit, seal
 or branch switch made in another terminal** and refreshes what is on screen. **A `prikk mv` is shown
 as the rename prikk says it will author**, from prikk's own verdict at prikk ≥ 0.44, and a
 declaration prikk would refuse makes commit unavailable. **A ref with no published history is named
 as one**, and reads again on prikk 0.45 and 0.46, where prikk refused it by name. **Two refs
 compare from the ref picker** (`b`, then `m` to mark one and `d` to compare it with the selected
-one). Merge, sync, and tag or branch creation are not built yet.
+one). Merge, sync, and checkout of a block or a path are not built yet.
 
 ## Links
 

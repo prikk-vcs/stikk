@@ -1,6 +1,6 @@
 # RFC 044 — Branches and tags: create a branch, create a tag, close a branch
 
-**Status.** **Done 2026-10-17**: Handoff A delivered on `main` (`88bb7d1`, `f938b58`, `126d4a5`); a **0.13.0** candidate. **Accepted by the project owner 2026-10-17.** **Proposed 2026-10-17** by the architect, as 0.13.0's increment 2 (`.git-exclude/release/0-13-0-scope.md`,
+**Status.** **Done 2026-10-17**: Handoff A delivered on `main` (`88bb7d1`, `f938b58`, `126d4a5`); **released in 0.13.0**. **Accepted by the project owner 2026-10-17.** **Proposed 2026-10-17** by the architect, as 0.13.0's increment 2 (`.git-exclude/release/0-13-0-scope.md`,
 authorized). **No open question.**
 Measured against a real prikk **0.52.0**, plus `--help` at **0.28.0** for the floor. Evidence:
 `.git-exclude/reports/044-branches-and-tags/` (`measure044.sh`, `measure044-0.52.txt`).

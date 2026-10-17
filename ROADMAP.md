@@ -273,6 +273,28 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk manages branches and tags, not only browses them (0.13.0, breaking)
+
+- **Block detail's `said` onto `view::wrap_hanging`** (RFC 040's carry,
+  [Handoff B](rfcs/handoffs/040-verify/b-wrap-hanging-tidy-handoff-v1.md)): a pure refactor, folding the third
+  hand-written copy of the opening-row/hanging-row wrap into the shared helper. No row of any capture moved.
+- **Branches and tags** (`FR-070`/`FR-071`, [RFC 044](rfcs/done/044-branches-and-tags.md)): **create a branch**
+  (`n`), **create a tag** (`t`, from the ref picker or at any block in History) and **close a branch** (`x`), each
+  preview-first at seal's tier and capability, running exactly the one prikk command the preview restated and
+  showing prikk's refusals word for word. **stikk adds no naming rules of its own** — an empty name is not sent,
+  and that is the only one — and a refusal hands the typed name back. **The branch you are standing on is never
+  offered for closing**: prikk allows it with an empty WAL and the repository is then on a closed branch where even
+  a default `branch create` refuses, measured at 0.52.0. prikk ≥ 0.42. A long banner now wraps instead of losing
+  its tail.
+- **Switch branch** (`FR-053`, [RFC 045](rfcs/done/045-switch-branch.md)): **`s` in the ref picker**, stikk's first
+  operation that changes files on disk, **previewed as the exact files it will write and delete** — stikk's own
+  comparison of the two branches, measured as an exact prediction of what the switch then does. Tier Three and
+  **no signing key**, because prikk needs none: the confirmation gate is keyed on the request category now rather
+  than on its tier. A plan that is not whole blocks rather than shortening itself, and a branch the queue holds
+  unsealed work for is not offered — the one case prikk allows and gets wrong. prikk ≥ 0.46.
+- **The validated prikk range is unchanged at `>= 0.28`, through `0.52.0`**; the real-binary suite drives 55 cases
+  at 0.28.0 and 0.52.0 on Linux, macOS and Windows.
+
 ## Shipped — stikk works with prikk 0.52.0, and the README shows stikk at work (0.12.0, breaking)
 
 - **The prikk 0.52 re-baseline** ([RFC 043](rfcs/done/043-prikk-0-52-rebaseline.md)): **validated through 0.52.0**,
@@ -352,22 +374,13 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.13.0, scoped 2026-10-17 (authorized), in delivery order
+## Next — 0.14.0, not yet scoped
 
-**0.13.0: stikk manages branches and tags, not only browses them.** Scope: `.git-exclude/release/0-13-0-scope.md`.
+1. **Package managers** — the owner's decision (a Homebrew tap recommended; Scoop and winget compared in the 0.13.0
+   scope).
+2. **Session persistence** (`FR-122`).
 
-1. **Block detail's `said` onto `view::wrap_hanging` — landed on `main`** (RFC 040's carry; [Handoff B](rfcs/handoffs/040-verify/b-wrap-hanging-tidy-handoff-v1.md), `d47553a`). A pure refactor.
-2. **Branches and tags — landed on `main`** (`FR-070/071`, [RFC 044](rfcs/done/044-branches-and-tags.md), `88bb7d1`, `f938b58`, `126d4a5`): create a branch,
-   create a tag, close a branch, each preview-first at seal's tier, prikk ≥ 0.42. The current branch is never offered for
-   closing. The shell banner now wraps.
-3. **Switch branch — landed on `main`** (`FR-053`, [RFC 045](rfcs/done/045-switch-branch.md), `c652405`, `86c4c85`, `0c7606e`): `s` in the
-   ref picker, previewed as the exact files written and deleted, Tier Three with no key required, prikk ≥ 0.46.
-4. **Conditional: the prikk 0.53.0 re-baseline**, only if prikk publishes before the cut.
-
-**Open, the owner's decision for 0.14.0: package managers** (a Homebrew tap recommended; Scoop and winget compared in the
-scope).
-
-## Later — verification, branches/tags, merge, session, exchange, trust, and the GUI
+## Later — verification, merge, session, exchange, trust, and the GUI
 
 - **Orientation on `status --format json`** (prikk ≥ 0.35). A refactor with no visible change: it would unify
   Orientation's read with the queue's and retire a prose parser. RFC 034's interrupted-materialization marker is read
@@ -380,8 +393,9 @@ scope).
 - **Verify report browser and doctor/recovery** (`FR-100/101/102`), with the three-valued
   author-signature outcome rendered precisely (Sound / Unverifiable / a blocking failure) and locks
   never auto-cleared.
-- **Branches and tags** (`FR-070/071`), the **focused-ref** model, and **checkout / deletion**
-  planning and materialization (`FR-053/054`).
+- **Checkout / deletion planning and materialization** (`FR-053`'s remainder, `FR-054`): a block or
+  a path, not only a branch. *(Branches and tags — `FR-070`/`FR-071` — and branch switch shipped in
+  0.13.0; the focused-ref model shipped in 0.4.0 and 0.11.0.)*
 - **Merge evidence → plan → execution** (`FR-080…082`) and the **rollback flow** (`FR-083`) — the
   merge refusal path is where the explanation surface earns its place.
 - **Session persistence and progressive disclosure** (`FR-122`, `TU-12`): resume the focused ref, view

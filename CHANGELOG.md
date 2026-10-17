@@ -2,16 +2,30 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.13.0 — 2026-10-17
+
+**stikk can now create, tag, close and switch branches, and shows exactly what each will do before
+it runs.** Until 0.12.0 stikk showed you branches and tags and could not make one. From the ref
+picker, **`n`** creates a branch at the selected ref's tip, **`t`** tags it, **`x`** closes it and
+**`s`** switches to it; **`t`** also tags whichever block you are looking at in History (RFC 044,
+RFC 045). Every one of them previews first and runs exactly the one prikk command the preview
+restated, with prikk's own refusals shown word for word. **A switch is previewed as the exact
+files it will write and delete** — stikk's own comparison of the two branches, measured against
+prikk as an exact prediction — and asks for no signing key, because prikk needs none. Two cases
+prikk allows, but that would leave the repository in a state stikk cannot describe truthfully,
+are not offered at all: closing the branch you are standing on, and switching to a branch the
+queue holds unsealed work for. Branches and tags need **prikk ≥ 0.42**; switching needs
+**≥ 0.46**, where stikk can read the comparison the plan is made of. The real-binary suite drives
+**55 cases** against real prikk binaries at 0.28.0 and 0.52.0, on Linux, macOS and Windows.
 
 ### Breaking
 
-Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
-`stikk-state` and the `stikk` launcher are unchanged.**
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-state` and
+the `stikk` launcher are unchanged.**
 
 | Crate | Change |
 |---|---|
-| `stikk-model` | **`RequestCategory` gained `Materialization`**, so `RequestCategory::ALL` is `[Self; 10]` and no longer `[Self; 9]`. Any outside exhaustive `match` on the enum, or code depending on `ALL`'s length, must account for it. The new variant is **appended**, so no existing variant's derived `Ord` position moves |
+| `stikk-model` | **`RequestCategory::ALL` is `[Self; 10]`**, no longer `[Self; 9]`: the enum gained `Materialization`. Code depending on `ALL`'s length must account for it. A `match` need not change — `RequestCategory` is `#[non_exhaustive]`, so an outside one already carries a wildcard — and the variant is **appended**, so no existing variant's derived `Ord` position moves |
 | `stikk-prikk` | **The `Prikk` trait gained four methods with no defaults** — `create_branch`, `create_tag`, `close_branch` and `switch_branch`. Any outside implementor of the trait must add them |
 | `stikk-core` | **`capability_gate` takes a `RequestCategory` where it took a `Tier`.** The signing requirement is a property of the category now, not of the tier — `Materialization` is Tier Three and needs no key, which a tier-keyed gate could not express. Every pre-existing category keeps exactly the requirement its tier used to imply |
 | `stikk-core` | **`ConfirmationSummary` gained two public fields and changed one.** `message_note: Option<String>` is the message a new tag will carry; `materializes: Option<FilePlan>` is the files a switch will write and delete; and `capability` is now `Option<Capability>`, where `None` means the operation consumes none. Any outside code constructing a `ConfirmationSummary` as a literal must be updated |
@@ -26,9 +40,11 @@ confirm-and-executes, `ref_writes_unavailable`, `REF_WRITES_FROM_MINOR`,
 `SwitchPreview`, `switch_preview`, `switch_confirm_and_execute`, `switch_unavailable`,
 `SWITCH_FROM_MINOR`, `SWITCH_OPERATION` and its three blocked reasons; `stikk_core::FilePlan` and
 `unshown_paths_line`; `NullBackend::with_ref_write`, `with_ref_write_refusal`, `with_switch`,
-`with_switch_refusal` and `with_diff_lock_conflict`; `stikk_tui::overlay::RefNameKind`/`RefWriteKind` and
+`with_switch_refusal` and `with_diff_lock_conflict`;
+`stikk_tui::overlay::RefNameKind`/`RefWriteKind` and
 `App::begin_create_branch`/`begin_create_tag`/`begin_close_branch`/`begin_switch_branch`.
-**No public item was removed except the three listed above.** The MSRV is unchanged at 1.88.
+**One public item was removed outright** — `palette::Command::tier`; everything else in the table
+changed shape rather than going away. The MSRV is unchanged at 1.88.
 
 ### Added
 
@@ -54,8 +70,7 @@ confirm-and-executes, `ref_writes_unavailable`, `REF_WRITES_FROM_MINOR`,
   already read, without running prikk.
 
   Available at **prikk ≥ 0.42**, where prikk keeps a current-branch pointer; below that the keys
-  say so in stikk's own words and spawn nothing. Two new real-binary suite legs cover it at
-  0.28.0 and 0.52.0.
+  say so in stikk's own words and spawn nothing.
 
 - **Switch branch** (RFC 045) — the last of prikk's branch operations, and **the first stikk
   operation that changes files on disk**. `s` in the ref picker switches to the selected branch;
@@ -80,19 +95,15 @@ confirm-and-executes, `ref_writes_unavailable`, `REF_WRITES_FROM_MINOR`,
   and stikk's focus follows you to the new branch.
 
   Available at **prikk ≥ 0.46**, where stikk can read the comparison the plan is made of; below
-  that the key says so and spawns nothing. The real-binary suite drives **55 cases** at 0.28.0
-  and 0.52.0.
+  that the key says so and spawns nothing.
 
-### Changed
+### Fixed
 
-- **Closing the current branch now points at stikk's own way out.** The refusal said *"Switch to
-  another branch first, with `prikk branch switch heads/<name>`"* because stikk could not switch;
-  it says *"Switch to another branch first (`s` in the ref picker)"* now.
-
-- **A banner wraps instead of losing its tail.** It was one row, which was enough for *"mark
-  cleared"* and not for a refusal that names the command to run next: at 80 columns the end of
-  the sentence was simply cut off. A banner that fits keeps exactly the shape it always had; one
-  that does not now takes the rows it needs (RFC 024's rule, wrap and never clip).
+- **A banner no longer loses its tail at 80 columns.** It was one row, which was enough for *"mark
+  cleared"* and not for a sentence that ends in the thing to do next: the end was simply cut off,
+  silently. A banner that fits keeps exactly the shape it always had; one that does not now takes
+  the rows it needs, and the dismiss hint moves to a row of its own (RFC 024's rule, wrap and
+  never clip).
 
 ## 0.12.0 — 2026-10-15
 

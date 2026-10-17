@@ -187,6 +187,11 @@ impl Prikk for Recording {
         self.inner.close_branch(repo, name)
     }
 
+    fn switch_branch(&self, repo: &Path, name: &str) -> Result<stikk_prikk::SwitchResult> {
+        self.record("switch_branch");
+        self.inner.switch_branch(repo, name)
+    }
+
     fn diff(
         &self,
         repo: &Path,

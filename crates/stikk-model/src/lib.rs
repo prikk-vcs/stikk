@@ -29,7 +29,7 @@ pub mod example_keys;
 pub mod id;
 
 pub use capability::{Binding, Capability, Readiness, RoleReadiness};
-pub use category::{RequestCategory, Tier};
+pub use category::{RequestCategory, SigningRequirement, Tier};
 pub use change_token::ChangeToken;
 pub use current_branch::CurrentBranch;
 pub use error::{Result, StaleCause, StikkError};

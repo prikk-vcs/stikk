@@ -56,6 +56,9 @@ pub struct NullBackend {
     /// What a ref write answers. One slot for all three (RFC 044): a test drives one
     /// operation at a time, and sharing it keeps the builder small.
     ref_write: Scripted<crate::RefWrite>,
+    /// What [`Prikk::switch_branch`] answers (RFC 045). Its own slot, not `ref_write`'s: a switch
+    /// keeps two streams apart and a ref write keeps one.
+    switch: Scripted<crate::SwitchResult>,
     refs: Scripted<Vec<RefEntry>>,
     /// The unpublished current branch this backend reports beside the list (RFC 037 decision 3).
     unpublished_current: UnpublishedBranch,
@@ -129,6 +132,8 @@ impl NullBackend {
             verify: Ok(crate::VerifyReport::Unreported),
             // The default matches this backend's default version, which is below 0.42.
             ref_write: Ok(crate::RefWrite::Unavailable),
+            // The default matches this backend's default version, which is below 0.46.
+            switch: Ok(crate::SwitchResult::Unavailable),
             state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
@@ -367,6 +372,21 @@ impl NullBackend {
         self
     }
 
+    /// Answer [`Prikk::switch_branch`] with prikk's two streams (RFC 045).
+    #[must_use]
+    pub fn with_switch(mut self, printed: Vec<String>, noted: Vec<String>) -> Self {
+        self.switch = Ok(crate::SwitchResult::Done { printed, noted });
+        self
+    }
+
+    /// Fail [`Prikk::switch_branch`], so a test can show prikk's refusal reaching the usual path
+    /// verbatim — a dirty worktree, a closed branch, an untracked file in the way.
+    #[must_use]
+    pub fn with_switch_refusal(mut self, message: impl Into<String>) -> Self {
+        self.switch = Err(message.into());
+        self
+    }
+
     /// Answer [`Prikk::verify`] with `verification` (RFC 040).
     #[must_use]
     pub fn with_verification(mut self, verification: crate::Verification) -> Self {
@@ -579,6 +599,10 @@ impl Prikk for NullBackend {
 
     fn close_branch(&self, _repo: &Path, _name: &str) -> Result<crate::RefWrite> {
         deliver(&self.ref_write)
+    }
+
+    fn switch_branch(&self, _repo: &Path, _name: &str) -> Result<crate::SwitchResult> {
+        deliver(&self.switch)
     }
 
     fn block_state(

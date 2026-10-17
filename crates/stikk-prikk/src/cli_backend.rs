@@ -276,15 +276,7 @@ impl CliBackend {
             });
         }
         let out = self.run(Some(repo), RequestCategory::Publication, args)?;
-        // Every non-empty line prikk printed, in order. Trailing blank lines are the shell's, not
-        // prikk's, and a result screen should not show them.
-        Ok(crate::RefWrite::Done(
-            out.lines()
-                .map(str::trim_end)
-                .filter(|line| !line.is_empty())
-                .map(ToString::to_string)
-                .collect(),
-        ))
+        Ok(crate::RefWrite::Done(printed_lines(&out)))
     }
 
     /// Build the [`StikkError::Internal`] for a usage-error exit (RFC 009 F6): the repository was not
@@ -869,9 +861,51 @@ impl Prikk for CliBackend {
         self.write_ref(repo, &args, "create a tag")
     }
 
+    fn switch_branch(&self, repo: &Path, name: &str) -> Result<crate::SwitchResult> {
+        // **Banded before anything else** (RFC 045 decision 4): below the band nothing is
+        // spawned, not even the readiness read.
+        if Prikk::handshake(self)?.version.minor < crate::DIFF_FROM_MINOR {
+            return Ok(crate::SwitchResult::Unavailable);
+        }
+        // **Read-write, and no key** (decision 2). prikk needs none (F1, measured), so stikk asks
+        // for none — the requirement is `Materialization`'s, read from the category itself.
+        if !Prikk::readiness(self, repo)?.readiness.may_operate() {
+            return Err(StikkError::NotReady {
+                detail: "switching branch is not available in read-only mode".to_string(),
+            });
+        }
+        // **Both streams.** At exit 0 prikk can name a snapshot fallback on stderr, and that line
+        // belongs on the result card beside the counts, not merged into them.
+        let (stdout, stderr, ok) = self.run_capturing(Some(repo), ["branch", "switch", name])?;
+        if !ok {
+            return Err(classify::classify(
+                &stdout,
+                &stderr,
+                RequestCategory::Materialization,
+            ));
+        }
+        Ok(crate::SwitchResult::Done {
+            printed: printed_lines(&stdout),
+            noted: printed_lines(&stderr),
+        })
+    }
+
     fn close_branch(&self, repo: &Path, name: &str) -> Result<crate::RefWrite> {
         self.write_ref(repo, &["branch", "close", name], "close a branch")
     }
+}
+
+/// Every non-empty line of one of prikk's streams, in order, trailing whitespace trimmed.
+///
+/// **Blank lines are the shell's, not prikk's**, and a result card should not show them. Nothing
+/// else is done to the text: these lines are prikk's own words, kept for a reader and never
+/// parsed for state (RFC 044 §6 trap 2; RFC 045 §6 trap 3).
+fn printed_lines(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
 
 #[cfg(test)]

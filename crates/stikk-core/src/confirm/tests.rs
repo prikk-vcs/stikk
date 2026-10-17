@@ -206,7 +206,14 @@ fn read_only_refuses_tier_two_and_tier_three_without_keys_either() {
 fn tier_one_is_never_blocked_by_read_only() {
     // Tier 1 never reaches `confirm` in real use (it has no preview step) — exercised directly against
     // `capability_gate` to prove the gate itself imposes no restriction at this tier.
-    assert!(capability_gate("read", Tier::One, ready(false, false, true)).is_ok());
+    assert!(
+        capability_gate(
+            "read",
+            RequestCategory::ReadHistory,
+            ready(false, false, true)
+        )
+        .is_ok()
+    );
 }
 
 #[test]

@@ -56,7 +56,7 @@ Workspace members (Rust 2024, 2018+ module style throughout):
 ### MOD-01 — `stikk-model` (shared kernel, no I/O)
 - `id.rs` — newtypes over prikk object ids/ref names (parse/validate/abbreviate; never fabricate).
 - `error.rs` — `StikkError` enum with the CT-04 classes (`Refusal`, `LockConflict`, `NotReady`, `IntegrityFinding`, `Limits`, `Environment`, `StikkInternal`), each preserving prikk's verbatim message (NFR-I03, FR-110); implements `source()` and is `#[non_exhaustive]` (a lesson taken straight from stikk's audit of prikk's own `PrikkError`).
-- `category.rs` — the `RequestCategory` enum (CT-03 nine categories) with each variant's declared `mutates`/`cancellable`/`lock` metadata as `const` data, so the operation layer reads policy off the type.
+- `category.rs` — the `RequestCategory` enum (CT-03 ten categories, since RFC 045 added `Materialization`) with each variant's declared `mutates`/`cancellable`/`lock` metadata as `const` data, so the operation layer reads policy off the type.
 - `capability.rs` — `Capability` (Viewer/Author/Maintainer/Operator, AC-01…04) and the `readiness → capability` mapping.
 
 ### MOD-02 — `stikk-prikk` (the seam — SEAM-*)

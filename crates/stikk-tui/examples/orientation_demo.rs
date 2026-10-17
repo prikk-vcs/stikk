@@ -95,6 +95,10 @@ impl Prikk for SlowOrientation {
         self.0.close_branch(repo, name)
     }
 
+    fn switch_branch(&self, repo: &Path, name: &str) -> Result<stikk_prikk::SwitchResult> {
+        self.0.switch_branch(repo, name)
+    }
+
     fn diff(
         &self,
         repo: &Path,

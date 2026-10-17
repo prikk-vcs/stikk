@@ -1688,3 +1688,242 @@ fn below_the_band_a_ref_write_spawns_nothing() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// =============================================================================================
+// RFC 045 — `branch switch`.
+//
+// The same shape as RFC 044's tests above, with two differences the command itself forces: there
+// are **no flags at all** to get wrong, and **stderr at exit 0 is content**, not an error.
+// =============================================================================================
+
+/// A fake `prikk` answering `--version` with `version` and `key status` as a ready maintainer,
+/// logging every call's argv, and answering anything else with `out` on stdout and `err` on
+/// stderr at `code`.
+#[cfg(unix)]
+fn fake_switch_prikk(
+    tag: &str,
+    version: &str,
+    out: &str,
+    err: &str,
+    code: i32,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-switch-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let argv = dir.join("argv");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             : >> \"{argv}\"\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk {version}'; exit 0; fi\n\
+             if [ \"$2\" = \"status\" ]; then\n\
+             printf '%s\\n' '{{\"schema_version\":\"key-status-v1\",\"roles\":[{{\"role\":\"author\",\"usable\":true,\"key_id\":\"a\",\"binding\":\"matches\"}},{{\"role\":\"maintainer\",\"usable\":true,\"key_id\":\"m\",\"binding\":\"matches\"}}]}}'\n\
+             exit 0\n\
+             fi\n\
+             for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"{argv}\"; done\n\
+             printf '%s' '{out}'\n\
+             printf '%s' '{err}' 1>&2\n\
+             exit {code}\n",
+            argv = argv.display(),
+            version = version,
+            out = out,
+            err = err,
+            code = code,
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (script, argv)
+}
+
+/// **One argument, no flags, and a space survives** (RFC 045 §6 trap 5; F1: any argument starting
+/// with `-` is a usage error, so there is nothing else to send).
+#[cfg(unix)]
+#[test]
+fn switch_branch_sends_one_argument_and_no_flags() {
+    let (script, argv) = fake_switch_prikk(
+        "args",
+        "0.52.0",
+        "switched from heads/main to heads/bad name\n",
+        "",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| {
+        backend.switch_branch(std::path::Path::new("."), "heads/bad name")
+    })
+    .expect("a switch");
+    assert_eq!(
+        recorded_argv(&argv),
+        vec!["branch", "switch", "heads/bad name"],
+        "no flags, and the name stays one argument"
+    );
+}
+
+/// **Both streams are kept, and kept apart** (decision 1). prikk can name a snapshot fallback on
+/// stderr at exit 0; merging it into the counts would put a caveat inside a result.
+#[cfg(unix)]
+#[test]
+fn a_switch_keeps_stdout_and_stderr_apart_at_exit_zero() {
+    let (script, _argv) = fake_switch_prikk(
+        "streams",
+        "0.52.0",
+        "switched from heads/main to heads/feature\nfiles written: 2\nfiles unchanged: 0\nfiles deleted: 1\n",
+        "note: replayed from the snapshot fallback\n",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.switch_branch(std::path::Path::new("."), "heads/feature")
+    })
+    .expect("a switch");
+    assert_eq!(
+        out,
+        crate::SwitchResult::Done {
+            printed: vec![
+                "switched from heads/main to heads/feature".to_string(),
+                "files written: 2".to_string(),
+                "files unchanged: 0".to_string(),
+                "files deleted: 1".to_string(),
+            ],
+            noted: vec!["note: replayed from the snapshot fallback".to_string()],
+        }
+    );
+}
+
+/// **An ordinary switch notes nothing**, so the result card shows no empty stderr section.
+#[cfg(unix)]
+#[test]
+fn an_ordinary_switch_has_no_notes() {
+    let (script, _argv) = fake_switch_prikk(
+        "quiet",
+        "0.52.0",
+        "switched from heads/main to heads/feature\nfiles written: 0\n",
+        "",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.switch_branch(std::path::Path::new("."), "heads/feature")
+    })
+    .expect("a switch");
+    match out {
+        crate::SwitchResult::Done { noted, .. } => assert!(noted.is_empty(), "{noted:?}"),
+        other => panic!("expected Done, got {other:?}"),
+    }
+}
+
+/// **Each F2 refusal is prikk's, verbatim**, through the usual classification — and prikk writes
+/// nothing for any of them.
+#[cfg(unix)]
+#[test]
+fn every_switch_refusal_carries_prikks_words() {
+    for (tag, message) in [
+        (
+            "missing",
+            "error: precondition not met: heads/nope does not exist; run `prikk branch create heads/nope` first",
+        ),
+        (
+            "closed",
+            "error: precondition not met: heads/old is closed; switch to an open branch (`prikk branch list` shows them)",
+        ),
+        (
+            "dirty",
+            "error: precondition not met: the worktree is not clean against heads/main: a.txt (modified); commit it, or restore those files, before switching (`prikk worktree-status` lists them)",
+        ),
+        (
+            "intheway",
+            "error: precondition not met: refusing to switch to heads/feature: 1 in the way of its files: c.txt (a file that is not part of the branch being left); move them aside and run the switch again (nothing was written)",
+        ),
+        (
+            "queuedhere",
+            "error: precondition not met: the active WAL holds unsealed work for heads/main; seal it (`prikk seal --allow-no-audit --ref heads/main`) before switching to heads/feature",
+        ),
+    ] {
+        let (script, _argv) = fake_switch_prikk(tag, "0.52.0", "", &format!("{message}\n"), 1);
+        let backend = CliBackend::with_program(&script);
+        let err = retrying_transient_exec_busy(|| {
+            backend.switch_branch(std::path::Path::new("."), "heads/feature")
+        })
+        .expect_err("a refusal");
+        assert_eq!(err.class(), "refusal", "{tag}: {err}");
+        assert!(err.to_string().contains(message), "{tag}: {err}");
+    }
+}
+
+/// **Below the band nothing is spawned** — not even the readiness read — and *unavailable* is not
+/// *failed*. The command exists from 0.42; the band is `DIFF_FROM_MINOR`, because a switch
+/// without its file plan is not offered (decision 4).
+#[cfg(unix)]
+#[test]
+fn below_the_band_a_switch_spawns_nothing() {
+    let (script, argv) = fake_switch_prikk("band", "0.45.0", "switched\n", "", 0);
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.switch_branch(std::path::Path::new("."), "heads/feature")
+    })
+    .expect("below the band is not an error");
+    assert_eq!(out, crate::SwitchResult::Unavailable);
+    assert!(
+        recorded_argv(&argv).is_empty(),
+        "no branch command and no readiness read: {:?}",
+        recorded_argv(&argv)
+    );
+    assert_eq!(
+        crate::DIFF_FROM_MINOR,
+        46,
+        "the band is the one `diff` already uses, never a second literal"
+    );
+}
+
+/// **No key is required** (decision 2; F1 measured with every key variable unset). The fake here
+/// reports *no* usable role, and the switch still runs: a maintainer-key refusal would be a
+/// requirement stikk invented.
+#[cfg(unix)]
+#[test]
+fn a_switch_needs_no_signing_key() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-switch-nokey-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\n\
+         if [ \"$1\" = \"--version\" ]; then echo 'prikk 0.52.0'; exit 0; fi\n\
+         if [ \"$2\" = \"status\" ]; then\n\
+         printf '%s\\n' '{\"schema_version\":\"key-status-v1\",\"roles\":[{\"role\":\"author\",\"usable\":false,\"key_id\":null,\"binding\":\"unknown\"},{\"role\":\"maintainer\",\"usable\":false,\"key_id\":null,\"binding\":\"unknown\"}]}'\n\
+         exit 0\n\
+         fi\n\
+         echo 'switched from heads/main to heads/feature'\n\
+         exit 0\n",
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make it executable");
+
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| backend.switch_branch(&dir, "heads/feature"))
+        .expect("a session with no key may still switch");
+    assert_eq!(
+        out,
+        crate::SwitchResult::Done {
+            printed: vec!["switched from heads/main to heads/feature".to_string()],
+            noted: Vec::new(),
+        }
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

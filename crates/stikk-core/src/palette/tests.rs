@@ -38,7 +38,7 @@ fn the_registry_lists_the_seeded_commands_with_bindings() {
 #[test]
 fn a_viewer_may_run_every_tier_one_command() {
     let viewer = readiness(false, false, false);
-    for command in commands().iter().filter(|c| c.tier == Tier::One) {
+    for command in commands().iter().filter(|c| c.tier() == Tier::One) {
         assert!(command.available_to(viewer));
     }
 }
@@ -89,7 +89,7 @@ fn the_capability_gate_disables_below_the_minimum() {
         name: "Seal…",
         binding: "S",
         operation: "seal",
-        tier: Tier::Three,
+        category: Some(stikk_model::RequestCategory::Publication),
         opens: None,
         needs_focused_ref: false,
     };

@@ -954,7 +954,11 @@ impl App {
     pub fn begin_commit(&mut self) {
         self.banner = None;
         let readiness = self.readiness();
-        match stikk_core::capability_gate(stikk_core::COMMIT_OPERATION, Tier::Two, readiness) {
+        match stikk_core::capability_gate(
+            stikk_core::COMMIT_OPERATION,
+            stikk_model::RequestCategory::QueueMutation,
+            readiness,
+        ) {
             Ok(()) => {
                 // After the capability check, as the palette orders its reasons (`Command::
                 // unavailable_reason`): the two must agree.
@@ -1023,7 +1027,11 @@ impl App {
     pub fn begin_seal(&mut self) {
         self.banner = None;
         let readiness = self.readiness();
-        match stikk_core::capability_gate(SEAL_OPERATION, Tier::Three, readiness) {
+        match stikk_core::capability_gate(
+            SEAL_OPERATION,
+            stikk_model::RequestCategory::Publication,
+            readiness,
+        ) {
             Ok(()) => {
                 let Some(reff) = self.require_focus() else {
                     return;
@@ -1239,7 +1247,7 @@ impl App {
         let readiness = self.readiness();
         match stikk_core::capability_gate(
             stikk_core::CREATE_BRANCH_OPERATION,
-            Tier::Three,
+            stikk_model::RequestCategory::Publication,
             readiness,
         ) {
             Ok(()) => true,

@@ -542,6 +542,31 @@ pub enum RefWrite {
     Unavailable,
 }
 
+/// What `branch switch` printed, or why stikk did not run it (RFC 045 decision 1).
+///
+/// **Two streams, kept apart.** prikk writes its result to stdout and, at exit 0, can name a
+/// snapshot fallback on **stderr** (`prikk-cli/src/branch.rs:353`). Merging them would put a
+/// caveat in the middle of a result; dropping stderr would lose the one line that says the switch
+/// took a different route. Both are prikk's own words, so both are kept, verbatim and labelled.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SwitchResult {
+    /// prikk ran and exited 0.
+    Done {
+        /// stdout's non-empty lines, in order — the `switched from … to …` line and its counts.
+        ///
+        /// **Never parsed for state** (RFC 045 §6 trap 3). There is no `--format json` for this
+        /// command (F1); the new current branch is read back from `status`, and the worktree from
+        /// `worktree-status`.
+        printed: Vec<String>,
+        /// stderr's non-empty lines at exit 0, in order — empty for an ordinary switch.
+        noted: Vec<String>,
+    },
+    /// Below [`crate::DIFF_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`). The command itself exists from 0.42, but a switch without its file plan is not
+    /// offered (RFC 045 decision 4: the user confirms the plan, not the idea).
+    Unavailable,
+}
+
 /// What [`Prikk::verify`] can say (RFC 040 decision 1).
 ///
 /// The same two-variant shape [`QueueReport`], [`ShowReport`], [`StateReport`] and [`DiffReport`]
@@ -1451,6 +1476,31 @@ pub trait Prikk: Send + Sync {
     /// As [`Prikk::create_branch`]. A branch that is already closed, one that does not exist, and
     /// one owning a non-empty active WAL are prikk's refusals, verbatim.
     fn close_branch(&self, repo: &Path, name: &str) -> Result<RefWrite>;
+
+    /// Switch the repository to another branch (design `FR-053`; category `Materialization`;
+    /// RFC 045 decision 1) — `branch switch <name>`, **one argument and no flags at all**: any
+    /// argument beginning with `-` is a usage error, so there is no dry-run mode to ask for (F1).
+    ///
+    /// **This is the first seam method that writes files in the worktree.** prikk makes it safe
+    /// itself (F2, F3): it refuses a dirty worktree, refuses when an untracked file is where the
+    /// target writes, deletes an old file only if its bytes still match the branch being left,
+    /// never touches an untracked file it does not need, and writes the pointer last — so an
+    /// interrupted switch is finished by running it again, and switching back restores every byte.
+    ///
+    /// **No key is needed**, measured at 0.52.0 with every key variable unset, so this method asks
+    /// for none: `Materialization` requires read-write and nothing more (decision 2). Asking for a
+    /// maintainer key here would be a requirement stikk invented.
+    ///
+    /// **Banded at [`crate::DIFF_FROM_MINOR`]**, not at the command's own floor: below it nothing
+    /// is spawned — not even a readiness read — and the answer is [`SwitchResult::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::seal`]. A branch that does not
+    /// exist, a missing `heads/` prefix, a closed branch, unsealed work on the branch being left,
+    /// a dirty worktree and an untracked file in the way are all prikk's refusals, verbatim
+    /// (`ER-02`), and **every one of them writes nothing** (F2). Read-only mode is
+    /// [`stikk_model::StikkError::NotReady`], raised before prikk runs.
+    fn switch_branch(&self, repo: &Path, name: &str) -> Result<SwitchResult>;
 }
 
 #[cfg(test)]

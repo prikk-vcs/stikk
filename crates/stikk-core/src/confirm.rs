@@ -21,7 +21,10 @@
 use std::path::Path;
 use stikk_model::{Binding, RoleReadiness};
 
-use stikk_model::{Capability, ChangeToken, Readiness, RequestCategory, Result, StikkError, Tier};
+use stikk_model::{
+    Capability, ChangeToken, Readiness, RequestCategory, Result, SigningRequirement, StikkError,
+    Tier,
+};
 use stikk_prikk::Prikk;
 
 /// What a preview intends to do (design `OPL-01`; RFC 013 §2). Carries the request category, which
@@ -335,16 +338,26 @@ pub fn preview<V>(
 /// operation should call this instead), and [`confirm`] calls it as its own first, structural check
 /// (`OPL-04`'s "first check"). `confirm` uses it, but does not own it.
 ///
-/// Tier 1 always passes (RFC 013 decision 6: free, no exception). Read-only refuses every tier above it
-/// outright (`NFR-S01`), via [`Readiness::may_operate`] — the method RFC 012 F-a moved to `Readiness`
-/// precisely because [`Capability`] had already discarded the fact it needs. Above that, capability
-/// must satisfy the mutating axis for tiers 2/3; tier 3-typed needs no capability beyond read-write,
-/// since Operator is orthogonal to the signing ladder (`AC-04`).
+/// Tier 1 always passes (RFC 013 decision 6: free, no exception). Read-only refuses every category
+/// above it outright (`NFR-S01`), via [`Readiness::may_operate`] — the method RFC 012 F-a moved to
+/// `Readiness` precisely because [`Capability`] had already discarded the fact it needs. Above
+/// that, the **category's own** [`stikk_model::SigningRequirement`] decides which key, if any,
+/// must be present.
+///
+/// **Keyed on the category, not on the tier** (RFC 045 §2b). The two agreed for every category
+/// that existed before `Materialization`, which is why the old tier-keyed form was correct for as
+/// long as it was: it mapped Tier Three to MAINTAINER. A branch switch is Tier Three and needs no
+/// key at all (RFC 045 F1, measured), so keeping the tier as the key would have demanded a
+/// maintainer key for an operation that signs nothing — a requirement stikk invented.
 ///
 /// # Errors
 /// [`StikkError::NotReady`] when read-only mode or capability is insufficient.
-pub fn capability_gate(operation: &str, tier: Tier, readiness: Readiness) -> Result<()> {
-    if tier == Tier::One {
+pub fn capability_gate(
+    operation: &str,
+    category: RequestCategory,
+    readiness: Readiness,
+) -> Result<()> {
+    if category.tier() == Tier::One {
         return Ok(());
     }
     if !readiness.may_operate() {
@@ -353,11 +366,11 @@ pub fn capability_gate(operation: &str, tier: Tier, readiness: Readiness) -> Res
         });
     }
     let capability = Capability::derive(readiness);
-    match tier {
-        Tier::Two if !capability.may_author() => Err(StikkError::NotReady {
+    match category.signing_requirement() {
+        SigningRequirement::Author if !capability.may_author() => Err(StikkError::NotReady {
             detail: format!("{operation} needs AUTHOR signing readiness"),
         }),
-        Tier::Three if !capability.may_publish() => Err(StikkError::NotReady {
+        SigningRequirement::Maintainer if !capability.may_publish() => Err(StikkError::NotReady {
             detail: format!("{operation} needs MAINTAINER signing readiness"),
         }),
         _ => Ok(()),
@@ -382,7 +395,7 @@ pub fn confirm(
     readiness: Readiness,
     evidence: Evidence,
 ) -> Result<ConfirmedToken> {
-    capability_gate(token.intent.operation, token.tier, readiness)?;
+    capability_gate(token.intent.operation, token.intent.category, readiness)?;
 
     let current = prikk.change_token(repo)?;
     if current != token.change_token {

@@ -14,7 +14,7 @@
 //! comparison, the palette would grey out on signing capability alone and could offer a commit that
 //! `confirm` then refuses under `STIKK_READ_ONLY=1`, since capability alone does not see read-only.
 
-use stikk_model::{Readiness, StikkError, Tier};
+use stikk_model::{Readiness, RequestCategory, StikkError, Tier};
 
 use crate::confirm::capability_gate;
 use crate::present::Target;
@@ -39,10 +39,15 @@ pub struct Command {
     /// verifying RFC 014 §6's own regression test against the render). Irrelevant for a `Tier::One`
     /// command, which never reaches `capability_gate`'s error text.
     pub operation: &'static str,
-    /// The confirmation tier this command requires (RFC 013 decision 4) — `Tier::One` for every
-    /// navigation command (free, always available); a mutating command's real tier otherwise. Below it
-    /// the entry is visible-but-disabled (FR-104).
-    pub tier: Tier,
+    /// The request category this command belongs to, or `None` for a command that makes no prikk
+    /// request of its own (the Glossary, the refusal history, Quit).
+    ///
+    /// **The category, not the tier** (RFC 045 §2b). The tier and the signing requirement are
+    /// both read off it, so a palette entry can no longer disagree with the `Intent` the
+    /// operation itself carries — which the two comments this field replaced had to apologise
+    /// for, having "no shared source of truth to enforce it mechanically today". There is one
+    /// now. Where the gate refuses, the entry stays visible and disabled (FR-104).
+    pub category: Option<RequestCategory>,
     /// The view/overlay the command opens, if it is a navigation command.
     pub opens: Option<Target>,
     /// Whether the command acts on the focused ref (RFC 029 Handoff B §2): History, Changes, commit and
@@ -52,19 +57,28 @@ pub struct Command {
 }
 
 impl Command {
+    /// The confirmation tier this command requires (RFC 013 decision 4), from its category —
+    /// [`Tier::One`] for a command that makes no prikk request at all.
+    #[must_use]
+    pub fn tier(&self) -> Tier {
+        self.category.map_or(Tier::One, RequestCategory::tier)
+    }
+
     /// Whether a session with `readiness` may run this command — the same check
     /// [`crate::confirm::confirm`] itself enforces (RFC 014 §6), so nothing offered here is refused
     /// there.
     #[must_use]
     pub fn available_to(&self, readiness: Readiness) -> bool {
-        capability_gate(self.operation, self.tier, readiness).is_ok()
+        self.category
+            .is_none_or(|category| capability_gate(self.operation, category, readiness).is_ok())
     }
 
     /// The reason this command is unavailable for `readiness`, for the disabled-entry label (FR-104),
     /// or `None` when it is available. The entry stays **visible** either way (TU-07).
     #[must_use]
     pub fn unmet_reason(&self, readiness: Readiness) -> Option<String> {
-        match capability_gate(self.operation, self.tier, readiness) {
+        let category = self.category?;
+        match capability_gate(self.operation, category, readiness) {
             Ok(()) => None,
             Err(StikkError::NotReady { detail }) => Some(detail),
             // `capability_gate` only ever returns `NotReady`; kept exhaustive (not `_`) so a change to
@@ -100,7 +114,7 @@ static COMMANDS: &[Command] = &[
         name: "Go to Orientation",
         binding: "g o",
         operation: "orientation",
-        tier: Tier::One,
+        category: Some(RequestCategory::ReadHistory),
         opens: Some(Target::Orientation),
         needs_focused_ref: false,
     },
@@ -109,7 +123,7 @@ static COMMANDS: &[Command] = &[
         name: "Open History",
         binding: "Enter",
         operation: "history",
-        tier: Tier::One,
+        category: Some(RequestCategory::ReadHistory),
         opens: Some(Target::History),
         needs_focused_ref: true,
     },
@@ -118,7 +132,7 @@ static COMMANDS: &[Command] = &[
         name: "Choose ref…",
         binding: "b",
         operation: "ref-pick",
-        tier: Tier::One,
+        category: Some(RequestCategory::ReadHistory),
         opens: Some(Target::RefPicker),
         needs_focused_ref: false,
     },
@@ -127,7 +141,7 @@ static COMMANDS: &[Command] = &[
         name: "Open Changes (worktree)",
         binding: "w",
         operation: "changes",
-        tier: Tier::One,
+        category: Some(RequestCategory::WorktreeAnalysis),
         opens: Some(Target::Changes),
         needs_focused_ref: true,
     },
@@ -136,7 +150,7 @@ static COMMANDS: &[Command] = &[
         name: "Open Queue",
         binding: "Q",
         operation: "queue",
-        tier: Tier::One,
+        category: Some(RequestCategory::ReadHistory),
         opens: Some(Target::Queue),
         // The queue is repository-wide, so it needs no focused ref (RFC 028 Handoff A §6).
         needs_focused_ref: false,
@@ -146,10 +160,10 @@ static COMMANDS: &[Command] = &[
         name: "Verify repository",
         binding: "V",
         operation: "verify",
-        // **Tier One: it reads and changes nothing** (RFC 040 decision 4). Verify repairs nothing
-        // and clears no lock, so it needs no signing readiness -- a repository too damaged to
-        // commit in is exactly where a reader most needs to be able to run it.
-        tier: Tier::One,
+        // **`Integrity`, which is Tier One: it reads and changes nothing** (RFC 040 decision 4).
+        // Verify repairs nothing and clears no lock, so it needs no signing readiness -- a
+        // repository too damaged to commit in is exactly where a reader most needs to run it.
+        category: Some(RequestCategory::Integrity),
         opens: Some(Target::Verify),
         // Verification is repository-wide, as the queue is.
         needs_focused_ref: false,
@@ -161,11 +175,10 @@ static COMMANDS: &[Command] = &[
         // Matches `stikk_core::commit::COMMIT_OPERATION` — the same word `confirm`/`execute` use for
         // this operation, so a `capability_gate` message reads identically wherever it is shown.
         operation: "commit",
-        // Derived from `RequestCategory::QueueMutation` (RFC 013 decision 4) — commit's own category,
-        // stated once in `stikk_core::commit::commit_preview`'s `Intent`; matched here by hand since a
-        // palette entry has no `Intent` of its own to derive it from. Both must agree or this comment
-        // is wrong, not the code — there is no shared source of truth to enforce it mechanically today.
-        tier: Tier::Two,
+        // Commit's own category, the same one `stikk_core::commit::commit_preview`'s `Intent`
+        // carries. The tier and the signing requirement are both read off it (RFC 045 §2b), so
+        // this entry and that operation can no longer disagree about either.
+        category: Some(RequestCategory::QueueMutation),
         opens: None,
         needs_focused_ref: true,
     },
@@ -176,10 +189,9 @@ static COMMANDS: &[Command] = &[
         // Matches `stikk_core::seal::SEAL_OPERATION` — the same word `confirm`/`execute` use for this
         // operation, so a `capability_gate` message reads identically wherever it is shown.
         operation: "seal",
-        // Derived from `RequestCategory::Publication` (RFC 016 §7) — seal's own category, stated once
-        // in `stikk_core::seal::seal_preview`'s `Intent`; matched here by hand, same caveat as
-        // `op.commit`'s own comment above.
-        tier: Tier::Three,
+        // Seal's own category (RFC 016 §7), as `stikk_core::seal::seal_preview`'s `Intent`
+        // states it; same single source as `op.commit` above.
+        category: Some(RequestCategory::Publication),
         opens: None,
         needs_focused_ref: true,
     },
@@ -188,7 +200,7 @@ static COMMANDS: &[Command] = &[
         name: "Glossary & Help",
         binding: "?",
         operation: "glossary",
-        tier: Tier::One,
+        category: None,
         opens: Some(Target::Glossary),
         needs_focused_ref: false,
     },
@@ -197,7 +209,7 @@ static COMMANDS: &[Command] = &[
         name: "Recent refusals",
         binding: "R",
         operation: "refusals",
-        tier: Tier::One,
+        category: None,
         opens: None,
         needs_focused_ref: false,
     },
@@ -206,7 +218,7 @@ static COMMANDS: &[Command] = &[
         name: "Refresh (re-read from prikk)",
         binding: "r",
         operation: "refresh",
-        tier: Tier::One,
+        category: Some(RequestCategory::ReadHistory),
         opens: None,
         needs_focused_ref: false,
     },
@@ -215,7 +227,7 @@ static COMMANDS: &[Command] = &[
         name: "Quit",
         binding: "q",
         operation: "quit",
-        tier: Tier::One,
+        category: None,
         opens: None,
         needs_focused_ref: false,
     },

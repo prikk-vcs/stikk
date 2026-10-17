@@ -30,6 +30,7 @@ fn mutating_categories_are_not_cancellable_in_flight() {
         RequestCategory::Exchange,
         RequestCategory::Trust,
         RequestCategory::Recovery,
+        RequestCategory::Materialization,
     ] {
         assert!(cat.mutates(), "{} must mutate", cat.name());
         assert!(
@@ -59,9 +60,12 @@ fn queue_mutation_is_tier_two() {
 }
 
 #[test]
-fn publication_and_exchange_are_tier_three() {
+fn publication_exchange_and_materialization_are_tier_three() {
     assert_eq!(RequestCategory::Publication.tier(), Tier::Three);
     assert_eq!(RequestCategory::Exchange.tier(), Tier::Three);
+    // RFC 045 decision 3: restate, then an explicit yes — not the typed name. A switch refuses
+    // rather than overwrite anything not in history, and switching back restores every byte.
+    assert_eq!(RequestCategory::Materialization.tier(), Tier::Three);
 }
 
 #[test]
@@ -93,9 +97,70 @@ fn every_mutating_category_has_a_tier_above_one() {
 
 #[test]
 fn all_lists_every_category_with_a_unique_name() {
-    assert_eq!(RequestCategory::ALL.len(), 9);
+    assert_eq!(RequestCategory::ALL.len(), 10);
     let mut names: Vec<&str> = RequestCategory::ALL.iter().map(|c| c.name()).collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 9, "category names must be unique");
+    assert_eq!(names.len(), 10, "category names must be unique");
+}
+
+/// **The gate's key moved from the tier to the category, and nothing that existed moved with it**
+/// (RFC 045 §2b).
+///
+/// `capability_gate` used to read the requirement off the tier: Two meant AUTHOR, Three meant
+/// MAINTAINER, anything else meant read-write alone. That rule is restated here, and every
+/// category is held to it — **except [`RequestCategory::Materialization`]**, the one the change
+/// exists for, which is Tier Three and needs no key because prikk needs none (RFC 045 F1,
+/// measured). The exception is asserted too, so it cannot quietly become the rule.
+#[test]
+fn the_requirement_matches_what_the_tier_used_to_imply() {
+    for cat in RequestCategory::ALL {
+        let implied_by_tier = match cat.tier() {
+            Tier::Two => SigningRequirement::Author,
+            Tier::Three => SigningRequirement::Maintainer,
+            Tier::One | Tier::ThreeTyped => SigningRequirement::ReadWrite,
+        };
+        if cat == RequestCategory::Materialization {
+            assert_eq!(
+                cat.signing_requirement(),
+                SigningRequirement::ReadWrite,
+                "materialization signs nothing, so it may ask for no key"
+            );
+            assert_ne!(
+                implied_by_tier,
+                cat.signing_requirement(),
+                "this is the category the change exists for; if it stops differing, the change \
+                 is no longer doing anything"
+            );
+        } else {
+            assert_eq!(
+                cat.signing_requirement(),
+                implied_by_tier,
+                "{} changed what it requires",
+                cat.name()
+            );
+        }
+    }
+}
+
+/// The table the handoff spells out, row by row — so a reader can check it against §2b without
+/// re-deriving it from the tier.
+#[test]
+fn each_category_requires_exactly_what_the_table_says() {
+    use RequestCategory as C;
+    use SigningRequirement as S;
+    for (cat, want) in [
+        (C::ReadHistory, S::ReadWrite),
+        (C::ReadState, S::ReadWrite),
+        (C::WorktreeAnalysis, S::ReadWrite),
+        (C::Integrity, S::ReadWrite),
+        (C::QueueMutation, S::Author),
+        (C::Publication, S::Maintainer),
+        (C::Exchange, S::Maintainer),
+        (C::Trust, S::ReadWrite),
+        (C::Recovery, S::ReadWrite),
+        (C::Materialization, S::ReadWrite),
+    ] {
+        assert_eq!(cat.signing_requirement(), want, "{}", cat.name());
+    }
 }

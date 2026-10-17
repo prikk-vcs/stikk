@@ -1,10 +1,16 @@
 //! The request-category vocabulary the seam and operation layer share.
 //!
 //! Design `stikk-04` CT-03, AR-05. Rather than each operation inventing its own idempotency,
-//! cancellability, and locking story, every request the seam can make belongs to one of these nine
+//! cancellability, and locking story, every request the seam can make belongs to one of these ten
 //! categories, and the category carries that policy as data. The operation layer reads the policy off
 //! the type: a mutating category never auto-retries (NFR-S04), and stikk holds a single per-repository
 //! mutation gate for all of them (design CC-02).
+//!
+//! **The signing requirement is the category's too** ([`RequestCategory::signing_requirement`],
+//! RFC 045 §2b). It used to be read off the tier, which worked only while the two happened to
+//! agree: [`RequestCategory::Materialization`] is Tier Three and needs **no key at all** (RFC 045
+//! F1, measured), so a tier-keyed gate would have demanded a maintainer key for an operation that
+//! never signs anything.
 
 /// The confirmation tier a request's category requires before it may execute (design `FR-121`; RFC 013
 /// decision 4). Derived from [`RequestCategory`] alone, **never** declared per operation, so a new
@@ -25,7 +31,25 @@ pub enum Tier {
     ThreeTyped,
 }
 
-/// One of the nine categories every prikk request belongs to (design CT-03 table).
+/// What signing readiness a category's requests need before they may run (design `AC-01`…`AC-04`;
+/// RFC 045 §2b).
+///
+/// **Beside the tier, not derived from it.** The tier says how much ceremony the *user* performs;
+/// this says what the *session* must already have. They coincide for every category that existed
+/// before RFC 045, which is exactly why reading one off the other went unnoticed until a Tier
+/// Three operation needed no key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SigningRequirement {
+    /// Nothing beyond being able to operate at all — a human at the machine, not in read-only
+    /// mode ([`crate::Readiness::may_operate`]).
+    ReadWrite,
+    /// An AUTHOR signing key.
+    Author,
+    /// A MAINTAINER signing key.
+    Maintainer,
+}
+
+/// One of the ten categories every prikk request belongs to (design CT-03 table).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum RequestCategory {
@@ -47,6 +71,13 @@ pub enum RequestCategory {
     Trust,
     /// Recovery: doctor repair, lock clearing, compaction.
     Recovery,
+    /// Materialization: **writes the worktree from history** — branch switch now, checkout if it
+    /// ever comes (RFC 045 decision 2).
+    ///
+    /// **Appended rather than placed beside [`Self::Publication`]**, which is where it belongs by
+    /// meaning: these variants derive `Ord`, and inserting one in the middle would silently
+    /// renumber every category after it.
+    Materialization,
 }
 
 impl RequestCategory {
@@ -60,7 +91,8 @@ impl RequestCategory {
             | Self::Publication
             | Self::Exchange
             | Self::Trust
-            | Self::Recovery => true,
+            | Self::Recovery
+            | Self::Materialization => true,
         }
     }
 
@@ -75,8 +107,36 @@ impl RequestCategory {
                 Tier::One
             }
             Self::QueueMutation => Tier::Two,
-            Self::Publication | Self::Exchange => Tier::Three,
+            // **Materialization is Tier Three, not ThreeTyped** (RFC 045 decision 3): a switch
+            // refuses rather than overwrite anything not in history, every refusal writes
+            // nothing, and switching back restores every byte (F2, F3). What the user needs is to
+            // see which files change, which the preview gives.
+            Self::Publication | Self::Exchange | Self::Materialization => Tier::Three,
             Self::Trust | Self::Recovery => Tier::ThreeTyped,
+        }
+    }
+
+    /// What signing readiness this category's requests need (RFC 045 §2b).
+    ///
+    /// **This is the gate's key, and the tier is not.** Every category that existed before RFC 045
+    /// keeps exactly the requirement its tier used to imply — `the_requirement_matches_what_the_tier_used_to_imply`
+    /// asserts that over [`Self::ALL`]. [`Self::Materialization`] is the first to differ: Tier
+    /// Three, and no key, because prikk needs none (RFC 045 F1).
+    #[must_use]
+    pub const fn signing_requirement(self) -> SigningRequirement {
+        match self {
+            Self::QueueMutation => SigningRequirement::Author,
+            Self::Publication | Self::Exchange => SigningRequirement::Maintainer,
+            // The reads never reach a gate at all (`Tier::One` short-circuits it), and
+            // `Trust`/`Recovery` are `ThreeTyped`, whose ceremony is the typed name rather than a
+            // key: Operator is orthogonal to the signing ladder (`AC-04`).
+            Self::ReadHistory
+            | Self::ReadState
+            | Self::WorktreeAnalysis
+            | Self::Integrity
+            | Self::Trust
+            | Self::Recovery
+            | Self::Materialization => SigningRequirement::ReadWrite,
         }
     }
 
@@ -101,11 +161,12 @@ impl RequestCategory {
             Self::Integrity => "integrity",
             Self::Trust => "trust",
             Self::Recovery => "recovery",
+            Self::Materialization => "materialization",
         }
     }
 
     /// Every category, in declaration order — used by the parity check that no category is dropped.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::ReadHistory,
         Self::ReadState,
         Self::WorktreeAnalysis,
@@ -115,6 +176,7 @@ impl RequestCategory {
         Self::Integrity,
         Self::Trust,
         Self::Recovery,
+        Self::Materialization,
     ];
 }
 

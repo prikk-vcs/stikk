@@ -396,10 +396,20 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.15.0, not yet scoped
+## Next — 0.15.0, scoped 2026-10-18 (authorized), in delivery order
 
-1. **A package manager** (RFC 047) — the owner's decision (a Homebrew tap recommended), moved here from 0.14.0: it
-   needs a repository and a token only the owner can create.
+**0.15.0: stikk merges branches.** Scope: `.git-exclude/release/0-15-0-scope.md`.
+
+1. **The declarations card fits** ([Handoff C](rfcs/handoffs/034-prikk-0-46-rebaseline/c-declarations-card-fits-handoff-v1.md)):
+   whole declarations and a count, never rows the reader cannot reach.
+2. **Merge, read-only** (`FR-080/081`, RFC 047): prikk's merge evidence and plan for two branches, with the baseline
+   block stikk finds shown for checking.
+3. **Merge, execution** (`FR-082`, RFC 047): previewed with the plan it seals, at seal's tier. **The first to move to
+   0.16.0** if the cycle runs long.
+4. **Delivery for unskilled users** (RFC 048): designed before any package manager is chosen, on the owner's
+   direction — the channels, what each asks of a user, prikk's own installation beside stikk's, and what only the
+   owner can decide (accounts, signing, cost).
+5. **Conditional: the prikk 0.53.0 re-baseline**, only if prikk publishes before the cut.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 

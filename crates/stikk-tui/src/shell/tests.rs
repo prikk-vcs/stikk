@@ -46,7 +46,7 @@ fn orientation_naming_heads_main() -> Orientation {
 
 fn open(repo: &str, config: &Config) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
-    (App::open(repo, config, tx), rx)
+    (App::open(repo, config, None, tx), rx)
 }
 
 /// Answer every request currently queued against `backend`, applying each response in turn.

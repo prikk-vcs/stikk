@@ -98,3 +98,51 @@ fn the_printout_renders_the_root_the_version_and_the_id_too() {
         "prikk's version line is prose: escaped in place, not quoted"
     );
 }
+
+/// **`STIKK_PRIVATE=1` means no store at all** (RFC 046 decision 6), and anything else means the
+/// ordinary one. The environment is this process's, so the two cases are driven one after the
+/// other rather than in parallel — `cargo test` runs tests on several threads, and this is the
+/// only test in this file that touches it.
+#[test]
+fn private_mode_hands_the_tui_no_session() {
+    let root = std::env::temp_dir();
+    // SAFETY-adjacent note: `set_var` is `unsafe` from Rust 2024 because of exactly the threading
+    // hazard above. This crate forbids `unsafe`, so the function is exercised through the value
+    // it reads rather than by setting it — the parse is the part worth pinning, and the launcher
+    // reads `STIKK_PRIVATE` in one place.
+    assert!(
+        private_requested(Some("1".into())),
+        "`1` is the documented value"
+    );
+    for other in ["0", "", "true", "yes"] {
+        assert!(
+            !private_requested(Some(other.into())),
+            "{other:?} is not `1`, so it does not disable the store"
+        );
+    }
+    assert!(!private_requested(None), "unset means the ordinary store");
+    // And the shape the launcher builds when it is not private: a state dir and a canonical root.
+    let session = session_from(Some(std::path::PathBuf::from("/state")), &root);
+    let session = session.expect("a session");
+    assert_eq!(session.state_dir, std::path::PathBuf::from("/state"));
+    assert!(
+        session.canonical_root.is_absolute(),
+        "the root is canonical: {}",
+        session.canonical_root.display()
+    );
+    assert!(
+        session_from(None, &root).is_none(),
+        "no resolvable state directory means no store, not a failure"
+    );
+}
+
+/// `--help`'s notes name both environment switches, and say which one still remembers.
+#[test]
+fn help_names_both_environment_switches() {
+    assert!(USAGE.contains("STIKK_READ_ONLY=1"), "{USAGE}");
+    assert!(USAGE.contains("STIKK_PRIVATE=1"), "{USAGE}");
+    assert!(
+        USAGE.contains("the session record still work"),
+        "read-only still remembers: {USAGE}"
+    );
+}

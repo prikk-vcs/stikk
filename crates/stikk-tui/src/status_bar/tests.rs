@@ -31,7 +31,7 @@ fn shows_repo_and_hint_and_no_focus_before_the_first_read() {
     // RFC 029 Handoff B §3: pending focus renders nothing for focus — no `heads/main` guessed before
     // prikk has said anything — and the existing `(loading)` marker stays.
     let (tx, _rx) = mpsc::channel();
-    let app = App::open("/home/dev/project", &Config::default(), tx);
+    let app = App::open("/home/dev/project", &Config::default(), None, tx);
     let text = render_app(&app);
     assert!(text.contains("project"));
     assert!(!text.contains("heads/main"), "{text:?}");
@@ -268,7 +268,7 @@ fn focused_app(repo: &str, current: stikk_model::CurrentBranch, queued: u64) -> 
 /// still unanswered, so `⟳ 1` shows.
 fn unfocused_app(repo: &str, queued: u64) -> App {
     let (tx, rx) = mpsc::channel();
-    let mut app = App::open(format!("/x/{repo}"), &Config::default(), tx);
+    let mut app = App::open(format!("/x/{repo}"), &Config::default(), None, tx);
     let first = rx.try_recv().expect("the first Orientation read");
     app.apply(crate::worker::Response {
         seq: first.seq,
@@ -282,7 +282,7 @@ fn unfocused_app(repo: &str, queued: u64) -> App {
 
 fn pending_app(repo: &str) -> App {
     let (tx, _rx) = mpsc::channel();
-    App::open(format!("/x/{repo}"), &Config::default(), tx)
+    App::open(format!("/x/{repo}"), &Config::default(), None, tx)
 }
 
 fn show(label: &str, width: u16, text: &str) {

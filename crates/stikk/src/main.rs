@@ -39,7 +39,51 @@ Notes:
     Opening a repository on a terminal launches the interactive TUI; off a TTY (piped, redirected, CI)
     stikk prints a one-shot orientation instead. stikk drives prikk through its public CLI; set
     STIKK_PRIKK_BIN to point at a specific prikk build. stikk reads PRIKK_*_SEED presence only, never
-    their values.";
+    their values.
+
+    STIKK_READ_ONLY=1  no repository mutation this session; reads and the session record still work
+    STIKK_PRIVATE=1    remember nothing about this launch: no session record is read or written";
+
+/// Where this repository may be remembered, or `None` for a launch that remembers nothing
+/// (RFC 046 decision 6).
+///
+/// **Three ways to get `None`, and each of them is fine**: `STIKK_PRIVATE=1`, a host with no
+/// resolvable state directory, and a root that cannot be canonicalized. The record is keyed by
+/// the **canonical** path, so a session stikk cannot name is one it must not write — two paths to
+/// one repository would otherwise each get a record, and one of them would be wrong.
+///
+/// **Read-only mode still remembers**: `STIKK_READ_ONLY=1` forbids repository mutations, and the
+/// record is stikk's own file, outside every repository.
+fn session(root: &std::path::Path) -> Option<stikk_tui::Session> {
+    if private_requested(std::env::var_os("STIKK_PRIVATE")) {
+        return None;
+    }
+    session_from(paths::state_dir().ok(), root)
+}
+
+/// Whether `STIKK_PRIVATE`'s value asks for a session that remembers nothing.
+///
+/// **`1`, and nothing else.** `STIKK_READ_ONLY` beside it reads the same way, and a switch that
+/// also answered to `0` or `false` would be a trap.
+fn private_requested(value: Option<std::ffi::OsString>) -> bool {
+    value.is_some_and(|v| v == "1")
+}
+
+/// The store for `root`, given wherever state lives — `None` when there is no state directory to
+/// resolve, or when the root cannot be canonicalized.
+///
+/// **The record is keyed by the canonical path**, so a root stikk cannot canonicalize is one it
+/// must not write: two paths to one repository would otherwise each get a record, and the reader
+/// would be resumed from whichever they happened to type.
+fn session_from(
+    state_dir: Option<std::path::PathBuf>,
+    root: &std::path::Path,
+) -> Option<stikk_tui::Session> {
+    Some(stikk_tui::Session {
+        state_dir: state_dir?,
+        canonical_root: std::fs::canonicalize(root).ok()?,
+    })
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -143,7 +187,7 @@ fn run_open(path: Option<&str>) -> ExitCode {
 
     if stikk_tui::stdout_is_tty() {
         let config = load_config();
-        return match stikk_tui::run(handle.root(), &backend, &config) {
+        return match stikk_tui::run(handle.root(), &backend, &config, session(handle.root())) {
             Ok(()) => ExitCode::SUCCESS,
             Err(err) => fail(&err.to_string()),
         };

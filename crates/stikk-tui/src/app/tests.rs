@@ -26,7 +26,7 @@ use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
 fn open(repo: &str, config: &Config) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
-    (App::open(repo, config, tx), rx)
+    (App::open(repo, config, None, tx), rx)
 }
 
 fn from_state(
@@ -3609,4 +3609,307 @@ fn a_refused_switch_hands_back_to_the_picker() {
         "got {:?}",
         app.top_overlay()
     );
+}
+
+// =============================================================================================
+// RFC 046 — session restore and flush.
+//
+// The *decision* about what may be restored is `stikk-core::session`'s and is tested there. What
+// is checked here is the sequencing this layer owns: nothing stored reaches the screen before
+// prikk has confirmed it, each transition writes, a refused write says so once, and a private
+// session never touches the store.
+// =============================================================================================
+
+fn session_scratch(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "stikk-tui-session-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create the scratch dir");
+    dir
+}
+
+fn with_session(
+    state_dir: &std::path::Path,
+    root: &std::path::Path,
+) -> (App, mpsc::Receiver<Request>) {
+    let (tx, rx) = mpsc::channel();
+    let session = crate::Session {
+        state_dir: state_dir.to_path_buf(),
+        canonical_root: root.to_path_buf(),
+    };
+    (App::open(root, &Config::default(), Some(session), tx), rx)
+}
+
+fn session_orientation(current: &str) -> stikk_core::OrientationView {
+    let mut view = orientation_view(0, None, Some(&"a".repeat(64)));
+    view.current_branch = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse(current).expect("a ref name"),
+    );
+    view
+}
+
+/// **With a record, focus waits for the ref list** (§5 trap 2): until both reads land, nothing
+/// stored is on screen and focus is still pending.
+#[test]
+fn nothing_stored_is_drawn_before_both_reads_land() {
+    let dir = session_scratch("sequencing");
+    let root = dir.join("repo");
+    stikk_state::session::save(
+        &dir,
+        &root,
+        &stikk_state::SessionRecord {
+            root: root.clone(),
+            focus: Some("heads/feature".to_string()),
+            view: stikk_state::LastView::Changes,
+            hide_untracked: true,
+        },
+    )
+    .expect("save");
+
+    let (mut app, rx) = with_session(&dir, &root);
+    // Two reads at open: Orientation, and the refs the record must be validated against.
+    let orient = next_request(&rx);
+    let refs = next_request(&rx);
+    assert!(matches!(orient.kind, RequestKind::Orient));
+    assert!(matches!(refs.kind, RequestKind::Refs));
+
+    // Orientation alone resolves nothing: the remembered ref is still unconfirmed.
+    app.apply(Response {
+        seq: orient.seq,
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(session_orientation("heads/main")))),
+    });
+    assert_eq!(app.focused_ref(), None, "focus is still pending");
+    assert!(!app.has_overlay(), "and nothing was opened");
+
+    // The ref list lands, and now — and only now — the record is applied.
+    app.apply(Response {
+        seq: refs.seq,
+        kind: ResponseKind::Refs(Ok(stikk_core::RefList {
+            refs: vec![entry("heads/main", false), entry("heads/feature", false)],
+            unpublished_current: stikk_prikk::UnpublishedBranch::None,
+        })),
+    });
+    assert_eq!(app.focused_ref(), Some("heads/feature"));
+    assert!(
+        matches!(next_request(&rx).kind, RequestKind::Changes { .. }),
+        "the remembered view opens"
+    );
+}
+
+/// **Without a record there is no extra read** and focus resolves from Orientation alone, as it
+/// did before sessions existed.
+#[test]
+fn no_record_means_no_extra_read() {
+    let dir = session_scratch("no-record");
+    let root = dir.join("repo");
+    let (mut app, rx) = with_session(&dir, &root);
+    let orient = next_request(&rx);
+    assert!(rx.try_recv().is_err(), "only the orientation read");
+    app.apply(Response {
+        seq: orient.seq,
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(session_orientation("heads/main")))),
+    });
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+}
+
+/// **A remembered ref prikk no longer lists falls back, with the note** — and the view is still
+/// restored, because a view is a preference and re-reads from prikk when it opens.
+#[test]
+fn a_remembered_ref_that_is_gone_banners_and_falls_back() {
+    let dir = session_scratch("gone");
+    let root = dir.join("repo");
+    stikk_state::session::save(
+        &dir,
+        &root,
+        &stikk_state::SessionRecord {
+            root: root.clone(),
+            focus: Some("heads/deleted".to_string()),
+            view: stikk_state::LastView::Queue,
+            hide_untracked: false,
+        },
+    )
+    .expect("save");
+    let (mut app, rx) = with_session(&dir, &root);
+    let orient = next_request(&rx);
+    let refs = next_request(&rx);
+    app.apply(Response {
+        seq: refs.seq,
+        kind: ResponseKind::Refs(Ok(stikk_core::RefList {
+            refs: vec![entry("heads/main", false)],
+            unpublished_current: stikk_prikk::UnpublishedBranch::None,
+        })),
+    });
+    app.apply(Response {
+        seq: orient.seq,
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(session_orientation("heads/main")))),
+    });
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+    assert_eq!(
+        app.banner(),
+        Some(stikk_core::REMEMBERED_REF_IS_GONE),
+        "the reader is told why they are somewhere else"
+    );
+    assert!(matches!(next_request(&rx).kind, RequestKind::Queue));
+}
+
+/// **A corrupt record is a launch that starts fresh** — no read of it, no note, no extra request.
+#[test]
+fn a_corrupt_record_is_ignored_whole() {
+    let dir = session_scratch("corrupt");
+    let root = dir.join("repo");
+    let sessions = dir.join("sessions");
+    std::fs::create_dir_all(&sessions).expect("create");
+    std::fs::write(
+        sessions.join(stikk_state::session::file_name(&root)),
+        b"not a record",
+    )
+    .expect("plant");
+    let (mut app, rx) = with_session(&dir, &root);
+    let orient = next_request(&rx);
+    assert!(
+        rx.try_recv().is_err(),
+        "nothing to validate, so no refs read"
+    );
+    app.apply(Response {
+        seq: orient.seq,
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(session_orientation("heads/main")))),
+    });
+    assert_eq!(app.focused_ref(), Some("heads/main"));
+    assert_eq!(app.banner(), None);
+}
+
+/// **Each transition writes**: the view that landed, and the untracked toggle.
+#[test]
+fn each_transition_saves() {
+    let dir = session_scratch("flush");
+    let root = dir.join("repo");
+    let (mut app, rx) = with_session(&dir, &root);
+    let orient = next_request(&rx);
+    app.apply(Response {
+        seq: orient.seq,
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(session_orientation("heads/main")))),
+    });
+    let stored = || stikk_state::session::load(&dir, &root);
+    assert_eq!(
+        stored()
+            .expect("the first read is itself a transition")
+            .view,
+        stikk_state::LastView::Orientation
+    );
+
+    app.open_queue();
+    let queue = next_request(&rx);
+    app.apply(Response {
+        seq: queue.seq,
+        kind: ResponseKind::Queue(Ok(queue_view())),
+    });
+    assert_eq!(
+        stored().expect("a record").view,
+        stikk_state::LastView::Queue
+    );
+
+    app.open_changes();
+    let changes = next_request(&rx);
+    app.apply(Response {
+        seq: changes.seq,
+        kind: ResponseKind::Changes(Ok(changes_read())),
+    });
+    let record = stored().expect("a record");
+    assert_eq!(record.view, stikk_state::LastView::Changes);
+    assert_eq!(record.focus.as_deref(), Some("heads/main"));
+    assert!(!record.hide_untracked);
+
+    app.toggle_untracked();
+    assert!(
+        stored().expect("a record").hide_untracked,
+        "the toggle is a transition of its own"
+    );
+}
+
+/// **A failed save says so once** and is not retried at every transition (decision 3).
+#[test]
+fn a_refused_save_banners_once_and_stops_trying() {
+    // A state directory inside the repository: `C-E2` refuses every write.
+    let root = session_scratch("refused");
+    let (mut app, rx) = with_session(&root.join(".stikk"), &root);
+    let orient = next_request(&rx);
+    app.apply(Response {
+        seq: orient.seq,
+        kind: ResponseKind::Orient(OrientRead::stamped(Ok(session_orientation("heads/main")))),
+    });
+    let banner = app.banner().expect("a banner").to_string();
+    assert!(banner.contains("will not be remembered"), "{banner}");
+    assert!(banner.contains("refusing to write"), "{banner}");
+    assert!(
+        !root.join(".stikk").exists(),
+        "and `C-E2` refused before anything was created"
+    );
+
+    // A second transition says nothing more: the reader heard it.
+    app.open_queue();
+    let queue = next_request(&rx);
+    app.apply(Response {
+        seq: queue.seq,
+        kind: ResponseKind::Queue(Ok(queue_view())),
+    });
+    assert_eq!(app.banner(), None, "not repeated at every transition");
+}
+
+/// **A private session never touches the store**: nothing read, nothing written, no directory.
+#[test]
+fn a_private_session_never_touches_the_store() {
+    let dir = session_scratch("private");
+    let root = dir.join("repo");
+    stikk_state::session::save(
+        &dir,
+        &root,
+        &stikk_state::SessionRecord {
+            root: root.clone(),
+            focus: Some("heads/feature".to_string()),
+            view: stikk_state::LastView::Queue,
+            hide_untracked: true,
+        },
+    )
+    .expect("save");
+    let before = std::fs::read(
+        dir.join("sessions")
+            .join(stikk_state::session::file_name(&root)),
+    )
+    .expect("read it");
+
+    // `None` is what the launcher passes for `STIKK_PRIVATE=1`.
+    let (mut app, rx) = from_state(
+        root.to_str().expect("utf-8"),
+        loaded(session_orientation("heads/main")),
+        Palette::default(),
+    );
+    app.open_queue();
+    let queue = next_request(&rx);
+    app.apply(Response {
+        seq: queue.seq,
+        kind: ResponseKind::Queue(Ok(queue_view())),
+    });
+    assert_eq!(
+        std::fs::read(
+            dir.join("sessions")
+                .join(stikk_state::session::file_name(&root))
+        )
+        .expect("still there"),
+        before,
+        "a private session writes nothing"
+    );
+}
+
+fn queue_view() -> stikk_core::QueueView {
+    queue_view_with("nothing is queued")
+}
+
+fn changes_read() -> ChangesRead {
+    ChangesRead {
+        view: dirty_changes(),
+        history: stikk_core::RefHistory::Published,
+    }
 }

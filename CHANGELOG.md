@@ -4,6 +4,41 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-prikk` and the `stikk` launcher are unchanged.**
+
+| Crate | Change |
+|---|---|
+| `stikk-tui` | **`run` takes a fourth argument**, `Option<Session>`: where this repository is remembered, or `None` for a launch that remembers nothing. An outside caller passes `None` to keep today's behaviour exactly |
+
+**Additive:** `stikk_state::session` with `SessionRecord`, `LastView`, `load`, `save`, `file_name`,
+`fnv1a64` and `MAX_RECORDS`; `stikk_core::session` with `Restored`, `restore` and
+`REMEMBERED_REF_IS_GONE`; `stikk_tui::Session`. **No public item was removed.** The MSRV is
+unchanged at 1.88.
+
+### Added
+
+- **stikk reopens each repository where you left it** (RFC 046) — the ref you had focused, which
+  of Orientation, History, Changes and the Queue was open, and whether the untracked filter was
+  on. Names and flags: no file contents, no object ids, no messages.
+
+  **Everything remembered is re-checked against prikk before you see it.** A branch that has been
+  closed, or that prikk no longer lists, is not restored: stikk opens where it would have opened
+  anyway and says so in one line, rather than showing you a branch that is not there. Nothing
+  stored reaches the screen before both of prikk's own reads have landed. Verify never reopens by
+  itself — it scans the whole repository, and a launch should not start that on your behalf.
+
+  The records live beside stikk's other files (`stikk config path` prints where), one small file
+  per repository under `sessions/`, **never inside a repository** — and if a write is ever refused
+  or fails, stikk says once that this session will not be remembered and carries on. **Deleting
+  `sessions/` is always safe**: you lose your place and nothing else.
+
+- **`STIKK_PRIVATE=1`** — a launch that remembers nothing: no record is read, and none is written.
+  It sits beside `STIKK_READ_ONLY=1`, which is a different thing: that one forbids repository
+  changes and still remembers where you were.
+
 ### Fixed
 
 - **The Glossary lists `V`.** *Verify* has had its own key since 0.11.0, and the one panel that

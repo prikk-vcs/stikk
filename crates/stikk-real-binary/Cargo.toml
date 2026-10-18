@@ -17,6 +17,9 @@ stikk-prikk = { workspace = true }
 [dev-dependencies]
 # RFC 027 B: the suite drives commit's preview, which lives above the seam in stikk-core.
 stikk-core = { workspace = true }
+# RFC 046: the suite drives the session store against a real repository — the `C-E2` refusal
+# especially, which has no meaning against a scratch directory.
+stikk-state = { workspace = true }
 # RFC 036 §8: a leg renders the names prikk really reports through the two display rules, which live
 # in `stikk_tui::text`. The renderers themselves are behind a private `mod view`, so the leg checks
 # the rules against prikk's real bytes and leaves the 80-column captures to the view's own tests.

@@ -194,6 +194,25 @@ because it is easy to believe otherwise.
 stikk reads only the **presence** of these variables. It never reads a seed's value — prikk reads
 seeds itself when it signs. Your keys never enter stikk.
 
+## What stikk remembers
+
+stikk reopens each repository where you left it: **the ref you had focused, which of Orientation,
+History, Changes and the Queue was open, and whether the untracked filter was on.** Nothing else —
+no file contents, no object ids, no messages. Names and flags.
+
+**Everything remembered is re-checked against prikk before you see it.** If the branch you were on
+has been closed or is no longer listed, stikk opens where it would have opened anyway and says so
+in one line, rather than showing you a branch that is not there. Verify never reopens by itself: it
+scans the whole repository, and that is not something a launch should start on your behalf.
+
+The records live beside stikk's other files — `stikk config path` prints where — in a `sessions/`
+directory, one small file per repository, **never inside a repository**. **Deleting `sessions/` is
+always safe**: you lose your place and nothing else.
+
+To leave no trace of a launch, set `STIKK_PRIVATE=1`: stikk reads no record and writes none for
+that run. (`STIKK_READ_ONLY=1` is a different thing — it forbids repository changes, and still
+remembers where you were.)
+
 ## Launcher utilities
 
 ```sh

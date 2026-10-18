@@ -440,6 +440,28 @@ pub struct App {
     stamp: Option<ChangeToken>,
     /// The `seq` of the one silent change check in flight, if any (RFC 031 §4).
     check_pending: Option<u64>,
+    /// Where this repository is remembered, or `None` for a launch that remembers nothing
+    /// (RFC 046 decision 6, and a host with no resolvable state directory).
+    session: Option<crate::Session>,
+    /// What was remembered, read once at open. **Never shown** — it is handed to
+    /// [`stikk_core::restore`] once prikk's own reads are in, and nothing of it reaches the
+    /// screen before that (`T-T4`; §5 trap 2).
+    stored: Option<stikk_state::SessionRecord>,
+    /// The refs read sent at open **only when there is a record to validate against it**
+    /// (decision 5). `None` once it has landed, or when nothing was remembered.
+    restore_refs_pending: Option<u64>,
+    /// The ref list that read returned, held until Orientation lands too — focus is resolved
+    /// from both or from neither.
+    restore_refs: Option<Vec<stikk_prikk::RefEntry>>,
+    /// The record last written, so a transition that changes nothing writes nothing.
+    saved: Option<stikk_state::SessionRecord>,
+    /// The untracked filter a newly opened Changes view starts with — restored from the session
+    /// record (RFC 046), `false` without one, and set by the `u` toggle so the next Changes view
+    /// opens the way the last one was left.
+    hide_untracked_default: bool,
+    /// Set once a save is refused or fails: the banner is shown once and the store is not tried
+    /// again this session (decision 3).
+    session_write_failed: bool,
     /// When [`CHANGE_CHECK_INTERVAL`] started counting: the last check sent, or the first
     /// [`App::tick`] after a stamp. A stamp clears it, since `apply` is not handed the time; ticks come
     /// every `POLL`, so the clock starts at most that late.
@@ -605,6 +627,7 @@ impl App {
     pub(crate) fn open(
         repo: impl Into<PathBuf>,
         config: &Config,
+        session: Option<crate::Session>,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
         let mut app = Self::new(
@@ -613,8 +636,21 @@ impl App {
             Palette::from_theme(config.theme),
             req_tx,
         );
+        // Read before the first dispatch, and **shown nowhere** until prikk has confirmed it
+        // (RFC 046 decision 5). `load` answers `None` for every failure, so a corrupt or foreign
+        // record is simply a launch that starts fresh.
+        app.stored = session
+            .as_ref()
+            .and_then(|s| stikk_state::session::load(&s.state_dir, &s.canonical_root));
+        app.session = session;
         let seq = app.dispatch(RequestKind::Orient);
         app.orientation_pending = Some(seq);
+        // **Only when there is something to validate.** Without a record, focus resolves from
+        // Orientation alone, exactly as it did before sessions existed — no extra read, no
+        // extra wait.
+        if app.stored.is_some() {
+            app.restore_refs_pending = Some(app.dispatch(RequestKind::Refs));
+        }
         app
     }
 
@@ -668,6 +704,13 @@ impl App {
             pending_ref_write: None,
             pending_switch: None,
             ref_rows: Vec::new(),
+            session: None,
+            stored: None,
+            restore_refs_pending: None,
+            restore_refs: None,
+            saved: None,
+            hide_untracked_default: false,
+            session_write_failed: false,
             stamp: None,
             check_pending: None,
             interval_from: None,
@@ -955,6 +998,8 @@ impl App {
     pub fn toggle_untracked(&mut self) {
         if let Some(Screen::Changes { hide_untracked, .. }) = self.screens.last_mut() {
             *hide_untracked = !*hide_untracked;
+            self.hide_untracked_default = *hide_untracked;
+            self.flush_session();
         }
     }
 
@@ -2223,6 +2268,8 @@ impl App {
             return;
         }
         if self.screens.pop().is_some() {
+            // Popping back to another top-level view is a transition like any other.
+            self.flush_session();
             return;
         }
         self.should_quit = true;
@@ -2287,6 +2334,12 @@ impl App {
                 self.apply_switch_confirm_execute(seq, result);
             }
         }
+        // **One flush point for every transition a response completes** (RFC 046 decision 4):
+        // the view that just landed, the focus a switch just moved, the picker's pick once its
+        // History arrives. Not a timer — a response only exists because something happened — and
+        // `flush_session` writes nothing when nothing in the record changed, so the silent
+        // change check costs no write.
+        self.flush_session();
     }
 
     fn apply_orient(&mut self, seq: u64, read: OrientRead) {
@@ -2304,14 +2357,118 @@ impl App {
             Ok(view) => {
                 // Once, and only while nothing is focused yet: a later read — `r`, the read after a
                 // commit or seal — never moves focus, and a pick made while pending has already won.
-                if self.ref_focus == RefFocus::Pending {
-                    self.resolve_focus(&view);
+                //
+                // **With a record in hand, focus waits for the ref list too** (RFC 046 decision 5):
+                // the remembered ref is used only if prikk still lists it, and until that read
+                // lands there is nothing stikk may honestly show. Until then the screen is what a
+                // loading screen was before sessions existed.
+                if self.ref_focus == RefFocus::Pending
+                    && (self.stored.is_none() || self.restore_refs.is_some())
+                {
+                    self.resolve_session(&view);
                 }
                 OrientationState::Loaded(view)
             }
             // A failed read leaves focus pending, so the first *successful* read still resolves it.
             Err(error) => OrientationState::Failed(error.to_string()),
         };
+    }
+
+    /// Which of RFC 046 F2's four top-level views is open, for the record.
+    ///
+    /// **Read from the top down, skipping what a record may not hold.** Block detail, Patch
+    /// detail and Compare are pushed on the view they were opened from, so skipping them finds
+    /// that view — which is what decision 2 asks for, without this needing to know *how* each
+    /// was opened. Verify is skipped for `NFR-P05`: reopening it would run a full verification
+    /// at launch.
+    fn current_view(&self) -> stikk_state::LastView {
+        for screen in self.screens.iter().rev() {
+            match screen {
+                Screen::History { .. } => return stikk_state::LastView::History,
+                Screen::Changes { .. } => return stikk_state::LastView::Changes,
+                Screen::Queue { .. } => return stikk_state::LastView::Queue,
+                Screen::BlockDetail { .. }
+                | Screen::PatchDetail { .. }
+                | Screen::Compare { .. }
+                | Screen::Verify { .. }
+                | Screen::Loading { .. } => {}
+            }
+        }
+        stikk_state::LastView::Orientation
+    }
+
+    /// Write the record, if there is a store, if anything changed, and if the store has not
+    /// already refused once (RFC 046 decisions 3 and 4).
+    ///
+    /// **Called on transitions, never on a timer.** A refused or failed write says so once, in a
+    /// banner, and is not tried again this session: a reader who cannot be remembered should
+    /// hear it once, not at every key press.
+    fn flush_session(&mut self) {
+        if self.session_write_failed {
+            return;
+        }
+        let Some(session) = self.session.clone() else {
+            return;
+        };
+        let record = stikk_state::SessionRecord {
+            root: session.canonical_root.clone(),
+            focus: self.focused_ref().map(ToString::to_string),
+            view: self.current_view(),
+            hide_untracked: self.hide_untracked_default,
+        };
+        if self.saved.as_ref() == Some(&record) {
+            return;
+        }
+        match stikk_state::session::save(&session.state_dir, &session.canonical_root, &record) {
+            Ok(()) => self.saved = Some(record),
+            Err(error) => {
+                self.session_write_failed = true;
+                self.banner = Some(format!("this session will not be remembered: {error}"));
+            }
+        }
+    }
+
+    /// Resolve focus, the view and the filter — from the record where prikk confirms it, and
+    /// from today's rule where it does not (RFC 046 decision 5).
+    ///
+    /// **Everything this opens is re-read from prikk**, which is what makes restoring a *view*
+    /// safe: the record says which of four, never what is in it.
+    fn resolve_session(&mut self, view: &stikk_core::OrientationView) {
+        let Some(stored) = self.stored.take() else {
+            self.resolve_focus(view);
+            return;
+        };
+        let refs = self.restore_refs.take().unwrap_or_default();
+        let restored = stikk_core::restore(
+            Some(&stored),
+            &refs,
+            &view.current_branch,
+            view.main_ref_state.is_some(),
+        );
+        self.ref_focus = match restored.focus {
+            Some(name) => RefFocus::Ref(name),
+            None => RefFocus::Unfocused,
+        };
+        self.hide_untracked_default = restored.hide_untracked;
+        match restored.view {
+            stikk_state::LastView::Orientation => {}
+            stikk_state::LastView::History if self.focused_ref().is_some() => self.open_history(),
+            stikk_state::LastView::Changes if self.focused_ref().is_some() => self.open_changes(),
+            stikk_state::LastView::Queue => self.open_queue(),
+            // History and Changes both need a ref; with none focused there is nothing to open
+            // them on, and Orientation is where a session with no focus belongs anyway.
+            stikk_state::LastView::History | stikk_state::LastView::Changes => {}
+        }
+        if self.ref_focus == RefFocus::Unfocused {
+            self.open_ref_picker();
+        }
+        // **Set last.** Every `open_*` above clears the banner on its way, as each does for an
+        // ordinary key press; a note set before them would be gone before it was drawn.
+        if let Some(note) = restored.note {
+            self.banner = Some(note);
+        }
+        // The record is now what is on screen, so the first transition does not rewrite it.
+        self.saved = Some(stored);
     }
 
     /// Where stikk opens (RFC 029 Q1, ruled (b); Handoff B §2). **stikk follows where prikk would start,
@@ -2720,7 +2877,7 @@ impl App {
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::Changes {
                             view: read.view,
-                            hide_untracked: false,
+                            hide_untracked: self.hide_untracked_default,
                             history: read.history,
                             refreshing: None,
                         };
@@ -2735,6 +2892,23 @@ impl App {
     }
 
     fn apply_refs(&mut self, seq: u64, result: stikk_model::Result<stikk_core::RefList>) {
+        // **The restore read** (RFC 046 decision 5), which opened no overlay: it exists only so
+        // the remembered ref can be checked against what prikk lists before anything is shown.
+        // A failed read is an empty list, which makes every remembered ref "gone" — the safe
+        // direction, and the fallback is today's rule.
+        if self.restore_refs_pending == Some(seq) {
+            self.restore_refs_pending = None;
+            let refs = result.map(|list| list.refs).unwrap_or_default();
+            self.ref_rows.clone_from(&refs);
+            self.restore_refs = Some(refs);
+            if self.ref_focus == RefFocus::Pending
+                && let OrientationState::Loaded(view) = &self.state
+            {
+                let view = view.clone();
+                self.resolve_session(&view);
+            }
+            return;
+        }
         let index = self
             .overlays
             .iter()

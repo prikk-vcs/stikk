@@ -6530,3 +6530,261 @@ fn rfc045_below_the_band_a_switch_is_unavailable() {
     assert!(reason.contains(&format!("0.{}", bin.minor)), "{reason}");
     println!("0.{}: {reason}", bin.minor);
 }
+
+/// **RFC 046 at the ceiling: a session restored against prikk's own lists.**
+///
+/// The decision `stikk-core::restore` makes is a pure function, so this drives it with lists a
+/// real prikk produced rather than with fixtures — which is the only way to know that a record
+/// written in one launch still means what it meant when the next one reads it.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc046_a_session_restores_against_real_lists_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+    // `STIKK_STATE_DIR`'s own scratch, outside the repository — which is where every record
+    // belongs, and what the next test proves stikk refuses to do otherwise.
+    let state = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture has a parent", bin.minor))
+        .join("state");
+
+    std::fs::write(repo.join("a.txt"), "one\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    prikk_ok(
+        &bin,
+        &repo,
+        &["branch", "create", "heads/second", "--from", "heads/main"],
+    );
+    Fixture::clear_env();
+
+    let record = stikk_state::SessionRecord {
+        root: repo.clone(),
+        focus: Some("heads/second".to_string()),
+        view: stikk_state::LastView::Changes,
+        hide_untracked: true,
+    };
+    stikk_state::session::save(&state, &repo, &record)
+        .unwrap_or_else(|e| panic!("0.{}: save: {e}", bin.minor));
+
+    let reread = || {
+        stikk_state::session::load(&state, &repo)
+            .unwrap_or_else(|| panic!("0.{}: the record reads back", bin.minor))
+    };
+    let lists = || {
+        stikk_core::list_refs(&backend, &repo)
+            .unwrap_or_else(|e| panic!("0.{}: list_refs: {e}", bin.minor))
+            .refs
+    };
+    let current = || {
+        backend
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor))
+            .current_branch
+    };
+
+    // ── 1. all three come back, from prikk's real lists ─────────────────────────────────────
+    assert_eq!(reread(), record, "0.{}: the record round-trips", bin.minor);
+    let restored = stikk_core::restore(Some(&reread()), &lists(), &current(), true);
+    assert_eq!(
+        restored.focus.as_deref(),
+        Some("heads/second"),
+        "0.{}: the remembered branch wins over prikk's current one",
+        bin.minor
+    );
+    assert_eq!(
+        restored.view,
+        stikk_state::LastView::Changes,
+        "0.{}",
+        bin.minor
+    );
+    assert!(restored.hide_untracked, "0.{}", bin.minor);
+    assert_eq!(restored.note, None, "0.{}: nothing to say", bin.minor);
+
+    // ── 2. close that branch with prikk, and the fallback takes over, with the note ─────────
+    fixture.set_maintainer_env();
+    prikk_ok(&bin, &repo, &["branch", "close", "heads/second"]);
+    Fixture::clear_env();
+    let restored = stikk_core::restore(Some(&reread()), &lists(), &current(), true);
+    assert_eq!(
+        restored.focus.as_deref(),
+        Some("heads/main"),
+        "0.{}: a closed branch is not restored",
+        bin.minor
+    );
+    assert_eq!(
+        restored.note.as_deref(),
+        Some(stikk_core::REMEMBERED_REF_IS_GONE),
+        "0.{}",
+        bin.minor
+    );
+    // The view and the filter are preferences and survive: each view re-reads from prikk.
+    assert_eq!(
+        restored.view,
+        stikk_state::LastView::Changes,
+        "0.{}",
+        bin.minor
+    );
+    assert!(restored.hide_untracked, "0.{}", bin.minor);
+}
+
+/// **RFC 046's `C-E2` leg**: a state directory inside the repository is refused, and **the
+/// repository is byte-identical afterwards**. This is the control the refusal exists for — its
+/// first real caller, measured against a real repository rather than a scratch directory.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc046_a_state_dir_inside_the_repository_is_refused_and_changes_nothing() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    std::fs::write(repo.join("a.txt"), "one\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+
+    let before = tree_fingerprint(&repo);
+    assert!(
+        before.len() > 5,
+        "0.{}: a sealed repository has files",
+        bin.minor
+    );
+
+    let record = stikk_state::SessionRecord {
+        root: repo.clone(),
+        focus: Some("heads/main".to_string()),
+        view: stikk_state::LastView::History,
+        hide_untracked: false,
+    };
+    for inside in [
+        repo.join(".stikk"),
+        repo.join(".prikk").join("stikk"),
+        repo.join("docs").join("state"),
+    ] {
+        let error = stikk_state::session::save(&inside, &repo, &record)
+            .expect_err("C-E2 refuses a state directory inside the repository");
+        assert_eq!(error.class(), "stikk-internal", "0.{}: {error}", bin.minor);
+        assert!(
+            error.to_string().contains("refusing to write"),
+            "0.{}: {error}",
+            bin.minor
+        );
+    }
+
+    assert_eq!(
+        tree_fingerprint(&repo),
+        before,
+        "0.{}: every file in the repository must be byte-identical",
+        bin.minor
+    );
+
+    // And a state directory outside it writes, so the refusals above are about where, not what.
+    let outside = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture has a parent", bin.minor))
+        .join("state-outside");
+    stikk_state::session::save(&outside, &repo, &record).unwrap_or_else(|e| {
+        panic!(
+            "0.{}: a state dir outside the repository writes: {e}",
+            bin.minor
+        )
+    });
+    assert_eq!(
+        tree_fingerprint(&repo),
+        before,
+        "0.{}: and that write did not touch the repository either",
+        bin.minor
+    );
+}
+
+/// Every file under `root`, by relative path and content, so a comparison catches a new file, a
+/// removed one and an edited one alike. Not a hash: the difference should be readable when it
+/// fails.
+fn tree_fingerprint(root: &std::path::Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<(String, Vec<u8>)>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else if let Ok(bytes) = std::fs::read(&path) {
+                let relative = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .into_owned();
+                out.push((relative, bytes));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out.sort();
+    out
+}
+
+/// **RFC 046 decision 6**: a private launch leaves the state directory untouched. The launcher
+/// decides this (`STIKK_PRIVATE=1` → no [`stikk_tui::Session`]), so what is asserted here is the
+/// store's half: nothing exists until something saves.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc046_a_private_session_leaves_the_state_directory_empty() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let state = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture has a parent", bin.minor))
+        .join("private-state");
+    std::fs::create_dir_all(&state)
+        .unwrap_or_else(|e| panic!("0.{}: create the state dir: {e}", bin.minor));
+
+    // What a private launch does: it never calls `load` and never calls `save`.
+    assert_eq!(
+        stikk_state::session::load(&state, &repo),
+        None,
+        "0.{}: nothing to read",
+        bin.minor
+    );
+    let left: Vec<String> = std::fs::read_dir(&state)
+        .unwrap_or_else(|e| panic!("0.{}: read the state dir: {e}", bin.minor))
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        left.is_empty(),
+        "0.{}: the state directory is untouched, got {left:?}",
+        bin.minor
+    );
+}

@@ -59,7 +59,7 @@ fn main() -> ExitCode {
             },
         ]);
 
-    match stikk_tui::run(Path::new("demo-repo"), &backend, &Config::default()) {
+    match stikk_tui::run(Path::new("demo-repo"), &backend, &Config::default(), None) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");

@@ -29,6 +29,7 @@ pub mod queue;
 pub mod refs;
 pub mod refusal_history;
 pub mod seal;
+pub mod session;
 pub mod switch;
 pub mod verify;
 
@@ -80,6 +81,7 @@ pub use refusal_history::{RefusalHistory, RefusalRecord};
 pub use seal::{
     SEAL_CONSENT_COPY, SEAL_OPERATION, SealPreviewOutcome, seal_confirm_and_execute, seal_preview,
 };
+pub use session::{REMEMBERED_REF_IS_GONE, Restored, restore};
 pub use switch::{
     ALREADY_THE_CURRENT_BRANCH, INCOMPLETE_PLAN, NO_FILE_PLAN, SWITCH_FROM_MINOR, SWITCH_OPERATION,
     SwitchPreview, WORK_IS_QUEUED_FOR_THIS_BRANCH, switch_confirm_and_execute, switch_preview,

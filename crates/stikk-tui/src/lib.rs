@@ -64,15 +64,36 @@ use crate::terminal::TerminalGuard;
 /// and 250ms of visible latency after a fast read would be a stutter that did not exist before.
 const POLL: Duration = Duration::from_millis(50);
 
+/// Where stikk may remember this repository between launches (RFC 046).
+///
+/// **The caller decides whether there is one at all.** `None` to [`run`] means no record is read
+/// and none is written: `STIKK_PRIVATE=1` (decision 6), and a host with no resolvable state
+/// directory, reach the TUI the same way — as a session that simply does not remember.
+#[derive(Debug, Clone)]
+pub struct Session {
+    /// Where `sessions/` lives — [`stikk_state::paths::state_dir`]'s answer.
+    pub state_dir: std::path::PathBuf,
+    /// The repository's **canonical** root, which names the record and is stored inside it.
+    pub canonical_root: std::path::PathBuf,
+}
+
 /// Run the interactive TUI over `repo`, driving prikk through the seam on a worker thread and
 /// rendering with the palette from `config`. The caller must have confirmed stdout is a TTY
 /// ([`stdout_is_tty`]); the terminal is restored on every exit path including panic (handoff §6).
+///
+/// `session` is where this repository is remembered, or `None` for a launch that remembers
+/// nothing (RFC 046).
 ///
 /// # Errors
 /// [`StikkError::Environment`] if the terminal cannot be set up or driven. Repository-level failures
 /// (a refusal, a lock conflict) do **not** end the run — they render as a failure state the user can
 /// retry, since stikk owns no repository authority and a bad read is not a crash.
-pub fn run(repo: &Path, prikk: &impl Prikk, config: &Config) -> Result<()> {
+pub fn run(
+    repo: &Path,
+    prikk: &impl Prikk,
+    config: &Config,
+    session: Option<Session>,
+) -> Result<()> {
     let _guard = TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))
         .map_err(|e| StikkError::environment("could not initialize the terminal", e))?;
@@ -90,7 +111,7 @@ pub fn run(repo: &Path, prikk: &impl Prikk, config: &Config) -> Result<()> {
                 worker::run(prikk, repo, req_rx, res_tx);
             }));
         });
-        ui_loop(&mut terminal, repo, config, req_tx, &res_rx)
+        ui_loop(&mut terminal, repo, config, session, req_tx, &res_rx)
     })
 }
 
@@ -100,10 +121,11 @@ fn ui_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     repo: &Path,
     config: &Config,
+    session: Option<Session>,
     req_tx: mpsc::Sender<worker::Request>,
     res_rx: &mpsc::Receiver<worker::Response>,
 ) -> Result<()> {
-    let mut app = App::open(repo, config, req_tx);
+    let mut app = App::open(repo, config, session, req_tx);
     // Tracked locally, not on `App`: once the worker is gone there is nothing left to poll, and this
     // must flip at most once so the fault it records stays dismissible (§ `App::worker_stopped`).
     let mut worker_alive = true;

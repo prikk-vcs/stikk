@@ -152,7 +152,7 @@ fn main() -> ExitCode {
         active_patch_warning: None,
         current_branch: stikk_model::CurrentBranch::NotReported,
     }));
-    match stikk_tui::run(Path::new("demo-repo"), &backend, &Config::default()) {
+    match stikk_tui::run(Path::new("demo-repo"), &backend, &Config::default(), None) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");

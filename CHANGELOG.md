@@ -2,6 +2,18 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Fixed
+
+- **The *commit unavailable* card shows whole refused declarations, and says how many more there
+  are.** It built every declaration prikk would refuse into one block and let the card clip it —
+  and that card does not scroll, so anything past the fold could never be reached. The cut could
+  also land inside a declaration, leaving a heading and *prikk reported —* with nothing under it.
+  It now shows as many **complete** declarations as fit, always at least the first — the one
+  prikk's commit would stop on — and ends with a line saying how many more there are and that
+  each has its own reason.
+
 ## 0.14.0 — 2026-10-18
 
 **stikk now reopens each repository where you left it, and never stores anything inside one.**

@@ -276,6 +276,29 @@ pub fn unshown_patches_line(unshown: usize, total: usize) -> String {
     }
 }
 
+/// The line the commit-unavailable card shows when it cannot hold every refused declaration
+/// (RFC 034 Handoff C): `unshown` is exactly the declarations not shown.
+///
+/// **A fact, and no key.** `Esc` closes that card, so inviting it would send a reader out of the
+/// one screen that is telling them why their commit is unavailable — the same reason
+/// [`unshown_patches_line`] and [`unshown_paths_line`] name no key either.
+///
+/// **And no view, because there is none.** stikk lists refused declarations nowhere else: this
+/// card is where they are. What a reader can act on is prikk's own reason, which each unshown
+/// declaration has — so that is what this says, rather than pointing somewhere that would not
+/// help.
+///
+/// **No "none shown" branch.** The card always shows at least the first declaration whole: it is
+/// the one prikk's commit would stop on first, and a card that showed none of them would be
+/// saying nothing at all.
+#[must_use]
+pub fn unshown_declarations_line(unshown: usize) -> String {
+    if unshown == 1 {
+        return "and 1 more declaration prikk would refuse, with its own reason".to_string();
+    }
+    format!("and {unshown} more declarations prikk would refuse, each with its own reason")
+}
+
 /// How firmly a confirmation may state the signing key id (RFC 026 §5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum KeyClaim {

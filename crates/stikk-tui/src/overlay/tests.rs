@@ -1371,7 +1371,27 @@ fn cases() -> Vec<Case> {
                     })
                     .collect(),
             }),
-            last_row: "src/new-05.rs".to_string(),
+            // **The last content row is the remainder line**, not the last declaration: since
+            // RFC 034 Handoff C the card drops whole declarations and says how many, because
+            // this overlay does not scroll and a row past the fold could never be reached.
+            last_row: "more declarations prikk would refuse".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "CommitWouldRefuseDeclarations (one, whole)",
+            // One declaration, which fits outright at 80×24 — the case that proves the fitting
+            // does not kick in when there is nothing to drop.
+            build: Box::new(|_| Overlay::CommitWouldRefuseDeclarations {
+                declarations: vec![stikk_core::RefusedDeclaration {
+                    old_path: "src/old.rs".to_string(),
+                    new_path: "src/new.rs".to_string(),
+                    reason: "precondition not met: declared rename src/old.rs -> src/new.rs: the \
+                             destination already exists in the baseline; drop the declaration or \
+                             remove the destination"
+                        .to_string(),
+                }],
+            }),
+            last_row: "remove the destination".to_string(),
             entry: None,
         },
         Case {
@@ -1729,18 +1749,29 @@ fn the_gate_is_fed_content_that_actually_overflows() {
 #[test]
 fn the_gate_covers_every_overlay_variant() {
     let variants = overlay_variants();
+    // **Which variants the cases actually build**, by discriminant — not how many cases there
+    // are. A variant may have more than one case (`CommitWouldRefuseDeclarations` has two: one
+    // that overflows and one that fits outright), and what the gate must guarantee is that none
+    // is missing.
+    let mut built: Vec<std::mem::Discriminant<Overlay>> = cases()
+        .iter()
+        .map(|case| std::mem::discriminant(&(case.build)(0)))
+        .collect();
+    built.dedup_by_key(|d| *d);
+    let distinct: std::collections::HashSet<_> = built.into_iter().collect();
     assert_eq!(
-        cases().len(),
+        distinct.len(),
         variants,
-        "`Overlay` has {variants} variants and the gate has {} cases. If a variant was added, \
+        "`Overlay` has {variants} variants and the gate builds {}. If a variant was added, \
          `coverage()` will already have refused to compile; add its case to `cases()` too — built \
          oversized, or the new case asserts nothing.",
-        cases().len()
+        distinct.len()
     );
+    let before = cases().len();
     let mut names: Vec<&str> = cases().iter().map(|c| c.name).collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), variants, "duplicate case names: {names:?}");
+    assert_eq!(names.len(), before, "duplicate case names: {names:?}");
 }
 
 /// How many variants `Overlay` has, **counted from the enum itself**.
@@ -3331,4 +3362,167 @@ fn capture_rfc045_switch_at_80_columns() {
     assert!(draw_at(&many, 80, 24).contains("not shown"));
     assert!(draw_at(&empty, 80, 20).contains("writes nothing"));
     assert!(draw_at(&result, 80, 18).contains("files deleted: 1"));
+}
+
+// =============================================================================================
+// RFC 034 Handoff C — the declarations card drops whole declarations.
+// =============================================================================================
+
+fn refused_declarations(n: usize) -> Overlay {
+    Overlay::CommitWouldRefuseDeclarations {
+        declarations: (0..n)
+            .map(|i| stikk_core::RefusedDeclaration {
+                old_path: format!("src/old-{i:02}.rs"),
+                new_path: format!("src/new-{i:02}.rs"),
+                reason: format!(
+                    "precondition not met: declared rename src/old-{i:02}.rs -> src/new-{i:02}.rs: \
+                     the destination already exists in the baseline; drop the declaration or \
+                     remove the destination"
+                ),
+            })
+            .collect(),
+    }
+}
+
+/// **The card fits by construction at 80×24**, and says how many declarations it dropped.
+///
+/// It is the clipping that made this worth fixing: the overlay does not scroll, so a row past
+/// the fold could never be reached, and the cut could land inside a declaration — a heading and
+/// `prikk reported —` with nothing under it.
+#[test]
+fn the_declarations_card_fits_and_says_what_it_dropped() {
+    let text = draw_at(&refused_declarations(6), 80, 24);
+    assert!(
+        !advertises_more(&text),
+        "the card must no longer clip at 80x24:\n{text}"
+    );
+    assert!(
+        text.contains("more declarations prikk would refuse"),
+        "and it must say how many it dropped:\n{text}"
+    );
+    assert!(
+        text.contains("Esc: close"),
+        "the affordances are never what gives way:\n{text}"
+    );
+}
+
+/// **Only whole declarations are shown**: every heading on the card has prikk's reason under it,
+/// and no heading is the last thing before the remainder line.
+#[test]
+fn no_declaration_is_cut_in_half() {
+    let text = draw_at(&refused_declarations(6), 80, 24);
+    let rows: Vec<&str> = text.lines().collect();
+    // **A heading, not prikk's prose.** The intro wraps onto a line beginning *"declared rename
+    // below…"*, and prikk's own reason quotes the words back — so a heading is a row that begins
+    // with them **and** carries the arrow between the two paths.
+    let headings: Vec<usize> = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| is_declaration_heading(row))
+        .map(|(i, _)| i)
+        .collect();
+    assert!(!headings.is_empty(), "at least one is shown:\n{text}");
+    for at in headings {
+        let rest = rows.get(at + 1..).unwrap_or_default();
+        assert!(
+            rest.iter().any(|row| row.contains("prikk reported")),
+            "a heading at row {at} has no reason under it:\n{text}"
+        );
+        // Its quoted reason has at least one row, so the attribution is never the last thing.
+        let attribution = rest
+            .iter()
+            .position(|row| row.contains("prikk reported"))
+            .unwrap_or_default();
+        assert!(
+            rest.get(attribution + 1)
+                .is_some_and(|row| row.contains('\u{2502}')),
+            "a `prikk reported` with nothing quoted under it:\n{text}"
+        );
+    }
+}
+
+/// **The first declaration is always whole**, even where it alone overflows — it is the one
+/// prikk's commit would stop on first, and a card showing none of them would say nothing.
+#[test]
+fn the_first_declaration_is_kept_whatever_its_size() {
+    let text = draw_at(&refused_declarations(6), 80, 10);
+    assert!(
+        text.contains("src/old-00.rs"),
+        "the first declaration survives a squeeze:\n{text}"
+    );
+    // This is the one case the card may still clip, and `Panel` still says so.
+    assert!(
+        advertises_more(&text) || text.contains("more declarations"),
+        "and it is still honest about it:\n{text}"
+    );
+}
+
+/// One declaration that fits is shown with no remainder line at all.
+#[test]
+fn a_single_declaration_that_fits_says_nothing_about_more() {
+    let text = draw_at(&refused_declarations(1), 80, 24);
+    assert!(text.contains("src/old-00.rs"), "{text}");
+    assert!(!text.contains("more declaration"), "{text}");
+    assert!(!advertises_more(&text), "{text}");
+}
+
+/// **The remainder line counts exactly what it hid**, and names no key and no view.
+#[test]
+fn the_remainder_line_counts_what_it_hid() {
+    // At 80x24 the card holds two of six, so four are unshown. Read the count off the card
+    // rather than asserting a number this test computed a second time.
+    let text = draw_at(&refused_declarations(6), 80, 24);
+    let shown = text
+        .lines()
+        .filter(|row| is_declaration_heading(row))
+        .count();
+    assert!(
+        text.contains(&format!("and {} more declarations", 6 - shown)),
+        "{shown} shown, so the line must say {} more:\n{text}",
+        6 - shown
+    );
+    assert!(
+        !text.contains("Esc dismisses"),
+        "no key is invited:\n{text}"
+    );
+    for line in [
+        stikk_core::unshown_declarations_line(1),
+        stikk_core::unshown_declarations_line(4),
+    ] {
+        assert!(!line.contains("Esc"), "{line}");
+        assert!(
+            !line.contains("Compare"),
+            "no view that does not list them: {line}"
+        );
+    }
+    assert_eq!(
+        stikk_core::unshown_declarations_line(1),
+        "and 1 more declaration prikk would refuse, with its own reason",
+        "the singular reads as one"
+    );
+}
+
+/// A row that heads one declaration: it begins with stikk's own words and carries the arrow
+/// between the two paths. The intro's wrap and prikk's quoted reason both contain the phrase and
+/// neither is a heading.
+fn is_declaration_heading(row: &str) -> bool {
+    let content: String = row.chars().filter(|c| !"│┌┐└┘─".contains(*c)).collect();
+    let content = content.trim_start();
+    content.starts_with("declared rename ") && content.contains(" \u{2192} ")
+}
+
+/// **RFC 034 Handoff C's capture, at exactly 80 columns.** Reproduce with
+/// `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+#[test]
+fn capture_rfc034c_declarations_card_at_80_columns() {
+    for (label, overlay) in [
+        ("six refused declarations", refused_declarations(6)),
+        ("one, which fits outright", refused_declarations(1)),
+    ] {
+        println!(
+            "--- {label} (80 columns) ---\n{}",
+            draw_at(&overlay, 80, 24)
+        );
+    }
+    assert!(!advertises_more(&draw_at(&refused_declarations(6), 80, 24)));
 }

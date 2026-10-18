@@ -953,38 +953,6 @@ fn render_commit_would_refuse_declarations(
     }
     prose.push(Line::from(""));
 
-    for declaration in declarations {
-        // The rule per piece, before formatting (RFC 036 §3): two paths, then stikk's words.
-        let heading = format!(
-            "declared rename {} → {}",
-            identifier(&declaration.old_path),
-            identifier(&declaration.new_path)
-        );
-        for row in wrap_indented(&heading, REFUSAL_TEXT_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().add_modifier(Modifier::BOLD),
-            )));
-        }
-        prose.push(Line::from(Span::styled(
-            "  prikk reported —",
-            Style::default().fg(palette.dim),
-        )));
-        let reason = inert(&declaration.reason);
-        for row in wrap_indented(&reason, REFUSAL_TEXT_WIDTH, QUOTE_INDENT) {
-            prose.push(Line::from(vec![
-                Span::styled(QUOTE_BAR, Style::default().fg(palette.warn)),
-                Span::styled(
-                    row.get(QUOTE_INDENT.len()..)
-                        .unwrap_or_default()
-                        .to_string(),
-                    Style::default().fg(palette.fg),
-                ),
-            ]));
-        }
-        prose.push(Line::from(""));
-    }
-
     let actions = vec![
         Line::from(Span::styled(
             "  prikk's refusal above names what to do.",
@@ -996,6 +964,13 @@ fn render_commit_would_refuse_declarations(
         )),
     ];
 
+    // **The budget, exactly as `Panel` will spend it** (RFC 034 Handoff C): it draws
+    // `area.height − 2 − actions` prose rows, and the intro above is already wrapped, so what is
+    // left for the declarations is a count rather than a guess.
+    let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(actions.len());
+    let available = prose_rows.saturating_sub(prose.len());
+    prose.extend(declaration_lines(declarations, available, palette));
+
     Panel {
         title: " Commit unavailable ",
         width: REFUSAL_WIDTH,
@@ -1004,6 +979,96 @@ fn render_commit_would_refuse_declarations(
         style: Style::default().fg(palette.warn),
     }
     .render(frame, area);
+}
+
+/// The refused declarations, fitted to `available` rows **whole** (RFC 034 Handoff C), in
+/// [`frozen_lines`]'s shape and for the same reason.
+///
+/// **This overlay does not scroll.** `↓` falls through it (`app::App::nav_down`), so a row past
+/// the fold is a row the reader can never reach — the card's honest `lines 1–20 of 42` told them
+/// something was missing and gave them no way to see it. Worse, the cut landed anywhere: the last
+/// visible rows could be a declaration's heading and `prikk reported —` with nothing under it.
+///
+/// So the card drops **whole declarations** and says how many, and **the first is always kept
+/// whole** even if it alone overflows: it is the one prikk's commit would stop on first, and a
+/// card showing none of them would say nothing at all. That last case is the only one where this
+/// card still clips, and `Panel` still says so in the title.
+///
+/// **Rows are counted as drawn** — cells, not characters (`wrap_cells`) — so a path in a wide
+/// script cannot make the count disagree with what is on screen.
+fn declaration_lines(
+    declarations: &[stikk_core::RefusedDeclaration],
+    available: usize,
+    palette: &Palette,
+) -> Vec<Line<'static>> {
+    // One declaration's rows: its heading, stikk's attribution, prikk's reason quoted, a blank.
+    let block = |declaration: &stikk_core::RefusedDeclaration| -> Vec<Line<'static>> {
+        let mut out: Vec<Line<'static>> = Vec::new();
+        // The rule per piece, before formatting (RFC 036 §3): two paths, then stikk's words.
+        let heading = format!(
+            "declared rename {} → {}",
+            identifier(&declaration.old_path),
+            identifier(&declaration.new_path)
+        );
+        for row in wrap_cells(&heading, REFUSAL_TEXT_WIDTH, "  ") {
+            out.push(Line::from(Span::styled(
+                row,
+                Style::default().add_modifier(Modifier::BOLD),
+            )));
+        }
+        out.push(Line::from(Span::styled(
+            "  prikk reported —",
+            Style::default().fg(palette.dim),
+        )));
+        for row in wrap_cells(
+            &inert(&declaration.reason),
+            REFUSAL_TEXT_WIDTH,
+            QUOTE_INDENT,
+        ) {
+            out.push(Line::from(vec![
+                Span::styled(QUOTE_BAR, Style::default().fg(palette.warn)),
+                Span::styled(
+                    row.get(QUOTE_INDENT.len()..)
+                        .unwrap_or_default()
+                        .to_string(),
+                    Style::default().fg(palette.fg),
+                ),
+            ]));
+        }
+        out.push(Line::from(""));
+        out
+    };
+    let remainder = |unshown: usize| -> Vec<Line<'static>> {
+        wrap_cells(
+            &stikk_core::unshown_declarations_line(unshown),
+            REFUSAL_TEXT_WIDTH,
+            "  ",
+        )
+        .into_iter()
+        .map(|row| Line::from(Span::styled(row, Style::default().fg(palette.dim))))
+        .collect()
+    };
+
+    let blocks: Vec<Vec<Line<'static>>> = declarations.iter().map(block).collect();
+    if blocks.iter().map(Vec::len).sum::<usize>() <= available {
+        return blocks.into_iter().flatten().collect();
+    }
+    // Room for the remainder is kept **before** any declaration is laid out: a list that stops
+    // without saying so is the defect this shape exists to prevent.
+    let foot = remainder(blocks.len());
+    let room = available.saturating_sub(foot.len());
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut shown = 0usize;
+    for rows in &blocks {
+        // **The first is kept whatever its size**, and every later one only if it fits whole.
+        if shown > 0 && out.len() + rows.len() > room {
+            break;
+        }
+        out.extend(rows.clone());
+        shown += 1;
+    }
+    out.extend(remainder(blocks.len() - shown));
+    out
 }
 
 /// Render [`Overlay::CommitWouldRefuse`] (RFC 027 decision 5).

@@ -1,6 +1,6 @@
 # Handoff A — RFC 046: session persistence (v1)
 
-**Companion to:** [RFC 046](../../accepted/046-session-persistence.md), **accepted 2026-10-18**, no open question.
+**Companion to:** [RFC 046](../../done/046-session-persistence.md), **accepted 2026-10-18**, no open question.
 **Read the RFC first**, F2 and decisions 1–8. The data model's `DM-04` and `LC-3`/`LC-5`/`LC-6`/`LC-8`
 (`docs/src/reference/data-model.md`) are the design it follows.
 **Covers:** decisions 1–8. 0.14.0's increment 3.

@@ -1,6 +1,6 @@
 # RFC 046 — Session persistence
 
-**Status.** **Accepted by the project owner 2026-10-18**; [Handoff A](../handoffs/046-session-persistence/a-session-persistence-handoff-v1.md) issued. **Proposed 2026-10-18** by the architect, as 0.14.0's increment 3 (`.git-exclude/release/0-14-0-scope.md`,
+**Status.** **Done 2026-10-18**: Handoff A delivered on `main` (`c27068a`, `dfec75a`, `0a350c4`); a **0.14.0** candidate. **Accepted by the project owner 2026-10-18**; [Handoff A](../handoffs/046-session-persistence/a-session-persistence-handoff-v1.md) issued. **Proposed 2026-10-18** by the architect, as 0.14.0's increment 3 (`.git-exclude/release/0-14-0-scope.md`,
 authorized). **No open question.**
 **Measures nothing in prikk**: every prikk read it uses already exists. It is design against the data model's own
 entities (`DM-02`, `DM-04`) and lifecycle (`LC-3`, `LC-5`, `LC-6`, `LC-8`), which were written before the code and are
@@ -91,3 +91,23 @@ untouched; **a state directory inside the repository is refused and the reposito
   are a later increment.
 - **No progressive disclosure** (`TU-12`), **no recents list** (`DM-03`), no settings UI.
 - **No repository fingerprint** (`LC-9`, unchanged).
+
+## Delivered
+
+**One handoff, three commits, green on `main` at `0a350c4`**: CI, Docs, the real-binary suite (58 cases at 0.28.0 and
+0.52.0) and supply chain.
+
+- **The store** (`stikk-state::session`): one record per repository, named by FNV-1a 64 over the canonical path with
+  the constants pinned; a byte-level `key=value` encoding, so a non-UTF-8 path is exact without `unsafe`; any decode
+  failure, unknown version or foreign path is a miss; atomic replace; at most 200 records.
+- **`C-E2` was lexical, and is not any more** (review v1 C1). The first real write through it showed that a relative
+  state directory, a `..` leading back in, and a symlink into the repository all got past it
+  (`.git-exclude/reports/046-session-persistence/c2e-probe.txt`). `ensure_outside_repository` now resolves both sides
+  before comparing, refuses an unresolvable `..`, and checks `.prikk` on the resolved path. No released stikk had ever
+  written a file through it, so no release was exposed. The suite proves six inside-the-repository state directories
+  refused against a real repository, byte-identical afterwards.
+- **Restore** is a pure `stikk_core::restore`, driven in the suite by prikk's real lists; nothing stored is drawn before
+  both reads land, and no extra read happens without a record. The view is recorded by walking the screen stack, so
+  Verify never reopens.
+- **Beyond the RFC, accepted in review**: the untracked filter also persists across closing and reopening Changes
+  within one session.

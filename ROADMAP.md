@@ -382,8 +382,9 @@ a fabricated worktree entry was fixed.
    `1498736`): the Glossary lists `V`; the overlay clipping gate builds every variant, counted from the enum.
 2. **A workspace-wide seed-read guard — landed on `main`** ([Handoff C](rfcs/handoffs/023-what-stikk-has-and-does-not-show/c-workspace-seed-guard-handoff-v1.md),
    `402ddf0`, `01a33b8`): the README's *"enforced by test"* holds over all six shipped crates; `SECURITY.md` says so.
-3. **Session persistence** (`FR-122`, [RFC 046](rfcs/accepted/046-session-persistence.md), accepted 2026-10-18): reopen each repository on its focused ref, last view and filters,
-   stored outside the repository; the first production caller of `C-E2`.
+3. **Session persistence — landed on `main`** (`FR-122`, [RFC 046](rfcs/done/046-session-persistence.md), `c27068a`, `dfec75a`, `0a350c4`):
+   each repository reopens on its focused ref, top-level view and untracked filter, re-checked against prikk first;
+   `STIKK_PRIVATE=1` remembers nothing. `C-E2` now resolves paths before it compares.
 4. **A package manager** (RFC 047), **on the owner's decision** (a Homebrew tap recommended).
 5. **Conditional: the prikk 0.53.0 re-baseline**, only if prikk publishes before the cut.
 

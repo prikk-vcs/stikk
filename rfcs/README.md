@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 046 | [Session persistence](./accepted/046-session-persistence.md) | `FR-122`: reopen each repository on its focused ref, last top-level view and untracked filter, stored outside the repository through `C-E2` (its first production caller), re-checked against prikk before shown; `STIKK_PRIVATE=1` remembers nothing. **Accepted 2026-10-18**; 0.14.0 increment 3 | [A: session persistence](./handoffs/046-session-persistence/a-session-persistence-handoff-v1.md) |
+_None: RFC 046 delivered and closed 2026-10-18._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 046 | [Session persistence](./done/046-session-persistence.md) | 0.14.0 candidate (on `main`) | deep restore and id anchors (`DM-04`), recents (`DM-03`), progressive disclosure (`TU-12`) | [A: session persistence](./handoffs/046-session-persistence/a-session-persistence-handoff-v1.md) |
 | 045 | [Switch branch](./done/045-switch-branch.md) | **0.13.0** | checkout of a block or path (not planned); F5 held for a letter to prikk | [A: switch branch](./handoffs/045-switch-branch/a-switch-branch-handoff-v1.md) |
 | 044 | [Branches and tags](./done/044-branches-and-tags.md) | **0.13.0** | Glossary's `V`; a clipping-gate case; one re-indent (all carried, small) | [A: branches and tags](./handoffs/044-branches-and-tags/a-branches-and-tags-handoff-v1.md) |
 | 043 | [The prikk 0.52 re-baseline](./done/043-prikk-0-52-rebaseline.md) | **0.12.0** | none | [A: the re-baseline](./handoffs/043-prikk-0-52-rebaseline/a-rebaseline-handoff-v1.md) |

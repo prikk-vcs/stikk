@@ -400,7 +400,7 @@ a fabricated worktree entry was fixed.
 
 **0.15.0: stikk merges branches.** Scope: `.git-exclude/release/0-15-0-scope.md`.
 
-1. **The declarations card fits** ([Handoff C](rfcs/handoffs/034-prikk-0-46-rebaseline/c-declarations-card-fits-handoff-v1.md)):
+1. **The declarations card fits — landed on `main`** ([Handoff C](rfcs/handoffs/034-prikk-0-46-rebaseline/c-declarations-card-fits-handoff-v1.md), `bf8d067`):
    whole declarations and a count, never rows the reader cannot reach.
 2. **Merge, read-only** (`FR-080/081`, RFC 047): prikk's merge evidence and plan for two branches, with the baseline
    block stikk finds shown for checking.

@@ -165,32 +165,110 @@ fn real_lookup(name: &str) -> Option<OsString> {
 /// covers it, so stikk cannot rely on user configuration as a backstop for its own state). stikk calls
 /// this before every state/cache/export write.
 ///
+/// **Both paths are resolved first** (RFC 046 review v1 C1). The check used to compare the strings
+/// it was handed, which three shapes walked straight past: a **relative** target (`STIKK_STATE_DIR`
+/// is taken verbatim, so `STIKK_STATE_DIR=state` from inside a worktree resolved into it), a `..`
+/// that led back in, and a **symlink** into the repository. Each was measured against the released
+/// shape (`.git-exclude/reports/046-session-persistence/c2e-probe.txt`). The function was always
+/// lexical; session persistence is the first write it guards, which is the first time it mattered.
+///
+/// Resolution is: absolute against the current directory, the deepest
+/// **existing** ancestor canonicalized — a state directory need not exist yet — and the rest
+/// re-appended. A remainder still holding `..` is refused outright, because there is nothing on
+/// disk to resolve it against and a guess is not a control.
+///
+/// **A symlink that leads *out* of the repository stays allowed**: a state directory may
+/// legitimately live elsewhere behind one, and after resolution it is simply outside.
+///
 /// # Errors
-/// [`StikkError::Internal`] when `target` is repository-internal — an internal fault, because stikk's
-/// own path resolution should never produce such a target; surfacing it as a bug is correct.
+/// [`StikkError::Internal`] when `target` is repository-internal, or when it cannot be resolved
+/// well enough to tell — an internal fault, because stikk's own path resolution should never
+/// produce such a target; surfacing it as a bug is correct.
 pub fn ensure_outside_repository(target: &Path, repo_root: Option<&Path>) -> Result<()> {
-    if target
+    // Only a relative path needs the current directory, so a host that cannot report one still
+    // writes absolute targets — which is every target stikk itself builds.
+    let base = std::env::current_dir().unwrap_or_default();
+    ensure_outside_repository_from(target, repo_root, &base)
+}
+
+/// [`ensure_outside_repository`], with the directory a relative path resolves against passed in.
+///
+/// **Injected rather than read from the process**, the way [`config_base_with`] takes its lookup:
+/// a test that changed the process's current directory would race every other test in the binary,
+/// and the relative case is exactly the one that must be covered.
+fn ensure_outside_repository_from(
+    target: &Path,
+    repo_root: Option<&Path>,
+    base: &Path,
+) -> Result<()> {
+    let refuse = |why: &str, path: &Path| {
+        Err(StikkError::Internal {
+            detail: format!("refusing to write a stikk file {why}: {}", path.display()),
+        })
+    };
+    let Some(resolved) = resolve_for_comparison(target, base) else {
+        return refuse(
+            "whose path cannot be resolved (it still holds `..` past anything that exists)",
+            target,
+        );
+    };
+    if resolved
         .components()
         .any(|c| c.as_os_str() == PRIKK_METADATA_DIR)
     {
-        return Err(StikkError::Internal {
-            detail: format!(
-                "refusing to write a stikk file inside a repository metadata directory: {}",
-                target.display()
-            ),
-        });
+        return refuse("inside a repository metadata directory", &resolved);
     }
-    if let Some(root) = repo_root
-        && target.starts_with(root)
-    {
-        return Err(StikkError::Internal {
-            detail: format!(
-                "refusing to write a stikk file inside the open repository worktree: {}",
-                target.display()
-            ),
-        });
+    if let Some(root) = repo_root {
+        let Some(root) = resolve_for_comparison(root, base) else {
+            return refuse("against a repository root that cannot be resolved", target);
+        };
+        if resolved.starts_with(&root) {
+            return refuse("inside the open repository worktree", &resolved);
+        }
     }
     Ok(())
+}
+
+/// `path` made absolute and resolved as far as the filesystem allows, or `None` when what is left
+/// cannot be resolved honestly.
+///
+/// **The deepest existing ancestor is canonicalized and the rest re-appended**, because the target
+/// of a first write does not exist yet — and neither, often, does the directory above it. That is
+/// enough: every `..` and every symlink in the part that *does* exist is resolved, and a `..` in
+/// the part that does not is refused rather than guessed at (a `..` after a component that is not
+/// there yet could mean anything, depending on what that component turns out to be).
+fn resolve_for_comparison(path: &Path, base: &Path) -> Option<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+    };
+    // The deepest ancestor that exists, and how much of `absolute` was left behind.
+    let mut ancestors = absolute.ancestors();
+    let mut existing = None;
+    for candidate in ancestors.by_ref() {
+        if let Ok(canonical) = std::fs::canonicalize(candidate) {
+            existing = Some((candidate.to_path_buf(), canonical));
+            break;
+        }
+    }
+    let Some((prefix, canonical)) = existing else {
+        // Nothing on this path exists, not even its root: there is no symlink or `..` the
+        // filesystem could resolve, so the lexical form is all there is and all there is to
+        // compare. Refuse only what is genuinely unresolvable.
+        return (!has_parent_component(&absolute)).then_some(absolute);
+    };
+    let remainder = absolute.strip_prefix(&prefix).ok()?;
+    if has_parent_component(remainder) {
+        return None;
+    }
+    Some(canonical.join(remainder))
+}
+
+/// Whether `path` holds a `..` component.
+fn has_parent_component(path: &Path) -> bool {
+    path.components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
 }
 
 #[cfg(test)]

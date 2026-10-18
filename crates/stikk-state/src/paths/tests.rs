@@ -221,3 +221,133 @@ fn no_home_at_all_is_an_environment_error_on_every_platform() {
         assert_eq!(state_err.class(), "environment");
     }
 }
+
+// =============================================================================================
+// RFC 046 review v1 C1 — `C-E2` resolves before it compares.
+//
+// The four rows the architect measured against the released shape
+// (`.git-exclude/reports/046-session-persistence/c2e-probe.txt`), re-run here. Three of them were
+// ALLOWED and are now refused; the fourth was correct and stays allowed.
+// =============================================================================================
+
+/// A scratch tree: `<dir>/repo` with a `.prikk` inside it, `<dir>/outside`, and — on Unix —
+/// `<dir>/outside/link` pointing at the repository.
+fn boundary_scratch(tag: &str) -> (PathBuf, PathBuf) {
+    let dir = std::env::temp_dir().join(format!(
+        "stikk-ce2-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(repo.join(".prikk")).expect("create the repository");
+    std::fs::create_dir_all(dir.join("outside")).expect("create the outside dir");
+    (dir, repo)
+}
+
+/// **A relative target resolves against the current directory**, and `STIKK_STATE_DIR` is taken
+/// verbatim — so `STIKK_STATE_DIR=state`, run from inside a worktree, used to put stikk's record
+/// in that worktree, where the next `commit --from-worktree` would capture it.
+#[test]
+fn a_relative_target_inside_the_worktree_is_refused() {
+    let (_dir, repo) = boundary_scratch("relative");
+    let root = std::fs::canonicalize(&repo).expect("canonicalize");
+    // The base is the repository itself: the shape of `cd <repo> && STIKK_STATE_DIR=state stikk`.
+    let error = ensure_outside_repository_from(Path::new("state/sessions/x"), Some(&root), &repo)
+        .expect_err("a relative state directory must not escape the check");
+    assert_eq!(error.class(), "stikk-internal");
+    assert!(error.to_string().contains("worktree"), "{error}");
+}
+
+/// **A `..` that leads back in** is refused: the existing part is canonicalized, so the detour
+/// is gone before the comparison.
+#[test]
+fn a_parent_component_leading_back_inside_is_refused() {
+    let (dir, repo) = boundary_scratch("dotdot");
+    let root = std::fs::canonicalize(&repo).expect("canonicalize");
+    let target = dir.join("outside").join("..").join("repo").join("state");
+    let error = ensure_outside_repository_from(&target, Some(&root), &dir)
+        .expect_err("`..` must not walk back into the repository");
+    assert_eq!(error.class(), "stikk-internal");
+}
+
+/// **A symlink into the repository** is refused — the deepest existing ancestor is canonicalized,
+/// which is what follows the link.
+#[cfg(unix)]
+#[test]
+fn a_symlink_into_the_repository_is_refused() {
+    let (dir, repo) = boundary_scratch("symlink-in");
+    let link = dir.join("outside").join("link");
+    std::os::unix::fs::symlink(&repo, &link).expect("symlink into the repository");
+    let root = std::fs::canonicalize(&repo).expect("canonicalize");
+    let error =
+        ensure_outside_repository_from(&link.join("state").join("sessions"), Some(&root), &dir)
+            .expect_err("a symlink is not a way around the boundary");
+    assert_eq!(error.class(), "stikk-internal");
+}
+
+/// **A symlink out of the repository stays allowed.** A state directory may legitimately live
+/// elsewhere behind one, and after resolution it simply is elsewhere.
+#[cfg(unix)]
+#[test]
+fn a_symlink_out_of_the_repository_is_allowed() {
+    let (dir, repo) = boundary_scratch("symlink-out");
+    let elsewhere = dir.join("outside").join("state");
+    std::fs::create_dir_all(&elsewhere).expect("create the real state dir");
+    let link = repo.join("state-link");
+    std::os::unix::fs::symlink(&elsewhere, &link).expect("symlink out of the repository");
+    let root = std::fs::canonicalize(&repo).expect("canonicalize");
+    ensure_outside_repository_from(&link.join("sessions").join("x"), Some(&root), &dir)
+        .expect("a state directory behind a symlink out is outside");
+}
+
+/// The row that was always right stays right: a genuinely outside target is allowed, and so is
+/// one whose directories do not exist yet.
+#[test]
+fn a_target_genuinely_outside_is_still_allowed() {
+    let (dir, repo) = boundary_scratch("outside");
+    let root = std::fs::canonicalize(&repo).expect("canonicalize");
+    for target in [
+        dir.join("outside").join("state").join("sessions").join("x"),
+        dir.join("outside")
+            .join("not-created-yet")
+            .join("deep")
+            .join("x"),
+    ] {
+        ensure_outside_repository_from(&target, Some(&root), &dir)
+            .unwrap_or_else(|e| panic!("{} should be allowed: {e}", target.display()));
+    }
+}
+
+/// **A `..` past the end of what exists is refused**, not guessed at: what it would resolve to
+/// depends on what the missing component turns out to be.
+#[test]
+fn an_unresolvable_parent_component_is_refused() {
+    let (dir, repo) = boundary_scratch("unresolvable");
+    let root = std::fs::canonicalize(&repo).expect("canonicalize");
+    let target = dir
+        .join("outside")
+        .join("not-created-yet")
+        .join("..")
+        .join("..")
+        .join("repo")
+        .join("state");
+    let error = ensure_outside_repository_from(&target, Some(&root), &dir)
+        .expect_err("a `..` with nothing to resolve against is refused");
+    assert_eq!(error.class(), "stikk-internal");
+    assert!(error.to_string().contains("cannot be resolved"), "{error}");
+}
+
+/// The `.prikk` half is checked on the **resolved** path too, so a symlink into `.prikk` is
+/// caught even with no repository root passed.
+#[cfg(unix)]
+#[test]
+fn a_symlink_into_prikk_metadata_is_refused_with_no_root() {
+    let (dir, repo) = boundary_scratch("symlink-meta");
+    let link = dir.join("outside").join("meta");
+    std::os::unix::fs::symlink(repo.join(".prikk"), &link).expect("symlink into .prikk");
+    let error = ensure_outside_repository_from(&link.join("stikk"), None, &dir)
+        .expect_err("a symlink into .prikk is still inside .prikk");
+    assert_eq!(error.class(), "stikk-internal");
+    assert!(error.to_string().contains("metadata directory"), "{error}");
+}

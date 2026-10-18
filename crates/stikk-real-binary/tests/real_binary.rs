@@ -6681,19 +6681,54 @@ fn rfc046_a_state_dir_inside_the_repository_is_refused_and_changes_nothing() {
         view: stikk_state::LastView::History,
         hide_untracked: false,
     };
-    for inside in [
+    let outside_dir = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture has a parent", bin.minor));
+    // **Three of these walked past the check until RFC 046 review v1 C1**: a relative state
+    // directory, a `..` that leads back in, and a symlink into the repository. Each is measured
+    // here against a real repository, where the consequence would be a stikk file the next
+    // `commit --from-worktree` captures.
+    let mut inside = vec![
         repo.join(".stikk"),
         repo.join(".prikk").join("stikk"),
         repo.join("docs").join("state"),
-    ] {
-        let error = stikk_state::session::save(&inside, &repo, &record)
-            .expect_err("C-E2 refuses a state directory inside the repository");
+        // Down and back up: `<repo>/..` canonicalizes to the fixture, and the remainder names
+        // the repository again.
+        repo.join("..").join(
+            repo.file_name()
+                .unwrap_or_else(|| panic!("0.{}: the repo has a name", bin.minor)),
+        ),
+    ];
+    #[cfg(unix)]
+    {
+        let link = outside_dir.join("link-into-repo");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&repo, &link)
+            .unwrap_or_else(|e| panic!("0.{}: symlink: {e}", bin.minor));
+        inside.push(link.join("state"));
+    }
+    for inside in inside {
+        let Err(error) = stikk_state::session::save(&inside, &repo, &record) else {
+            panic!("0.{}: C-E2 must refuse {}", bin.minor, inside.display());
+        };
         assert_eq!(error.class(), "stikk-internal", "0.{}: {error}", bin.minor);
         assert!(
             error.to_string().contains("refusing to write"),
             "0.{}: {error}",
             bin.minor
         );
+    }
+    // The relative shape, which needs the process to be inside the worktree to mean anything.
+    // `set_current_dir` is process-wide, so it is restored immediately — `ENV_LOCK` is held for
+    // the whole test, which is what keeps that safe here.
+    let restore = std::env::current_dir().ok();
+    if std::env::set_current_dir(&repo).is_ok() {
+        let error = stikk_state::session::save(std::path::Path::new("state"), &repo, &record)
+            .expect_err("a relative state directory must not escape the check");
+        assert_eq!(error.class(), "stikk-internal", "0.{}: {error}", bin.minor);
+        if let Some(restore) = restore {
+            let _ = std::env::set_current_dir(restore);
+        }
     }
 
     assert_eq!(

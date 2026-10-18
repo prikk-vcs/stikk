@@ -409,7 +409,8 @@ a fabricated worktree entry was fixed.
 4. **Delivery for unskilled users** (RFC 048): designed before any package manager is chosen, on the owner's
    direction — the channels, what each asks of a user, prikk's own installation beside stikk's, and what only the
    owner can decide (accounts, signing, cost).
-5. **Conditional: the prikk 0.53.0 re-baseline**, only if prikk publishes before the cut.
+5. **The prikk 0.53.0 re-baseline** (RFC 049): prikk published 0.53.0 on 2026-10-18, so the conditional increment joins.
+   Nothing stikk reads changed; the ceiling goes to 53.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 

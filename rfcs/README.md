@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 049 | [The prikk 0.53 re-baseline](./proposed/049-prikk-0-53-rebaseline.md) | prikk 0.53.0 changes nothing stikk reads (its one output change is `checkout`, called only below 0.46): the validated ceiling goes to 53 and the docs say so; the suite is green with only the ceiling raised. **Proposed 2026-10-19**; 0.15.0's conditional increment |
 | 047 | [Merge](./proposed/047-merge.md) | `FR-080…082`: prikk's merge plan for two branches (mark, select, `M`), then the merge it describes when prikk proves it confluent, at seal's tier, prikk ≥ 0.42. stikk names the baseline only where it can name the true one (no merge block above the shared block), and never merges into the current branch (measured: the worktree is left behind). **Proposed 2026-10-18**; 0.15.0 increments 2–3 |
 
 ## Accepted

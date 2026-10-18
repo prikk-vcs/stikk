@@ -18,6 +18,8 @@
 pub mod config;
 pub mod handle;
 pub mod paths;
+pub mod session;
 
 pub use config::Config;
 pub use handle::RepositoryHandle;
+pub use session::{LastView, SessionRecord};

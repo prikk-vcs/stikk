@@ -56,7 +56,7 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.13.x installs in one command, prikk included, and tells you whether your repository is
+**v0.14.x installs in one command, prikk included, and tells you whether your repository is
 sound — now against prikk 0.52.0.** **One line installs stikk** — `curl … install.sh | sh`, or `irm … install.ps1 | iex` on
 Windows — checking the download against the checksum published beside it, installing where you own
 it, and offering to install **prikk** through prikk's own verified installer; `cargo binstall
@@ -89,7 +89,10 @@ as the rename prikk says it will author**, from prikk's own verdict at prikk ≥
 declaration prikk would refuse makes commit unavailable. **A ref with no published history is named
 as one**, and reads again on prikk 0.45 and 0.46, where prikk refused it by name. **Two refs
 compare from the ref picker** (`b`, then `m` to mark one and `d` to compare it with the selected
-one). Merge, sync, and checkout of a block or a path are not built yet.
+one). **stikk reopens each repository where you left it** — the focused ref, the top-level view
+and the untracked filter, re-checked against prikk before any of it is shown, stored outside
+every repository, and `STIKK_PRIVATE=1` for a launch that remembers nothing. Merge, sync, and
+checkout of a block or a path are not built yet.
 
 ## Links
 

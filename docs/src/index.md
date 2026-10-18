@@ -20,7 +20,7 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.13.x installs in one command, prikk included, and tells you whether your repository is
+**0.14.x installs in one command, prikk included, and tells you whether your repository is
 sound — now against prikk 0.52.0.** One line installs stikk and offers prikk through prikk's own verified installer; **Verify**
 (`V`) shows prikk's verdict on whether the repository is sound; and **Compare** reaches any two
 points, including any two refs. Every repository string is still shown as it is.
@@ -67,5 +67,9 @@ ref picker, `n` creates a branch at the selected ref's tip, `t` tags it (or any 
 History), `x` closes it and `s` switches to it — each previewed before it runs, a switch as the
 exact files it will write and delete, with the branch you are standing on never offered for
 closing and a branch the queue holds work for never offered for switching (RFCs 044 and 045,
-prikk ≥ 0.42 and ≥ 0.46). Merge, sync, and checkout of a block or a path remain unbuilt; a
+prikk ≥ 0.42 and ≥ 0.46). **stikk reopens each repository where you left it** (`FR-122`,
+RFC 046): the focused ref, the top-level view and the untracked filter, **re-checked against
+prikk before any of it is shown** and stored outside every repository — `STIKK_PRIVATE=1` for a
+launch that remembers nothing, and deleting the records is always safe. Merge, sync, and checkout
+of a block or a path remain unbuilt; a
 **Trust & Keys** view and a **doctor**/lock-inspector view are named gaps too.

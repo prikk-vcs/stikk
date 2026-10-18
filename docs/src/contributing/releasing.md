@@ -84,9 +84,9 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.13.x release is (and is not)
+## What a v0.14.x release is (and is not)
 
-v0.13.x reads orientation, history, block detail — including the files at **any** block, with their
+v0.14.x reads orientation, history, block detail — including the files at **any** block, with their
 modes, at prikk ≥ 0.46 — worktree changes, the Queue view, **Patch detail** (what one patch changed,
 from prikk's own `show` report, with content shown byte for byte), **Compare** (what changed between
 two points, from prikk's own `diff` hunks, at prikk ≥ 0.46 — two blocks, a block and the one before
@@ -101,7 +101,10 @@ patches it freezes, and a switch's confirmation names the exact files it will wr
 and its commit preview shows a declared rename as prikk's own verdict resolves it, makes commit
 unavailable where prikk would refuse a declaration, and names a ref with no published history.
 Every string it did not write is rendered so that what you read is what prikk reported.
-Signing readiness is read from prikk itself on prikk ≥ 0.41. Merge, sync and checkout of a block
+Signing readiness is read from prikk itself on prikk ≥ 0.41. **It reopens each repository where
+you left it** — the focused ref, the top-level view and the untracked filter, re-checked against
+prikk before any of it is shown and stored outside every repository; `STIKK_PRIVATE=1` remembers
+nothing. Merge, sync and checkout of a block
 or a path remain unbuilt, and so is a **Trust & Keys** view, and a **doctor** or lock-inspector
 view (`doctor` has no JSON): the `Prikk` seam has nineteen methods — `handshake`, `readiness`,
 `orientation`, `history`, `block_state`, `refs`, `tags`, `worktree_status`, `queue`, `show`,

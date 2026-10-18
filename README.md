@@ -112,12 +112,12 @@ Find the row for your computer — the commands below download that file for you
 
 | Your computer | File to download |
 |---|---|
-| Linux, Intel/AMD | `stikk-0.13.0-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux, Intel/AMD (older systems) | `stikk-0.13.0-x86_64-unknown-linux-musl.tar.gz` |
-| Linux, ARM | `stikk-0.13.0-aarch64-unknown-linux-gnu.tar.gz` |
-| Mac, Apple Silicon (M1 and later) | `stikk-0.13.0-aarch64-apple-darwin.tar.gz` |
-| Mac, Intel | `stikk-0.13.0-x86_64-apple-darwin.tar.gz` |
-| Windows | `stikk-0.13.0-x86_64-pc-windows-msvc.zip` |
+| Linux, Intel/AMD | `stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux, Intel/AMD (older systems) | `stikk-0.14.0-x86_64-unknown-linux-musl.tar.gz` |
+| Linux, ARM | `stikk-0.14.0-aarch64-unknown-linux-gnu.tar.gz` |
+| Mac, Apple Silicon (M1 and later) | `stikk-0.14.0-aarch64-apple-darwin.tar.gz` |
+| Mac, Intel | `stikk-0.14.0-x86_64-apple-darwin.tar.gz` |
+| Windows | `stikk-0.14.0-x86_64-pc-windows-msvc.zip` |
 
 Each file has a second file beside it ending in `.sha256`. That is a *checksum*: a short fingerprint
 of the download, so you can tell the file arrived exactly as published. The commands below fetch
@@ -127,24 +127,24 @@ untrusted and the program will be refused the first time you run it (see the mac
 **Linux**
 
 ```sh
-curl -fLO https://github.com/prikk-vcs/stikk/releases/download/0.13.0/stikk-0.13.0-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/prikk-vcs/stikk/releases/download/0.14.0/stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 ```sh
-curl -fLO https://github.com/prikk-vcs/stikk/releases/download/0.13.0/stikk-0.13.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+curl -fLO https://github.com/prikk-vcs/stikk/releases/download/0.14.0/stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
 Check the download, so you know it was not altered on the way:
 
 ```sh
-sha256sum -c stikk-0.13.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum -c stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
-That prints `stikk-0.13.0-x86_64-unknown-linux-gnu.tar.gz: OK`. **If it says `FAILED`, stop and
+That prints `stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz: OK`. **If it says `FAILED`, stop and
 download again — do not run the file.** Then unpack it and put it somewhere your terminal looks:
 
 ```sh
-tar -xzf stikk-0.13.0-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 Make the folder you are going to keep it in, in case it does not exist yet:
@@ -154,7 +154,7 @@ mkdir -p ~/.local/bin
 ```
 
 ```sh
-install -m755 stikk-0.13.0-x86_64-unknown-linux-gnu/stikk ~/.local/bin/stikk
+install -m755 stikk-0.14.0-x86_64-unknown-linux-gnu/stikk ~/.local/bin/stikk
 ```
 
 **macOS** is the same — `curl`, check, `tar -xzf`, `mkdir -p ~/.local/bin`, `install` — with the Mac
@@ -162,7 +162,7 @@ file name and one different check command (replace `aarch64-apple-darwin` with
 `x86_64-apple-darwin` on an Intel Mac):
 
 ```sh
-shasum -a 256 -c stikk-0.13.0-aarch64-apple-darwin.tar.gz.sha256
+shasum -a 256 -c stikk-0.14.0-aarch64-apple-darwin.tar.gz.sha256
 ```
 
 **Download with the `curl` commands above, not with a browser.** macOS marks anything a browser
@@ -177,11 +177,11 @@ xattr -d com.apple.quarantine ~/.local/bin/stikk
 **Windows**, in PowerShell. There is no `sha256sum` here, so you compare the fingerprint yourself:
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/download/0.13.0/stikk-0.13.0-x86_64-pc-windows-msvc.zip -OutFile stikk.zip
+Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/download/0.14.0/stikk-0.14.0-x86_64-pc-windows-msvc.zip -OutFile stikk.zip
 ```
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/download/0.13.0/stikk-0.13.0-x86_64-pc-windows-msvc.zip.sha256 -OutFile stikk.zip.sha256
+Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/download/0.14.0/stikk-0.14.0-x86_64-pc-windows-msvc.zip.sha256 -OutFile stikk.zip.sha256
 ```
 
 ```powershell
@@ -192,7 +192,7 @@ if ((Get-FileHash stikk.zip -Algorithm SHA256).Hash -eq (((Get-Content stikk.zip
 Expand-Archive stikk.zip -DestinationPath .
 ```
 
-That leaves `stikk-0.13.0-x86_64-pc-windows-msvc\stikk.exe`. Move it into a folder on your `PATH`.
+That leaves `stikk-0.14.0-x86_64-pc-windows-msvc\stikk.exe`. Move it into a folder on your `PATH`.
 
 If `~/.local/bin` (or the folder you chose) is not already on your `PATH`, add it — on Linux and
 macOS, `export PATH="$HOME/.local/bin:$PATH"` in your shell's startup file, then open a new
@@ -204,7 +204,7 @@ Check it worked:
 stikk --version
 ```
 
-It prints `stikk 0.13.0`.
+It prints `stikk 0.14.0`.
 
 #### Optional: check who built it
 
@@ -212,7 +212,7 @@ The checksum proves the file was not altered on the way to you. It does **not** 
 If you want that too, and you have [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify stikk-0.13.0-x86_64-unknown-linux-gnu.tar.gz -R prikk-vcs/stikk
+gh attestation verify stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz -R prikk-vcs/stikk
 ```
 
 It exits successfully when the file really was built by this project's release workflow, and fails
@@ -278,7 +278,10 @@ ref picker, **Verify** (`V`) — prikk's verdict on whether the repository is so
 conditions and every stage it ran (prikk ≥ 0.39) — and commit or seal behind preview-first
 confirmation, and from the ref picker **create a branch** (`n`), **create a tag** (`t`, or at any
 block from History), **close a branch** (`x`) and **switch to a branch** (`s`, previewed as the
-exact files it will write and delete) — prikk ≥ 0.42, and ≥ 0.46 for a switch.
+exact files it will write and delete) — prikk ≥ 0.42, and ≥ 0.46 for a switch. stikk **reopens
+each repository where you left it** — the focused ref, the view and the untracked filter,
+re-checked against prikk first and stored outside every repository; `STIKK_PRIVATE=1` remembers
+nothing.
 To see it with no repository at all, from a clone of
 this repository: `cargo run -p stikk-tui --example orientation_demo`.
 

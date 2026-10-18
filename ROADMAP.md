@@ -273,6 +273,28 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk reopens each repository where you left it, and never stores anything inside one (0.14.0, breaking)
+
+- **Session persistence** (`FR-122`, [RFC 046](rfcs/done/046-session-persistence.md)): each repository reopens on
+  **the ref you had focused, which of Orientation, History, Changes and the Queue was open, and the untracked
+  filter** — names and flags, no content and no ids — **re-checked against prikk before any of it is shown**. A
+  branch that has been closed or is no longer listed is not restored, and a one-line note says so. Verify never
+  reopens: it scans the whole repository, and a launch does not start that on anyone's behalf. The records live
+  outside every repository, one small file each, and deleting them is always safe. **`STIKK_PRIVATE=1`** remembers
+  nothing.
+- **`C-E2` resolves a path before it judges it.** stikk's first file of its own is the first write that refusal ever
+  guarded, and it had always compared the text it was handed: a relative path, a `..` leading back in, or a symlink
+  into a repository reached past it. Both sides are resolved now. **No released stikk ever wrote through it**, so
+  there was nothing to disclose — the check simply became the control it was documented as.
+- **A workspace-wide seed-read guard** (RFC 023 Handoff C): *"No key material ever enters stikk … enforced by
+  test"* holds over all six shipped crates rather than two files, with a three-file allowlist that each carries its
+  reason, and `SECURITY.md` states what is now enforced.
+- **Two carried items** (RFC 040 Handoff C): the Glossary lists `V`, which had shipped unlisted since 0.11.0; and the
+  overlay clipping gate builds every `Overlay` variant, with the count read from the enum rather than written down —
+  the literal was how the gap lasted an increment.
+- **The validated prikk range is unchanged at `>= 0.28`, through `0.52.0`**; the real-binary suite drives 58 cases
+  at 0.28.0 and 0.52.0 on Linux, macOS and Windows.
+
 ## Shipped — stikk manages branches and tags, not only browses them (0.13.0, breaking)
 
 - **Block detail's `said` onto `view::wrap_hanging`** (RFC 040's carry,
@@ -374,19 +396,10 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.14.0, scoped 2026-10-18 (authorized), in delivery order
+## Next — 0.15.0, not yet scoped
 
-**0.14.0: stikk remembers where you were, and is easier to install.** Scope: `.git-exclude/release/0-14-0-scope.md`.
-
-1. **Two carried items — landed on `main`** ([Handoff C](rfcs/handoffs/040-verify/c-two-carries-handoff-v1.md), `67d0b65`,
-   `1498736`): the Glossary lists `V`; the overlay clipping gate builds every variant, counted from the enum.
-2. **A workspace-wide seed-read guard — landed on `main`** ([Handoff C](rfcs/handoffs/023-what-stikk-has-and-does-not-show/c-workspace-seed-guard-handoff-v1.md),
-   `402ddf0`, `01a33b8`): the README's *"enforced by test"* holds over all six shipped crates; `SECURITY.md` says so.
-3. **Session persistence — landed on `main`** (`FR-122`, [RFC 046](rfcs/done/046-session-persistence.md), `c27068a`, `dfec75a`, `0a350c4`):
-   each repository reopens on its focused ref, top-level view and untracked filter, re-checked against prikk first;
-   `STIKK_PRIVATE=1` remembers nothing. `C-E2` now resolves paths before it compares.
-4. **A package manager** (RFC 047), **on the owner's decision** (a Homebrew tap recommended).
-5. **Conditional: the prikk 0.53.0 re-baseline**, only if prikk publishes before the cut.
+1. **A package manager** (RFC 047) — the owner's decision (a Homebrew tap recommended), moved here from 0.14.0: it
+   needs a repository and a token only the owner can create.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 
@@ -403,10 +416,10 @@ a fabricated worktree entry was fixed.
   0.13.0; the focused-ref model shipped in 0.4.0 and 0.11.0.)*
 - **Merge evidence → plan → execution** (`FR-080…082`) and the **rollback flow** (`FR-083`) — the
   merge refusal path is where the explanation surface earns its place.
-- **Session persistence and progressive disclosure** (`FR-122`, `TU-12`): resume the focused ref, view
-  and filters; default vs. advanced depth. Cheap now that RFC 003's change token exists — and the
-  increment that finally gives `C-E2` (the *primary* control against writing inside a repository) a
-  production caller, which it does not have today.
+- **Progressive disclosure** (`TU-12`): default vs. advanced depth. *(Session persistence —
+  `FR-122`, the focused ref, view and filter — shipped in 0.14.0, and with it `C-E2`'s first
+  production caller. What is left of `DM-04` is **deep restore**: Block detail, Patch detail and
+  Compare, and the scroll and selection anchors they need.)*
 - **Exchange**: bundle export/verify/import and the **sync assistant** (`FR-090…094`), with the input
   ceilings surfaced before an operation runs.
 - **Trust & keys** (`FR-103/104`): the Trust & Keys view; adopted maintainer keys;

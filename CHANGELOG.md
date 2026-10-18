@@ -2,7 +2,22 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.14.0 — 2026-10-18
+
+**stikk now reopens each repository where you left it, and never stores anything inside one.**
+Until 0.13.0 every launch started from scratch. From this one, stikk reopens each repository on
+**the ref you had focused, which of Orientation, History, Changes and the Queue was open, and
+whether the untracked filter was on** (RFC 046) — and **re-checks every bit of it against prikk
+before you see any of it**: a branch that has been closed or is no longer listed is not restored,
+and stikk says so in one line rather than showing you a branch that is not there. The records are
+small files beside stikk's other state — `stikk config path` prints where — **never inside a
+repository**, and **deleting `sessions/` is always safe**: you lose your place and nothing else.
+**`STIKK_PRIVATE=1`** is a launch that remembers nothing at all. This is also stikk's first file
+of its own, so the refusal that keeps stikk's files out of every repository now **resolves a path
+before judging it** — a relative path, a `..` or a symlink that leads into a repository is caught,
+where the lexical check it replaced would have compared the text it was handed. The real-binary
+suite drives **58 cases** against real prikk binaries at 0.28.0 and 0.52.0, on Linux, macOS and
+Windows.
 
 ### Breaking
 
@@ -15,8 +30,15 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
 
 **Additive:** `stikk_state::session` with `SessionRecord`, `LastView`, `load`, `save`, `file_name`,
 `fnv1a64` and `MAX_RECORDS`; `stikk_core::session` with `Restored`, `restore` and
-`REMEMBERED_REF_IS_GONE`; `stikk_tui::Session`. **No public item was removed.** The MSRV is
-unchanged at 1.88.
+`REMEMBERED_REF_IS_GONE`; `stikk_tui::Session`. **No public item was removed**, and nothing else
+changed shape. The MSRV is unchanged at 1.88.
+
+**`stikk_state::paths::ensure_outside_repository` is not a Breaking row, and here is why.** Its
+behaviour did change — see `### Changed` — but no caller stops compiling, and the function never
+promised to *allow* anything: its whole contract is to refuse a target inside a repository, and
+the paths it now refuses are ones it should always have refused. The one genuinely new refusal of
+a target that is *outside* a repository is named in that entry, so a caller who meets it knows
+why.
 
 ### Added
 
@@ -38,6 +60,26 @@ unchanged at 1.88.
 - **`STIKK_PRIVATE=1`** — a launch that remembers nothing: no record is read, and none is written.
   It sits beside `STIKK_READ_ONLY=1`, which is a different thing: that one forbids repository
   changes and still remembers where you were.
+
+### Changed
+
+- **The refusal that keeps stikk's files out of a repository resolves a path before judging it.**
+  It used to compare the text it was handed, so three shapes reached past it: a **relative** path
+  (`STIKK_STATE_DIR=state`, run from inside a worktree, resolved into that worktree), a `..` that
+  led back in, and a **symlink** into a repository. Each is refused now: the target is made
+  absolute, its deepest existing ancestor is resolved, and both sides of the comparison are
+  resolved alike. A symlink leading *out* of a repository is still allowed — a state directory may
+  legitimately live elsewhere behind one.
+
+  **No released stikk ever wrote a file through this check**, which is why there is no security
+  advisory to go with it: session persistence above is the first thing that writes one.
+
+  **One new refusal is worth knowing about**: a target whose path still holds `..` past a
+  directory that does not exist yet is refused outright, even outside a repository, because there
+  is nothing on disk to resolve it against and a guess is not a control.
+
+- **The untracked filter stays as you set it** while a session lasts, not only while the Changes
+  view is open: close it, reopen it, and the filter is where you left it.
 
 ### Fixed
 

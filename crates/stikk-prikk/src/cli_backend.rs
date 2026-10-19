@@ -861,6 +861,36 @@ impl Prikk for CliBackend {
         self.write_ref(repo, &args, "create a tag")
     }
 
+    fn merge_plan(
+        &self,
+        repo: &Path,
+        baseline: &str,
+        left: &str,
+        right: &str,
+    ) -> Result<crate::MergePlan> {
+        if Prikk::handshake(self)?.version.minor < crate::CURRENT_BRANCH_FROM_MINOR {
+            return Ok(crate::MergePlan::Unavailable);
+        }
+        let out = self.run(
+            Some(repo),
+            RequestCategory::ReadState,
+            [
+                "merge-plan",
+                "--baseline-block",
+                baseline,
+                "--left-ref",
+                left,
+                "--right-ref",
+                right,
+            ],
+        )?;
+        let printed = printed_lines(&out);
+        Ok(crate::MergePlan::Read {
+            outcome: evidence_outcome(&printed)?,
+            printed,
+        })
+    }
+
     fn switch_branch(&self, repo: &Path, name: &str) -> Result<crate::SwitchResult> {
         // **Banded before anything else** (RFC 045 decision 4): below the band nothing is
         // spawned, not even the readiness read.
@@ -893,6 +923,46 @@ impl Prikk for CliBackend {
     fn close_branch(&self, repo: &Path, name: &str) -> Result<crate::RefWrite> {
         self.write_ref(repo, &["branch", "close", name], "close a branch")
     }
+}
+
+/// The one line a merge plan is read for (RFC 047 decision 2): `evidence outcome: <word>`.
+///
+/// **Exactly one, and a word stikk knows.** Missing, repeated, or unknown is an environment
+/// error, never a guess (`UD-02`) — this line decides whether stikk offers the merge at all, so
+/// reading it wrong would offer one prikk refuses, or hide one it would allow. Every other line
+/// of the plan is shown verbatim and parsed by nothing.
+///
+/// **Repeated is an error, not "take the first".** prikk prints it once today; two would mean
+/// the plan's shape has changed under stikk, and picking one of them would be stikk deciding
+/// which verdict to believe.
+fn evidence_outcome(printed: &[String]) -> Result<crate::MergeOutcome> {
+    const LABEL: &str = "evidence outcome:";
+    let mut found = printed
+        .iter()
+        .filter_map(|line| line.trim().strip_prefix(LABEL))
+        .map(str::trim);
+    let Some(word) = found.next() else {
+        return Err(StikkError::environment_msg(
+            "prikk's merge plan carries no `evidence outcome:` line; stikk will not guess at the \
+             verdict",
+        ));
+    };
+    if found.next().is_some() {
+        return Err(StikkError::environment_msg(
+            "prikk's merge plan carries more than one `evidence outcome:` line; stikk will not \
+             choose which verdict to believe",
+        ));
+    }
+    crate::MergeOutcome::parse(word).ok_or_else(|| {
+        StikkError::environment_msg(format!(
+            "prikk's merge plan reports an outcome stikk does not know: {}",
+            {
+                let mut escaped = String::new();
+                crate::escape::escape_into(&mut escaped, word);
+                escaped
+            }
+        ))
+    })
 }
 
 /// Every non-empty line of one of prikk's streams, in order, trailing whitespace trimmed.

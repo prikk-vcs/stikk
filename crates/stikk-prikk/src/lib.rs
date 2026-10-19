@@ -542,6 +542,99 @@ pub enum RefWrite {
     Unavailable,
 }
 
+/// prikk's verdict on whether two sides can be merged (RFC 047 decision 2).
+///
+/// **Eight words, and they are prikk's.** The list is `MergeEvidenceOutcome` in
+/// `prikk-store/src/patch_algebra/report/types.rs`, and prikk's own merge guide
+/// (`docs/src/guide/merge.md:37`) names the same eight: *"Any outcome other than `Confluent`
+/// (`Conflict`, `Deferred`, `NotConfluent`, `Unsupported`, `OrderedDependency`,
+/// `EvidenceFailure`, `InvalidCandidate`) refuses the merge."* Both were read in the clone.
+///
+/// **A word stikk does not know is a shape error, never a guess** (`UD-02`). Every other word in
+/// the plan is shown verbatim and parsed by nothing; this one decides whether a merge is offered
+/// at all, so reading it wrong would be stikk offering something prikk will refuse — or hiding
+/// one it would allow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MergeOutcome {
+    /// The two sides are proven confluent: the only outcome prikk will merge from.
+    Confluent,
+    /// The sides touch the same thing incompatibly. **The identical change on both sides is one
+    /// of these** (RFC 047 F1, measured) — prikk's documented rule, not stikk's to soften.
+    Conflict,
+    /// One side depends on an ordering the other does not grant.
+    OrderedDependency,
+    /// A change of a kind the confluence proof does not judge yet.
+    Unsupported,
+    /// The proof was postponed.
+    Deferred,
+    /// Proven *not* confluent, as distinct from a pairwise conflict.
+    NotConfluent,
+    /// The evidence itself could not be computed.
+    EvidenceFailure,
+    /// The candidate pair is not one prikk will judge.
+    InvalidCandidate,
+}
+
+impl MergeOutcome {
+    /// prikk's word for this outcome, exactly as it prints it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Confluent => "Confluent",
+            Self::Conflict => "Conflict",
+            Self::OrderedDependency => "OrderedDependency",
+            Self::Unsupported => "Unsupported",
+            Self::Deferred => "Deferred",
+            Self::NotConfluent => "NotConfluent",
+            Self::EvidenceFailure => "EvidenceFailure",
+            Self::InvalidCandidate => "InvalidCandidate",
+        }
+    }
+
+    /// The outcome `word` names, or `None` for one prikk has but stikk does not know.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        [
+            Self::Confluent,
+            Self::Conflict,
+            Self::OrderedDependency,
+            Self::Unsupported,
+            Self::Deferred,
+            Self::NotConfluent,
+            Self::EvidenceFailure,
+            Self::InvalidCandidate,
+        ]
+        .into_iter()
+        .find(|outcome| outcome.name() == word)
+    }
+
+    /// Whether prikk would merge from this outcome. **Only one of the eight.**
+    #[must_use]
+    pub const fn is_confluent(self) -> bool {
+        matches!(self, Self::Confluent)
+    }
+}
+
+/// What `merge-plan` printed, or why stikk did not run it (RFC 047 decision 1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MergePlan {
+    /// prikk ran and exited 0 — **whatever the outcome**: a plan that refuses the merge is still
+    /// a successful read (F1).
+    Read {
+        /// prikk's printed lines, verbatim and in order, for the view.
+        ///
+        /// **Shown, never parsed** (decision 2), apart from the one line [`Self::Read::outcome`]
+        /// carries. There is no `--format json` for this command — asking for one is a usage
+        /// error (F1) — and prose is not a schema.
+        printed: Vec<String>,
+        /// The verdict, read from the single `evidence outcome:` line.
+        outcome: MergeOutcome,
+    },
+    /// Below [`crate::CURRENT_BRANCH_FROM_MINOR`]. stikk spawned nothing and says so in its own
+    /// voice (`C-T4d`).
+    Unavailable,
+}
+
 /// What `branch switch` printed, or why stikk did not run it (RFC 045 decision 1).
 ///
 /// **Two streams, kept apart.** prikk writes its result to stdout and, at exit 0, can name a
@@ -1501,6 +1594,35 @@ pub trait Prikk: Send + Sync {
     /// (`ER-02`), and **every one of them writes nothing** (F2). Read-only mode is
     /// [`stikk_model::StikkError::NotReady`], raised before prikk runs.
     fn switch_branch(&self, repo: &Path, name: &str) -> Result<SwitchResult>;
+
+    /// Read prikk's merge plan for two sides from a baseline (design `FR-080`; category
+    /// `read-state`; RFC 047 decision 1) — `merge-plan --baseline-block <baseline> --left-ref
+    /// <left> --right-ref <right>`.
+    ///
+    /// **Read-only, and exit 0 for any verdict** (F1): a plan that refuses the merge is a
+    /// successful read, not a refusal. prikk says so itself in the plan's last line — *"read-only
+    /// plan; no merge commit, ref update, WAL write, object write, or worktree change was
+    /// performed"*.
+    ///
+    /// **No `--format json`**: asking for one is a usage error (exit 2, measured). The plan is
+    /// prose, kept verbatim, and exactly one line of it is read — see [`MergeOutcome`].
+    ///
+    /// **The baseline is the caller's** (F2). prikk exposes no parents in `log`'s JSON and does
+    /// no merge-base discovery of its own, so it refuses a baseline that is not an ancestor of
+    /// both tips rather than finding one. A *wrong* baseline is not harmless: it can report a
+    /// `Conflict` the true base proves `Confluent`. `stikk_core::merge_baseline` is the only
+    /// thing that should choose one.
+    ///
+    /// **Banded at [`crate::CURRENT_BRANCH_FROM_MINOR`]**: below it nothing is spawned and the
+    /// answer is [`MergePlan::Unavailable`] (decision 7).
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::diff`]: a baseline that is not an
+    /// ancestor, or one no block id names, is prikk's refusal, verbatim (`ER-02`). A plan whose
+    /// `evidence outcome:` line is missing, repeated, or names a word stikk does not know is an
+    /// **environment** error (`UD-02`: refuse, never guess).
+    fn merge_plan(&self, repo: &Path, baseline: &str, left: &str, right: &str)
+    -> Result<MergePlan>;
 }
 
 #[cfg(test)]

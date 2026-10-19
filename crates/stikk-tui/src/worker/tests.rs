@@ -192,6 +192,17 @@ impl Prikk for Recording {
         self.inner.switch_branch(repo, name)
     }
 
+    fn merge_plan(
+        &self,
+        repo: &Path,
+        baseline: &str,
+        left: &str,
+        right: &str,
+    ) -> Result<stikk_prikk::MergePlan> {
+        self.record("merge_plan");
+        self.inner.merge_plan(repo, baseline, left, right)
+    }
+
     fn diff(
         &self,
         repo: &Path,

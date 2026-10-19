@@ -71,6 +71,8 @@ pub struct NullBackend {
     /// What [`Prikk::switch_branch`] answers (RFC 045). Its own slot, not `ref_write`'s: a switch
     /// keeps two streams apart and a ref write keeps one.
     switch: Scripted<crate::SwitchResult>,
+    /// What [`Prikk::merge_plan`] answers (RFC 047).
+    merge_plan: Scripted<crate::MergePlan>,
     refs: Scripted<Vec<RefEntry>>,
     /// The unpublished current branch this backend reports beside the list (RFC 037 decision 3).
     unpublished_current: UnpublishedBranch,
@@ -146,6 +148,8 @@ impl NullBackend {
             ref_write: Ok(crate::RefWrite::Unavailable),
             // The default matches this backend's default version, which is below 0.46.
             switch: Ok(crate::SwitchResult::Unavailable),
+            // The default matches this backend's default version, which is below 0.42.
+            merge_plan: Ok(crate::MergePlan::Unavailable),
             state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
@@ -399,6 +403,21 @@ impl NullBackend {
         self
     }
 
+    /// Answer [`Prikk::merge_plan`] with prikk's lines and the verdict they carry (RFC 047).
+    #[must_use]
+    pub fn with_merge_plan(mut self, printed: Vec<String>, outcome: crate::MergeOutcome) -> Self {
+        self.merge_plan = Ok(crate::MergePlan::Read { printed, outcome });
+        self
+    }
+
+    /// Fail [`Prikk::merge_plan`], so a test can show prikk's refusal — a baseline that is not an
+    /// ancestor, or one no block names — reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_merge_plan_refusal(mut self, message: impl Into<String>) -> Self {
+        self.merge_plan = Err(message.into());
+        self
+    }
+
     /// Answer [`Prikk::verify`] with `verification` (RFC 040).
     #[must_use]
     pub fn with_verification(mut self, verification: crate::Verification) -> Self {
@@ -628,6 +647,16 @@ impl Prikk for NullBackend {
 
     fn switch_branch(&self, _repo: &Path, _name: &str) -> Result<crate::SwitchResult> {
         deliver(&self.switch)
+    }
+
+    fn merge_plan(
+        &self,
+        _repo: &Path,
+        _baseline: &str,
+        _left: &str,
+        _right: &str,
+    ) -> Result<crate::MergePlan> {
+        deliver(&self.merge_plan)
     }
 
     fn block_state(

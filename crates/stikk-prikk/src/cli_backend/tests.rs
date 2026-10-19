@@ -1927,3 +1927,314 @@ fn a_switch_needs_no_signing_key() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// =============================================================================================
+// RFC 047 — `merge-plan`.
+//
+// The plan is prose with no JSON form (asking for one is exit 2), so what the seam owes is the
+// argument vector, the lines kept whole, and **one line read** — `evidence outcome:` — with every
+// way of reading it wrong turned into a refusal rather than a guess.
+// =============================================================================================
+
+/// The confluent plan prikk 0.53.0 printed for scenario 1, from the §1 re-run
+/// (`.git-exclude/reports/047-merge/measure047-0.53.txt`), ids shortened for the fixture.
+const CONFLUENT_PLAN: &str = "merge plan\n\
+     baseline block: 88f34150e099\n\
+     left selector: ref heads/main\n\
+     left target block: 6d17f5f225b7\n\
+     left operations: 1\n\
+     right selector: ref heads/feature\n\
+     right target block: d967f47871e7\n\
+     right operations: 1\n\
+     status: ConfluentSubset\n\
+     evidence outcome: Confluent\n\
+     reason: proven_confluent\n\
+     action: review the evidence, then run 'prikk merge' to execute\n\
+     items: 1 displayed of 1\n\
+     \n\
+     report:\n\
+     \x20 outcome: Confluent\n\
+     \x20 reason: proven_confluent\n\
+     \x20 phase: final-state-comparison\n\
+     note: read-only plan; no merge commit, ref update, WAL write, object write, or worktree \
+     change was performed\n";
+
+/// Scenario 3's conflicting plan, from the same run.
+///
+/// **The `cross:` block's `left[N]` index is deliberately not asserted anywhere.** It is not
+/// stable: five fresh runs at 0.52 gave `left[0] left[0] left[1] left[1] left[1]` and five at
+/// 0.53 gave `left[1] left[0] left[0] left[1] left[1]`
+/// (`measure047-0.53-note.txt`). stikk shows that block verbatim and reads nothing from it.
+const CONFLICT_PLAN: &str = "merge plan\n\
+     baseline block: 2237a4316d32\n\
+     left selector: ref heads/main\n\
+     left target block: 5b59d8a49c98\n\
+     right selector: ref heads/feature\n\
+     right target block: 3af8f309a4be\n\
+     status: BlockedConflict\n\
+     evidence outcome: Conflict\n\
+     reason: pair_conflict\n\
+     action: inspect evidence; conflict resolution is not implemented\n\
+     items: 1 displayed of 1\n\
+     \n\
+     cross:\n\
+     \x20 left[0] op_seq=1 EditText\n\
+     \x20 right[0] op_seq=1 EditText\n\
+     \x20 outcome: Conflict\n\
+     \x20 reason: pair_conflict\n\
+     \x20 phase: classification\n\
+     note: read-only plan; no merge commit, ref update, WAL write, object write, or worktree \
+     change was performed\n";
+
+/// A fake `prikk` at `version` that records its argv and prints `out`, exiting `code`.
+#[cfg(unix)]
+fn fake_plan_prikk(
+    tag: &str,
+    version: &str,
+    out: &str,
+    err: &str,
+    code: i32,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-mergeplan-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let argv = dir.join("argv");
+    let payload = dir.join("payload");
+    std::fs::write(&payload, out).expect("write the payload");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             : >> \"{argv}\"\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk {version}'; exit 0; fi\n\
+             for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"{argv}\"; done\n\
+             cat \"{payload}\"\n\
+             printf '%s' '{err}' 1>&2\n\
+             exit {code}\n",
+            argv = argv.display(),
+            payload = payload.display(),
+            version = version,
+            err = err,
+            code = code,
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (script, argv)
+}
+
+/// **The argument vector**, and no `--format json`: asking for one is a usage error (F1).
+#[cfg(unix)]
+#[test]
+fn merge_plan_sends_the_three_arguments_and_no_format_flag() {
+    let (script, argv) = fake_plan_prikk("args", "0.53.0", CONFLUENT_PLAN, "", 0);
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| {
+        backend.merge_plan(
+            std::path::Path::new("."),
+            "88f34150e099",
+            "heads/main",
+            "heads/feature",
+        )
+    })
+    .expect("a plan reads");
+    assert_eq!(
+        recorded_argv(&argv),
+        vec![
+            "merge-plan",
+            "--baseline-block",
+            "88f34150e099",
+            "--left-ref",
+            "heads/main",
+            "--right-ref",
+            "heads/feature"
+        ]
+    );
+}
+
+/// **prikk's lines are kept whole**, and the one line is read apart from them.
+#[cfg(unix)]
+#[test]
+fn a_plans_lines_are_kept_verbatim_and_the_verdict_read_apart() {
+    for (tag, plan, want) in [
+        ("confluent", CONFLUENT_PLAN, crate::MergeOutcome::Confluent),
+        ("conflict", CONFLICT_PLAN, crate::MergeOutcome::Conflict),
+    ] {
+        let (script, _argv) = fake_plan_prikk(tag, "0.53.0", plan, "", 0);
+        let backend = CliBackend::with_program(&script);
+        let out = retrying_transient_exec_busy(|| {
+            backend.merge_plan(
+                std::path::Path::new("."),
+                "b",
+                "heads/main",
+                "heads/feature",
+            )
+        })
+        .expect("a plan reads");
+        let crate::MergePlan::Read { printed, outcome } = out else {
+            panic!("{tag}: 0.53 is above the band");
+        };
+        assert_eq!(outcome, want, "{tag}");
+        assert_eq!(
+            printed,
+            plan.lines()
+                .map(str::trim_end)
+                .filter(|l| !l.is_empty())
+                .collect::<Vec<_>>(),
+            "{tag}: every line prikk printed, in order"
+        );
+        // **A refusing plan is still a successful read** (F1): exit 0, and prikk says so itself.
+        assert!(
+            printed.last().is_some_and(|l| l.contains("read-only plan")),
+            "{tag}: {printed:?}"
+        );
+    }
+}
+
+/// **The one line read, and its three failure shapes** — each a refusal, never a guess (`UD-02`).
+#[cfg(unix)]
+#[test]
+fn an_unreadable_verdict_is_a_shape_error_not_a_guess() {
+    for (tag, plan, fragment) in [
+        (
+            "missing",
+            "merge plan\nstatus: ConfluentSubset\nreason: proven_confluent\n",
+            "carries no `evidence outcome:` line",
+        ),
+        (
+            "repeated",
+            "merge plan\nevidence outcome: Confluent\nevidence outcome: Conflict\n",
+            "more than one `evidence outcome:` line",
+        ),
+        (
+            "a word stikk does not know",
+            "merge plan\nevidence outcome: Marvellous\n",
+            "an outcome stikk does not know",
+        ),
+    ] {
+        let (script, _argv) = fake_plan_prikk(&tag.replace(' ', "-"), "0.53.0", plan, "", 0);
+        let backend = CliBackend::with_program(&script);
+        let error = retrying_transient_exec_busy(|| {
+            backend.merge_plan(
+                std::path::Path::new("."),
+                "b",
+                "heads/main",
+                "heads/feature",
+            )
+        })
+        .expect_err("{tag}");
+        assert_eq!(error.class(), "environment", "{tag}: {error}");
+        assert!(error.to_string().contains(fragment), "{tag}: {error}");
+    }
+}
+
+/// **An unknown word is shown inert**, because it is prikk's text reaching a message.
+#[cfg(unix)]
+#[test]
+fn an_unknown_verdict_is_escaped_in_the_message() {
+    let (script, _argv) = fake_plan_prikk(
+        "inert",
+        "0.53.0",
+        "merge plan\nevidence outcome: Conf\u{202e}luent\n",
+        "",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let error = retrying_transient_exec_busy(|| {
+        backend.merge_plan(
+            std::path::Path::new("."),
+            "b",
+            "heads/main",
+            "heads/feature",
+        )
+    })
+    .expect_err("an unknown word");
+    assert!(error.to_string().contains("\\u202e"), "{error}");
+}
+
+/// **Each refusal is prikk's, verbatim** — a baseline that is not an ancestor, and one no block
+/// names (F2).
+#[cfg(unix)]
+#[test]
+fn every_merge_plan_refusal_carries_prikks_words() {
+    for (tag, message) in [
+        (
+            "not-ancestor",
+            "error: precondition not met: baseline Block 5b59d8a4 is not an ancestor of target Block 3af8f309",
+        ),
+        (
+            "absent",
+            "error: precondition not met: block 0000000000000000 is not in this repository",
+        ),
+    ] {
+        let (script, _argv) = fake_plan_prikk(tag, "0.53.0", "", &format!("{message}\n"), 1);
+        let backend = CliBackend::with_program(&script);
+        let error = retrying_transient_exec_busy(|| {
+            backend.merge_plan(
+                std::path::Path::new("."),
+                "b",
+                "heads/main",
+                "heads/feature",
+            )
+        })
+        .expect_err("a refusal");
+        assert_eq!(error.class(), "refusal", "{tag}: {error}");
+        assert!(error.to_string().contains(message), "{tag}: {error}");
+    }
+}
+
+/// **Below the band nothing is spawned**, and *unavailable* is not *failed*.
+#[cfg(unix)]
+#[test]
+fn below_the_band_a_merge_plan_spawns_nothing() {
+    let (script, argv) = fake_plan_prikk("band", "0.41.0", CONFLUENT_PLAN, "", 0);
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.merge_plan(
+            std::path::Path::new("."),
+            "b",
+            "heads/main",
+            "heads/feature",
+        )
+    })
+    .expect("below the band is not an error");
+    assert_eq!(out, crate::MergePlan::Unavailable);
+    assert!(
+        recorded_argv(&argv).is_empty(),
+        "no merge-plan was run: {:?}",
+        recorded_argv(&argv)
+    );
+}
+
+/// prikk's eight outcome words, from `MergeEvidenceOutcome` and the merge guide, round-trip.
+#[test]
+fn prikks_eight_outcomes_round_trip_and_only_one_merges() {
+    let all = [
+        "Confluent",
+        "Conflict",
+        "OrderedDependency",
+        "Unsupported",
+        "Deferred",
+        "NotConfluent",
+        "EvidenceFailure",
+        "InvalidCandidate",
+    ];
+    for word in all {
+        let outcome = crate::MergeOutcome::parse(word).unwrap_or_else(|| panic!("{word}"));
+        assert_eq!(outcome.name(), word);
+        assert_eq!(outcome.is_confluent(), word == "Confluent", "{word}");
+    }
+    assert_eq!(
+        crate::MergeOutcome::parse("confluent"),
+        None,
+        "case matters"
+    );
+    assert_eq!(crate::MergeOutcome::parse("Marvellous"), None);
+}

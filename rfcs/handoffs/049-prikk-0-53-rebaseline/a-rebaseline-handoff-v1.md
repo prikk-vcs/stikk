@@ -1,6 +1,6 @@
 # Handoff A — RFC 049: the prikk 0.53 re-baseline (v1)
 
-**Companion to:** [RFC 049](../../accepted/049-prikk-0-53-rebaseline.md), **accepted 2026-10-19**, no open question.
+**Companion to:** [RFC 049](../../done/049-prikk-0-53-rebaseline.md), **accepted 2026-10-19**, no open question.
 **Read the RFC first.** **Covers:** decisions 1–3. **Not a release.** **No branch.**
 
 > **Small: one commit, no band moves.** Do this one **first**, before RFC 047's handoffs: they measure at the ceiling,

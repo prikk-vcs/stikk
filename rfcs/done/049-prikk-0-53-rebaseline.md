@@ -1,6 +1,6 @@
 # RFC 049 — The prikk 0.53 re-baseline
 
-**Status.** **Accepted by the project owner 2026-10-19**; [Handoff A](../handoffs/049-prikk-0-53-rebaseline/a-rebaseline-handoff-v1.md) issued. **Proposed 2026-10-19** by the architect, as 0.15.0's conditional increment
+**Status.** **Done 2026-10-19**: Handoff A delivered on `main` (`596e609`); a **0.15.0** candidate. **Accepted by the project owner 2026-10-19**; [Handoff A](../handoffs/049-prikk-0-53-rebaseline/a-rebaseline-handoff-v1.md) issued. **Proposed 2026-10-19** by the architect, as 0.15.0's conditional increment
 (`.git-exclude/release/0-15-0-scope.md`: *"if prikk 0.53.0 publishes before the cut, a re-baseline joins"*). prikk
 0.53.0 published 2026-10-18 (crates.io; prikk's letter 024). **No open question.**
 Measured against real prikk **0.53.0** and **0.28.0** binaries. Evidence:
@@ -53,3 +53,10 @@ equal the validated ceiling, so the matrix can never silently run against an unv
 **One handoff, issued on acceptance, one commit**: the ceiling and the docs together (no band moves, so RFC 034 A1's
 "ceiling first and alone" has nothing to separate it from). The suite at 0.28.0 + 0.53.0 before submitting; after
 approval, the full-matrix suite, supply chain **and `installers.yml`**, which must derive and install 0.53.0.
+
+## Delivered
+
+**One commit, `596e609`, green on `main`**: CI, Docs, the full-matrix suite (58 cases at 0.28.0 and 0.53.0 on Linux,
+macOS and Windows), supply chain, and `installers.yml`, which **derived prikk 0.53.0 and installed it on the Unix
+`--with-prikk` legs with no script changed** (decision 2). No leg moved; eleven live statements now say *validated
+through 0.53.0*.

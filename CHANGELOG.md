@@ -31,6 +31,11 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Fixed
 
+- **Verify's report scrolls.** Its panel has offered `↑`/`↓` since 0.11.0 whenever the report was
+  taller than the terminal, and the keys did nothing: nothing moved the offset the renderer was
+  already clamping, so a long list of failing conditions could not be read past the first
+  screenful. The same keys that scroll Patch detail now scroll Verify.
+
 - **The *commit unavailable* card shows whole refused declarations, and says how many more there
   are.** It built every declaration prikk would refuse into one block and let the card clip it —
   and that card does not scroll, so anything past the fold could never be reached. The cut could

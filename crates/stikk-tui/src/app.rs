@@ -2297,8 +2297,16 @@ impl App {
                     *cursor = cursor.saturating_sub(1);
                 }
                 // Patch detail has no selection — it scrolls, the Glossary's idiom. The Merge
-                // plan is prikk's prose, so it scrolls the same way and for the same reason.
-                Some(Screen::PatchDetail { offset, .. } | Screen::MergePlan { offset, .. }) => {
+                // plan is prikk's prose, so it scrolls the same way and for the same reason, and
+                // **so is Verify's report**: its renderer has always clamped an offset and its
+                // title has always offered `↑/↓` once the report outgrew the panel, but no arm
+                // here moved it, so the keys did nothing and a long report's tail could not be
+                // reached at all.
+                Some(
+                    Screen::PatchDetail { offset, .. }
+                    | Screen::MergePlan { offset, .. }
+                    | Screen::Verify { offset, .. },
+                ) => {
                     offset.set(offset.get().saturating_sub(1));
                 }
                 _ => {}
@@ -2361,7 +2369,11 @@ impl App {
                 }
                 // Deliberately unclamped here: only the renderer knows the wrapped height, so it clamps
                 // and writes the clamped value back, as the Glossary does.
-                Some(Screen::PatchDetail { offset, .. } | Screen::MergePlan { offset, .. }) => {
+                Some(
+                    Screen::PatchDetail { offset, .. }
+                    | Screen::MergePlan { offset, .. }
+                    | Screen::Verify { offset, .. },
+                ) => {
                     offset.set(offset.get().saturating_add(1));
                 }
                 // **The cursor moves between entries, and the renderer follows it** — the Queue's

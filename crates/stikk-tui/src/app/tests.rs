@@ -4283,3 +4283,90 @@ fn capture_the_into_current_refusal_at_80x24() {
         );
     }
 }
+
+/// **Verify's `↑`/`↓` move its report** (RFC 047 Handoff A review §6).
+///
+/// The renderer has always clamped an offset and its title has always offered `↑/↓` once the
+/// report outgrew the panel — but no arm in `nav_up`/`nav_down` moved it, so the keys did
+/// nothing and a long report's tail could not be reached. This drives the keys and then draws
+/// through the same `shell::render` the run loop calls, because an offset that advances while
+/// the screen does not would pass a test on the number alone.
+#[test]
+fn verifys_report_scrolls_when_it_is_taller_than_the_panel() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_verify();
+    let seq = next_request(&rx).seq;
+    // Twenty failing conditions: far taller than 24 rows, and the last one is the proof.
+    let conditions: Vec<stikk_prikk::FailedCondition> = (0..20)
+        .map(|n| stikk_prikk::FailedCondition {
+            id: format!("condition-{n:02}"),
+            message: format!("the {n:02}th thing prikk found wrong"),
+        })
+        .collect();
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::Verify(Ok(stikk_core::VerifyView::Checked(stikk_core::checked(
+            stikk_prikk::Verification {
+                verdict: stikk_prikk::Verdict {
+                    ok: false,
+                    failed_conditions: conditions,
+                },
+                active_sessions: None,
+                stages: Vec::new(),
+                raw: String::new(),
+            },
+        )))),
+    });
+
+    let draw = |app: &App, height: u16| {
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))
+            .expect("a terminal");
+        terminal
+            .draw(|frame| crate::shell::render(app, frame))
+            .expect("a draw");
+        crate::test_util::buffer_text(terminal.backend().buffer())
+    };
+
+    let top = draw(&app, 24);
+    assert!(top.contains("condition-00"), "{top}");
+    assert!(
+        !top.contains("condition-19"),
+        "the tail is below the fold at 24 rows: {top}"
+    );
+
+    // `↓` advances the offset, and the screen moves with it.
+    app.nav_down();
+    match app.focus() {
+        Focus::Verify(_, _, _, offset) => assert_eq!(offset.get(), 1),
+        other => panic!("expected Verify, got {other:?}"),
+    }
+    let scrolled = draw(&app, 24);
+    assert_ne!(scrolled, top, "the report moved");
+
+    // And the tail is reachable: press until the renderer's own clamp parks it at the end.
+    for _ in 0..200 {
+        app.nav_down();
+    }
+    let end = draw(&app, 24);
+    assert!(end.contains("condition-19"), "{end}");
+
+    // `↑` comes back, and never past the top.
+    for _ in 0..500 {
+        app.nav_up();
+    }
+    match app.focus() {
+        Focus::Verify(_, _, _, offset) => assert_eq!(offset.get(), 0),
+        other => panic!("expected Verify, got {other:?}"),
+    }
+    assert_eq!(draw(&app, 24), top, "back where it started");
+
+    // A report that fits does not scroll: the renderer clamps the press away rather than
+    // banking it, the Glossary's own rule.
+    let tall = draw(&app, 60);
+    app.nav_down();
+    assert_eq!(draw(&app, 60), tall, "nothing to scroll, nothing scrolled");
+}

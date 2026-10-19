@@ -77,6 +77,7 @@ pub struct NullBackend {
     switch: Scripted<crate::SwitchResult>,
     /// What [`Prikk::merge_plan`] answers (RFC 047).
     merge_plan: Scripted<crate::MergePlan>,
+    merge: Scripted<crate::MergeResult>,
     refs: Scripted<Vec<RefEntry>>,
     /// The unpublished current branch this backend reports beside the list (RFC 037 decision 3).
     unpublished_current: UnpublishedBranch,
@@ -155,6 +156,7 @@ impl NullBackend {
             switch: Ok(crate::SwitchResult::Unavailable),
             // The default matches this backend's default version, which is below 0.42.
             merge_plan: Ok(crate::MergePlan::Unavailable),
+            merge: Ok(crate::MergeResult::Unavailable),
             state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
@@ -433,6 +435,21 @@ impl NullBackend {
         self
     }
 
+    /// Answer [`Prikk::merge`] with `printed`, as a merge that ran.
+    #[must_use]
+    pub fn with_merge(mut self, printed: Vec<String>) -> Self {
+        self.merge = Ok(crate::MergeResult::Done(printed));
+        self
+    }
+
+    /// Fail [`Prikk::merge`], so a test can show prikk's refusal -- a pair it will not merge, or
+    /// a key it does not trust -- reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_merge_refusal(mut self, message: impl Into<String>) -> Self {
+        self.merge = Err(message.into());
+        self
+    }
+
     /// Fail [`Prikk::merge_plan`], so a test can show prikk's refusal — a baseline that is not an
     /// ancestor, or one no block names — reaching the usual path verbatim.
     #[must_use]
@@ -687,6 +704,16 @@ impl Prikk for NullBackend {
         _right: &str,
     ) -> Result<crate::MergePlan> {
         deliver(&self.merge_plan)
+    }
+
+    fn merge(
+        &self,
+        _repo: &Path,
+        _baseline: &str,
+        _into: &str,
+        _from: &str,
+    ) -> Result<crate::MergeResult> {
+        deliver(&self.merge)
     }
 
     fn block_state(

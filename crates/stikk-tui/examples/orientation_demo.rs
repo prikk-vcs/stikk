@@ -109,6 +109,16 @@ impl Prikk for SlowOrientation {
         self.0.merge_plan(repo, baseline, left, right)
     }
 
+    fn merge(
+        &self,
+        repo: &Path,
+        baseline: &str,
+        into: &str,
+        from: &str,
+    ) -> Result<stikk_prikk::MergeResult> {
+        self.0.merge(repo, baseline, into, from)
+    }
+
     fn diff(
         &self,
         repo: &Path,

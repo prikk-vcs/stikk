@@ -635,6 +635,26 @@ pub enum MergePlan {
     Unavailable,
 }
 
+/// What `merge` printed, or why stikk did not run it (RFC 047 decision 1).
+///
+/// **Its own type, not [`RefWrite`]**, although the two carry the same shape and run through the
+/// same gate. A merge is not one of RFC 044's three ref writes: it has its own tier story, its
+/// own result card, and its own reason for existing. Sharing the enum would make the result
+/// layer ask *which kind of ref write was this* about an operation that is not one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MergeResult {
+    /// prikk ran and exited 0. **Its printed lines, verbatim**, for the result card.
+    ///
+    /// **Never parsed for state.** `merge` has no `--format json` either (F1), and what the
+    /// repository now holds is read back from `branch list` and `log`, which stikk parses
+    /// already. prikk prints the baseline, the parent and adopted blocks, the adopted patch ids,
+    /// the new block id and the new RefState; all of it is shown, none of it is read.
+    Done(Vec<String>),
+    /// Below [`crate::CURRENT_BRANCH_FROM_MINOR`]. stikk spawned nothing and says so in its own
+    /// voice (`C-T4d`).
+    Unavailable,
+}
+
 /// What `branch switch` printed, or why stikk did not run it (RFC 045 decision 1).
 ///
 /// **Two streams, kept apart.** prikk writes its result to stdout and, at exit 0, can name a
@@ -1623,6 +1643,36 @@ pub trait Prikk: Send + Sync {
     /// **environment** error (`UD-02`: refuse, never guess).
     fn merge_plan(&self, repo: &Path, baseline: &str, left: &str, right: &str)
     -> Result<MergePlan>;
+
+    /// Merge `from` into `into` from `baseline`: `prikk merge --allow-no-audit --baseline-block
+    /// <baseline> --into <into> --from <from>`.
+    ///
+    /// **Tier Three, and MAINTAINER readiness is checked before prikk runs**, exactly as `seal`
+    /// and RFC 044's ref writes check theirs: prikk's own signature refusal (*"maintainer signer
+    /// public key does not match trusted key maintainer"*, measured) is the fallback, never the
+    /// first thing a reader meets.
+    ///
+    /// **`--allow-no-audit` is passed exactly as `seal` already passes it** (decision 1).
+    /// Without it prikk exits 2 — a usage error, which is stikk's own bug class and must never
+    /// happen.
+    ///
+    /// **prikk merges only what it has proven confluent** (F1). Every other outcome is refused
+    /// with a message naming the outcome and the reason, and **a refusal writes nothing** —
+    /// prikk's guide says so and the measurement agrees. stikk offers this only from a plan whose
+    /// outcome is [`MergeOutcome::Confluent`], re-read inside the preview, but the refusal is
+    /// prikk's to give and is passed on verbatim (`ER-02`).
+    ///
+    /// **A merge into the branch the repository is on leaves the worktree behind its new tip**
+    /// (F3). prikk allows it; stikk never asks for it. The guard is above this seam, because the
+    /// seam's job is to run what it is told, not to second-guess its caller.
+    ///
+    /// **Banded at [`crate::CURRENT_BRANCH_FROM_MINOR`]**: below it nothing is spawned and the
+    /// answer is [`MergeResult::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError::NotReady`] when the session cannot publish, before anything is
+    /// spawned; otherwise prikk's own refusal verbatim, or whatever stopped it running.
+    fn merge(&self, repo: &Path, baseline: &str, into: &str, from: &str) -> Result<MergeResult>;
 }
 
 #[cfg(test)]

@@ -203,6 +203,17 @@ impl Prikk for Recording {
         self.inner.merge_plan(repo, baseline, left, right)
     }
 
+    fn merge(
+        &self,
+        repo: &Path,
+        baseline: &str,
+        into: &str,
+        from: &str,
+    ) -> Result<stikk_prikk::MergeResult> {
+        self.record("merge");
+        self.inner.merge(repo, baseline, into, from)
+    }
+
     fn diff(
         &self,
         repo: &Path,

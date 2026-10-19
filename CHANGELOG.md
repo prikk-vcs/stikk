@@ -44,6 +44,24 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   prikk's commit would stop on — and ends with a line saying how many more there are and that
   each has its own reason.
 
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-state`, `stikk-tui` and the `stikk` launcher are unchanged.**
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | **The `Prikk` trait gains two required methods**, `merge_plan` and `merge`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+
+**Additive:** `stikk_prikk::MergeOutcome`, `MergePlan` and `MergeResult`, with
+`NullBackend::with_merge_plan`, `with_merge_plan_refusal`, `with_merge`, `with_merge_refusal` and
+`with_history_of`; `stikk_core::merge` with `MergeBaseline`, `MergePlanRead`, `MergePlanView`,
+`merge_baseline`, `merge_plan_view`, `merge_unavailable` and its constants;
+`OperationContext::MergePlan`, which is additive only because that enum is `#[non_exhaustive]`
+and has been since it existed. **No public item was removed** — `cargo public-api diff 0.14.0`
+reports no `-` line for any crate — and nothing else changed shape. The MSRV is unchanged at
+1.88.
+
 ## 0.14.0 — 2026-10-18
 
 **stikk now reopens each repository where you left it, and never stores anything inside one.**

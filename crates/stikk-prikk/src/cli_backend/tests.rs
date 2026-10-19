@@ -2238,3 +2238,228 @@ fn prikks_eight_outcomes_round_trip_and_only_one_merges() {
     );
     assert_eq!(crate::MergeOutcome::parse("Marvellous"), None);
 }
+
+// =============================================================================================
+// RFC 047 Handoff B — `merge`: the one write, at seal's tier
+//
+// The measured lines are scenario 1's, from `.git-exclude/reports/047-merge/measure047-0.53.txt`.
+// Nothing here parses them; what is checked is the argument vector, the gate that runs before
+// prikk does, and the fact that every class of exit arrives as the class it is.
+// =============================================================================================
+
+/// prikk 0.53.0's own output for scenario 1's merge, exactly as it printed it.
+const MERGED: &str = "merged heads/main into heads/feature\n\
+     baseline block: 88f34150e09929a618d75865609d7ba5d88a6f24937dbbb6f53d2214a1312d52\n\
+     parent block: d967f47871e7ed45546c193f1166bdcd419f7841c5df7427f57f7082d7d5923c\n\
+     adopted target block: 6d17f5f225b7bf7eded37aea8dab8680b0bb4080b8147c5e527b866b8afb7b93\n\
+     adopted patches: 1\n\
+     \x20 0dd35e76fe90c46782945e3ab34afc917e8210264176b1130c2a11eaac4fdb13\n\
+     block id: 01163541294c3c5258cb92ea2e21f106c628fd9acf250a97c04831bb85678ad4\n\
+     heads/feature RefState: 1e8e6fabc365a6861c1df9d6c20bdc9a6b4f2976820ab72712bdd3e0c672bd2c\n";
+
+/// A fake `prikk` at `version` answering `key status` with a maintainer that is `usable` or not,
+/// logging every call's argv, and answering anything else with `out`/`err` at `code`.
+#[cfg(unix)]
+fn fake_merge_prikk(
+    tag: &str,
+    version: &str,
+    maintainer_usable: bool,
+    out: &str,
+    err: &str,
+    code: i32,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-merge-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let argv = dir.join("argv");
+    let payload = dir.join("payload");
+    std::fs::write(&payload, out).expect("write the payload");
+    let script = dir.join("fake-prikk.sh");
+    let usable = if maintainer_usable { "true" } else { "false" };
+    let binding = if maintainer_usable {
+        "matches"
+    } else {
+        "absent"
+    };
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             : >> \"{argv}\"\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk {version}'; exit 0; fi\n\
+             if [ \"$2\" = \"status\" ]; then\n\
+             printf '%s\\n' '{{\"schema_version\":\"key-status-v1\",\"roles\":[{{\"role\":\"author\",\"usable\":true,\"key_id\":\"a\",\"binding\":\"matches\"}},{{\"role\":\"maintainer\",\"usable\":{usable},\"key_id\":\"m\",\"binding\":\"{binding}\"}}]}}'\n\
+             exit 0\n\
+             fi\n\
+             for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"{argv}\"; done\n\
+             cat \"{payload}\"\n\
+             printf '%s' '{err}' 1>&2\n\
+             exit {code}\n",
+            argv = argv.display(),
+            payload = payload.display(),
+            version = version,
+            usable = usable,
+            binding = binding,
+            err = err,
+            code = code,
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (script, argv)
+}
+
+/// Run `merge` against a fake, and hand back both the outcome and the argv it recorded.
+#[cfg(unix)]
+fn merged(script: &std::path::Path) -> Result<crate::MergeResult> {
+    let backend = CliBackend::with_program(script);
+    retrying_transient_exec_busy(|| {
+        backend.merge(
+            std::path::Path::new("."),
+            "88f34150e099",
+            "heads/feature",
+            "heads/main",
+        )
+    })
+}
+
+/// **The argument vector**: `--allow-no-audit` exactly as seal passes it, and one argument each.
+#[cfg(unix)]
+#[test]
+fn merge_sends_allow_no_audit_and_one_argument_each() {
+    let (script, argv) = fake_merge_prikk("args", "0.53.0", true, MERGED, "", 0);
+    merged(&script).expect("a merge runs");
+    let recorded = recorded_argv(&argv);
+    assert_eq!(
+        recorded,
+        vec![
+            "merge",
+            "--allow-no-audit",
+            "--baseline-block",
+            "88f34150e099",
+            "--into",
+            "heads/feature",
+            "--from",
+            "heads/main"
+        ]
+    );
+    // **No `--format json`**, as for the plan: there is none, and asking is a usage error.
+    assert!(!recorded.iter().any(|a| a == "--format"), "{recorded:?}");
+}
+
+/// **prikk's success lines are kept whole and read by nothing.**
+#[cfg(unix)]
+#[test]
+fn a_merges_lines_are_kept_verbatim() {
+    let (script, _argv) = fake_merge_prikk("done", "0.53.0", true, MERGED, "", 0);
+    let crate::MergeResult::Done(lines) = merged(&script).expect("a merge runs") else {
+        panic!("expected a merge that ran");
+    };
+    assert_eq!(lines.len(), 8, "{lines:?}");
+    assert_eq!(lines[0], "merged heads/main into heads/feature");
+    assert_eq!(
+        lines[4], "adopted patches: 1",
+        "the count is shown, not summed from the id below it"
+    );
+    // The patch id keeps prikk's own indent: these are prikk's lines, not stikk's layout.
+    assert_eq!(
+        lines[5],
+        "  0dd35e76fe90c46782945e3ab34afc917e8210264176b1130c2a11eaac4fdb13"
+    );
+    assert!(
+        lines[7].starts_with("heads/feature RefState: "),
+        "{lines:?}"
+    );
+}
+
+/// **A pair prikk will not merge refuses, verbatim** (`ER-02`) — and writes nothing (F1).
+#[cfg(unix)]
+#[test]
+fn a_non_confluent_refusal_arrives_in_prikks_own_words() {
+    let said = "error: precondition not met: merge refused: heads/main is not confluent with \
+                heads/feature from baseline 2237a4316d32 (outcome: Conflict, reason: pair_conflict)";
+    let (script, _argv) = fake_merge_prikk("conflict", "0.53.0", true, "", said, 1);
+    let error = merged(&script).expect_err("a non-confluent pair is refused");
+    assert!(
+        matches!(&error, stikk_model::StikkError::Refusal { message } if message.contains("is not confluent with")
+            && message.contains("outcome: Conflict")),
+        "{error:?}"
+    );
+}
+
+/// **prikk's key refusal is prikk's**, when stikk's own gate let the call through.
+///
+/// It arrives as `NotReady`, not `Refusal` — the classifier reads *invalid signature* as a
+/// readiness problem, which is what it is and what `seal` already produces — and it carries
+/// prikk's own sentence unaltered (`ER-02`). What matters here is that stikk adds no sentence of
+/// its own on top: the session looked ready, prikk disagreed, and prikk says why.
+#[cfg(unix)]
+#[test]
+fn prikks_signature_refusal_arrives_verbatim() {
+    let said = "error: invalid signature: maintainer signer public key does not match trusted key \
+                maintainer";
+    let (script, _argv) = fake_merge_prikk("nokey-prikk", "0.53.0", true, "", said, 1);
+    let error = merged(&script).expect_err("prikk refuses the signature");
+    let stikk_model::StikkError::NotReady { detail } = &error else {
+        panic!("expected a readiness error, got {error:?}");
+    };
+    assert!(detail.contains("maintainer signer public key"), "{detail}");
+    // **Not stikk's own words**: those are the ones the gate above gives, and this did not come
+    // from the gate.
+    assert!(!detail.contains("merging needs"), "{detail}");
+}
+
+/// **stikk's own stop comes first**, in stikk's words, and `merge` is never spawned for it.
+#[cfg(unix)]
+#[test]
+fn without_a_maintainer_key_stikk_stops_before_prikk_runs() {
+    let (script, argv) = fake_merge_prikk("nokey", "0.53.0", false, MERGED, "", 0);
+    let error = merged(&script).expect_err("a merge needs MAINTAINER readiness");
+    assert!(
+        matches!(&error, stikk_model::StikkError::NotReady { detail } if detail.contains("merging")
+            && detail.contains("MAINTAINER")),
+        "{error:?}"
+    );
+    assert!(
+        !recorded_argv(&argv).iter().any(|a| a == "merge"),
+        "nothing was spawned to merge: {:?}",
+        recorded_argv(&argv)
+    );
+}
+
+/// **A usage exit is stikk's own bug class, never prikk's refusal voice** — the shape a missing
+/// `--allow-no-audit` would produce (exit 2, measured). It must never happen; if it does, the
+/// fault screen says the repository was not touched, which is true.
+#[cfg(unix)]
+#[test]
+fn a_usage_exit_from_merge_is_an_internal_fault_not_a_refusal() {
+    let said = "error: the following required arguments were not provided: --allow-no-audit";
+    let (script, _argv) = fake_merge_prikk("usage", "0.53.0", true, "", said, 2);
+    let error = merged(&script).expect_err("a usage error");
+    assert!(
+        matches!(&error, stikk_model::StikkError::Internal { detail } if detail.contains("usage error")),
+        "{error:?}"
+    );
+}
+
+/// **Below the band nothing is spawned**, not even the readiness read.
+#[cfg(unix)]
+#[test]
+fn below_the_band_merge_spawns_nothing() {
+    let (script, argv) = fake_merge_prikk("band", "0.41.0", true, MERGED, "", 0);
+    assert_eq!(
+        merged(&script).expect("the band is not an error"),
+        crate::MergeResult::Unavailable
+    );
+    let recorded = recorded_argv(&argv);
+    assert!(
+        recorded.is_empty(),
+        "only `--version` ran, which is not recorded: {recorded:?}"
+    );
+}

@@ -891,6 +891,40 @@ impl Prikk for CliBackend {
         })
     }
 
+    fn merge(
+        &self,
+        repo: &Path,
+        baseline: &str,
+        into: &str,
+        from: &str,
+    ) -> Result<crate::MergeResult> {
+        // **The band, the MAINTAINER check and the `Publication` spawn are `write_ref`'s, the
+        // same code and not a copy of it.** A merge writes a ref, at the same tier, needing the
+        // same key; two gates for one requirement is two things that can drift apart, and the
+        // one that drifts is always the one with fewer tests. Only the type differs, because a
+        // merge is not one of RFC 044's three ref writes to the layer above.
+        let printed = self.write_ref(
+            repo,
+            &[
+                "merge",
+                // **Exactly as seal passes it** (decision 1). Without it prikk exits 2, a usage
+                // error -- stikk's own bug class, never prikk's refusal voice.
+                "--allow-no-audit",
+                "--baseline-block",
+                baseline,
+                "--into",
+                into,
+                "--from",
+                from,
+            ],
+            "merging",
+        )?;
+        Ok(match printed {
+            crate::RefWrite::Done(lines) => crate::MergeResult::Done(lines),
+            crate::RefWrite::Unavailable => crate::MergeResult::Unavailable,
+        })
+    }
+
     fn switch_branch(&self, repo: &Path, name: &str) -> Result<crate::SwitchResult> {
         // **Banded before anything else** (RFC 045 decision 4): below the band nothing is
         // spawned, not even the readiness read.

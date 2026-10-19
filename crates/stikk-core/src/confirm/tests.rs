@@ -47,6 +47,7 @@ fn summary(target_name: Option<&str>) -> ConfirmationSummary {
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 

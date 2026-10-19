@@ -253,6 +253,12 @@ pub enum Overlay {
         /// stderr's lines at exit 0, in order — usually empty.
         noted: Vec<String>,
     },
+    /// A merge that landed: prikk's own lines, and stikk's one line about the worktree
+    /// (RFC 047 decision 6).
+    MergeResult {
+        /// prikk's printed lines, in order and read by nothing.
+        printed: Vec<String>,
+    },
 }
 
 /// Which ref an [`Overlay::RefName`] prompt is naming (RFC 044 decision 5). It decides the fixed
@@ -333,6 +339,7 @@ impl Overlay {
             Self::TagMessage { .. } => " Tag message ",
             Self::RefWriteResult { kind, .. } => kind.done_title(),
             Self::SwitchResult { .. } => " Switched ",
+            Self::MergeResult { .. } => " Merged ",
         }
     }
 }
@@ -449,6 +456,7 @@ pub fn render(
         Overlay::SwitchResult { printed, noted } => {
             render_switch_result(printed, noted, palette, frame, area);
         }
+        Overlay::MergeResult { printed } => render_merge_result(printed, palette, frame, area),
     }
 }
 
@@ -1606,6 +1614,14 @@ fn render_confirmation(
         let list = plan_lines(plan, available, palette);
         lines.splice(frozen_at..frozen_at, list);
     }
+    // RFC 047 decision 6: prikk's merge plan gives up height in the same place, by the same
+    // rule, and says what it gave up.
+    if let Some(plan) = &summary.merge_plan {
+        let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(actions.len());
+        let available = prose_rows.saturating_sub(lines.len());
+        let list = merge_plan_lines(plan, available, palette);
+        lines.splice(frozen_at..frozen_at, list);
+    }
 
     Panel {
         title: " Confirm ",
@@ -1689,6 +1705,55 @@ fn plan_lines(
         shown += 1;
     }
     out.extend(remainder(rows.len() - shown));
+    out
+}
+
+/// prikk's merge plan under the confirmation card, fitted to `available` rows **whole lines
+/// first** (RFC 047 decision 6), in [`plan_lines`]'s shape and for the same reason.
+///
+/// A plan line is `label: value`, and prikk's indented report rows are part of its layout, so a
+/// line wraps hard rather than reflowing and is kept or dropped **entire**. Room for the
+/// remainder line is kept first: a plan that silently stops is the defect this shape exists to
+/// prevent, and a confirmation showing half a plan is worse than one showing none and saying so.
+fn merge_plan_lines(plan: &[String], available: usize, palette: &Palette) -> Vec<Line<'static>> {
+    if plan.is_empty() {
+        return Vec::new();
+    }
+    let drawn = |line: &String| -> Vec<Line<'static>> {
+        if line.trim().is_empty() {
+            return vec![Line::from("")];
+        }
+        crate::text::wrap_verbatim(&inert(line), PANEL_TEXT_WIDTH, "    ")
+            .into_iter()
+            .map(|row| Line::from(Span::styled(row, Style::default().fg(palette.fg))))
+            .collect()
+    };
+    let remainder = |unshown: usize| -> Vec<Line<'static>> {
+        wrap_indented(
+            &stikk_core::unshown_plan_lines_line(unshown, plan.len()),
+            PANEL_TEXT_WIDTH,
+            "    ",
+        )
+        .into_iter()
+        .map(|row| Line::from(Span::styled(row, Style::default().fg(palette.dim))))
+        .collect()
+    };
+    let every: Vec<Vec<Line<'static>>> = plan.iter().map(drawn).collect();
+    if every.iter().map(Vec::len).sum::<usize>() <= available {
+        return every.into_iter().flatten().collect();
+    }
+    let foot = remainder(plan.len());
+    let room = available.saturating_sub(foot.len());
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut shown = 0usize;
+    for row in &every {
+        if out.len() + row.len() > room {
+            break;
+        }
+        out.extend(row.clone());
+        shown += 1;
+    }
+    out.extend(remainder(plan.len() - shown));
     out
 }
 
@@ -2332,6 +2397,63 @@ fn render_switch_result(
 
     Panel {
         title: " Switched ",
+        width: SEAL_WIDTH,
+        prose,
+        actions: vec![Line::from(Span::styled(
+            "  Enter \u{b7} Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// The result of a merge that landed (RFC 047 decision 6).
+///
+/// **prikk's lines verbatim, and one line of stikk's.** prikk names the baseline, the parent and
+/// adopted blocks, the adopted patches, the new block and the new RefState; stikk adds only what
+/// prikk does not say and the reader will otherwise discover by surprise — that the worktree is
+/// unchanged, and where the merged files are.
+fn render_merge_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            "  the merge block is sealed",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    if !printed.is_empty() {
+        prose.push(Line::from(Span::styled(
+            "  prikk reported \u{2014}",
+            Style::default().fg(palette.dim),
+        )));
+        for line in printed {
+            let inert_line = inert(line);
+            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
+                prose.push(Line::from(vec![
+                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
+                    Span::styled(
+                        row.get(QUOTE_INDENT.len()..)
+                            .unwrap_or_default()
+                            .to_string(),
+                        Style::default().fg(palette.fg),
+                    ),
+                ]));
+            }
+        }
+        prose.push(Line::from(""));
+    }
+    // **stikk's own sentence, and it is not optional.** prikk writes no file here, and a reader
+    // who looks for the merged files in the worktree will not find them (F3's neighbour).
+    for row in wrap_indented(stikk_core::SWITCH_TO_SEE_THE_FILES, SEAL_TEXT_WIDTH, "  ") {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+
+    Panel {
+        title: " Merged ",
         width: SEAL_WIDTH,
         prose,
         actions: vec![Line::from(Span::styled(

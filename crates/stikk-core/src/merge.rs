@@ -19,8 +19,10 @@
 
 use std::path::Path;
 
-use stikk_model::Result;
-use stikk_prikk::{BlockRow, History, MergeOutcome, MergePlan, Prikk};
+use stikk_model::{CurrentBranch, RequestCategory, Result};
+use stikk_prikk::{BlockRow, History, MergeOutcome, MergePlan, MergeResult, Prikk};
+
+use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
 
 /// stikk's own short name for the operation, used in stale and declined messages.
 pub const MERGE_OPERATION: &str = "merge";
@@ -121,12 +123,24 @@ pub struct MergePlanView {
     pub from: String,
     /// The branch it would be brought into -- the selected one, `--into`.
     pub into: String,
-    /// The baseline block the plan was computed from, shortened for the reader to check.
+    /// The baseline block the plan was computed from, **as prikk's own full id**.
+    ///
+    /// Full, not shortened: this is the string the merge itself is run with, and a short id is a
+    /// display form, not an argument. [`Self::baseline_short`] is what the reader sees.
     pub baseline: String,
     /// prikk's printed plan, **verbatim and in order** (decision 2). Shown, never parsed.
     pub lines: Vec<String>,
     /// The verdict, from the plan's one `evidence outcome:` line. **Read here and nowhere else.**
     pub outcome: MergeOutcome,
+}
+
+impl MergePlanView {
+    /// The baseline as the reader sees it, shortened the way History and every preview shorten
+    /// an object id -- so a reader can check it against the plan's own `baseline block:` line.
+    #[must_use]
+    pub fn baseline_short(&self) -> String {
+        short(&self.baseline)
+    }
 }
 
 /// What the Merge plan view has to show: prikk's plan, or stikk's reason for not asking for one.
@@ -137,6 +151,35 @@ pub enum MergePlanRead {
     /// stikk did not ask prikk, and says why in its own voice.
     Declined(String),
 }
+
+/// **Why stikk will not merge into the branch the repository is on** (decision 5, F3) -- the one
+/// guard a measurement wrote.
+///
+/// prikk allows this merge and writes no file. The worktree is then behind the branch's new tip:
+/// `worktree-status` reports the adopted file **missing**, the next commit would queue its
+/// deletion, and `branch switch` refuses because the worktree is not clean -- so the way out is
+/// not even a switch.
+pub const INTO_THE_CURRENT_BRANCH: &str = "merging into the branch you are on would leave the worktree without the merged files, and \
+     prikk would then refuse a switch. Switch to another branch first.";
+
+/// **Why stikk will not merge into a branch with work queued** (decision 5, F4).
+///
+/// Measured: `merge-plan` judges the branch's **sealed** tip and the merge succeeds, after which
+/// the queued work seals on top of the merge block. prikk allows it; whether a patch queued
+/// against the old tip still means what it did is not something stikk can see.
+pub const WORK_IS_QUEUED_FOR_INTO: &str = "work is queued for this branch; seal it first. A plan is judged against the sealed tip, not \
+     against what is waiting.";
+
+/// **Why stikk will not merge a tag** (decision 5). A merge moves a branch.
+pub const TAGS_ARE_NOT_MERGED: &str =
+    "only branches are merged; a tag names a point in history, not a line of work.";
+
+/// **Why stikk will not merge a closed branch** (decision 5), from the ref list's own flag.
+pub const CLOSED_IS_NOT_MERGED: &str = "this branch is closed; merge between open ones.";
+
+/// **Why stikk will not merge a branch into itself** (decision 5).
+pub const THE_SAME_BRANCH_TWICE: &str =
+    "this is the branch you marked; mark one branch and select another.";
 
 /// **Why stikk will not show a plan it cannot band-check.**
 ///
@@ -177,7 +220,7 @@ pub fn merge_plan_view(
         MergePlan::Read { printed, outcome } => MergePlanRead::Read(Box::new(MergePlanView {
             from: from.to_string(),
             into: into.to_string(),
-            baseline: short(&baseline),
+            baseline,
             lines: printed,
             outcome,
         })),
@@ -208,6 +251,245 @@ pub fn merge_unavailable(minor: u32) -> String {
         "Merging needs prikk ≥ 0.{MERGE_FROM_MINOR} — this prikk is 0.{minor}. Below \
          0.{MERGE_FROM_MINOR} it keeps no current-branch pointer, so stikk cannot tell whether a \
          merge would leave the worktree behind the branch you are on. The rest of stikk works."
+    )
+}
+
+// -------------------------------------------------------------------------------------------
+// The merge itself (RFC 047 decision 6; Handoff B)
+// -------------------------------------------------------------------------------------------
+
+/// What a merge can say before it runs.
+#[derive(Debug)]
+pub enum MergePreview {
+    /// stikk will not run it, and says why in its own voice.
+    Blocked(String),
+    /// Ready to confirm.
+    Ready {
+        /// The confirmation token.
+        token: Box<PreviewToken>,
+    },
+}
+
+/// **Why stikk will not merge from a plan that is no longer confluent**, given prikk's word.
+///
+/// prikk merges only what it has proven confluent, and refuses everything else without writing
+/// (F1). Offering a confirmation for a merge prikk will refuse would make the card a question
+/// whose only answer is a refusal.
+#[must_use]
+pub fn not_confluent(outcome: MergeOutcome) -> String {
+    format!(
+        "prikk now reports these two branches as {} rather than Confluent, and it merges only \
+         what it has proven confluent. Nothing was written. The Merge plan view shows prikk's \
+         full reasoning.",
+        outcome.name()
+    )
+}
+
+/// **Why stikk will not merge from a baseline that moved** (§2).
+///
+/// The plan the reader saw was computed from one block. If either branch has sealed since, the
+/// latest shared block can be another one, and confirming the old card would confirm a plan that
+/// no longer describes anything.
+pub const THE_BASELINE_MOVED: &str = "these branches have moved since this plan was read, so it was computed from a block that is \
+     no longer the one they parted from. Nothing was written. Open the Merge plan again for a \
+     current one.";
+
+/// Preview merging `from` into `into`, from the baseline the view showed.
+///
+/// **Everything is read again here** (§2): the guards, the baseline and prikk's plan. The current
+/// branch, the queue and a branch's closed flag can all change between the view opening and the
+/// reader pressing `Enter`, and a confirmation restates what *is* true, not what was.
+///
+/// # Errors
+/// Propagates every [`stikk_model::StikkError`] the orientation, ref, history and plan reads
+/// raise. A refusal is not turned into a block: a branch prikk will not list is a fact the reader
+/// should meet in prikk's own words (`ER-02`).
+pub fn merge_preview(
+    prikk: &impl Prikk,
+    repo: &Path,
+    into: &str,
+    from: &str,
+    shown_baseline: &str,
+    limit: usize,
+) -> Result<MergePreview> {
+    let (into, from) = (into.to_string(), from.to_string());
+    let shown_baseline = shown_baseline.to_string();
+    let intent = Intent {
+        category: RequestCategory::Publication,
+        operation: MERGE_OPERATION,
+    };
+    let (view, token): (ReadView, _) = confirm::preview(prikk, repo, intent, || {
+        if let Some(reason) = blocked_reason(prikk, repo, &into, &from)? {
+            return Ok(blocked(&reason));
+        }
+        let plan = match merge_plan_view(prikk, repo, &into, &from, limit)? {
+            MergePlanRead::Read(plan) => plan,
+            MergePlanRead::Declined(reason) => return Ok(blocked(&reason)),
+        };
+        // **The baseline the reader saw, or none at all** -- compared in the short form the card
+        // and the view both show, which is the form the caller was handed.
+        if plan.baseline_short() != shown_baseline {
+            return Ok(blocked(THE_BASELINE_MOVED));
+        }
+        if !plan.outcome.is_confluent() {
+            return Ok(blocked(&not_confluent(plan.outcome)));
+        }
+        // The adopted side's tip: what this merge brings in, named so the card can be checked
+        // against prikk's own plan above it.
+        let adopted = prikk
+            .history(repo, &from, 1)
+            .ok()
+            .and_then(|history| history.blocks.first().map(|block| short(&block.block_id)));
+        let mut target_ids = vec![from.clone(), into.clone(), plan.baseline_short()];
+        target_ids.extend(adopted);
+        Ok((
+            ReadView::Ready,
+            ConfirmationSummary {
+                operation: "Merge".to_string(),
+                target_ids,
+                counts: Vec::new(),
+                capability: Some(stikk_model::Capability::Maintainer),
+                consequence: CONSEQUENCE.to_string(),
+                target_name: None,
+                signing_key_id: None,
+                signing_key_claim: confirm::KeyClaim::None,
+                signing_key_is_published_example: false,
+                branch_notice: None,
+                freezes: None,
+                history_notice: None,
+                rename_note: None,
+                declaration_notices: Vec::new(),
+                message_note: None,
+                materializes: None,
+                merge_plan: Some(plan.lines.clone()),
+            },
+        ))
+    })?;
+    Ok(match view {
+        ReadView::Blocked(reason) => MergePreview::Blocked(reason),
+        ReadView::Ready => MergePreview::Ready {
+            token: Box::new(token),
+        },
+    })
+}
+
+/// The sentence under the card, in stikk's own words -- **with no name in it** (RFC 044 C1):
+/// `consequence` is drawn unescaped, and every name is already restated in `target_ids`.
+const CONSEQUENCE: &str = "A merge block is sealed on the branch merged into, adopting the other side's patches. \
+     Nothing is written to the worktree: switch to that branch afterwards to have its files. \
+     prikk merges only what it has proven confluent, and a refusal writes nothing.";
+
+/// The three names a merge is run with, kept together.
+///
+/// **One value, not three `&str` in a row**: `into` and `from` are the same type, mean opposite
+/// things, and are passed through four layers. A caller that swaps them merges the wrong way
+/// round and nothing but a test would notice — the measured difference between the two is a
+/// worktree left behind its branch (F3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeTarget {
+    /// The block both branches parted from, as [`merge_baseline`] named it.
+    pub baseline: String,
+    /// The branch merged into: it gains the merge block. Never the current branch (F3).
+    pub into: String,
+    /// The branch merged from: it is read and not moved.
+    pub from: String,
+}
+
+/// Merge the pair this token was previewed for.
+///
+/// # Errors
+/// As [`merge_preview`], plus every refusal prikk raises -- each of which writes nothing (F1).
+pub fn merge_confirm_and_execute(
+    prikk: &impl Prikk,
+    repo: &Path,
+    token: PreviewToken,
+    readiness: stikk_model::Readiness,
+    evidence: Evidence,
+    target: &MergeTarget,
+) -> Result<Outcome<MergeResult>> {
+    let confirmed = confirm::confirm(prikk, repo, token, readiness, evidence)?;
+    confirm::execute(prikk, repo, confirmed, || {
+        // **The full baseline, not the short one the card showed.** prikk takes a block id; the
+        // short form is for the reader. `merge_plan` was given this same string.
+        prikk.merge(repo, &target.baseline, &target.into, &target.from)
+    })
+}
+
+/// **stikk's one line after a merge lands**: prikk wrote no file, and the reader should know
+/// where the merged files are rather than discover their absence.
+pub const SWITCH_TO_SEE_THE_FILES: &str = "The worktree is unchanged. Switch to the branch you merged into (s in the ref picker) to \
+     have its files.";
+
+/// Every Handoff A guard, re-asked from freshly read state (§2).
+///
+/// **Read once, here, for both sides.** The ref list and the orientation each cost one spawn, and
+/// asking per guard would cost several for an answer that cannot differ between them.
+fn blocked_reason(
+    prikk: &impl Prikk,
+    repo: &Path,
+    into: &str,
+    from: &str,
+) -> Result<Option<String>> {
+    if into == from {
+        return Ok(Some(THE_SAME_BRANCH_TWICE.to_string()));
+    }
+    let refs = prikk.refs(repo)?;
+    for name in [into, from] {
+        match refs
+            .refs
+            .iter()
+            .find(|entry| entry.name == name)
+            .map_or((false, false), |entry| (entry.is_tag(), entry.closed))
+        {
+            (true, _) => return Ok(Some(TAGS_ARE_NOT_MERGED.to_string())),
+            (_, true) => return Ok(Some(CLOSED_IS_NOT_MERGED.to_string())),
+            _ => {}
+        }
+    }
+    let orientation = prikk.orientation(repo)?;
+    // **F3 and F4, and only about `into`.** Both are facts about the branch merged *into*; the
+    // branch merged *from* is read, not moved, and neither applies to it.
+    if let CurrentBranch::Branch(current) = &orientation.current_branch
+        && current.as_str() == into
+    {
+        return Ok(Some(INTO_THE_CURRENT_BRANCH.to_string()));
+    }
+    if orientation.queued_patches > 0 && orientation.queued_target.as_deref() == Some(into) {
+        return Ok(Some(WORK_IS_QUEUED_FOR_INTO.to_string()));
+    }
+    Ok(None)
+}
+
+/// The two shapes the read can produce -- never exposed; [`merge_preview`] unwraps it, attaching
+/// the token to `Ready` alone, as switch and seal do.
+enum ReadView {
+    Blocked(String),
+    Ready,
+}
+
+/// A blocked preview still needs a summary for the token; nothing shows it.
+fn blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
+    (
+        ReadView::Blocked(reason.to_string()),
+        ConfirmationSummary {
+            operation: "Merge".to_string(),
+            target_ids: Vec::new(),
+            counts: Vec::new(),
+            capability: None,
+            consequence: String::new(),
+            target_name: None,
+            signing_key_id: None,
+            signing_key_claim: confirm::KeyClaim::None,
+            signing_key_is_published_example: false,
+            branch_notice: None,
+            freezes: None,
+            history_notice: None,
+            rename_note: None,
+            declaration_notices: Vec::new(),
+            message_note: None,
+            materializes: None,
+            merge_plan: None,
+        },
     )
 }
 

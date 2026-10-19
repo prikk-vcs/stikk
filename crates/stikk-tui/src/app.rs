@@ -448,6 +448,10 @@ pub struct App {
     /// The switch flow's state between overlays (RFC 045) — the same reason
     /// [`Self::pending_ref_write`] exists, across the two round trips the flow needs.
     pending_switch: Option<PendingSwitch>,
+    /// The merge being previewed, confirmed or run (RFC 047 decision 6). Its own slot, not a
+    /// shared one: a merge is the only flow that carries three names through a confirmation,
+    /// and folding it into another pending would make both ask *which kind is this*.
+    pending_merge: Option<PendingMerge>,
     /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
     /// check compares against it; `None` until the first stamp, and no check is sent before it.
     stamp: Option<ChangeToken>,
@@ -614,6 +618,29 @@ enum PendingSwitch {
     },
 }
 
+/// See [`App::pending_merge`] (RFC 047 decision 6).
+enum PendingMerge {
+    /// `Overlay::Loading` is on the stack; a [`RequestKind::MergePreview`] is in flight.
+    AwaitingPreview {
+        /// The three names the merge will run with.
+        target: stikk_core::MergeTarget,
+    },
+    /// The preview succeeded; `token` is armed and `Overlay::Confirmation` awaits a typed name.
+    Confirming {
+        /// Feed this into [`stikk_core::merge_confirm_and_execute`]. Boxed as every other armed
+        /// token here is.
+        token: Box<stikk_core::PreviewToken>,
+        /// The three names (must match the preview's).
+        target: stikk_core::MergeTarget,
+    },
+    /// Confirm+execute is in flight. **The names are kept** because success re-reads the branch
+    /// merged into, and by then the request that carried them is gone.
+    Executing {
+        /// The three names the merge ran with.
+        target: stikk_core::MergeTarget,
+    },
+}
+
 /// See [`App::pending_ref_write`].
 enum PendingRefWrite {
     /// `Overlay::Loading` is on the stack; a [`RequestKind::RefWritePreview`] is in flight.
@@ -716,6 +743,7 @@ impl App {
             pending_seal: None,
             pending_ref_write: None,
             pending_switch: None,
+            pending_merge: None,
             ref_rows: Vec::new(),
             session: None,
             stored: None,
@@ -1451,36 +1479,13 @@ impl App {
         }
     }
 
-    /// **stikk's own words for `M` into the branch the repository is on** (RFC 047 decision 5,
-    /// F3) -- the one guard a measurement wrote.
+    /// **The five sentences `M` declines with live in `stikk-core`** (RFC 047 Handoff B §2).
     ///
-    /// prikk allows this merge and writes no file. The worktree is then behind the branch's new
-    /// tip: `worktree-status` reports the adopted file **missing**, the next commit would queue
-    /// its deletion, and `branch switch` refuses because the worktree is not clean -- so the way
-    /// out is not even a switch. stikk does not offer it.
-    const INTO_THE_CURRENT_BRANCH: &'static str = "merging into the branch you are on would leave the worktree without the merged files, \
-         and prikk would then refuse a switch. Switch to another branch first.";
-
-    /// **stikk's own words for `M` into a branch with work queued** (decision 5, F4).
-    ///
-    /// Measured: `merge-plan` judges the branch's **sealed** tip and the merge succeeds, after
-    /// which the queued work seals on top of the merge block. prikk allows it; whether a patch
-    /// queued against the old tip still means what it did is not something stikk can see, so
-    /// stikk declines rather than show a plan that answers a different question.
-    const WORK_IS_QUEUED_FOR_INTO: &'static str = "work is queued for this branch; seal it first. A plan is judged against the sealed tip, \
-         not against what is waiting.";
-
-    /// **stikk's own words for `M` on a tag** (decision 5). A merge moves a branch.
-    const TAGS_ARE_NOT_MERGED: &'static str =
-        "only branches are merged; a tag names a point in history, not a line of work.";
-
-    /// **stikk's own words for `M` on a closed branch** (decision 5), from the list's own flag.
-    const CLOSED_IS_NOT_MERGED: &'static str = "this branch is closed; merge between open ones.";
-
-    /// **stikk's own words for `M` with one branch on both sides** (decision 5).
-    const THE_SAME_BRANCH_TWICE: &'static str =
-        "this is the branch you marked; mark one branch and select another.";
-
+    /// The preview re-checks every one of these against freshly read state, because the current
+    /// branch or the queue can change between the view opening and the confirmation. Two copies
+    /// of the same sentence are two things that can drift, and the one that drifts is the one
+    /// the reader sees less often -- so there is one copy, and this key and that preview answer
+    /// from it.
     /// **stikk's own words for `M` with nothing marked** -- `d`'s sentence, for `d`'s reason.
     const NOTHING_IS_MARKED: &'static str = "mark a branch with m first";
 
@@ -1540,7 +1545,7 @@ impl App {
             return None;
         };
         if from == into {
-            self.banner = Some(Self::THE_SAME_BRANCH_TWICE.to_string());
+            self.banner = Some(stikk_core::THE_SAME_BRANCH_TWICE.to_string());
             return None;
         }
         // **Both sides**, against the list the picker is drawn from: a tag or a closed branch is
@@ -1553,11 +1558,11 @@ impl App {
                 .map_or((false, false), |entry| (entry.is_tag(), entry.closed))
             {
                 (true, _) => {
-                    self.banner = Some(Self::TAGS_ARE_NOT_MERGED.to_string());
+                    self.banner = Some(stikk_core::TAGS_ARE_NOT_MERGED.to_string());
                     return None;
                 }
                 (_, true) => {
-                    self.banner = Some(Self::CLOSED_IS_NOT_MERGED.to_string());
+                    self.banner = Some(stikk_core::CLOSED_IS_NOT_MERGED.to_string());
                     return None;
                 }
                 _ => {}
@@ -1570,17 +1575,173 @@ impl App {
             .map(stikk_model::CurrentBranch::Branch)
             == Some(self.current_branch())
         {
-            self.banner = Some(Self::INTO_THE_CURRENT_BRANCH.to_string());
+            self.banner = Some(stikk_core::INTO_THE_CURRENT_BRANCH.to_string());
             return None;
         }
         if let OrientationState::Loaded(view) = &self.state
             && view.queued_patches > 0
             && view.queued_target.as_deref() == Some(into.as_str())
         {
-            self.banner = Some(Self::WORK_IS_QUEUED_FOR_INTO.to_string());
+            self.banner = Some(stikk_core::WORK_IS_QUEUED_FOR_INTO.to_string());
             return None;
         }
         Some((into, from))
+    }
+
+    /// Begin the merge the open Merge plan describes (`Enter`; RFC 047 decision 6).
+    ///
+    /// **Only from a `Confluent` plan.** prikk merges nothing else, so a confirmation for any
+    /// other outcome would be a question whose only answer is a refusal; the banner says which
+    /// word prikk used instead.
+    pub fn begin_merge(&mut self) {
+        self.banner = None;
+        let Some(Screen::MergePlan { view, .. }) = self.screens.last() else {
+            return;
+        };
+        if !view.outcome.is_confluent() {
+            self.banner = Some(stikk_core::not_confluent(view.outcome));
+            return;
+        }
+        let shown_baseline = view.baseline_short();
+        let target = stikk_core::MergeTarget {
+            baseline: view.baseline.clone(),
+            into: view.into.clone(),
+            from: view.from.clone(),
+        };
+        let seq = self.dispatch(RequestKind::MergePreview {
+            target: target.clone(),
+            shown_baseline,
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "merge preview",
+            seq,
+        });
+        self.pending_merge = Some(PendingMerge::AwaitingPreview { target });
+    }
+
+    /// The confirmation step's `Enter` for a pending merge: Tier Three, as seal's is.
+    fn submit_merge_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingMerge::Confirming { token, target }) = self.pending_merge.take() else {
+            return; // no merge is actually pending
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let seq = self.dispatch(RequestKind::MergeConfirmExecute {
+            token,
+            readiness,
+            evidence,
+            target: target.clone(),
+        });
+        self.overlays.push(Overlay::Loading { what: "merge", seq });
+        self.pending_merge = Some(PendingMerge::Executing { target });
+    }
+
+    /// Answers [`RequestKind::MergePreview`]. A block is a banner; the plan view stays open
+    /// underneath it, which is where the reader can see prikk's own reasoning.
+    fn apply_merge_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::MergePreview>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale: the reader navigated away before the preview resolved
+        };
+        let pending = self.pending_merge.take();
+        match result {
+            Ok(stikk_core::MergePreview::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            Ok(stikk_core::MergePreview::Ready { token }) => {
+                let Some(PendingMerge::AwaitingPreview { target }) = pending else {
+                    self.overlays.remove(index);
+                    return; // defensive: nothing to confirm without this
+                };
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::Confirmation {
+                        summary: Box::new(token.summary().clone()),
+                        tier: token.tier(),
+                        typed: String::new(),
+                        error: None,
+                    };
+                }
+                self.pending_merge = Some(PendingMerge::Confirming { token, target });
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::MergePlan);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::MergeConfirmExecute`].
+    ///
+    /// On success: prikk's lines verbatim on the result card, then **the ref lists and any open
+    /// History are re-read**. **Focus does not move** — unlike a switch, a merge changes no file
+    /// and the reader is still working wherever they were; the card's own line says how to go to
+    /// the merged branch if they want to.
+    fn apply_merge_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::MergeResult>>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        let target = match self.pending_merge.take() {
+            Some(PendingMerge::Executing { target } | PendingMerge::Confirming { target, .. }) => {
+                Some(target)
+            }
+            Some(PendingMerge::AwaitingPreview { .. }) | None => None,
+        };
+        match result {
+            Ok(outcome) => match outcome.result {
+                stikk_prikk::MergeResult::Done(printed) => {
+                    if let Some(slot) = self.overlays.get_mut(index) {
+                        *slot = Overlay::MergeResult { printed };
+                    }
+                    // **The branch merged into gained a block**, so a History of it is now
+                    // short by one. Every other screen shows something this did not touch.
+                    if let Some(target) = &target
+                        && let Some(Screen::History { view, .. }) = self.screens.last()
+                        && view.reff == target.into
+                    {
+                        let seq = self.dispatch(RequestKind::History {
+                            reff: target.into.clone(),
+                        });
+                        if let Some(Screen::History { refreshing, .. }) = self.screens.last_mut() {
+                            *refreshing = Some(seq);
+                        }
+                    }
+                    self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
+                    self.dispatch(RequestKind::Refs);
+                }
+                // The band is checked before the key offers anything, so this is only reachable
+                // if prikk changed under the session.
+                stikk_prikk::MergeResult::Unavailable => {
+                    self.overlays.remove(index);
+                    self.banner = Some(stikk_core::merge_unavailable(
+                        self.prikk_minor().unwrap_or_default(),
+                    ));
+                }
+            },
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::MergePlan);
+            }
+        }
     }
 
     /// prikk's current branch, as the last orientation read reported it.
@@ -1795,6 +1956,8 @@ impl App {
                     self.submit_ref_write_confirmation(tier, &typed);
                 } else if self.pending_switch.is_some() {
                     self.submit_switch_confirmation(tier, &typed);
+                } else if self.pending_merge.is_some() {
+                    self.submit_merge_confirmation(tier, &typed);
                 }
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
@@ -1812,7 +1975,8 @@ impl App {
                 | Overlay::CommitResult { .. }
                 | Overlay::SealResult { .. }
                 | Overlay::RefWriteResult { .. }
-                | Overlay::SwitchResult { .. },
+                | Overlay::SwitchResult { .. }
+                | Overlay::MergeResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -1890,10 +2054,9 @@ impl App {
             // below a verdict to open — and **nothing here acts on it** (RFC 040 decision 4):
             // Verify repairs nothing, clears no lock, and changes nothing at all.
             Some(Screen::Verify { .. }) => {}
-            // **A leaf, and deliberately so until Handoff B.** The merge itself is `Enter` here
-            // once that lands; today nothing on this screen acts, and the view says nothing
-            // about a key that does nothing.
-            Some(Screen::MergePlan { .. }) => {}
+            // **`Enter` is the merge** (RFC 047 decision 6) — offered only from a plan prikk
+            // judged `Confluent`, because that is the only outcome prikk will merge from.
+            Some(Screen::MergePlan { .. }) => self.begin_merge(),
             None => self.open_history(),
         }
     }
@@ -2286,7 +2449,8 @@ impl App {
                 | Overlay::RefName { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
-                | Overlay::SwitchResult { .. },
+                | Overlay::SwitchResult { .. }
+                | Overlay::MergeResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
@@ -2355,7 +2519,8 @@ impl App {
                 | Overlay::RefName { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
-                | Overlay::SwitchResult { .. },
+                | Overlay::SwitchResult { .. }
+                | Overlay::MergeResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { view, cursor, .. }) => {
@@ -2472,6 +2637,8 @@ impl App {
             ResponseKind::SwitchPreview(r) => r.is_ok(),
             ResponseKind::SwitchConfirmExecute(r) => r.is_ok(),
             ResponseKind::MergePlan(r) => r.is_ok(),
+            ResponseKind::MergePreview(r) => r.is_ok(),
+            ResponseKind::MergeConfirmExecute(r) => r.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -2503,6 +2670,10 @@ impl App {
                 self.apply_switch_confirm_execute(seq, result);
             }
             ResponseKind::MergePlan(result) => self.apply_merge_plan(seq, result),
+            ResponseKind::MergePreview(result) => self.apply_merge_preview(seq, result),
+            ResponseKind::MergeConfirmExecute(result) => {
+                self.apply_merge_confirm_execute(seq, result);
+            }
         }
         // **One flush point for every transition a response completes** (RFC 046 decision 4):
         // the view that just landed, the focus a switch just moved, the picker's pick once its

@@ -21,6 +21,20 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   into a branch with work still queued, either side closed or a tag, and one branch on both
   sides.
 
+- **Merging one branch into another, when prikk proves them confluent.** `Enter` on the Merge
+  plan, and stikk asks before it runs: the card names the branch merged from, the branch merged
+  into, the baseline and the tip being adopted, with prikk's own plan beneath it. It needs a
+  maintainer key, which stikk checks before prikk is asked.
+
+  **Everything is read again when you press `Enter`**, not reused from when the view opened. A
+  plan that stopped being confluent, a baseline that moved because a branch sealed, a branch that
+  became the one you are on, or work that arrived in the queue — each of those stops the merge
+  with stikk's own sentence, and none of them reaches prikk.
+
+  **Nothing is written to your worktree.** prikk seals the merge block and leaves your files
+  alone, so the result says so and tells you that `s` goes to the merged branch. A merge prikk
+  refuses writes nothing at all, and you are told in prikk's words.
+
 ### Changed
 
 - **Validated through prikk 0.53.0.** prikk 0.53 changes nothing stikk reads: its one output

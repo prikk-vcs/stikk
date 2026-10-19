@@ -181,6 +181,7 @@ fn compute(
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     };
     Ok((SealReadView::Ready, summary))
 }
@@ -240,6 +241,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 

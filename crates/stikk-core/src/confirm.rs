@@ -141,6 +141,15 @@ pub struct ConfirmationSummary {
     /// [`unshown_paths_line`]'s words. Every path is repository text: render each inert
     /// (`C-T2a`).
     pub materializes: Option<FilePlan>,
+    /// RFC 047 decision 6: prikk's own merge plan, verbatim, restated under the card so what is
+    /// confirmed is the plan and not the idea. `None` for every other operation.
+    ///
+    /// **The one part of a merge's card allowed to give up height**, as [`Self::freezes`] is for
+    /// seal and [`Self::materializes`] for a switch: the consequence and the affordances are
+    /// never clipped to make room for it, and when it gives up rows the card says how many, in
+    /// [`unshown_plan_lines_line`]'s words. Every line is prikk's text: render each inert
+    /// (`C-T2a`).
+    pub merge_plan: Option<Vec<String>>,
 }
 
 /// What a switch will do to the worktree, from stikk's own Compare (RFC 045 decision 5).
@@ -235,6 +244,22 @@ pub fn unshown_paths_line(unshown: usize, total: usize) -> String {
         format!("none shown here — {route}")
     } else {
         format!("and {unshown} more not shown — {route}")
+    }
+}
+
+/// What a merge card says when prikk's plan did not fit (RFC 047 decision 6).
+///
+/// **A fact, and no key to press now**, for the reason [`unshown_patches_line`] gives: `Esc`
+/// cancels, so telling a reader to press it mid-confirmation would send them out of the flow.
+/// Where the plan is whole is the Merge plan view this confirmation was opened from, which is
+/// still underneath it — so that is what this names.
+#[must_use]
+pub fn unshown_plan_lines_line(unshown: usize, total: usize) -> String {
+    let route = format!("the Merge plan view behind this card shows all {total}");
+    if unshown >= total {
+        format!("prikk's plan is not shown here — {route}")
+    } else {
+        format!("and {unshown} more lines not shown — {route}")
     }
 }
 

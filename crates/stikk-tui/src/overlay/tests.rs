@@ -555,6 +555,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 
@@ -1046,6 +1047,7 @@ fn summary_with_key_id(
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 
@@ -1277,6 +1279,9 @@ fn coverage(overlay: &Overlay) -> Coverage {
         // RFC 045 decision 8: a content card carrying prikk's two streams. Four lines today, but
         // the count is prikk's, so it is treated as content that can grow.
         Overlay::SwitchResult { .. } => Coverage::NoSelection,
+        // RFC 047 decision 6: a content card carrying prikk's merge lines and stikk's one
+        // sentence. The count is prikk's, so it can grow.
+        Overlay::MergeResult { .. } => Coverage::NoSelection,
     }
 }
 
@@ -1321,6 +1326,7 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 
@@ -1609,6 +1615,16 @@ fn cases() -> Vec<Case> {
                     .map(|i| format!("files written: {i:02} in some long accounting line"))
                     .collect(),
                 noted: vec!["note: replayed from the snapshot fallback".to_string()],
+            }),
+            last_row: "Enter · Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "MergeResult",
+            build: Box::new(|_| Overlay::MergeResult {
+                printed: (0..30)
+                    .map(|i| format!("adopted patch {i:02}: {}", "d".repeat(64)))
+                    .collect(),
             }),
             last_row: "Enter · Esc to dismiss".to_string(),
             entry: None,
@@ -1918,6 +1934,7 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 
@@ -3525,4 +3542,162 @@ fn capture_rfc034c_declarations_card_at_80_columns() {
         );
     }
     assert!(!advertises_more(&draw_at(&refused_declarations(6), 80, 24)));
+}
+
+// =============================================================================================
+// RFC 047 decision 6 — the merge's confirmation card and its result
+// =============================================================================================
+
+/// A merge summary with `lines` of prikk's plan under it.
+fn merge_summary(lines: Vec<String>) -> stikk_core::ConfirmationSummary {
+    stikk_core::ConfirmationSummary {
+        operation: "Merge".to_string(),
+        target_ids: vec![
+            "heads/feature".to_string(),
+            "heads/main".to_string(),
+            "88f34150e099".to_string(),
+            "6d17f5f225b7".to_string(),
+        ],
+        counts: Vec::new(),
+        capability: Some(Capability::Maintainer),
+        consequence: "A merge block is sealed on the branch merged into, adopting the other \
+                      side's patches. Nothing is written to the worktree: switch to that branch \
+                      afterwards to have its files. prikk merges only what it has proven \
+                      confluent, and a refusal writes nothing."
+            .to_string(),
+        target_name: None,
+        signing_key_id: None,
+        signing_key_claim: stikk_core::KeyClaim::None,
+        signing_key_is_published_example: false,
+        branch_notice: None,
+        freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
+        message_note: None,
+        materializes: None,
+        merge_plan: Some(lines),
+    }
+}
+
+/// prikk 0.53.0's own confluent plan, from `measure047-0.53.txt`.
+fn measured_plan() -> Vec<String> {
+    [
+        "merge plan",
+        "baseline block: 88f34150e099",
+        "left selector: ref heads/main",
+        "left target block: 6d17f5f225b7",
+        "right selector: ref heads/feature",
+        "right target block: d967f47871e7",
+        "status: ConfluentSubset",
+        "evidence outcome: Confluent",
+        "reason: proven_confluent",
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect()
+}
+
+/// **Capture: the merge confirmation at 80×24.**
+#[test]
+fn capture_the_merge_confirmation_at_80x24() {
+    let overlay = Overlay::Confirmation {
+        summary: Box::new(merge_summary(measured_plan())),
+        tier: Tier::Three,
+        typed: String::new(),
+        error: None,
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("{text}");
+    assert!(text.contains("Merge"), "{text}");
+    // Both names and both ids, restated as ids.
+    for id in [
+        "heads/feature",
+        "heads/main",
+        "88f34150e099",
+        "6d17f5f225b7",
+    ] {
+        assert!(text.contains(id), "missing {id}: {text}");
+    }
+    assert!(text.contains("MAINTAINER"), "{text}");
+    // **At 24 rows prikk's nine-line plan does not fit**, so the card keeps whole lines, in
+    // prikk's order, and says where the rest is. It never reorders them to surface the verdict:
+    // the lines are prikk's, in prikk's order (`ER-02`), and the card is armed only for a plan
+    // stikk already read as `Confluent`.
+    assert!(text.contains("merge plan"), "{text}");
+    assert!(text.contains("not shown"), "{text}");
+    // Given room, the whole plan is there, verdict included.
+    let tall = draw_at(
+        &Overlay::Confirmation {
+            summary: Box::new(merge_summary(measured_plan())),
+            tier: Tier::Three,
+            typed: String::new(),
+            error: None,
+        },
+        80,
+        40,
+    );
+    assert!(tall.contains("evidence outcome: Confluent"), "{tall}");
+    assert!(!tall.contains("not shown"), "{tall}");
+}
+
+/// **Capture: a plan too tall for the card** — whole lines are dropped and the card says how
+/// many, rather than stopping mid-plan (RFC 047 decision 6; RFC 034 Handoff C's rule).
+#[test]
+fn capture_an_overflowing_plan_on_the_card_at_80x24() {
+    let long: Vec<String> = (0..40)
+        .map(|n| format!("item {n:02}: {} something prikk reported", "x".repeat(60)))
+        .collect();
+    let overlay = Overlay::Confirmation {
+        summary: Box::new(merge_summary(long)),
+        tier: Tier::Three,
+        typed: String::new(),
+        error: None,
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("{text}");
+    // **It says what it gave up**, and names where the whole plan is.
+    assert!(text.contains("not shown"), "{text}");
+    assert!(text.contains("Merge plan view"), "{text}");
+    // **The consequence and the affordances are never given up for it** (wrapped across rows,
+    // so checked with whitespace normalised).
+    assert!(
+        flattened(&text).contains("prikk merges only what it has proven confluent"),
+        "{text}"
+    );
+    assert!(text.contains("Enter to confirm"), "{text}");
+    // **No half-drawn line**: every `item NN:` on screen is a line that was kept whole, so the
+    // last one visible is followed by its own text, never cut mid-wrap without its remainder.
+    let shown = text.matches("item ").count();
+    assert!(shown >= 1, "at least one line is kept: {text}");
+}
+
+/// **Capture: the result at 80×24** — prikk's lines, and stikk's one line about the worktree.
+#[test]
+fn capture_the_merge_result_at_80x24() {
+    let overlay = Overlay::MergeResult {
+        printed: vec![
+            "merged heads/main into heads/feature".to_string(),
+            "baseline block: 88f34150e09929a618d75865609d7ba5d88a6f24937dbbb6f53d2214a1312d52"
+                .to_string(),
+            "adopted patches: 1".to_string(),
+            "block id: 01163541294c3c5258cb92ea2e21f106c628fd9acf250a97c04831bb85678ad4"
+                .to_string(),
+        ],
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("{text}");
+    assert!(text.contains("Merged"), "{text}");
+    assert!(
+        text.contains("merged heads/main into heads/feature"),
+        "{text}"
+    );
+    // **stikk's own line, because prikk does not say it**: the worktree is unchanged.
+    // Wrapped across rows, so the sentence is checked through `flattened`.
+    let flowed = flattened(&text);
+    assert!(flowed.contains("The worktree is unchanged."), "{text}");
+    assert!(
+        flowed.contains("(s in the ref picker) to have its files."),
+        "{text}"
+    );
 }

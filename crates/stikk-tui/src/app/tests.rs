@@ -960,6 +960,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 
@@ -4202,8 +4203,8 @@ fn a_plan_opens_the_view_and_a_decline_is_a_banner() {
     );
 }
 
-/// **Nothing on the Merge plan acts** (RFC 047: the merge is Handoff B). `Enter` opens nothing,
-/// and `↑`/`↓` scroll, as Patch detail's do.
+/// **prikk's plan is inert, and `↑`/`↓` scroll it** as Patch detail's do. `Enter` is the merge
+/// (RFC 047 decision 6), and it is offered only from a `Confluent` plan.
 #[test]
 fn the_merge_plan_is_inert_and_scrolls() {
     let (mut app, rx) = merge_picker(
@@ -4225,12 +4226,6 @@ fn the_merge_plan_is_inert_and_scrolls() {
             },
         )))),
     });
-    app.select(); // `Enter`
-    assert!(
-        matches!(app.focus(), Focus::MergePlan(..)),
-        "Enter opens nothing from here yet"
-    );
-    assert!(rx.try_recv().is_err(), "and spawns nothing");
     app.nav_down();
     match app.focus() {
         Focus::MergePlan(_, offset) => assert_eq!(offset.get(), 1),
@@ -4369,4 +4364,244 @@ fn verifys_report_scrolls_when_it_is_taller_than_the_panel() {
     let tall = draw(&app, 60);
     app.nav_down();
     assert_eq!(draw(&app, 60), tall, "nothing to scroll, nothing scrolled");
+}
+
+/// **`Enter` merges, and only from a plan prikk judged `Confluent`** (RFC 047 decision 6).
+#[test]
+fn enter_on_the_plan_merges_only_when_prikk_proved_it_confluent() {
+    let plan = |outcome| {
+        ResponseKind::MergePlan(Ok(stikk_core::MergePlanRead::Read(Box::new(
+            stikk_core::MergePlanView {
+                from: "heads/feature".into(),
+                into: "heads/main".into(),
+                baseline: "88f34150e099".into(),
+                lines: vec![format!(
+                    "evidence outcome: {}",
+                    stikk_prikk::MergeOutcome::name(outcome)
+                )],
+                outcome,
+            },
+        ))))
+    };
+    let open = |outcome| {
+        let (mut app, rx) = merge_picker(
+            merge_view(53, "heads/other", 0, None),
+            Some("heads/feature"),
+            0,
+        );
+        app.begin_merge_plan();
+        let seq = next_request(&rx).seq;
+        app.apply(Response {
+            seq,
+            kind: plan(outcome),
+        });
+        (app, rx)
+    };
+
+    // Confluent: the preview is asked for, with the **full** baseline to merge from and the
+    // short one the card showed, so a baseline that moved can be noticed.
+    let (mut app, rx) = open(stikk_prikk::MergeOutcome::Confluent);
+    app.select();
+    match next_request(&rx).kind {
+        RequestKind::MergePreview {
+            target,
+            shown_baseline,
+        } => {
+            assert_eq!(target.baseline, "88f34150e099");
+            assert_eq!(target.into, "heads/main");
+            assert_eq!(target.from, "heads/feature");
+            assert_eq!(shown_baseline, "88f34150e099");
+        }
+        other => panic!("expected a MergePreview, got {other:?}"),
+    }
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::Loading {
+            what: "merge preview",
+            ..
+        })
+    ));
+
+    // Every other outcome: stikk says prikk's word and spawns nothing.
+    for outcome in [
+        stikk_prikk::MergeOutcome::Conflict,
+        stikk_prikk::MergeOutcome::Deferred,
+        stikk_prikk::MergeOutcome::InvalidCandidate,
+    ] {
+        let (mut app, rx) = open(outcome);
+        app.select();
+        let banner = app.banner().expect("a reason").to_string();
+        assert!(banner.contains(outcome.name()), "{banner}");
+        assert!(rx.try_recv().is_err(), "{outcome:?}: nothing dispatched");
+        assert!(matches!(app.focus(), Focus::MergePlan(..)), "{outcome:?}");
+    }
+}
+
+/// A ready preview arms Tier Three with prikk's plan on the card; a block is a banner and the
+/// plan view stays open underneath it.
+#[test]
+fn a_merge_preview_arms_tier_three_or_blocks_to_a_banner() {
+    let armed = merge_core_preview();
+    let (mut app, rx) = merge_picker(
+        merge_view(53, "heads/other", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::MergePlan(Ok(stikk_core::MergePlanRead::Read(Box::new(
+            stikk_core::MergePlanView {
+                from: "heads/feature".into(),
+                into: "heads/main".into(),
+                baseline: "88f34150e099".into(),
+                lines: vec!["evidence outcome: Confluent".into()],
+                outcome: stikk_prikk::MergeOutcome::Confluent,
+            },
+        )))),
+    });
+    app.select();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::MergePreview(Ok(armed)),
+    });
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { tier, summary, .. }) => {
+            // **Tier Three, as seal's is** — `Publication`'s tier, chosen by the category and
+            // not by this flow, so a merge cannot be confirmed more cheaply than a seal.
+            assert_eq!(*tier, Tier::Three);
+            assert_eq!(summary.capability, Some(Capability::Maintainer));
+            assert!(summary.merge_plan.is_some(), "prikk's plan is on the card");
+            // The names are restated as ids, never inside the consequence (RFC 044 C1).
+            assert!(summary.target_ids.contains(&"heads/feature".to_string()));
+            assert!(summary.target_ids.contains(&"heads/main".to_string()));
+            assert!(
+                !summary.consequence.contains("heads/"),
+                "{}",
+                summary.consequence
+            );
+        }
+        other => panic!("expected a Confirmation, got {other:?}"),
+    }
+}
+
+/// A real preview from `stikk-core`, so this file never hand-builds one.
+fn merge_core_preview() -> stikk_core::MergePreview {
+    let shared = stikk_prikk::History {
+        reff: "heads/main".into(),
+        blocks: vec![block_row("88f34150e099", 1, "Root", 0)],
+    };
+    let backend = NullBackend::supported()
+        .with_refs(vec![
+            entry("heads/main", false),
+            entry("heads/feature", false),
+        ])
+        .with_history_of(
+            "heads/main",
+            stikk_prikk::History {
+                blocks: vec![
+                    block_row("mm1", 3, "Normal", 1),
+                    block_row("88f34150e099", 1, "Root", 0),
+                ],
+                ..shared.clone()
+            },
+        )
+        .with_history_of(
+            "heads/feature",
+            stikk_prikk::History {
+                reff: "heads/feature".into(),
+                blocks: vec![
+                    block_row("ff1", 2, "Normal", 1),
+                    block_row("88f34150e099", 1, "Root", 0),
+                ],
+            },
+        )
+        .with_merge_plan(
+            vec!["evidence outcome: Confluent".into()],
+            stikk_prikk::MergeOutcome::Confluent,
+        );
+    stikk_core::merge_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        "heads/main",
+        "heads/feature",
+        "88f34150e099",
+        50,
+    )
+    .expect("a preview")
+}
+
+fn block_row(id: &str, seq: u64, kind: &str, parents: u64) -> BlockRow {
+    BlockRow {
+        block_id: id.to_string(),
+        ref_state_id: format!("rs-{id}"),
+        update_seq: seq,
+        kind: kind.to_string(),
+        rollback_block: false,
+        parents,
+        patches: 1,
+        rollback_patches: 0,
+        required_attestations: 0,
+        messages: Vec::new(),
+        previous_ref_state: None,
+    }
+}
+
+/// A merge that landed shows prikk's lines and re-reads what it changed.
+#[test]
+fn a_landed_merge_shows_prikks_lines_and_re_reads() {
+    let (mut app, rx) = merge_picker(
+        merge_view(53, "heads/other", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::MergePlan(Ok(stikk_core::MergePlanRead::Read(Box::new(
+            stikk_core::MergePlanView {
+                from: "heads/feature".into(),
+                into: "heads/main".into(),
+                baseline: "88f34150e099".into(),
+                lines: vec!["evidence outcome: Confluent".into()],
+                outcome: stikk_prikk::MergeOutcome::Confluent,
+            },
+        )))),
+    });
+    app.select();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::MergePreview(Ok(merge_core_preview())),
+    });
+    app.select(); // the explicit yes Tier Three takes
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::MergeConfirmExecute(Ok(stikk_core::Outcome {
+            operation: "Merge".to_string(),
+            result: stikk_prikk::MergeResult::Done(vec![
+                "merged heads/feature into heads/main".to_string(),
+            ]),
+        })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::MergeResult { printed }) => {
+            assert_eq!(
+                printed,
+                &vec!["merged heads/feature into heads/main".to_string()]
+            );
+        }
+        other => panic!("expected a MergeResult, got {other:?}"),
+    }
+    // Orientation and the ref list are re-read; nothing else is.
+    let mut kinds: Vec<String> = Vec::new();
+    while let Ok(req) = rx.try_recv() {
+        kinds.push(format!("{:?}", req.kind));
+    }
+    assert!(kinds.iter().any(|k| k.starts_with("Orient")), "{kinds:?}");
+    assert!(kinds.iter().any(|k| k.starts_with("Refs")), "{kinds:?}");
 }

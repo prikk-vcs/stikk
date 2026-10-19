@@ -168,6 +168,25 @@ pub(crate) enum RequestKind {
         /// The branch to switch to (must match the preview's).
         target: String,
     },
+    /// Build the merge preview (RFC 047 decision 6): the guards, the baseline and prikk's plan,
+    /// all read again, so what is confirmed is current.
+    MergePreview {
+        /// The three names the merge would run with.
+        target: stikk_core::MergeTarget,
+        /// The baseline the Merge plan view showed, short — the preview blocks if it moved.
+        shown_baseline: String,
+    },
+    /// Confirm and execute a merge in one round trip, as commit and seal do.
+    MergeConfirmExecute {
+        /// The token [`RequestKind::MergePreview`] minted.
+        token: Box<PreviewToken>,
+        /// The session's signing readiness, read on the UI thread immediately before dispatch.
+        readiness: Readiness,
+        /// The user's confirmation evidence (a typed name, at Tier Three).
+        evidence: Evidence,
+        /// The three names (must match the preview's).
+        target: stikk_core::MergeTarget,
+    },
     /// Read prikk's merge plan for two branches (RFC 047 decision 4). **Read-only**: the baseline
     /// is found from two `log` reads and the plan from one `merge-plan`, and nothing is written.
     MergePlan {
@@ -234,6 +253,10 @@ pub(crate) enum ResponseKind {
     SwitchConfirmExecute(Result<Outcome<stikk_prikk::SwitchResult>>),
     /// Answers [`RequestKind::MergePlan`].
     MergePlan(Result<stikk_core::MergePlanRead>),
+    /// Answers [`RequestKind::MergePreview`].
+    MergePreview(Result<stikk_core::MergePreview>),
+    /// Answers [`RequestKind::MergeConfirmExecute`].
+    MergeConfirmExecute(Result<Outcome<stikk_prikk::MergeResult>>),
     /// Answers [`RequestKind::RefWriteConfirmExecute`].
     RefWriteConfirmExecute {
         /// Echoed from the request, so the result card can title itself without the UI thread
@@ -297,6 +320,8 @@ impl RequestKind {
             Self::RefWriteConfirmExecute { .. } => "ref write",
             Self::SwitchPreview { .. } => "switch preview",
             Self::MergePlan { .. } => "merge plan",
+            Self::MergePreview { .. } => "merge preview",
+            Self::MergeConfirmExecute { .. } => "merge",
             Self::SwitchConfirmExecute { .. } => "switch",
         }
     }
@@ -428,6 +453,25 @@ pub(crate) fn run(
             RequestKind::SwitchPreview { target } => {
                 ResponseKind::SwitchPreview(stikk_core::switch_preview(prikk, repo, &target))
             }
+            RequestKind::MergePreview {
+                target,
+                shown_baseline,
+            } => ResponseKind::MergePreview(stikk_core::merge_preview(
+                prikk,
+                repo,
+                &target.into,
+                &target.from,
+                &shown_baseline,
+                stikk_core::MERGE_LINEAGE_LIMIT,
+            )),
+            RequestKind::MergeConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                target,
+            } => ResponseKind::MergeConfirmExecute(stikk_core::merge_confirm_and_execute(
+                prikk, repo, *token, readiness, evidence, &target,
+            )),
             RequestKind::MergePlan { into, from } => {
                 ResponseKind::MergePlan(stikk_core::merge_plan_view(
                     prikk,

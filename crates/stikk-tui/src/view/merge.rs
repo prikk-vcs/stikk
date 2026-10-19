@@ -9,8 +9,9 @@
 //!   ranked or coloured by what it says.
 //! - **The baseline is shown because the reader should be able to check it.** stikk chose it
 //!   (decision 3), prikk did not, and a plan is only as true as the block it was computed from.
-//! - **Nothing here acts.** The merge is RFC 047's Handoff B; until it lands, this view says
-//!   nothing about a key that does nothing.
+//! - **`Enter` is offered only where prikk would merge** (decision 6). prikk merges nothing but
+//!   a pair it has proven `Confluent`, so for any other outcome the view says so in one line
+//!   rather than offering a key whose only answer is a refusal.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -93,7 +94,7 @@ fn merge_lines<'a>(view: &MergePlanView, palette: &Palette, width: usize) -> Vec
         &format!(
             "from the baseline block {} \u{2014} the latest block both branches hold, which \
              stikk found and prikk was given",
-            identifier(&view.baseline)
+            identifier(&view.baseline_short())
         ),
         width,
         TOP,
@@ -102,6 +103,25 @@ fn merge_lines<'a>(view: &MergePlanView, palette: &Palette, width: usize) -> Vec
             row,
             Style::default().fg(palette.dim),
         )));
+    }
+
+    // **The one line about what can be done here** (decision 6), and it is stikk's: prikk's
+    // plan says what the pair is, not what stikk offers for it.
+    lines.push(Line::from(""));
+    let (offer, style) = if view.outcome.is_confluent() {
+        (
+            "Enter merges the marked branch into the selected one \u{2014} you confirm first."
+                .to_string(),
+            Style::default().fg(palette.accent),
+        )
+    } else {
+        (
+            stikk_core::not_confluent(view.outcome),
+            Style::default().fg(palette.warn),
+        )
+    };
+    for row in wrap_indented(&offer, width, TOP) {
+        lines.push(Line::from(Span::styled(row, style)));
     }
 
     lines.push(Line::from(""));

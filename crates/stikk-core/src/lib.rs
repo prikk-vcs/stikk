@@ -53,7 +53,7 @@ pub use confirm::{
     ConfirmationSummary, ConfirmedToken, Evidence, FilePlan, FrozenPatches, Intent, KeyClaim,
     Outcome, PreviewToken, SHORT_ID_CHARS, branch_notice, capability_gate, confirm, execute,
     preview, signing_key_claim, unshown_declarations_line, unshown_patches_line,
-    unshown_paths_line,
+    unshown_paths_line, unshown_plan_lines_line,
 };
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{
@@ -61,9 +61,12 @@ pub use history::{
     history_view, list_refs,
 };
 pub use merge::{
-    LINEAGE_TRUNCATED, MERGE_FROM_MINOR, MERGE_LINEAGE_LIMIT, MERGE_OPERATION, MERGED_ALREADY,
-    MergeBaseline, MergePlanRead, MergePlanView, NO_SHARED_BLOCK, PLAN_UNAVAILABLE, merge_baseline,
-    merge_plan_view, merge_unavailable,
+    CLOSED_IS_NOT_MERGED, INTO_THE_CURRENT_BRANCH, LINEAGE_TRUNCATED, MERGE_FROM_MINOR,
+    MERGE_LINEAGE_LIMIT, MERGE_OPERATION, MERGED_ALREADY, MergeBaseline, MergePlanRead,
+    MergePlanView, MergePreview, MergeTarget, NO_SHARED_BLOCK, PLAN_UNAVAILABLE,
+    SWITCH_TO_SEE_THE_FILES, TAGS_ARE_NOT_MERGED, THE_BASELINE_MOVED, THE_SAME_BRANCH_TWICE,
+    WORK_IS_QUEUED_FOR_INTO, merge_baseline, merge_confirm_and_execute, merge_plan_view,
+    merge_preview, merge_unavailable, not_confluent,
 };
 pub use orient::{OrientationView, orient};
 pub use palette::{Command, NO_FOCUSED_REF_REASON};

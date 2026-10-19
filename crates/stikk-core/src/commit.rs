@@ -372,6 +372,7 @@ fn compute(
             .collect(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     };
     let preview = CommitPreview {
         changes: view,
@@ -402,6 +403,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 

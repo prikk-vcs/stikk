@@ -414,6 +414,7 @@ fn preview(
                     declaration_notices: Vec::new(),
                     message_note: summary.message,
                     materializes: None,
+                    merge_plan: None,
                 },
             ),
         })
@@ -454,6 +455,7 @@ fn blocked_summary(reason: String) -> ConfirmationSummary {
         declaration_notices: Vec::new(),
         message_note: None,
         materializes: None,
+        merge_plan: None,
     }
 }
 

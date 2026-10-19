@@ -446,3 +446,233 @@ fn a_history_refusal_is_not_dressed_as_a_missing_baseline() {
 fn the_lineage_limit_is_the_one_history_lists() {
     assert_eq!(MERGE_LINEAGE_LIMIT, 200);
 }
+
+// ---------------------------------------------------------------------------------------------
+// The preview (decision 6): everything read again, because everything can have changed
+// ---------------------------------------------------------------------------------------------
+
+use stikk_prikk::{Orientation, RefEntry};
+
+fn ref_entry(name: &str, closed: bool) -> RefEntry {
+    RefEntry {
+        name: name.to_string(),
+        id: "e".repeat(64),
+        closed,
+        received: false,
+    }
+}
+
+fn orientation(current: &str, queued: u64, target: Option<&str>) -> Orientation {
+    Orientation {
+        queued_patches: queued,
+        queued_target: target.map(str::to_string),
+        main_ref_state: None,
+        trailing_partial_wal_bytes: 0,
+        interrupted_materialization: None,
+        active_patch_warning: None,
+        current_branch: stikk_model::CurrentBranch::Branch(
+            stikk_model::RefName::parse(current).expect("a ref name"),
+        ),
+    }
+}
+
+/// A repository where the merge is offered: two branches sharing `88f34150e099`, neither of them
+/// current, nothing queued, and a confluent plan.
+fn mergeable() -> NullBackend {
+    sharing_backend()
+        .with_refs(vec![
+            ref_entry("heads/main", false),
+            ref_entry("heads/feature", false),
+        ])
+        .with_orientation(orientation("heads/other", 0, None))
+        .with_merge_plan(
+            vec!["evidence outcome: Confluent".into()],
+            MergeOutcome::Confluent,
+        )
+}
+
+fn preview(backend: &NullBackend, shown: &str) -> MergePreview {
+    merge_preview(
+        backend,
+        Path::new("."),
+        "heads/main",
+        "heads/feature",
+        shown,
+        50,
+    )
+    .expect("a preview")
+}
+
+fn blocked_for(backend: &NullBackend, shown: &str) -> String {
+    match preview(backend, shown) {
+        MergePreview::Blocked(reason) => reason,
+        MergePreview::Ready { .. } => panic!("expected a block"),
+    }
+}
+
+#[test]
+fn a_ready_preview_restates_both_names_the_baseline_and_the_adopted_tip() {
+    let MergePreview::Ready { token } = preview(&mergeable(), "88f34150") else {
+        panic!("expected a ready preview")
+    };
+    let summary = token.summary();
+    assert_eq!(summary.operation, "Merge");
+    // from, into, the baseline, the adopted tip -- in that order, all as ids.
+    assert_eq!(
+        summary.target_ids,
+        vec![
+            "heads/feature".to_string(),
+            "heads/main".to_string(),
+            "88f34150".to_string(),
+            "d967f478".to_string(),
+        ]
+    );
+    // **No name in the consequence** (RFC 044 C1): it is drawn unescaped.
+    assert!(
+        !summary.consequence.contains("heads/"),
+        "{}",
+        summary.consequence
+    );
+    // prikk's plan rides along, to be restated under the card.
+    assert_eq!(
+        summary.merge_plan.as_deref(),
+        Some(["evidence outcome: Confluent".to_string()].as_slice())
+    );
+    // A merge is signed, and the card says by whom.
+    assert_eq!(
+        summary.capability,
+        Some(stikk_model::Capability::Maintainer)
+    );
+}
+
+#[test]
+fn every_guard_is_asked_again_at_preview() {
+    // Into the branch the repository is now on (F3) -- the case that can newly become true
+    // between the view opening and `Enter`.
+    assert_eq!(
+        blocked_for(
+            &mergeable().with_orientation(orientation("heads/main", 0, None)),
+            "88f34150"
+        ),
+        INTO_THE_CURRENT_BRANCH
+    );
+    // Work queued for the branch merged into (F4).
+    assert_eq!(
+        blocked_for(
+            &mergeable().with_orientation(orientation("heads/other", 2, Some("heads/main"))),
+            "88f34150"
+        ),
+        WORK_IS_QUEUED_FOR_INTO
+    );
+    // Either side closed since the view opened …
+    for closed in ["heads/main", "heads/feature"] {
+        let refs = vec![
+            ref_entry("heads/main", closed == "heads/main"),
+            ref_entry("heads/feature", closed == "heads/feature"),
+        ];
+        assert_eq!(
+            blocked_for(&mergeable().with_refs(refs), "88f34150"),
+            CLOSED_IS_NOT_MERGED,
+            "closed: {closed}"
+        );
+    }
+    // … or a tag on either side, whichever side names it.
+    let with_tag = mergeable().with_refs(vec![
+        ref_entry("heads/main", false),
+        ref_entry("heads/feature", false),
+        ref_entry("tags/v1", false),
+    ]);
+    for (into, from) in [("heads/main", "tags/v1"), ("tags/v1", "heads/feature")] {
+        let MergePreview::Blocked(reason) =
+            merge_preview(&with_tag, Path::new("."), into, from, "88f34150", 50)
+                .expect("a preview")
+        else {
+            panic!("a tag is never merged: {into} <- {from}")
+        };
+        assert_eq!(reason, TAGS_ARE_NOT_MERGED, "{into} <- {from}");
+    }
+}
+
+#[test]
+fn the_same_branch_twice_is_blocked_before_anything_is_read() {
+    // No refs, no orientation, no plan scripted: reaching any of them would be the bug.
+    let bare = NullBackend::supported().with_refs_refusal("nothing should ask");
+    let blocked = merge_preview(
+        &bare,
+        Path::new("."),
+        "heads/main",
+        "heads/main",
+        "88f34150",
+        50,
+    )
+    .expect("a preview");
+    let MergePreview::Blocked(reason) = blocked else {
+        panic!("a branch is never merged into itself")
+    };
+    assert_eq!(reason, THE_SAME_BRANCH_TWICE);
+}
+
+#[test]
+fn a_baseline_that_moved_blocks_rather_than_confirming_an_old_plan() {
+    // The card was built from a block that is no longer the one they parted from.
+    assert_eq!(blocked_for(&mergeable(), "aaaaaaaa"), THE_BASELINE_MOVED);
+}
+
+#[test]
+fn a_plan_that_is_no_longer_confluent_blocks_and_names_prikks_word() {
+    for outcome in [
+        MergeOutcome::Conflict,
+        MergeOutcome::Deferred,
+        MergeOutcome::EvidenceFailure,
+    ] {
+        let backend = mergeable().with_merge_plan(vec!["evidence outcome: …".into()], outcome);
+        let reason = blocked_for(&backend, "88f34150");
+        assert!(reason.contains(outcome.name()), "{reason}");
+        assert!(reason.contains("Nothing was written"), "{reason}");
+    }
+}
+
+#[test]
+fn no_truthful_baseline_blocks_the_preview_too() {
+    let merged = lineage(
+        "heads/feature",
+        vec![block("ff1", 4, "Merge", 2), block("88f34150", 1, "Root", 0)],
+    );
+    assert_eq!(
+        blocked_for(
+            &mergeable().with_history_of("heads/feature", merged),
+            "88f34150"
+        ),
+        MERGED_ALREADY
+    );
+}
+
+#[test]
+fn the_view_keeps_prikks_full_baseline_and_shortens_only_for_the_reader() {
+    let long = "88f34150e09929a618d75865609d7ba5d88a6f24937dbbb6f53d2214a1312d52";
+    let backend = NullBackend::supported()
+        .with_history_of(
+            "heads/main",
+            lineage(
+                "heads/main",
+                vec![block("mm1", 3, "Normal", 1), block(long, 1, "Root", 0)],
+            ),
+        )
+        .with_history_of(
+            "heads/feature",
+            lineage(
+                "heads/feature",
+                vec![block("ff1", 2, "Normal", 1), block(long, 1, "Root", 0)],
+            ),
+        )
+        .with_merge_plan(vec!["x".into()], MergeOutcome::Confluent);
+    let MergePlanRead::Read(view) =
+        merge_plan_view(&backend, Path::new("."), "heads/main", "heads/feature", 50).unwrap()
+    else {
+        panic!("expected a plan")
+    };
+    // **The full id**, because that is what the merge itself is run with …
+    assert_eq!(view.baseline, long);
+    // … and the short one only where a reader looks at it.
+    assert_eq!(view.baseline_short(), "88f34150e099");
+}

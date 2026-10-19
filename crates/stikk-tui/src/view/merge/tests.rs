@@ -93,8 +93,8 @@ fn capture_a_confluent_plan_at_80x24() {
     // prikk's own words, unchanged.
     assert!(text.contains("evidence outcome: Confluent"), "{text}");
     assert!(text.contains("status: ConfluentSubset"), "{text}");
-    // **Nothing about a key that does nothing** -- the merge is Handoff B.
-    assert!(!text.contains("Enter"), "{text}");
+    // **The offer, because prikk would merge this pair.**
+    assert!(text.contains("Enter merges the marked branch"), "{text}");
 }
 
 /// **Capture: a conflicting plan at 80×24** -- shown exactly as fully as a confluent one.
@@ -104,10 +104,12 @@ fn capture_a_conflicting_plan_at_80x24() {
     println!("{text}");
     assert!(text.contains("evidence outcome: Conflict"), "{text}");
     assert!(text.contains("status: BlockedConflict"), "{text}");
-    // **stikk adds no verdict of its own.** prikk's refusal to merge these two is prikk's
-    // sentence; a "stikk cannot merge this" line on top would be stikk answering a question
-    // prikk already answered, in worse words.
-    assert!(!text.to_lowercase().contains("stikk cannot"), "{text}");
+    // **No `Enter` offered**, and stikk's one line names prikk's own word for why.
+    assert!(!text.contains("Enter merges"), "{text}");
+    assert!(
+        text.contains("rather than Confluent"),
+        "stikk says why there is nothing to run: {text}"
+    );
 }
 
 /// The scroll indicator appears only when there is something below, and the last row of the

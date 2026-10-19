@@ -9,7 +9,7 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 - **The Merge plan view: prikk's own plan for bringing one branch into another.** In the ref
   picker, mark a branch with `m`, select another, and press `M`. stikk finds the baseline block
   itself — the latest block both branches hold — and shows prikk's plan for the pair, word for
-  word. **Nothing here merges yet.** Needs prikk 0.42 or newer.
+  word. Needs prikk 0.42 or newer.
 
   stikk names a baseline **only where it can name the true one**: where neither branch has merged
   since they parted. prikk reports no parent ids, so past a merge there is nothing to follow, and

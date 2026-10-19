@@ -1,6 +1,6 @@
 # Handoff B — RFC 047: the merge (v1)
 
-**Companion to:** [RFC 047](../../accepted/047-merge.md), **accepted 2026-10-19**. **Covers:** decisions 1 (the `merge`
+**Companion to:** [RFC 047](../../done/047-merge.md), **accepted 2026-10-19**. **Covers:** decisions 1 (the `merge`
 method), 6 and 8's stikk side. 0.15.0's increment 3. **Starts only after [Handoff A](./a-merge-plan-handoff-v1.md) is
 approved and pushed.** **Not a release.** **No branch.**
 

@@ -1,6 +1,6 @@
 # Handoff A — RFC 047: the merge plan, read-only (v1)
 
-**Companion to:** [RFC 047](../../accepted/047-merge.md), **accepted 2026-10-19**, no open question. **Read the RFC
+**Companion to:** [RFC 047](../../done/047-merge.md), **accepted 2026-10-19**, no open question. **Read the RFC
 first**, F1–F3 especially. **Covers:** decisions 2, 3, 4, 5, 7 (the read-only half). 0.15.0's increment 2.
 [Handoff B](./b-merge-execution-handoff-v1.md) is the merge itself and comes after this one lands. **Not a release.**
 **No branch.** **Start after RFC 049's Handoff A**, so you measure at the 0.53 ceiling.

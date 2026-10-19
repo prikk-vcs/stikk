@@ -402,10 +402,10 @@ a fabricated worktree entry was fixed.
 
 1. **The declarations card fits — landed on `main`** ([Handoff C](rfcs/handoffs/034-prikk-0-46-rebaseline/c-declarations-card-fits-handoff-v1.md), `bf8d067`):
    whole declarations and a count, never rows the reader cannot reach.
-2. **Merge, read-only** (`FR-080/081`, [RFC 047](rfcs/accepted/047-merge.md), accepted 2026-10-19): prikk's merge evidence and plan for two branches, with the baseline
-   block stikk finds shown for checking.
-3. **Merge, execution** (`FR-082`, RFC 047): previewed with the plan it seals, at seal's tier. **The first to move to
-   0.16.0** if the cycle runs long.
+2. **Merge, read-only — landed on `main`** (`FR-080/081`, [RFC 047](rfcs/done/047-merge.md), `f8075ea`): prikk's merge
+   plan for two branches, with the baseline block stikk finds shown for checking.
+3. **Merge, execution — landed on `main`** (`FR-082`, RFC 047, `02771df`): previewed with the plan it seals, at seal's
+   tier, the card saying which branch is merged into which.
 4. **Delivery for unskilled users** (RFC 048): designed before any package manager is chosen, on the owner's
    direction — the channels, what each asks of a user, prikk's own installation beside stikk's, and what only the
    owner can decide (accounts, signing, cost).

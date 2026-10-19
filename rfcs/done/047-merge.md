@@ -1,6 +1,7 @@
 # RFC 047 — Merge
 
-**Status.** **Accepted by the project owner 2026-10-19**; [Handoff A](../handoffs/047-merge/a-merge-plan-handoff-v1.md) and [Handoff B](../handoffs/047-merge/b-merge-execution-handoff-v1.md) issued. **Proposed 2026-10-18** by the architect, as 0.15.0's increments 2 and 3
+**Status.** **Done 2026-10-20**: Handoff A delivered on `main` (`483f57f`, `f8075ea`), Handoff B (`6b8572b`, `ea6a55b`,
+`02771df`); 0.15.0 candidate. **Accepted by the project owner 2026-10-19**; [Handoff A](../handoffs/047-merge/a-merge-plan-handoff-v1.md) and [Handoff B](../handoffs/047-merge/b-merge-execution-handoff-v1.md) issued. **Proposed 2026-10-18** by the architect, as 0.15.0's increments 2 and 3
 (`.git-exclude/release/0-15-0-scope.md`, authorized). **No open question.**
 Measured against a real prikk **0.52.0**, one fresh repository per scenario. Evidence: `.git-exclude/reports/047-merge/`
 (`measure047.sh`, `measure047-0.52.txt`; `measure047-0.52-contaminated.txt` is the first run, kept because what
@@ -72,9 +73,10 @@ still means what it did against the old tip is not something stikk can see.
    (Tier Three, MAINTAINER readiness checked before prikk runs, as seal). `--allow-no-audit` is passed exactly as stikk's
    seal already passes it. Neither has JSON (F1); every other exit classifies as today.
 2. **One line is read from the plan, and only one**: `evidence outcome: <word>`, matched exactly, the word one of F1's
-   nine. It decides **only whether stikk offers the merge**. A missing line, a second one, or an unknown word is a shape
-   error (`UD-02`: refuse, never guess), and no merge is offered. Everything else prikk printed is shown **verbatim**
-   and never parsed.
+   eight (`Confluent` and the seven others; corrected from *nine* in Handoff A's review — prikk's
+   `MergeEvidenceOutcome` and merge guide name eight). It decides **only whether stikk offers the merge**. A missing
+   line, a second one, or an unknown word is a shape error (`UD-02`: refuse, never guess), and no merge is offered.
+   Everything else prikk printed is shown **verbatim** and never parsed.
 3. **stikk names the baseline only when it can name the true one** (F2): the latest block both mainline lineages share,
    **provided neither lineage has a `Merge` block above it**. Otherwise the plan is not requested, and stikk says why
    in its own words: after an earlier merge, prikk does not expose what stikk would need to find the merge base. The
@@ -120,3 +122,29 @@ band); every refusal is prikk's, verbatim.
 - **No merging into the current branch**, and no switch-merge-switch done on the user's behalf.
 - **No merging a tag, a block id, or more than two sides.**
 - **No merge-base guess** where decision 3 cannot name the true one.
+
+## Delivered
+
+**Two handoffs, five commits, green on `main` at `02771df`**: CI, Docs, the real-binary suite (63 cases at 0.28.0 and
+0.53.0) and supply chain. Measured again at 0.53 before each handoff; nothing in F1–F4 changed.
+
+- **A, the plan** (`483f57f`, `f8075ea`): the `merge_plan` seam with prikk's lines kept verbatim and one line read; the
+  baseline finder over the two mainline lineages, declining past a `Merge` block; `m` marks a branch in the ref
+  picker and `M` on another opens the **Merge plan** view; the four guards (into the current branch, into a branch with
+  queued work, a closed side or a tag, one branch on both sides) in stikk's words before prikk is asked. **Caught in
+  review**: a merge would have run with a shortened baseline id, so the full id is kept and only drawn short.
+- **B, the merge** (`6b8572b`, `ea6a55b`, `02771df`): `merge --allow-no-audit` at `Publication`, reusing seal's
+  MAINTAINER gate rather than a copy of it; `Enter` on the view previews, and the preview **re-reads every guard, the
+  baseline and prikk's plan**, so a moved baseline or a plan no longer `Confluent` blocks before prikk runs. The card
+  labels its rows `from`, `into`, `baseline`, `from's tip` (review v1 C1: `TargetId`, the role kept apart from the
+  escaped id) and opens with *"prikk's plan reports the two sides confluent from this baseline"* (C2), with prikk's
+  plan verbatim beneath. The result says the worktree is unchanged and that `s` goes to the merged branch.
+- **Suite legs**: the baseline found equals the block prikk accepts; a lineage with a `Merge` block is declined; a
+  conflicting plan offers no merge; **the merge lands only on `into`, the worktree is byte-identical, and a later
+  switch writes the merged file**; into the current branch is declined with no `merge` spawned.
+- **Beyond the RFC, accepted in review**: Verify's report scrolls (`3c69d76`; its title advertised the keys, and nothing
+  handled them).
+- **Carried, small**: confirmation prose wraps flush against the right border; a prose-only gutter, leaving identifier
+  rows at full width (`overlay.rs`'s *no right gutter, deliberately*), next time the card's renderer is touched.
+- **Held for the next necessary letter to prikk**: parent ids in `log --format json`, a merge into the current branch
+  writing no file, and `merge-plan --format json` — any of which would let decisions 2, 3 and 5 widen.

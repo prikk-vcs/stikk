@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 047 | [Merge](./accepted/047-merge.md) | `FR-080…082`: prikk's merge plan for two branches (mark, select, `M`), then the merge when prikk proves it confluent, at seal's tier, prikk ≥ 0.42; the baseline named only where stikk can name the true one; never into the current branch. **Accepted 2026-10-19**; 0.15.0 increments 2–3 | [A: the plan](./handoffs/047-merge/a-merge-plan-handoff-v1.md) · [B: the merge](./handoffs/047-merge/b-merge-execution-handoff-v1.md) |
+_None: RFC 047 delivered and closed 2026-10-20._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 047 | [Merge](./done/047-merge.md) | 0.15.0 candidate (on `main`) | per-witness glosses (`FR-080`); a baseline past an earlier merge, and merging into the current branch (both wait on prikk; held for a letter) | [A: the plan](./handoffs/047-merge/a-merge-plan-handoff-v1.md) · [B: the merge](./handoffs/047-merge/b-merge-execution-handoff-v1.md) |
 | 049 | [The prikk 0.53 re-baseline](./done/049-prikk-0-53-rebaseline.md) | 0.15.0 candidate (on `main`) | none | [A: the re-baseline](./handoffs/049-prikk-0-53-rebaseline/a-rebaseline-handoff-v1.md) |
 | 046 | [Session persistence](./done/046-session-persistence.md) | **0.14.0** | deep restore and id anchors (`DM-04`), recents (`DM-03`), progressive disclosure (`TU-12`) | [A: session persistence](./handoffs/046-session-persistence/a-session-persistence-handoff-v1.md) |
 | 045 | [Switch branch](./done/045-switch-branch.md) | **0.13.0** | checkout of a block or path (not planned); F5 held for a letter to prikk | [A: switch branch](./handoffs/045-switch-branch/a-switch-branch-handoff-v1.md) |

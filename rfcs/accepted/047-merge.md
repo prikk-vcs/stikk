@@ -1,6 +1,6 @@
 # RFC 047 — Merge
 
-**Status.** **Proposed 2026-10-18** by the architect, as 0.15.0's increments 2 and 3
+**Status.** **Accepted by the project owner 2026-10-19**; [Handoff A](../handoffs/047-merge/a-merge-plan-handoff-v1.md) and [Handoff B](../handoffs/047-merge/b-merge-execution-handoff-v1.md) issued. **Proposed 2026-10-18** by the architect, as 0.15.0's increments 2 and 3
 (`.git-exclude/release/0-15-0-scope.md`, authorized). **No open question.**
 Measured against a real prikk **0.52.0**, one fresh repository per scenario. Evidence: `.git-exclude/reports/047-merge/`
 (`measure047.sh`, `measure047-0.52.txt`; `measure047-0.52-contaminated.txt` is the first run, kept because what

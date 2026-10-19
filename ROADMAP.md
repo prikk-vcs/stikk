@@ -406,7 +406,7 @@ a fabricated worktree entry was fixed.
    plan for two branches, with the baseline block stikk finds shown for checking.
 3. **Merge, execution — landed on `main`** (`FR-082`, RFC 047, `02771df`): previewed with the plan it seals, at seal's
    tier, the card saying which branch is merged into which.
-4. **Delivery for unskilled users** (RFC 048): designed before any package manager is chosen, on the owner's
+4. **Delivery for unskilled users** ([RFC 048](rfcs/proposed/048-delivery-for-new-users.md), proposed 2026-10-20): designed before any package manager is chosen, on the owner's
    direction — the channels, what each asks of a user, prikk's own installation beside stikk's, and what only the
    owner can decide (accounts, signing, cost).
 5. **The prikk 0.53.0 re-baseline — landed on `main`** ([RFC 049](rfcs/done/049-prikk-0-53-rebaseline.md), `596e609`): validated

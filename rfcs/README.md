@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 048 | [Delivery for users new to all of this](./proposed/048-delivery-for-new-users.md) | `NFR-R03`, RFC 039: on Windows the installer installs prikk's own build too; an install page that starts from opening a terminal; which channels to add (a Homebrew tap, on the owner's word) and which not, and no signing spend yet. **Proposed 2026-10-20**; 0.15.0 increment 4; four owner questions |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

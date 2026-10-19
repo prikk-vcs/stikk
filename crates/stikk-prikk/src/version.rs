@@ -1,7 +1,12 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.52.0` (**RFC 043**, the 0.52 re-baseline:
+//! stikk targets prikk `>= 0.28`, validated through `0.53.0` — **RFC 049**, the 0.53 re-baseline:
+//! prikk 0.53's one output change is to `checkout`'s refusing modes, and stikk calls `checkout`
+//! only below [`TREE_FROM_MINOR`]; the suite was green at 0.28.0 and 0.53.0 with only this
+//! constant moved and no leg changed.
+//!
+//! Before it **RFC 043**, the 0.52 re-baseline:
 //! prikk 0.52.0 fixed the defect stikk reported in letter 020 — `show <block-id>` resolves each
 //! sealed patch's node-addressed path **at that patch** now, not at the block's end, so the case
 //! that reported `z.txt` reports `a.txt` and the case that reported no path reports `d.txt`
@@ -83,7 +88,7 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// first raise made **to build a view on the new version's report** rather than to absorb drift, and
 /// the order held for the same reason: the suite would not have run `show` at 0.51 at all until this
 /// constant named it.
-const VALIDATED_MAX_MINOR: u32 = 52;
+const VALIDATED_MAX_MINOR: u32 = 53;
 
 /// The first prikk minor whose reports stikk reads as **JSON** (prikk 0.39, where `log`, `branch` and
 /// `tag` gained `--format json`; RFC 026 §6).

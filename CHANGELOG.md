@@ -4,6 +4,14 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Changed
+
+- **Validated through prikk 0.53.0.** prikk 0.53 changes nothing stikk reads: its one output
+  change is to `checkout`'s refusals, and stikk calls `checkout` only below prikk 0.46, reading
+  `tree` from there. The real-binary suite was green at 0.28.0 and 0.53.0 with only the ceiling
+  moved and no test changed. A newer prikk still runs, and stikk still says when it is past the
+  range it has checked.
+
 ### Fixed
 
 - **The *commit unavailable* card shows whole refused declarations, and says how many more there

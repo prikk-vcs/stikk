@@ -55,7 +55,7 @@ programs. **If it changed your `PATH`, open a new terminal before carrying on.**
 prikk --version
 ```
 
-stikk works with prikk **0.28 and above, and is tested through 0.52.0** — which is what the command
+stikk works with prikk **0.28 and above, and is tested through 0.53.0** — which is what the command
 above installs today. To ask for exactly that version rather than the newest one:
 
 ```sh

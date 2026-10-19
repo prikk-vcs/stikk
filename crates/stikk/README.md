@@ -40,7 +40,7 @@ ships ready-to-run binaries for Linux, macOS and Windows, with checksums — see
 compatible `prikk` on your `PATH` as well, which prikk's own installer does in one line
 (`curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh`).
 This release requires prikk **≥ 0.28** and is validated
-through **0.52.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
+through **0.53.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
 against it rather than silently assuming they have. If `prikk` is missing, stikk opens and then
 explains that — by design.
 
@@ -57,7 +57,7 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 ## Status
 
 **v0.14.x installs in one command, prikk included, and tells you whether your repository is
-sound — now against prikk 0.52.0.** **One line installs stikk** — `curl … install.sh | sh`, or `irm … install.ps1 | iex` on
+sound — now against prikk 0.53.0.** **One line installs stikk** — `curl … install.sh | sh`, or `irm … install.ps1 | iex` on
 Windows — checking the download against the checksum published beside it, installing where you own
 it, and offering to install **prikk** through prikk's own verified installer; `cargo binstall
 stikk` fetches the same prebuilt binary. **Verify** (`V`, prikk ≥ 0.39) shows prikk's verdict on

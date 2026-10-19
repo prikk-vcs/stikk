@@ -6823,3 +6823,350 @@ fn rfc046_a_private_session_leaves_the_state_directory_empty() {
         bin.minor
     );
 }
+
+/// **RFC 047 at the ceiling: the baseline stikk finds is the one prikk accepts.**
+///
+/// The load-bearing assertion is the first one: the block [`stikk_core::merge_baseline`] names
+/// from two `log` reads is the block a real `prikk merge` then merges from. A baseline that is
+/// merely plausible is not a weaker answer here but a wrong one — measured at 0.52, a baseline
+/// older than the true merge base turned a confluent pair into a `Conflict` — so nothing short
+/// of prikk accepting it proves the finder right.
+///
+/// The rest is scenario 1 and scenario 3 of `measure047.sh`, driven through the shipped path.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc047_the_baseline_stikk_finds_is_the_one_prikk_merges_from() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::MERGE_FROM_MINOR {
+        eprintln!(
+            "RFC 047 SKIPPED at 0.{} — the merge plan is banded at 0.{}. Announced rather than \
+             silent (RFC 022 §3).",
+            bin.minor,
+            stikk_core::MERGE_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+    let limit = stikk_core::MERGE_LINEAGE_LIMIT;
+
+    let write = |name: &str, body: &str| {
+        std::fs::write(repo.join(name), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+    };
+    let seal = |reff: &str, message: &str| {
+        fixture.set_author_env();
+        backend
+            .commit(&repo, reff, message)
+            .unwrap_or_else(|e| panic!("0.{}: commit on {reff}: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, reff)
+            .unwrap_or_else(|e| panic!("0.{}: seal {reff}: {e}", bin.minor));
+        Fixture::clear_env();
+    };
+    let switch = |target: &str| {
+        fixture.set_maintainer_env();
+        prikk_ok(&bin, &repo, &["branch", "switch", target]);
+        Fixture::clear_env();
+    };
+    let tip = |reff: &str| -> String {
+        backend
+            .history(&repo, reff, 1)
+            .unwrap_or_else(|e| panic!("0.{}: log {reff}: {e}", bin.minor))
+            .blocks
+            .first()
+            .unwrap_or_else(|| panic!("0.{}: {reff} has a tip", bin.minor))
+            .block_id
+            .clone()
+    };
+
+    // ── scenario 1's shape: feature adds c.txt, main changes b.txt ───────────────────────────
+    write("a.txt", "a\n");
+    write("b.txt", "b\n");
+    seal("heads/main", "base");
+    let base = tip("heads/main");
+    fixture.set_maintainer_env();
+    prikk_ok(&bin, &repo, &["branch", "create", "heads/feature"]);
+    Fixture::clear_env();
+    switch("heads/feature");
+    write("c.txt", "c\n");
+    seal("heads/feature", "feature adds c");
+    switch("heads/main");
+    write("b.txt", "b2\n");
+    seal("heads/main", "main changes b");
+
+    // **The merge is main into feature** — feature is not the current branch, which is the only
+    // shape stikk offers (F3).
+    let plan = stikk_core::merge_plan_view(&backend, &repo, "heads/feature", "heads/main", limit)
+        .unwrap_or_else(|e| panic!("0.{}: merge_plan_view: {e}", bin.minor));
+    let stikk_core::MergePlanRead::Read(view) = plan else {
+        panic!("0.{}: expected a plan, got {plan:?}", bin.minor);
+    };
+    assert!(
+        base.starts_with(&view.baseline),
+        "0.{}: stikk named {} where the base block is {base}",
+        bin.minor,
+        view.baseline
+    );
+    assert_eq!(
+        view.outcome,
+        stikk_prikk::MergeOutcome::Confluent,
+        "0.{}: scenario 1 is confluent; prikk printed {:?}",
+        bin.minor,
+        view.lines
+    );
+    // prikk's own lines are what stikk shows, and the verdict is one of them.
+    assert!(
+        view.lines
+            .iter()
+            .any(|line| line.trim() == "evidence outcome: Confluent"),
+        "0.{}: {:?}",
+        bin.minor,
+        view.lines
+    );
+
+    // **The proof: prikk merges from the block stikk named.** A baseline prikk will not accept
+    // refuses here with *"is not an ancestor of target"*, which is exactly the failure a plausible
+    // guess would produce.
+    fixture.set_maintainer_env();
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "merge",
+            "--allow-no-audit",
+            "--baseline-block",
+            &base,
+            "--into",
+            "heads/feature",
+            "--from",
+            "heads/main",
+        ],
+    );
+    Fixture::clear_env();
+
+    // ── after the merge, stikk names no baseline at all (decision 3) ─────────────────────────
+    let after = stikk_core::merge_plan_view(&backend, &repo, "heads/main", "heads/feature", limit)
+        .unwrap_or_else(|e| panic!("0.{}: merge_plan_view after the merge: {e}", bin.minor));
+    assert_eq!(
+        after,
+        stikk_core::MergePlanRead::Declined(stikk_core::MERGED_ALREADY.to_string()),
+        "0.{}: a Merge block above the shared one is declined",
+        bin.minor
+    );
+    // And the reason is a real one: feature's lineage really does hold a `Merge` block now, with
+    // both signals agreeing — the fixture the core tests pin.
+    let lineage = backend
+        .history(&repo, "heads/feature", limit)
+        .unwrap_or_else(|e| panic!("0.{}: log heads/feature: {e}", bin.minor));
+    let merge_block = lineage
+        .blocks
+        .iter()
+        .find(|block| block.kind == "Merge")
+        .unwrap_or_else(|| panic!("0.{}: {:?}", bin.minor, lineage.blocks));
+    assert!(
+        merge_block.parents > 1,
+        "0.{}: kind and parent_count agree: {merge_block:?}",
+        bin.minor
+    );
+
+    // ── scenario 3: both sides change a.txt ──────────────────────────────────────────────────
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let write = |name: &str, body: &str| {
+        std::fs::write(repo.join(name), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+    };
+    let seal = |reff: &str, message: &str| {
+        fixture.set_author_env();
+        backend
+            .commit(&repo, reff, message)
+            .unwrap_or_else(|e| panic!("0.{}: commit on {reff}: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, reff)
+            .unwrap_or_else(|e| panic!("0.{}: seal {reff}: {e}", bin.minor));
+        Fixture::clear_env();
+    };
+    let switch = |target: &str| {
+        fixture.set_maintainer_env();
+        prikk_ok(&bin, &repo, &["branch", "switch", target]);
+        Fixture::clear_env();
+    };
+    write("a.txt", "a\n");
+    seal("heads/main", "base");
+    fixture.set_maintainer_env();
+    prikk_ok(&bin, &repo, &["branch", "create", "heads/feature"]);
+    Fixture::clear_env();
+    switch("heads/feature");
+    write("a.txt", "a from feature\n");
+    seal("heads/feature", "feature a");
+    switch("heads/main");
+    write("a.txt", "a from main\n");
+    seal("heads/main", "main a");
+
+    let plan = stikk_core::merge_plan_view(&backend, &repo, "heads/feature", "heads/main", limit)
+        .unwrap_or_else(|e| panic!("0.{}: merge_plan_view, conflicting: {e}", bin.minor));
+    let stikk_core::MergePlanRead::Read(view) = plan else {
+        panic!(
+            "0.{}: a conflicting pair still has a plan, got {plan:?}",
+            bin.minor
+        );
+    };
+    assert_eq!(
+        view.outcome,
+        stikk_prikk::MergeOutcome::Conflict,
+        "0.{}: prikk printed {:?}",
+        bin.minor,
+        view.lines
+    );
+}
+
+/// **RFC 047 at the ceiling: the fact the into-current guard exists for** (F3).
+///
+/// stikk's own guard is in the TUI, where it declines without spawning (`App`'s tests). What a
+/// real binary can show is **why it has to**: prikk allows this merge, writes no file, and the
+/// way out is not even a switch. If prikk ever changes that, this leg fails and the guard — and
+/// the sentence stikk shows for it — stop being true.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc047_a_merge_into_the_current_branch_leaves_the_worktree_behind() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::MERGE_FROM_MINOR {
+        eprintln!(
+            "RFC 047 SKIPPED at 0.{} — banded at 0.{}.",
+            bin.minor,
+            stikk_core::MERGE_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    let write = |name: &str, body: &str| {
+        std::fs::write(repo.join(name), body).expect("write");
+    };
+    let seal = |reff: &str, message: &str| {
+        fixture.set_author_env();
+        backend
+            .commit(&repo, reff, message)
+            .unwrap_or_else(|e| panic!("0.{}: commit on {reff}: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, reff)
+            .unwrap_or_else(|e| panic!("0.{}: seal {reff}: {e}", bin.minor));
+        Fixture::clear_env();
+    };
+    let switch = |target: &str| {
+        fixture.set_maintainer_env();
+        let out = std::process::Command::new(&bin.path)
+            .args(["branch", "switch", target])
+            .current_dir(&repo)
+            .output()
+            .expect("spawn prikk");
+        Fixture::clear_env();
+        out
+    };
+
+    write("a.txt", "a\n");
+    seal("heads/main", "base");
+    let base = backend
+        .history(&repo, "heads/main", 1)
+        .expect("log")
+        .blocks
+        .first()
+        .expect("a tip")
+        .block_id
+        .clone();
+    fixture.set_maintainer_env();
+    prikk_ok(&bin, &repo, &["branch", "create", "heads/feature"]);
+    Fixture::clear_env();
+    assert!(switch("heads/feature").status.success());
+    write("c.txt", "c\n");
+    seal("heads/feature", "feature adds c");
+    assert!(switch("heads/main").status.success());
+
+    // **prikk allows it** — into the branch the repository is on, which stikk never offers.
+    fixture.set_maintainer_env();
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "merge",
+            "--allow-no-audit",
+            "--baseline-block",
+            &base,
+            "--into",
+            "heads/main",
+            "--from",
+            "heads/feature",
+        ],
+    );
+    Fixture::clear_env();
+
+    // … and the adopted file is simply not there.
+    assert!(
+        !repo.join("c.txt").exists(),
+        "0.{}: F3 — the merge wrote no file",
+        bin.minor
+    );
+    // … and the way out is not a switch: prikk refuses, because the worktree is not clean.
+    let refused = switch("heads/feature");
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&refused.stdout),
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    assert!(
+        !refused.status.success() && said.contains("c.txt"),
+        "0.{}: F3 — a switch out is refused: {said}",
+        bin.minor
+    );
+}
+
+/// **RFC 047 below the band:** at 0.28 the merge plan is *unavailable*, in stikk's own voice,
+/// and **nothing is spawned** to find that out.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc047_below_the_band_the_merge_plan_is_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    assert!(
+        bin.minor < stikk_core::MERGE_FROM_MINOR,
+        "the floor is below the band"
+    );
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+
+    let plan = backend
+        .merge_plan(&repo, &"0".repeat(64), "heads/main", "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: merge_plan: {e}", bin.minor));
+    assert_eq!(
+        plan,
+        stikk_prikk::MergePlan::Unavailable,
+        "0.{}: nothing is spawned below the band",
+        bin.minor
+    );
+    // stikk's own reason names both numbers (`C-T4d`).
+    let reason = stikk_core::merge_unavailable(bin.minor);
+    assert!(reason.contains(&format!("0.{}", bin.minor)), "{reason}");
+    assert!(
+        reason.contains(&format!("0.{}", stikk_core::MERGE_FROM_MINOR)),
+        "{reason}"
+    );
+}

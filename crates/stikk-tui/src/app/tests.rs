@@ -3913,3 +3913,373 @@ fn changes_read() -> ChangesRead {
         history: stikk_core::RefHistory::Published,
     }
 }
+
+// =============================================================================================
+// RFC 047 — `M`: the Merge plan for the marked branch into the selected one (decisions 4, 5, 7)
+//
+// What is checked here is what the key decides **before** anything is dispatched: the rows it
+// declines, each with its own reason, and the fact that none of them spawns. The baseline, the
+// plan and the one line read from it are `stikk-core::merge::tests`'.
+// =============================================================================================
+
+/// A session that may merge: prikk 0.53, a current branch, and whatever the queue holds.
+fn merge_view(
+    minor: u32,
+    current: &str,
+    queued: u64,
+    target: Option<&str>,
+) -> stikk_core::OrientationView {
+    let mut view = maintainer_orientation_view(queued, target);
+    view.prikk_minor = minor;
+    view.current_branch = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse(current).expect("a ref name"),
+    );
+    view
+}
+
+/// The picker `M` is pressed in, with `mark` already marked and the cursor on `cursor`.
+fn merge_picker(
+    view: stikk_core::OrientationView,
+    mark: Option<&str>,
+    cursor: usize,
+) -> (App, mpsc::Receiver<Request>) {
+    let rows = vec![
+        entry("heads/main", false),
+        entry("heads/feature", false),
+        entry("heads/old", true),
+        entry("tags/v1", false),
+    ];
+    let (mut app, rx) = picker(view, rows.clone(), stikk_prikk::UnpublishedBranch::None, 0);
+    if let Some(mark) = mark {
+        let at = rows
+            .iter()
+            .position(|row| row.name == mark)
+            .expect("a row to mark");
+        for _ in 0..at {
+            app.nav_down();
+        }
+        app.mark_block(); // `m` — the picker is open, so it marks a ref
+        assert_eq!(app.marked_ref(), Some(mark));
+        // Back to the top, then down to the row `M` is pressed on.
+        for _ in 0..at {
+            app.nav_up();
+        }
+    }
+    for _ in 0..cursor {
+        app.nav_down();
+    }
+    (app, rx)
+}
+
+/// `M` with a branch marked and another selected dispatches the plan — **marked is `from`**
+/// (RFC 041's convention, decision 4).
+#[test]
+fn m_asks_for_the_plan_of_the_marked_branch_into_the_selected_one() {
+    let (mut app, rx) = merge_picker(
+        merge_view(53, "heads/other", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    match next_request(&rx).kind {
+        RequestKind::MergePlan { into, from } => {
+            assert_eq!(into, "heads/main");
+            assert_eq!(from, "heads/feature");
+        }
+        other => panic!("expected a MergePlan, got {other:?}"),
+    }
+    assert!(matches!(app.focus(), Focus::Loading("merge plan")));
+    assert!(
+        app.top_overlay().is_none(),
+        "the picker closes on its way, as d and s do"
+    );
+}
+
+/// **Each row `M` declines has its own reason, and none of them spawns** (decision 5).
+#[test]
+fn m_declines_each_guard_without_dispatching() {
+    /// One row `M` must decline, and the words it must decline it with.
+    struct Case {
+        marked: Option<&'static str>,
+        cursor: usize,
+        current: &'static str,
+        queued: u64,
+        queue_target: Option<&'static str>,
+        says: &'static str,
+    }
+    let case = |marked, cursor, current, queued, queue_target, says| Case {
+        marked,
+        cursor,
+        current,
+        queued,
+        queue_target,
+        says,
+    };
+    let cases = [
+        // Nothing marked at all — `d`'s own sentence.
+        case(
+            None,
+            0,
+            "heads/other",
+            0,
+            None,
+            "mark a branch with m first",
+        ),
+        // The marked branch is the selected one.
+        case(
+            Some("heads/main"),
+            0,
+            "heads/other",
+            0,
+            None,
+            "this is the branch you marked",
+        ),
+        // Into the branch the repository is on (F3) — the guard a measurement wrote.
+        case(
+            Some("heads/feature"),
+            0,
+            "heads/main",
+            0,
+            None,
+            "would leave the worktree without the merged files",
+        ),
+        // Work queued for the branch merged into (F4).
+        case(
+            Some("heads/feature"),
+            0,
+            "heads/other",
+            3,
+            Some("heads/main"),
+            "work is queued for this branch",
+        ),
+        // A closed branch, selected …
+        case(
+            Some("heads/feature"),
+            2,
+            "heads/other",
+            0,
+            None,
+            "this branch is closed",
+        ),
+        // … and marked: the same answer, because a closed branch is no more mergeable for
+        // having been the one you marked.
+        case(
+            Some("heads/old"),
+            0,
+            "heads/other",
+            0,
+            None,
+            "this branch is closed",
+        ),
+        // A tag, selected …
+        case(
+            Some("heads/feature"),
+            3,
+            "heads/other",
+            0,
+            None,
+            "only branches are merged",
+        ),
+        // … and marked.
+        case(
+            Some("tags/v1"),
+            0,
+            "heads/other",
+            0,
+            None,
+            "only branches are merged",
+        ),
+    ];
+    for Case {
+        marked,
+        cursor,
+        current,
+        queued,
+        queue_target,
+        says,
+    } in cases
+    {
+        let (mut app, rx) = merge_picker(
+            merge_view(53, current, queued, queue_target),
+            marked,
+            cursor,
+        );
+        app.begin_merge_plan();
+        assert!(
+            app.banner().is_some_and(|b| b.contains(says)),
+            "{marked:?} into row {cursor}: got {:?}",
+            app.banner()
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "{marked:?} into row {cursor}: nothing dispatched"
+        );
+        assert!(
+            matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })),
+            "{marked:?} into row {cursor}: the picker stays open"
+        );
+    }
+}
+
+/// The unpublished current branch has no tip, so `M` declines it with the words `n`, `t`, `x`
+/// and `s` all use (RFC 037 B).
+#[test]
+fn m_declines_the_unpublished_row() {
+    let (mut app, rx) = picker(
+        merge_view(53, "heads/main", 0, None),
+        Vec::new(),
+        stikk_prikk::UnpublishedBranch::Branch("heads/main".into()),
+        0,
+    );
+    app.begin_merge_plan();
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("no published history yet")),
+        "got {:?}",
+        app.banner()
+    );
+    assert!(rx.try_recv().is_err());
+}
+
+/// Below the band `M` gives stikk's reason and spawns nothing (`C-T4d`) — **before** it asks
+/// about a mark, so a reader on an old prikk is sent to the right thing.
+#[test]
+fn below_the_band_m_gives_stikks_own_reason() {
+    let (mut app, rx) = merge_picker(merge_view(41, "heads/other", 0, None), None, 0);
+    app.begin_merge_plan();
+    let banner = app.banner().expect("a reason").to_string();
+    assert!(banner.contains("0.42"), "{banner}");
+    assert!(banner.contains("0.41"), "{banner}");
+    assert!(rx.try_recv().is_err());
+}
+
+/// A plan that arrives replaces the loading screen and draws prikk's lines verbatim.
+#[test]
+fn a_plan_opens_the_view_and_a_decline_is_a_banner() {
+    let (mut app, rx) = merge_picker(
+        merge_view(53, "heads/other", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::MergePlan(Ok(stikk_core::MergePlanRead::Read(Box::new(
+            stikk_core::MergePlanView {
+                from: "heads/feature".into(),
+                into: "heads/main".into(),
+                baseline: "88f34150".into(),
+                lines: vec!["merge plan".into(), "evidence outcome: Confluent".into()],
+                outcome: stikk_prikk::MergeOutcome::Confluent,
+            },
+        )))),
+    });
+    assert!(matches!(app.focus(), Focus::MergePlan(..)));
+
+    // A decline carries no screen: stikk's one sentence, in the banner, and back where we were.
+    let (mut app, rx) = merge_picker(
+        merge_view(53, "heads/other", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::MergePlan(Ok(stikk_core::MergePlanRead::Declined(
+            stikk_core::MERGED_ALREADY.to_string(),
+        ))),
+    });
+    assert!(
+        matches!(app.focus(), Focus::Orientation(_)),
+        "no screen for a decline"
+    );
+    assert!(
+        app.banner().is_some_and(|b| b.contains("already merged")),
+        "got {:?}",
+        app.banner()
+    );
+}
+
+/// **Nothing on the Merge plan acts** (RFC 047: the merge is Handoff B). `Enter` opens nothing,
+/// and `↑`/`↓` scroll, as Patch detail's do.
+#[test]
+fn the_merge_plan_is_inert_and_scrolls() {
+    let (mut app, rx) = merge_picker(
+        merge_view(53, "heads/other", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::MergePlan(Ok(stikk_core::MergePlanRead::Read(Box::new(
+            stikk_core::MergePlanView {
+                from: "heads/feature".into(),
+                into: "heads/main".into(),
+                baseline: "88f34150".into(),
+                lines: vec!["merge plan".into()],
+                outcome: stikk_prikk::MergeOutcome::Confluent,
+            },
+        )))),
+    });
+    app.select(); // `Enter`
+    assert!(
+        matches!(app.focus(), Focus::MergePlan(..)),
+        "Enter opens nothing from here yet"
+    );
+    assert!(rx.try_recv().is_err(), "and spawns nothing");
+    app.nav_down();
+    match app.focus() {
+        Focus::MergePlan(_, offset) => assert_eq!(offset.get(), 1),
+        other => panic!("expected the Merge plan, got {other:?}"),
+    }
+    app.nav_up();
+    match app.focus() {
+        Focus::MergePlan(_, offset) => assert_eq!(offset.get(), 0),
+        other => panic!("expected the Merge plan, got {other:?}"),
+    }
+    // `r` re-reads nothing: a plan is about the tips as they stood when it was read.
+    app.reload();
+    let reloaded = next_request(&rx);
+    assert!(matches!(reloaded.kind, RequestKind::Orient));
+    assert!(rx.try_recv().is_err(), "no second request for the plan");
+}
+
+/// **Capture: the into-current refusal at 80×24**, drawn through the same `shell::render` the run
+/// loop calls — the banner is what the reader actually meets, so that is what is captured.
+#[test]
+fn capture_the_into_current_refusal_at_80x24() {
+    let (mut app, rx) = merge_picker(
+        merge_view(53, "heads/main", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    assert!(rx.try_recv().is_err(), "nothing was spawned to say this");
+
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("a terminal");
+    terminal
+        .draw(|frame| crate::shell::render(&app, frame))
+        .expect("a draw");
+    let text = crate::test_util::buffer_text(terminal.backend().buffer());
+    println!("{text}");
+    // **The whole sentence is on screen**, wrapped rather than clipped (RFC 024).
+    for fragment in [
+        "merging into the branch you are on",
+        "would leave the worktree without the merged files",
+        "prikk would then refuse a switch",
+        "Switch to another branch first",
+    ] {
+        assert!(
+            text.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .contains(&fragment.split_whitespace().collect::<Vec<_>>().join(" ")),
+            "missing {fragment:?} in:\n{text}"
+        );
+    }
+}

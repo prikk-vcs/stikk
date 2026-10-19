@@ -34,6 +34,9 @@ pub enum OperationContext {
     LoadPatch,
     /// Comparing two points, or the worktree with its baseline (Compare; `FR-033`, RFC 038).
     Compare,
+    /// Reading prikk's merge plan for two branches (the Merge plan view; `FR-080`, RFC 047).
+    /// **Nothing is merged here**: the plan is read-only, and a refusal of it wrote nothing.
+    MergePlan,
     /// Running prikk's repository verification (Verify; `FR-100`, RFC 040). **A damaged
     /// repository is not a refusal** and never reaches here (RFC 040 decision 1); what does is an
     /// exit 1 that carried no report at all.
@@ -565,6 +568,12 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
             "prikk declined to compare these two points. stikk computes no comparison of its own; \
              it shows prikk's reason above."
         }
+        // **Its own sentence.** A plan is refused for reasons no other read has -- a baseline
+        // that is not an ancestor of both tips, or a block no longer in the repository (F2) --
+        // and the reader needs to know the refusal cost them nothing.
+        OperationContext::MergePlan => {
+            "prikk declined to plan this merge. Nothing was merged and nothing was written; stikk              shows prikk's reason above."
+        }
         OperationContext::Verify => {
             "prikk declined to verify this repository. **This is not a verdict on the repository** \
              — prikk reports damage with a complete report, not a refusal; something stopped it \
@@ -626,6 +635,7 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
         | OperationContext::LoadQueue
         | OperationContext::LoadPatch
         | OperationContext::Compare
+        | OperationContext::MergePlan
         | OperationContext::Verify
         | OperationContext::Orient => {
             vec![NextStep {

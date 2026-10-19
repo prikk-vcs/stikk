@@ -568,6 +568,11 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
             "s",
             "switch to this branch — rewrites the worktree (ref picker)",
         ),
+        key_line(
+            palette,
+            "M",
+            "merge plan — the marked branch into this one (ref picker)",
+        ),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
         key_line(palette, "o", "background operations"),

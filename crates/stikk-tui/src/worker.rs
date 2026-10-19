@@ -168,6 +168,14 @@ pub(crate) enum RequestKind {
         /// The branch to switch to (must match the preview's).
         target: String,
     },
+    /// Read prikk's merge plan for two branches (RFC 047 decision 4). **Read-only**: the baseline
+    /// is found from two `log` reads and the plan from one `merge-plan`, and nothing is written.
+    MergePlan {
+        /// The branch that would be merged into -- the selected one, `--into`.
+        into: String,
+        /// The branch whose work would come in -- the marked one, `--from`.
+        from: String,
+    },
 }
 
 /// The worker's answer to one [`Request`], echoing its `seq`.
@@ -224,6 +232,8 @@ pub(crate) enum ResponseKind {
     SwitchPreview(Result<stikk_core::SwitchPreview>),
     /// Answers [`RequestKind::SwitchConfirmExecute`].
     SwitchConfirmExecute(Result<Outcome<stikk_prikk::SwitchResult>>),
+    /// Answers [`RequestKind::MergePlan`].
+    MergePlan(Result<stikk_core::MergePlanRead>),
     /// Answers [`RequestKind::RefWriteConfirmExecute`].
     RefWriteConfirmExecute {
         /// Echoed from the request, so the result card can title itself without the UI thread
@@ -286,6 +296,7 @@ impl RequestKind {
             Self::RefWritePreview { .. } => "ref write preview",
             Self::RefWriteConfirmExecute { .. } => "ref write",
             Self::SwitchPreview { .. } => "switch preview",
+            Self::MergePlan { .. } => "merge plan",
             Self::SwitchConfirmExecute { .. } => "switch",
         }
     }
@@ -416,6 +427,15 @@ pub(crate) fn run(
             },
             RequestKind::SwitchPreview { target } => {
                 ResponseKind::SwitchPreview(stikk_core::switch_preview(prikk, repo, &target))
+            }
+            RequestKind::MergePlan { into, from } => {
+                ResponseKind::MergePlan(stikk_core::merge_plan_view(
+                    prikk,
+                    repo,
+                    &into,
+                    &from,
+                    stikk_core::MERGE_LINEAGE_LIMIT,
+                ))
             }
             RequestKind::SwitchConfirmExecute {
                 token,

@@ -61,6 +61,9 @@ pub enum Action {
     /// Switch the repository to the selected branch (the ref picker; RFC 045 decision 7).
     /// **`Enter` is not this**: `Enter` focuses stikk on a ref and touches nothing.
     SwitchBranch,
+    /// Open the Merge plan for *the marked branch into the selected one* (the ref picker;
+    /// RFC 047 decision 4). **Reads only**: it shows prikk's plan and merges nothing.
+    MergePlan,
     /// Toggle the seal consent acknowledgement (RFC 016 §8) — meaningful only while
     /// [`crate::overlay::Overlay::SealConsent`] is on top; a no-op everywhere else.
     ToggleSealConsent,
@@ -118,6 +121,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('t') => Action::CreateTag,
         KeyCode::Char('x') => Action::CloseBranch,
         KeyCode::Char('s') => Action::SwitchBranch,
+        KeyCode::Char('M') => Action::MergePlan,
         KeyCode::Char(' ') => Action::ToggleSealConsent,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,

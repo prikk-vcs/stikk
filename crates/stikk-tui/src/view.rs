@@ -1,6 +1,7 @@
 //! The top-level views (design TU-01): [`orientation`], [`history`], [`block`] (block detail),
-//! [`changes`], [`queue`], [`patch`] (patch detail) and [`compare`]. Each renders a `stikk-core`
-//! view-model into a body region and computes nothing itself.
+//! [`changes`], [`queue`], [`patch`] (patch detail), [`compare`], [`verify`] and [`merge`] (the
+//! merge plan). Each renders a `stikk-core` view-model into a body region and computes nothing
+//! itself.
 //!
 //! [`wrap_spans`] is the one piece of rendering shared between them: a **span-aware** hard split,
 //! for a row that is already a sequence of differently-styled fields and so cannot be wrapped as a
@@ -10,6 +11,7 @@ pub mod block;
 pub mod changes;
 pub mod compare;
 pub mod history;
+pub mod merge;
 pub mod orientation;
 pub mod patch;
 pub mod queue;

@@ -4,6 +4,23 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Added
+
+- **The Merge plan view: prikk's own plan for bringing one branch into another.** In the ref
+  picker, mark a branch with `m`, select another, and press `M`. stikk finds the baseline block
+  itself — the latest block both branches hold — and shows prikk's plan for the pair, word for
+  word. **Nothing here merges yet.** Needs prikk 0.42 or newer.
+
+  stikk names a baseline **only where it can name the true one**: where neither branch has merged
+  since they parted. prikk reports no parent ids, so past a merge there is nothing to follow, and
+  a baseline that is merely plausible would make prikk's plan wrong rather than vague. Where it
+  cannot, stikk says so and names the prikk command that takes a baseline you choose.
+
+  Four merges are declined before prikk is asked, each in stikk's own words: into the branch you
+  are on (prikk allows it and leaves your worktree behind the new tip, with no switch out),
+  into a branch with work still queued, either side closed or a tag, and one branch on both
+  sides.
+
 ### Changed
 
 - **Validated through prikk 0.53.0.** prikk 0.53 changes nothing stikk reads: its one output

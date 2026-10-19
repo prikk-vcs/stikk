@@ -20,6 +20,7 @@ pub mod compare;
 pub mod confirm;
 pub mod glossary;
 pub mod history;
+pub mod merge;
 pub mod orient;
 pub mod palette;
 pub mod patch;
@@ -58,6 +59,11 @@ pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{
     BlockDetailView, BlockPatchRow, BlockPatches, BlockState, HistoryView, RefList, block_detail,
     history_view, list_refs,
+};
+pub use merge::{
+    LINEAGE_TRUNCATED, MERGE_FROM_MINOR, MERGE_LINEAGE_LIMIT, MERGE_OPERATION, MERGED_ALREADY,
+    MergeBaseline, MergePlanRead, MergePlanView, NO_SHARED_BLOCK, PLAN_UNAVAILABLE, merge_baseline,
+    merge_plan_view, merge_unavailable,
 };
 pub use orient::{OrientationView, orient};
 pub use palette::{Command, NO_FOCUSED_REF_REASON};

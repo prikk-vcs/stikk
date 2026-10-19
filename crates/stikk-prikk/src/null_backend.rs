@@ -62,6 +62,10 @@ pub struct NullBackend {
     readiness: Scripted<crate::ReadinessReport>,
     orientation: Scripted<Orientation>,
     history: Scripted<History>,
+    /// Lineages scripted **per ref**, consulted before [`Self::history`]. RFC 047's baseline
+    /// finder is the first caller that reads two different lineages in one operation, and a
+    /// backend that answers both with the same blocks cannot show it anything.
+    history_by_ref: Vec<(String, History)>,
     state: Scripted<StateReport>,
     diff: ScriptedDiff,
     verify: Scripted<crate::VerifyReport>,
@@ -135,6 +139,7 @@ impl NullBackend {
                 active_patch_warning: None,
                 current_branch: CurrentBranch::NotReported,
             }),
+            history_by_ref: Vec::new(),
             history: Ok(History {
                 reff: "heads/main".to_string(),
                 blocks: Vec::new(),
@@ -349,6 +354,24 @@ impl NullBackend {
     #[must_use]
     pub fn with_history(mut self, history: History) -> Self {
         self.history = Ok(history);
+        self
+    }
+
+    /// Answer [`Prikk::history`] for `reff` with `history`, leaving every other ref to
+    /// [`Self::with_history`].
+    #[must_use]
+    pub fn with_history_of(mut self, reff: impl Into<String>, history: History) -> Self {
+        let reff = reff.into();
+        // **The later call wins**, so a test can build a shared backend and then change one
+        // lineage; appending would leave the first one answering and the change silently unread.
+        match self
+            .history_by_ref
+            .iter_mut()
+            .find(|(scripted, _)| *scripted == reff)
+        {
+            Some(slot) => slot.1 = history,
+            None => self.history_by_ref.push((reff, history)),
+        }
         self
     }
 
@@ -602,8 +625,15 @@ impl Prikk for NullBackend {
         deliver(&self.orientation)
     }
 
-    fn history(&self, _repo: &Path, _reff: &str, _limit: usize) -> Result<History> {
-        deliver(&self.history)
+    fn history(&self, _repo: &Path, reff: &str, _limit: usize) -> Result<History> {
+        match self
+            .history_by_ref
+            .iter()
+            .find(|(scripted, _)| scripted == reff)
+        {
+            Some((_, history)) => Ok(history.clone()),
+            None => deliver(&self.history),
+        }
     }
 
     fn queue(&self, _repo: &Path) -> Result<QueueReport> {

@@ -167,6 +167,17 @@ pub enum Screen {
         /// idiom): one entry's hunks can be a whole file.
         offset: std::cell::Cell<u16>,
     },
+    /// prikk's plan for merging one branch into another (`FR-080`; RFC 047 decision 4).
+    ///
+    /// **Inert.** It shows what prikk printed and nothing acts on it; the merge itself is RFC
+    /// 047's Handoff B.
+    MergePlan {
+        /// The two branches, the baseline stikk found, and prikk's plan verbatim.
+        view: Box<stikk_core::MergePlanView>,
+        /// First content row drawn, clamped and written back by the renderer: a plan can run
+        /// past a short terminal, and `FR-081` asks for all of it.
+        offset: std::cell::Cell<u16>,
+    },
     /// prikk's verdict on whether the repository is sound (`FR-100`; RFC 040).
     Verify {
         /// The report, or the band's reason there is none.
@@ -292,6 +303,8 @@ pub enum Focus<'a> {
     PatchDetail(&'a PatchDetailView, bool, &'a std::cell::Cell<u16>),
     /// A comparison and the state the screen holds for it.
     Compare(CompareFocus<'a>),
+    /// prikk's merge plan for two branches, and the screen's scroll offset.
+    MergePlan(&'a stikk_core::MergePlanView, &'a std::cell::Cell<u16>),
     /// The Verify report, whether the raw view is showing, whether a re-run is in flight, and the
     /// scroll offset.
     Verify(
@@ -817,7 +830,13 @@ impl App {
                     is_tip: true,
                 })
             }
-            Some(Screen::BlockDetail { .. } | Screen::Loading { .. }) | None => None,
+            // **The Merge plan is not re-read in place** (RFC 047): it holds no `refreshing`
+            // slot, and a plan is about the two tips as they stood when it was read. `q` and `M`
+            // ask for a current one, which is the same two reads without a half-updated screen.
+            Some(
+                Screen::BlockDetail { .. } | Screen::MergePlan { .. } | Screen::Loading { .. },
+            )
+            | None => None,
         };
         let Some(kind) = request else {
             return;
@@ -1432,6 +1451,138 @@ impl App {
         }
     }
 
+    /// **stikk's own words for `M` into the branch the repository is on** (RFC 047 decision 5,
+    /// F3) -- the one guard a measurement wrote.
+    ///
+    /// prikk allows this merge and writes no file. The worktree is then behind the branch's new
+    /// tip: `worktree-status` reports the adopted file **missing**, the next commit would queue
+    /// its deletion, and `branch switch` refuses because the worktree is not clean -- so the way
+    /// out is not even a switch. stikk does not offer it.
+    const INTO_THE_CURRENT_BRANCH: &'static str = "merging into the branch you are on would leave the worktree without the merged files, \
+         and prikk would then refuse a switch. Switch to another branch first.";
+
+    /// **stikk's own words for `M` into a branch with work queued** (decision 5, F4).
+    ///
+    /// Measured: `merge-plan` judges the branch's **sealed** tip and the merge succeeds, after
+    /// which the queued work seals on top of the merge block. prikk allows it; whether a patch
+    /// queued against the old tip still means what it did is not something stikk can see, so
+    /// stikk declines rather than show a plan that answers a different question.
+    const WORK_IS_QUEUED_FOR_INTO: &'static str = "work is queued for this branch; seal it first. A plan is judged against the sealed tip, \
+         not against what is waiting.";
+
+    /// **stikk's own words for `M` on a tag** (decision 5). A merge moves a branch.
+    const TAGS_ARE_NOT_MERGED: &'static str =
+        "only branches are merged; a tag names a point in history, not a line of work.";
+
+    /// **stikk's own words for `M` on a closed branch** (decision 5), from the list's own flag.
+    const CLOSED_IS_NOT_MERGED: &'static str = "this branch is closed; merge between open ones.";
+
+    /// **stikk's own words for `M` with one branch on both sides** (decision 5).
+    const THE_SAME_BRANCH_TWICE: &'static str =
+        "this is the branch you marked; mark one branch and select another.";
+
+    /// **stikk's own words for `M` with nothing marked** -- `d`'s sentence, for `d`'s reason.
+    const NOTHING_IS_MARKED: &'static str = "mark a branch with m first";
+
+    /// Open the Merge plan for *the marked branch into the selected one* (the `M` key; RFC 047
+    /// decision 4).
+    ///
+    /// **Every guard answers from what stikk already holds** (decision 5): the band from
+    /// orientation, the current branch and the queue from the same read, closed and tag from the
+    /// ref list the picker is drawn from. None of them spawns prikk, so a merge stikk will not
+    /// show costs nothing to be told about.
+    pub fn begin_merge_plan(&mut self) {
+        let Some((into, from)) = self.merge_pair() else {
+            return;
+        };
+        self.overlays.pop(); // the picker closes on its way, as `d` and `s` do
+        let seq = self.dispatch(RequestKind::MergePlan { into, from });
+        self.screens.push(Screen::Loading {
+            what: "merge plan",
+            seq,
+        });
+    }
+
+    /// The pair `M` means -- **the marked branch into the selected one** -- or `None` with
+    /// stikk's own reason already in the banner.
+    fn merge_pair(&mut self) -> Option<(String, String)> {
+        self.banner = None;
+        let Some(Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+            unpublished_current,
+        }) = self.overlays.last()
+        else {
+            return None;
+        };
+        let (cursor, unpublished_main, first_is_unpublished) =
+            (*cursor, *unpublished_main, *unpublished_current);
+        let into = refs.get(cursor).cloned();
+        // **The band first**, as `s` and RFC 044's keys check theirs: below it the operation does
+        // not exist, and a sentence about marking a branch would send the reader to fix the
+        // wrong thing.
+        if let Some(minor) = self.prikk_minor()
+            && minor < stikk_core::MERGE_FROM_MINOR
+        {
+            self.banner = Some(stikk_core::merge_unavailable(minor));
+            return None;
+        }
+        // The guessed row of an empty picker and the unpublished current branch name no
+        // published tip, so neither side can be one (RFC 037 B).
+        if unpublished_main || (first_is_unpublished && cursor == 0) {
+            self.banner = Some(Self::UNPUBLISHED_HAS_NO_TIP.to_string());
+            return None;
+        }
+        let into = into?;
+        let Some(from) = self.marked_ref.clone() else {
+            self.banner = Some(Self::NOTHING_IS_MARKED.to_string());
+            return None;
+        };
+        if from == into {
+            self.banner = Some(Self::THE_SAME_BRANCH_TWICE.to_string());
+            return None;
+        }
+        // **Both sides**, against the list the picker is drawn from: a tag or a closed branch is
+        // no more mergeable for being the marked one.
+        for name in [&into, &from] {
+            match self
+                .ref_rows
+                .iter()
+                .find(|entry| &entry.name == name)
+                .map_or((false, false), |entry| (entry.is_tag(), entry.closed))
+            {
+                (true, _) => {
+                    self.banner = Some(Self::TAGS_ARE_NOT_MERGED.to_string());
+                    return None;
+                }
+                (_, true) => {
+                    self.banner = Some(Self::CLOSED_IS_NOT_MERGED.to_string());
+                    return None;
+                }
+                _ => {}
+            }
+        }
+        // **F3 and F4, and only about `into`.** Both are facts about the branch being merged
+        // *into*; the branch merged *from* is read, not moved, and neither applies to it.
+        if stikk_model::RefName::parse(&into)
+            .ok()
+            .map(stikk_model::CurrentBranch::Branch)
+            == Some(self.current_branch())
+        {
+            self.banner = Some(Self::INTO_THE_CURRENT_BRANCH.to_string());
+            return None;
+        }
+        if let OrientationState::Loaded(view) = &self.state
+            && view.queued_patches > 0
+            && view.queued_target.as_deref() == Some(into.as_str())
+        {
+            self.banner = Some(Self::WORK_IS_QUEUED_FOR_INTO.to_string());
+            return None;
+        }
+        Some((into, from))
+    }
+
     /// prikk's current branch, as the last orientation read reported it.
     fn current_branch(&self) -> stikk_model::CurrentBranch {
         match &self.state {
@@ -1739,6 +1890,10 @@ impl App {
             // below a verdict to open — and **nothing here acts on it** (RFC 040 decision 4):
             // Verify repairs nothing, clears no lock, and changes nothing at all.
             Some(Screen::Verify { .. }) => {}
+            // **A leaf, and deliberately so until Handoff B.** The merge itself is `Enter` here
+            // once that lands; today nothing on this screen acts, and the view says nothing
+            // about a key that does nothing.
+            Some(Screen::MergePlan { .. }) => {}
             None => self.open_history(),
         }
     }
@@ -2141,8 +2296,9 @@ impl App {
                 | Some(Screen::Compare { cursor, .. }) => {
                     *cursor = cursor.saturating_sub(1);
                 }
-                // Patch detail has no selection — it scrolls, the Glossary's idiom.
-                Some(Screen::PatchDetail { offset, .. }) => {
+                // Patch detail has no selection — it scrolls, the Glossary's idiom. The Merge
+                // plan is prikk's prose, so it scrolls the same way and for the same reason.
+                Some(Screen::PatchDetail { offset, .. } | Screen::MergePlan { offset, .. }) => {
                     offset.set(offset.get().saturating_sub(1));
                 }
                 _ => {}
@@ -2205,7 +2361,7 @@ impl App {
                 }
                 // Deliberately unclamped here: only the renderer knows the wrapped height, so it clamps
                 // and writes the clamped value back, as the Glossary does.
-                Some(Screen::PatchDetail { offset, .. }) => {
+                Some(Screen::PatchDetail { offset, .. } | Screen::MergePlan { offset, .. }) => {
                     offset.set(offset.get().saturating_add(1));
                 }
                 // **The cursor moves between entries, and the renderer follows it** — the Queue's
@@ -2303,6 +2459,7 @@ impl App {
             ResponseKind::RefWriteConfirmExecute { result, .. } => result.is_ok(),
             ResponseKind::SwitchPreview(r) => r.is_ok(),
             ResponseKind::SwitchConfirmExecute(r) => r.is_ok(),
+            ResponseKind::MergePlan(r) => r.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -2333,6 +2490,7 @@ impl App {
             ResponseKind::SwitchConfirmExecute(result) => {
                 self.apply_switch_confirm_execute(seq, result);
             }
+            ResponseKind::MergePlan(result) => self.apply_merge_plan(seq, result),
         }
         // **One flush point for every transition a response completes** (RFC 046 decision 4):
         // the view that just landed, the focus a switch just moved, the picker's pick once its
@@ -2390,6 +2548,7 @@ impl App {
                 Screen::BlockDetail { .. }
                 | Screen::PatchDetail { .. }
                 | Screen::Compare { .. }
+                | Screen::MergePlan { .. }
                 | Screen::Verify { .. }
                 | Screen::Loading { .. } => {}
             }
@@ -2718,6 +2877,43 @@ impl App {
                     // beside it: this screen *is* the comparison.
                     self.surface(&error, OperationContext::Compare);
                 }
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::MergePlan`].
+    ///
+    /// **A decline is a banner, not a screen.** stikk's reason for naming no baseline is one
+    /// sentence, and the reader is still in the picker's world -- the same shape `d`'s own
+    /// declines take, rather than a screen whose only content is why there is no content.
+    fn apply_merge_plan(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::MergePlanRead>,
+    ) {
+        let Some(index) = self
+            .screens
+            .iter()
+            .position(|s| matches!(s, Screen::Loading { seq: s, .. } if *s == seq))
+        else {
+            return;
+        };
+        match result {
+            Ok(stikk_core::MergePlanRead::Read(view)) => {
+                if let Some(slot) = self.screens.get_mut(index) {
+                    *slot = Screen::MergePlan {
+                        view,
+                        offset: std::cell::Cell::new(0),
+                    };
+                }
+            }
+            Ok(stikk_core::MergePlanRead::Declined(reason)) => {
+                self.screens.remove(index);
+                self.banner = Some(reason);
+            }
+            Err(error) => {
+                self.screens.remove(index);
+                self.surface(&error, OperationContext::MergePlan);
             }
         }
     }
@@ -3626,6 +3822,7 @@ impl App {
             Some(Screen::PatchDetail {
                 view, raw, offset, ..
             }) => Focus::PatchDetail(view, *raw, offset),
+            Some(Screen::MergePlan { view, offset }) => Focus::MergePlan(view, offset),
             Some(Screen::Verify {
                 view,
                 raw,

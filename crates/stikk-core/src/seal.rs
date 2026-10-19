@@ -157,7 +157,7 @@ fn compute(
     );
     let summary = ConfirmationSummary {
         operation: "Seal the active WAL".to_string(),
-        target_ids: vec![reff.to_string()],
+        target_ids: vec![crate::confirm::TargetId::bare(reff)],
         counts: vec![("patches", queued_patches)],
         capability: Some(Capability::Maintainer),
         consequence: consequence(report.readiness.maintainer),

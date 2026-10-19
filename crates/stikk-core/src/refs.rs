@@ -394,7 +394,13 @@ fn preview(
                 ReadView::Ready,
                 ConfirmationSummary {
                     operation: summary.operation,
-                    target_ids: summary.target_ids,
+                    // RFC 047 review v1 C1: these three writes each name one kind of thing and
+                    // the card's own title says which, so every row is bare.
+                    target_ids: summary
+                        .target_ids
+                        .into_iter()
+                        .map(crate::confirm::TargetId::bare)
+                        .collect(),
                     counts: Vec::new(),
                     capability: Some(Capability::Maintainer),
                     consequence: summary.consequence,

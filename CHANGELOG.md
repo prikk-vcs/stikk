@@ -66,11 +66,14 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`st
 | Crate | Change |
 |---|---|
 | `stikk-prikk` | **The `Prikk` trait gains two required methods**, `merge_plan` and `merge`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+| `stikk-core` | **`ConfirmationSummary::target_ids` is `Vec<TargetId>`**, not `Vec<String>`. Each row now carries an optional role — stikk's own word for what the value is — because a merge restates four values and the direction between two of them is the operation's whole meaning. `TargetId::bare(id)` is the old behaviour; `TargetId::named(role, id)` labels a row. The role and the id stay separate fields so a frontend escapes repository text and not stikk's chrome |
 
 **Additive:** `stikk_prikk::MergeOutcome`, `MergePlan` and `MergeResult`, with
 `NullBackend::with_merge_plan`, `with_merge_plan_refusal`, `with_merge`, `with_merge_refusal` and
-`with_history_of`; `stikk_core::merge` with `MergeBaseline`, `MergePlanRead`, `MergePlanView`,
-`merge_baseline`, `merge_plan_view`, `merge_unavailable` and its constants;
+`with_history_of`; `stikk_core::merge` with `MergeBaseline`, `MergePlanRead`, `MergePlanView`, `MergePreview`,
+`MergeTarget`, `merge_baseline`, `merge_plan_view`, `merge_preview`, `merge_confirm_and_execute`,
+`merge_unavailable`, `not_confluent` and its constants; `stikk_core::TargetId` and
+`unshown_plan_lines_line`;
 `OperationContext::MergePlan`, which is additive only because that enum is `#[non_exhaustive]`
 and has been since it existed. **No public item was removed** — `cargo public-api diff 0.14.0`
 reports no `-` line for any crate — and nothing else changed shape. The MSRV is unchanged at

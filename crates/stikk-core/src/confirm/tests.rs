@@ -32,7 +32,7 @@ fn intent(category: RequestCategory) -> Intent {
 fn summary(target_name: Option<&str>) -> ConfirmationSummary {
     ConfirmationSummary {
         operation: "Test operation".to_string(),
-        target_ids: vec!["abc123".to_string()],
+        target_ids: vec![TargetId::bare("abc123")],
         counts: vec![("items", 1)],
         capability: Some(Capability::Viewer),
         consequence: "Nothing real happens — this is the scripted test vehicle".to_string(),

@@ -339,7 +339,7 @@ fn compute(
     }
     let summary = ConfirmationSummary {
         operation: "Commit worktree changes".to_string(),
-        target_ids: vec![reff.to_string()],
+        target_ids: vec![crate::confirm::TargetId::bare(reff)],
         counts,
         capability: Some(Capability::Author),
         consequence: consequence(orientation.active_patch_warning.as_deref()),

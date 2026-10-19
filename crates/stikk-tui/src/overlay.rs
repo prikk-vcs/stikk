@@ -1409,11 +1409,35 @@ fn render_confirmation(
                 Style::default().fg(palette.dim),
             )));
         }
-        for id in &summary.target_ids {
-            lines.push(Line::from(Span::styled(
-                format!("    {}", identifier(id)),
-                Style::default().fg(palette.accent),
-            )));
+        // **The role is chrome, the id is repository text** (RFC 047 review v1 C1): the label is
+        // written in `stikk-core` and drawn as itself, the value goes through `identifier` like
+        // every other repository string. They are two spans so the escape cannot reach the one
+        // and skip the other. The column is computed from the labels actually present, so a
+        // longer word later still lines up.
+        let role_width = summary
+            .target_ids
+            .iter()
+            .filter_map(|target| target.role)
+            .map(|role| role.chars().count())
+            .max();
+        for target in &summary.target_ids {
+            let value = Span::styled(identifier(&target.id), Style::default().fg(palette.accent));
+            match (role_width, target.role) {
+                (Some(width), Some(role)) => lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("    {role:<width$}  "),
+                        Style::default().fg(palette.dim),
+                    ),
+                    value,
+                ])),
+                // A labelled list with an unlabelled row keeps the column, so the ids still line
+                // up under each other rather than one of them stepping left.
+                (Some(width), None) => lines.push(Line::from(vec![
+                    Span::raw(format!("    {:width$}  ", "")),
+                    value,
+                ])),
+                (None, _) => lines.push(Line::from(vec![Span::raw("    "), value])),
+            }
         }
         // Safeguard 3 (RFC 029 Handoff B §5): directly under the targets and in warn, because it is about
         // where the change goes — above the counts and `C-S2`'s line. The words carry it in a monochrome

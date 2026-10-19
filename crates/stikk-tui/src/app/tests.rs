@@ -945,7 +945,7 @@ fn worker_stopped_records_a_dismissible_fault() {
 fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
     ConfirmationSummary {
         operation: "Test operation".to_string(),
-        target_ids: vec!["abc123".to_string()],
+        target_ids: vec![stikk_core::TargetId::bare("abc123")],
         counts: vec![("items", 1)],
         capability: Some(Capability::Author),
         consequence: "Nothing real happens".to_string(),
@@ -1231,7 +1231,7 @@ fn a_ready_commit_preview_opens_the_confirmation_overlay_with_the_restated_summa
     match app.top_overlay() {
         Some(Overlay::Confirmation { summary, tier, .. }) => {
             assert_eq!(*tier, Tier::Two);
-            assert!(summary.target_ids.contains(&"heads/main".to_string()));
+            assert!(summary.target_ids.iter().any(|t| t.id == "heads/main"));
         }
         other => panic!("expected Confirmation, got {other:?}"),
     }
@@ -1438,7 +1438,7 @@ fn a_ready_seal_preview_opens_the_confirmation_overlay_at_tier_three() {
     match app.top_overlay() {
         Some(Overlay::Confirmation { summary, tier, .. }) => {
             assert_eq!(*tier, Tier::Three);
-            assert!(summary.target_ids.contains(&"heads/main".to_string()));
+            assert!(summary.target_ids.iter().any(|t| t.id == "heads/main"));
         }
         other => panic!("expected Confirmation, got {other:?}"),
     }
@@ -3247,7 +3247,7 @@ fn a_ready_ref_write_preview_opens_the_confirmation_at_tier_three() {
     match app.top_overlay() {
         Some(Overlay::Confirmation { tier, summary, .. }) => {
             assert_eq!(*tier, Tier::Three);
-            assert!(summary.target_ids.contains(&"heads/feature".to_string()));
+            assert!(summary.target_ids.iter().any(|t| t.id == "heads/feature"));
         }
         other => panic!("expected a Confirmation, got {other:?}"),
     }
@@ -4475,8 +4475,8 @@ fn a_merge_preview_arms_tier_three_or_blocks_to_a_banner() {
             assert_eq!(summary.capability, Some(Capability::Maintainer));
             assert!(summary.merge_plan.is_some(), "prikk's plan is on the card");
             // The names are restated as ids, never inside the consequence (RFC 044 C1).
-            assert!(summary.target_ids.contains(&"heads/feature".to_string()));
-            assert!(summary.target_ids.contains(&"heads/main".to_string()));
+            assert!(summary.target_ids.iter().any(|t| t.id == "heads/feature"));
+            assert!(summary.target_ids.iter().any(|t| t.id == "heads/main"));
             assert!(
                 !summary.consequence.contains("heads/"),
                 "{}",

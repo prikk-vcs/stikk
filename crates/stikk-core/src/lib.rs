@@ -51,8 +51,8 @@ pub use compare::{
 };
 pub use confirm::{
     ConfirmationSummary, ConfirmedToken, Evidence, FilePlan, FrozenPatches, Intent, KeyClaim,
-    Outcome, PreviewToken, SHORT_ID_CHARS, branch_notice, capability_gate, confirm, execute,
-    preview, signing_key_claim, unshown_declarations_line, unshown_patches_line,
+    Outcome, PreviewToken, SHORT_ID_CHARS, TargetId, branch_notice, capability_gate, confirm,
+    execute, preview, signing_key_claim, unshown_declarations_line, unshown_patches_line,
     unshown_paths_line, unshown_plan_lines_line,
 };
 pub use glossary::{GlossaryEntry, TermMapping};

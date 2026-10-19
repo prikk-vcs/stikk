@@ -151,8 +151,13 @@ pub fn switch_preview(prikk: &impl Prikk, repo: &Path, target: &str) -> Result<S
             .history(repo, &target, 1)
             .ok()
             .and_then(|history| history.blocks.first().map(|block| short(&block.block_id)));
-        let mut target_ids = vec![current, target.clone()];
-        target_ids.extend(tip);
+        // RFC 047 review v1 C1: a switch names where it is going, and `Switch branch` plus the
+        // file plan below say the rest -- there is no pair whose order could be read backwards.
+        let mut target_ids = vec![
+            crate::confirm::TargetId::bare(current),
+            crate::confirm::TargetId::bare(target.clone()),
+        ];
+        target_ids.extend(tip.map(crate::confirm::TargetId::bare));
         Ok((
             ReadView::Ready,
             ConfirmationSummary {

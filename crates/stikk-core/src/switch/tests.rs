@@ -327,16 +327,15 @@ fn no_name_reaches_the_consequence_and_the_targets_name_the_block() {
     let s = summary(switch_preview(&backend, repo(), "heads/feature").expect("reads"));
     for name in ["heads/main", "heads/feature"] {
         assert!(!s.consequence.contains(name), "{name}: {s:?}");
-        assert!(s.target_ids.iter().any(|id| id == name), "{s:?}");
+        assert!(s.target_ids.iter().any(|t| t.id == name), "{s:?}");
     }
     let short_tip: String = tip.chars().take(crate::SHORT_ID_CHARS).collect();
     assert_eq!(
-        s.target_ids,
-        vec![
-            "heads/main".to_string(),
-            "heads/feature".to_string(),
-            short_tip
-        ]
+        s.target_ids
+            .iter()
+            .map(|t| t.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["heads/main", "heads/feature", short_tip.as_str()]
     );
     // The half a reader most needs: what a switch will not touch, and that nothing is lost.
     assert!(

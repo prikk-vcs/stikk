@@ -517,14 +517,16 @@ fn a_ready_preview_restates_both_names_the_baseline_and_the_adopted_tip() {
     };
     let summary = token.summary();
     assert_eq!(summary.operation, "Merge");
-    // from, into, the baseline, the adopted tip -- in that order, all as ids.
+    // **from, into, the baseline, the adopted tip -- each with stikk's own word for it**
+    // (review v1 C1). The labels are the point: four bare ids leave a reader unable to tell
+    // which branch gains the merge block, and the wrong `into` costs a worktree (F3).
     assert_eq!(
         summary.target_ids,
         vec![
-            "heads/feature".to_string(),
-            "heads/main".to_string(),
-            "88f34150".to_string(),
-            "d967f478".to_string(),
+            crate::confirm::TargetId::named("from", "heads/feature"),
+            crate::confirm::TargetId::named("into", "heads/main"),
+            crate::confirm::TargetId::named("baseline", "88f34150"),
+            crate::confirm::TargetId::named("from's tip", "d967f478"),
         ]
     );
     // **No name in the consequence** (RFC 044 C1): it is drawn unescaped.

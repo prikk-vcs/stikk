@@ -39,6 +39,45 @@ pub struct Intent {
     pub operation: &'static str,
 }
 
+/// One value a confirmation restates, with stikk's own word for what it is (RFC 047 review v1 C1).
+///
+/// **The label and the value are kept apart on purpose.** The role is stikk's chrome, written in
+/// this crate and never sourced from a repository; the id is repository text and must reach the
+/// terminal through `identifier`/`inert` like every other repository string (`C-T2a`). Formatting
+/// the label into the id would hand a bare `String` to the renderer with no way to tell which half
+/// is which, and the escape would then be applied to stikk's own words or skipped on prikk's.
+///
+/// **Most operations name one thing and need no label.** A merge names four, two of them branches
+/// whose order is the whole meaning of the operation -- the measured cost of the wrong `into` is a
+/// worktree left behind its branch (RFC 047 F3) -- so there the role is not decoration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TargetId {
+    /// stikk's own word for this value's role on the card, or `None` for an unlabelled row.
+    pub role: Option<&'static str>,
+    /// The repository string itself. Never contains the role.
+    pub id: String,
+}
+
+impl TargetId {
+    /// An unlabelled row: the operation names one thing, and the card's own title says what.
+    #[must_use]
+    pub fn bare(id: impl Into<String>) -> Self {
+        Self {
+            role: None,
+            id: id.into(),
+        }
+    }
+
+    /// A row the card labels, for an operation that names several things of different kinds.
+    #[must_use]
+    pub fn named(role: &'static str, id: impl Into<String>) -> Self {
+        Self {
+            role: Some(role),
+            id: id.into(),
+        }
+    }
+}
+
 /// The `TU-09` fact set a confirmation restates — fixed and uniform, not a per-operation blob (RFC 013
 /// Q1). Composed once, at preview time, and carried unchanged through to [`confirm`]; never re-derived
 /// there, which would reintroduce the drift this token exists to prevent.
@@ -51,7 +90,7 @@ pub struct ConfirmationSummary {
     /// The operation's human name (e.g. `"Commit"`).
     pub operation: String,
     /// The target ids and names involved, from prikk-authoritative values.
-    pub target_ids: Vec<String>,
+    pub target_ids: Vec<TargetId>,
     /// Labelled counts (e.g. `("patches", 3)`) — a label stikk authored, a number prikk reported.
     pub counts: Vec<(&'static str, u64)>,
     /// The capability this operation consumes (`AUTHOR`/`MAINTAINER`) — informative only for

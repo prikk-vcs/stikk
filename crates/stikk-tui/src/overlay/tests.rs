@@ -540,7 +540,10 @@ fn refusals_list_shows_remembered_messages() {
 fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSummary {
     ConfirmationSummary {
         operation: "Commit worktree changes".to_string(),
-        target_ids: target_ids.into_iter().map(str::to_string).collect(),
+        target_ids: target_ids
+            .into_iter()
+            .map(stikk_core::TargetId::bare)
+            .collect(),
         counts: vec![("patches", 3)],
         capability: Some(Capability::Author),
         consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
@@ -1032,7 +1035,7 @@ fn summary_with_key_id(
 ) -> ConfirmationSummary {
     ConfirmationSummary {
         operation: operation.to_string(),
-        target_ids: vec!["heads/main".to_string()],
+        target_ids: vec![stikk_core::TargetId::bare("heads/main")],
         counts: vec![("patches", 3)],
         capability: Some(capability),
         consequence: "Queues patches for the next seal; nothing is sealed yet.".to_string(),
@@ -1311,7 +1314,7 @@ const SEAL_CONSEQUENCE: &str = "Freezes the active WAL's queued patches into a n
 fn gate_summary(consequence: &str) -> ConfirmationSummary {
     ConfirmationSummary {
         operation: "Seal the active WAL".to_string(),
-        target_ids: vec!["heads/main".to_string()],
+        target_ids: vec![stikk_core::TargetId::bare("heads/main")],
         counts: vec![("patches", 3)],
         capability: Some(Capability::Maintainer),
         consequence: consequence.to_string(),
@@ -1917,7 +1920,7 @@ fn f5_ref_picker_shows_the_last_of_forty_refs_when_selected() {
 fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> ConfirmationSummary {
     ConfirmationSummary {
         operation: "Commit worktree changes".to_string(),
-        target_ids: vec!["heads/main".to_string()],
+        target_ids: vec![stikk_core::TargetId::bare("heads/main")],
         counts: vec![("modified", 1)],
         capability: Some(Capability::Author),
         consequence: "Queues this worktree capture as a new patch in the active WAL; nothing is \
@@ -3549,35 +3552,86 @@ fn capture_rfc034c_declarations_card_at_80_columns() {
 // =============================================================================================
 
 /// A merge summary with `lines` of prikk's plan under it.
+///
+/// **Built by `stikk_core::merge_preview`, not written here.** The card's consequence says the
+/// one fact the reader is confirming (review v1 C2), and a copy of that sentence in this file
+/// would drift from the one that ships -- which is how a capture stops being evidence.
 fn merge_summary(lines: Vec<String>) -> stikk_core::ConfirmationSummary {
-    stikk_core::ConfirmationSummary {
-        operation: "Merge".to_string(),
-        target_ids: vec![
-            "heads/feature".to_string(),
-            "heads/main".to_string(),
-            "88f34150e099".to_string(),
-            "6d17f5f225b7".to_string(),
-        ],
-        counts: Vec::new(),
-        capability: Some(Capability::Maintainer),
-        consequence: "A merge block is sealed on the branch merged into, adopting the other \
-                      side's patches. Nothing is written to the worktree: switch to that branch \
-                      afterwards to have its files. prikk merges only what it has proven \
-                      confluent, and a refusal writes nothing."
-            .to_string(),
-        target_name: None,
-        signing_key_id: None,
-        signing_key_claim: stikk_core::KeyClaim::None,
-        signing_key_is_published_example: false,
-        branch_notice: None,
-        freezes: None,
-        history_notice: None,
-        rename_note: None,
-        declaration_notices: Vec::new(),
-        message_note: None,
-        materializes: None,
-        merge_plan: Some(lines),
-    }
+    const BASELINE: &str = "88f34150e09929a618d75865609d7ba5d88a6f24937dbbb6f53d2214a1312d52";
+    let block = |id: &str, seq: u64, kind: &str, parents: u64| stikk_prikk::BlockRow {
+        block_id: id.to_string(),
+        ref_state_id: format!("rs-{id}"),
+        update_seq: seq,
+        kind: kind.to_string(),
+        rollback_block: false,
+        parents,
+        patches: 1,
+        rollback_patches: 0,
+        required_attestations: 0,
+        messages: Vec::new(),
+        previous_ref_state: None,
+    };
+    // `heads/feature` is merged **into** `heads/main`, and neither is the current branch.
+    let backend = stikk_prikk::NullBackend::supported()
+        .with_refs(vec![
+            stikk_prikk::RefEntry {
+                name: "heads/main".to_string(),
+                id: "e".repeat(64),
+                closed: false,
+                received: false,
+            },
+            stikk_prikk::RefEntry {
+                name: "heads/feature".to_string(),
+                id: "e".repeat(64),
+                closed: false,
+                received: false,
+            },
+        ])
+        .with_orientation(stikk_prikk::Orientation {
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            interrupted_materialization: None,
+            active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::Branch(
+                stikk_model::RefName::parse("heads/other").expect("a ref name"),
+            ),
+        })
+        .with_history_of(
+            "heads/main",
+            stikk_prikk::History {
+                reff: "heads/main".to_string(),
+                blocks: vec![
+                    block("6d17f5f225b7", 3, "Normal", 1),
+                    block(BASELINE, 1, "Root", 0),
+                ],
+            },
+        )
+        .with_history_of(
+            "heads/feature",
+            stikk_prikk::History {
+                reff: "heads/feature".to_string(),
+                blocks: vec![
+                    block("d967f47871e7", 2, "Normal", 1),
+                    block(BASELINE, 1, "Root", 0),
+                ],
+            },
+        )
+        .with_merge_plan(lines, stikk_prikk::MergeOutcome::Confluent);
+    let preview = stikk_core::merge_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        "heads/main",
+        "heads/feature",
+        "88f34150e099",
+        50,
+    )
+    .expect("a preview");
+    let stikk_core::MergePreview::Ready { token } = preview else {
+        panic!("expected a ready preview, got {preview:?}")
+    };
+    token.summary().clone()
 }
 
 /// prikk 0.53.0's own confluent plan, from `measure047-0.53.txt`.
@@ -3610,14 +3664,17 @@ fn capture_the_merge_confirmation_at_80x24() {
     let text = draw_at(&overlay, 80, 24);
     println!("{text}");
     assert!(text.contains("Merge"), "{text}");
-    // Both names and both ids, restated as ids.
-    for id in [
-        "heads/feature",
-        "heads/main",
-        "88f34150e099",
-        "6d17f5f225b7",
+    // **Every row with stikk's own word for it** (review v1 C1): a reader at Tier Three can see
+    // which branch gains the merge block without reading prikk's plan for it.
+    let flat = flattened(&text);
+    for row in [
+        "from heads/feature",
+        "into heads/main",
+        "baseline 88f34150e099",
+        // feature's tip: what this merge adopts.
+        "from's tip d967f47871e7",
     ] {
-        assert!(text.contains(id), "missing {id}: {text}");
+        assert!(flat.contains(row), "missing {row:?}: {text}");
     }
     assert!(text.contains("MAINTAINER"), "{text}");
     // **At 24 rows prikk's nine-line plan does not fit**, so the card keeps whole lines, in
@@ -3675,9 +3732,12 @@ fn capture_an_overflowing_plan_on_the_card_at_80x24() {
 /// **Capture: the result at 80×24** — prikk's lines, and stikk's one line about the worktree.
 #[test]
 fn capture_the_merge_result_at_80x24() {
+    // **The same direction the confirmation's fixture uses** (review v1 C1): `heads/feature`
+    // merged into `heads/main`. Two captures of one flow disagreeing about which way it went is
+    // the confusion the labels were added to prevent.
     let overlay = Overlay::MergeResult {
         printed: vec![
-            "merged heads/main into heads/feature".to_string(),
+            "merged heads/feature into heads/main".to_string(),
             "baseline block: 88f34150e09929a618d75865609d7ba5d88a6f24937dbbb6f53d2214a1312d52"
                 .to_string(),
             "adopted patches: 1".to_string(),
@@ -3689,7 +3749,7 @@ fn capture_the_merge_result_at_80x24() {
     println!("{text}");
     assert!(text.contains("Merged"), "{text}");
     assert!(
-        text.contains("merged heads/main into heads/feature"),
+        text.contains("merged heads/feature into heads/main"),
         "{text}"
     );
     // **stikk's own line, because prikk does not say it**: the worktree is unchanged.

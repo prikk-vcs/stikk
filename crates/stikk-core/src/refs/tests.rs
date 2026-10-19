@@ -7,6 +7,13 @@ use stikk_prikk::{NullBackend, Orientation};
 
 use super::*;
 
+/// The ids a card restates, without their labels: **these three writes label nothing**, and a
+/// test that compared whole `TargetId`s here would assert that absence in every case rather than
+/// the ids it is about. RFC 047's own card is where labels are checked.
+fn ids(targets: &[crate::confirm::TargetId]) -> Vec<&str> {
+    targets.iter().map(|t| t.id.as_str()).collect()
+}
+
 fn orientation(current: CurrentBranch) -> Orientation {
     Orientation {
         interrupted_materialization: None,
@@ -76,7 +83,7 @@ fn creating_a_branch_restates_the_name_the_source_and_what_does_not_change() {
         create_branch_preview(&ready(), repo(), "heads/feature", "heads/main").expect("reads"),
     );
     assert_eq!(s.operation, "Create a branch");
-    assert_eq!(s.target_ids, vec!["heads/feature", "heads/main"]);
+    assert_eq!(ids(&s.target_ids), vec!["heads/feature", "heads/main"]);
     assert!(
         s.consequence
             .contains("The new branch will point at the source's tip"),
@@ -211,7 +218,7 @@ fn a_name_stikk_would_not_have_chosen_is_still_sent() {
         let s =
             summary(create_branch_preview(&ready(), repo(), name, "heads/main").expect("reads"));
         assert_eq!(
-            s.target_ids.first().map(String::as_str),
+            s.target_ids.first().map(|t| t.id.as_str()),
             Some(name),
             "the name reaches prikk unaltered"
         );
@@ -336,7 +343,7 @@ fn no_name_reaches_the_consequence() {
                 "{name:?} is in the consequence: {s:?}"
             );
             assert!(
-                s.target_ids.iter().any(|id| id == name),
+                s.target_ids.iter().any(|t| t.id == *name),
                 "{name:?} must still be restated, in the targets: {s:?}"
             );
         }
@@ -372,19 +379,15 @@ fn the_source_and_target_name_the_block_they_are_on() {
         create_branch_preview(&backend, repo(), "heads/feature", "heads/main").expect("reads"),
     );
     assert_eq!(
-        branch.target_ids,
-        vec![
-            "heads/feature".to_string(),
-            "heads/main".to_string(),
-            short_tip.clone()
-        ],
+        ids(&branch.target_ids),
+        vec!["heads/feature", "heads/main", short_tip.as_str()],
         "the source's block follows the source"
     );
 
     let closed = summary(close_branch_preview(&backend, repo(), "heads/old").expect("reads"));
     assert_eq!(
-        closed.target_ids,
-        vec!["heads/old".to_string(), short_tip.clone()]
+        ids(&closed.target_ids),
+        vec!["heads/old", short_tip.as_str()]
     );
 
     // **A tag of a block id needs no read, and shows the id once.**
@@ -401,8 +404,8 @@ fn the_source_and_target_name_the_block_they_are_on() {
         .expect("reads"),
     );
     assert_eq!(
-        at_block.target_ids,
-        vec!["tags/v1".to_string(), short_tip.clone()],
+        ids(&at_block.target_ids),
+        vec!["tags/v1", short_tip.as_str()],
         "the block is the target; a second row would only repeat it"
     );
 
@@ -410,10 +413,7 @@ fn the_source_and_target_name_the_block_they_are_on() {
     let silent = summary(
         create_branch_preview(&ready(), repo(), "heads/feature", "heads/main").expect("reads"),
     );
-    assert_eq!(
-        silent.target_ids,
-        vec!["heads/feature".to_string(), "heads/main".to_string()]
-    );
+    assert_eq!(ids(&silent.target_ids), vec!["heads/feature", "heads/main"]);
 }
 
 /// **prikk refuses a blank tag message** (review v1 C4), so a blank one is a tag with no message

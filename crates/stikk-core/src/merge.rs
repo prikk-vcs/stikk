@@ -340,8 +340,16 @@ pub fn merge_preview(
             .history(repo, &from, 1)
             .ok()
             .and_then(|history| history.blocks.first().map(|block| short(&block.block_id)));
-        let mut target_ids = vec![from.clone(), into.clone(), plan.baseline_short()];
-        target_ids.extend(adopted);
+        // **Labelled, because direction is the whole operation** (review v1 C1). Four bare ids
+        // leave a reader at Tier Three unable to tell which branch gains the merge block, and
+        // the measured cost of the wrong `into` is a worktree left behind its branch (F3). The
+        // words are stikk's; the values stay bare ids for the renderer to escape.
+        let mut target_ids = vec![
+            confirm::TargetId::named("from", from.clone()),
+            confirm::TargetId::named("into", into.clone()),
+            confirm::TargetId::named("baseline", plan.baseline_short()),
+        ];
+        target_ids.extend(adopted.map(|tip| confirm::TargetId::named("from's tip", tip)));
         Ok((
             ReadView::Ready,
             ConfirmationSummary {
@@ -375,9 +383,15 @@ pub fn merge_preview(
 
 /// The sentence under the card, in stikk's own words -- **with no name in it** (RFC 044 C1):
 /// `consequence` is drawn unescaped, and every name is already restated in `target_ids`.
-const CONSEQUENCE: &str = "A merge block is sealed on the branch merged into, adopting the other side's patches. \
-     Nothing is written to the worktree: switch to that branch afterwards to have its files. \
-     prikk merges only what it has proven confluent, and a refusal writes nothing.";
+///
+/// **It opens with the verdict** (review v1 C2). The card is armed *because* stikk read
+/// `evidence outcome: Confluent` under decision 2's pinned rule, and at 80 columns that line can
+/// be among the ones prikk's block below gives up for height -- so the one fact the reader is
+/// confirming must not depend on that block fitting. It names nothing, so it is safe here.
+const CONSEQUENCE: &str = "prikk's plan reports the two sides confluent from this baseline. A merge block is sealed on \
+     the branch merged into, adopting the other side's patches. Nothing is written to the \
+     worktree: switch to that branch afterwards to have its files. prikk merges only what it has \
+     proven confluent, and a refusal writes nothing.";
 
 /// The three names a merge is run with, kept together.
 ///

@@ -1,6 +1,6 @@
 # Handoff A — RFC 048: the installers install stikk only, and a page for newcomers (v1)
 
-**Companion to:** [RFC 048](../../accepted/048-delivery-for-new-users.md), **accepted 2026-10-20**. **Read the RFC
+**Companion to:** [RFC 048](../../done/048-delivery-for-new-users.md), **accepted 2026-10-20**. **Read the RFC
 first**, F6 and decisions 2–4. **Covers:** decisions 2, 3 and 4. 0.15.0's increment 4.
 **Not a release.** The tap (decision 5) is Handoff C (renumbered 2026-10-20), later; signing (decision 7) is not code.
 

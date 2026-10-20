@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 048 | [Delivery for users new to all of this](./accepted/048-delivery-for-new-users.md) | `NFR-R03`, RFC 039: **each program installs itself** — stikk's installers check for prikk and print prikk's own install command, never run it; an install page that starts from opening a terminal; a Homebrew tap when the owner is ready; no paid signing, SignPath decided at 0.16.0's scoping. **Accepted 2026-10-20**; 0.15.0 increment 4 | [A: installers and install page](./handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) · [B: aarch64 static build](./handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md) |
+_None: RFC 048 delivered and closed 2026-10-20._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 048 | [Delivery for users new to all of this](./done/048-delivery-for-new-users.md) | 0.15.0 candidate (on `main`) | the Homebrew tap (Handoff C, the owner's), SignPath signing (O5) and prikk's Windows installer line (prikk 0.54.0): decision points for 0.16.0 | [A: installers and install page](./handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) · [B: aarch64 static build](./handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md) |
 | 047 | [Merge](./done/047-merge.md) | 0.15.0 candidate (on `main`) | per-witness glosses (`FR-080`); a baseline past an earlier merge, and merging into the current branch (both wait on prikk; held for a letter) | [A: the plan](./handoffs/047-merge/a-merge-plan-handoff-v1.md) · [B: the merge](./handoffs/047-merge/b-merge-execution-handoff-v1.md) |
 | 049 | [The prikk 0.53 re-baseline](./done/049-prikk-0-53-rebaseline.md) | 0.15.0 candidate (on `main`) | none | [A: the re-baseline](./handoffs/049-prikk-0-53-rebaseline/a-rebaseline-handoff-v1.md) |
 | 046 | [Session persistence](./done/046-session-persistence.md) | **0.14.0** | deep restore and id anchors (`DM-04`), recents (`DM-03`), progressive disclosure (`TU-12`) | [A: session persistence](./handoffs/046-session-persistence/a-session-persistence-handoff-v1.md) |

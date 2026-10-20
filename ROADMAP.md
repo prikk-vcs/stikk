@@ -406,7 +406,7 @@ a fabricated worktree entry was fixed.
    plan for two branches, with the baseline block stikk finds shown for checking.
 3. **Merge, execution — landed on `main`** (`FR-082`, RFC 047, `02771df`): previewed with the plan it seals, at seal's
    tier, the card saying which branch is merged into which.
-4. **Delivery for unskilled users** ([RFC 048](rfcs/accepted/048-delivery-for-new-users.md), accepted 2026-10-20,
+4. **Delivery for unskilled users — landed on `main`** ([RFC 048](rfcs/done/048-delivery-for-new-users.md), `bbdca15`,
    [Handoff A](rfcs/handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) **landed on
    `main`**, `9f91ee9`): **each program installs itself** — stikk's installers install stikk, check for prikk and print
    prikk's own install command; the install page starts from opening a terminal. **Then

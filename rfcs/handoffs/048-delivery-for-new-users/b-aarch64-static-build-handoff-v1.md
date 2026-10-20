@@ -1,6 +1,6 @@
 # Handoff B — RFC 048: a static build for 64-bit ARM Linux (v1)
 
-**Companion to:** [RFC 048](../../accepted/048-delivery-for-new-users.md), F4 as **corrected 2026-10-20** and decision 9.
+**Companion to:** [RFC 048](../../done/048-delivery-for-new-users.md), F4 as **corrected 2026-10-20** and decision 9.
 **Follows:** Handoff A, pushed at `9f91ee9`, whose `ubuntu-22.04-arm` job found the defect
 (`.git-exclude/reports/048-delivery/measure048-f4-aarch64.txt`). 0.15.0's increment 4.
 **Not a release.** The tap is now Handoff C, later.

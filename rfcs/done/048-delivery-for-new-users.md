@@ -1,6 +1,6 @@
 # RFC 048 — Delivery for users new to all of this
 
-**Status.** **Accepted by the project owner 2026-10-20**, O5 included; [Handoff A](../handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) delivered on `main` (`9ea8487`..`9f91ee9`); [Handoff B](../handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md) issued for F4, corrected. **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
+**Status.** **Done 2026-10-20**: Handoffs A (`9ea8487`..`9f91ee9`) and B (`cba431f`, `bbdca15`) delivered on `main`; 0.15.0 candidate. **Deferred, as roadmap decision points for 0.16.0's scoping:** the Homebrew tap (Handoff C, on the owner's word), SignPath signing (O5), and prikk's Windows installer line at the prikk 0.54.0 re-baseline. **Accepted by the project owner 2026-10-20**, O5 included; [Handoff A](../handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) delivered on `main` (`9ea8487`..`9f91ee9`); [Handoff B](../handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md) issued for F4, corrected. **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
 authorized), on the project owner's direction of 2026-10-18: *"we will have to consider and design carefully about
 delivery this time and in the future. It should be easy enough for unmatured users as possible and reasonable."*
 **Revised the same day on the owner's principle** that *"the responsibility for installing core software should not be
@@ -250,3 +250,25 @@ after installing. The install page starts from opening a terminal. `### Removed`
 - **No paid signing, no notarization, no new account** unless the owner chooses one (O5 is free, and still the
   owner's).
 - **No GUI installer** (`.dmg`, `.msi`): there is nothing to double-click until there is a GUI.
+
+## Delivered
+
+**Two handoffs, seven commits, green on `main` at `bbdca15`**: CI, Docs, and `installers.yml` on Linux, macOS,
+Windows and `ubuntu-22.04-arm`.
+
+- **A, the installers and the page** (`9ea8487`, `152f761`, `7665fbd`, `8e65a8d`, `9f91ee9`). Both installers install
+  stikk only and **report prikk in six rows**: missing, too old, unreadable, inside the tested range, newer, another
+  major. Each row says what stikk will really do with that prikk (measured: read-only below the floor and for another
+  major; refusal for an unreadable version), and prints **prikk's own** command where prikk is the fix. Nothing of
+  prikk's is downloaded, verified, pinned or run — a `curl` wrapper leg proves no prikk asset is requested. The floor and
+  ceiling are derived; the four prikk flags are gone and fail loudly. Windows puts stikk on the current session's
+  `PATH`. The install page starts from opening a terminal, takes prikk then stikk, and carries the browser-download
+  mitigations and a Smart App Control paragraph that never advises turning it off. **Caught in review**: prikk's guide
+  URL redirecting to plain `http`, a version row promising stikk "still runs" when it refuses, a prikk 1.x called "too
+  old", a Windows assertion left on the old URL, and a promise of a stikk that may not exist.
+- **B, the static ARM build** (`cba431f`, `bbdca15`). **F4 was wrong for aarch64** and A's ARM job found it: the
+  glibc build does not start below glibc 2.39. `release.yml` adds `aarch64-unknown-linux-musl` (the glibc archive stays),
+  the installer takes it, and the ARM job builds, installs and runs it on glibc 2.35 at every change, requiring no
+  interpreter, no shared library, no glibc version requirement and **an empty stderr**. Measured green on real hardware.
+- **Not code**: the channel survey (decision 6), no paid signing (decision 7), and prikk's agreement that each program
+  installs itself (letters 022, 025, 026), with prikk's Windows installer and binstall fix due in prikk 0.54.0.

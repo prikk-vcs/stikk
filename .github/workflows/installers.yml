@@ -230,7 +230,7 @@ jobs:
           grep -qF 'this stikk was built for prikk 0.x and does not know prikk 1.x' \
             "$RUNNER_TEMP/report-1.0.0.log"
           grep -qF 'https://github.com/prikk-vcs/stikk/releases/latest' "$RUNNER_TEMP/report-1.0.0.log"
-          grep -qF '1. update stikk' "$RUNNER_TEMP/report-1.0.0.log"
+          grep -qF '1. check for a newer stikk' "$RUNNER_TEMP/report-1.0.0.log"
           # **Never prikk's installer here**: it would leave the reader on the prikk they have.
           ! grep -qF 'releases/latest/download/install.sh' "$RUNNER_TEMP/report-1.0.0.log" \
             || { echo "::error::it told a prikk-1.x user to reinstall prikk"; exit 1; }
@@ -391,7 +391,7 @@ jobs:
           }
           if ($log -notmatch 'prikk installs itself\.') { Write-Error 'it did not say prikk installs itself'; exit 1 }
           # prikk publishes no Windows installer yet, so the guide is what is printed.
-          if ($log -notmatch [regex]::Escape('https://prikk-vcs.github.io/prikk/docs/guide/install.html')) {
+          if ($log -notmatch [regex]::Escape('https://prikk.org/docs/guide/install.html')) {
             Write-Error "prikk's guide was not printed"; exit 1
           }
           if ($log -notmatch '1\. install prikk \(see above\)') { Write-Error 'the Next list did not lead with prikk'; exit 1 }
@@ -440,8 +440,13 @@ jobs:
           if ($major -notmatch [regex]::Escape('https://github.com/prikk-vcs/stikk/releases/latest')) {
             Write-Error "it did not point at stikk's releases"; exit 1
           }
-          if ($major -notmatch '1\. update stikk') { Write-Error 'the Next step should say update stikk'; exit 1 }
+          if ($major -notmatch '1\. check for a newer stikk') { Write-Error 'the Next step should send them to check'; exit 1 }
           if ($major -match 'too old') { Write-Error 'a newer major was called too old'; exit 1 }
+          # **Never prikk's own install route here**, the same negative the Unix leg asserts: it
+          # would leave the reader on the prikk they already have.
+          if ($major -match [regex]::Escape('https://prikk.org/docs/guide/install.html')) {
+            Write-Error 'it sent a prikk-1.x user to prikk'; exit 1
+          }
 
           # **A version stikk cannot read**: measured, stikk refuses to start (review v1 C2).
           $unreadable = Invoke-WithFakePrikk 'version unknown'

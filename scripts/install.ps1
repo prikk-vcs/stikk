@@ -218,9 +218,12 @@ if ($prikkCmd) {
       # only (`Version::is_supported`), so the fix is a newer *stikk*: pointing at prikk would
       # leave the reader on the prikk they already have. Measured: stikk opens such a repository
       # **read-only** rather than refusing.
-      $prikkNextStep = 'update stikk (see above)'
+      # **"may", not "will"** (review v2 C5): on the day prikk $major.0 is published, no stikk
+      # supporting it has shipped yet, and promising one would send the reader to reinstall the
+      # stikk they already have.
+      $prikkNextStep = 'check for a newer stikk (see above)'
       Say "this stikk was built for prikk 0.x and does not know prikk $major.x. It will open your"
-      Say 'repository read-only and change nothing. A newer stikk will know it:'
+      Say 'repository read-only and change nothing. A newer stikk may support it -- check:'
       Say "  $StikkReleases"
     } elseif ($minor -lt $floorMinor) {
       # **Below the floor is the one 0.x row that is not "yours still runs".** Measured: stikk

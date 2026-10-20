@@ -6,6 +6,10 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Added
 
+- **A statically-linked build for 64-bit ARM Linux**, `aarch64-unknown-linux-musl`, published
+  beside the existing glibc one. The one-line installer takes it on ARM, as it already did on
+  Intel/AMD. The glibc archive is still published for anyone who prefers it.
+
 - **The Merge plan view: prikk's own plan for bringing one branch into another.** In the ref
   picker, mark a branch with `m`, select another, and press `M`. stikk finds the baseline block
   itself — the latest block both branches hold — and shows prikk's plan for the pair, word for
@@ -64,6 +68,11 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   range it has checked.
 
 ### Fixed
+
+- **stikk now starts on 64-bit ARM Linux older than glibc 2.39** — Debian 12, Raspberry Pi OS
+  bookworm, Ubuntu 22.04. The build the installer put there until now did not start at all: it
+  required `GLIBC_2.39` and said so instead of running. The installer installs the static build
+  there now, and CI runs it on glibc 2.35 at every change to the scripts.
 
 - **Verify's report scrolls.** Its panel has offered `↑`/`↓` since 0.11.0 whenever the report was
   taller than the terminal, and the keys did nothing: nothing moved the offset the renderer was

@@ -132,7 +132,7 @@ jobs:
           # moved to the musl build.
           case "$RUNNER_OS/$(uname -m)" in
             Linux/x86_64)          target=x86_64-unknown-linux-musl ;;
-            Linux/aarch64|Linux/arm64) target=aarch64-unknown-linux-gnu ;;
+            Linux/aarch64|Linux/arm64) target=aarch64-unknown-linux-musl ;;
             macOS/arm64)           target=aarch64-apple-darwin ;;
             macOS/x86_64)          target=x86_64-apple-darwin ;;
             *) echo "::error::unhandled runner $RUNNER_OS/$(uname -m)"; exit 1 ;;
@@ -506,13 +506,17 @@ jobs:
           if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
           Write-Host "stikk resolves at $($cmd.Source) in the installing session"
 
-  # RFC 048 F4: both `-gnu` builds reference GLIBC_2.39 through **weak** symbols only, and the
-  # hard floor is 2.34 -- so aarch64 (the one target that has no musl build) should run on
-  # glibc 2.35. Measured under Debian 12's loader it printed a one-line warning and ran; whether
-  # that warning prints on an ordinary system was never measured on real hardware.
+  # **RFC 048 F4, corrected, and now a requirement rather than a question.**
   #
-  # **This leg does not fail on the warning.** It records stderr so the question is settled with
-  # evidence instead of inference; what it asserts is that stikk installs and runs.
+  # The `aarch64-unknown-linux-gnu` archive requires `GLIBC_2.39` and its version-requirement
+  # entry is **not** flagged optional, so it does not start on Debian 12, Raspberry Pi OS
+  # bookworm or Ubuntu 22.04. Handoff A's job measured that on this very runner, and this job
+  # now proves the fix: the installer takes a **static musl** build, and that build runs here.
+  #
+  # **It builds what it installs.** The published 0.14.0 has no aarch64 musl archive, so until
+  # 0.15.0 is out there is nothing to download -- and building it at the commit under test is
+  # better anyway: the installer and the build are then tested together on glibc 2.35 at every
+  # commit, not only at release. The archive is packaged exactly as `release.yml` packages it.
   linux-aarch64:
     name: install.sh (ubuntu-22.04-arm, glibc 2.35)
     needs: derive
@@ -521,8 +525,23 @@ jobs:
       STIKK_VER: ${{ needs.derive.outputs.stikk }}
       PRIKK_VER: ${{ needs.derive.outputs.prikk }}
       PRIKK_FLOOR: ${{ needs.derive.outputs.floor }}
+      TARGET: aarch64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: aarch64-unknown-linux-musl
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: What glibc is this
+        run: |
+          set -euo pipefail
+          uname -m
+          ldd --version | head -1
 
       - name: Fill the placeholders the way release.yml does
         run: |
@@ -536,26 +555,50 @@ jobs:
           ! grep -q '@STIKK_VERSION@\|@PRIKK_FLOOR@\|@PRIKK_VERSION@' filled/install.sh \
             || { echo "::error::placeholder survived"; exit 1; }
 
-      - name: What glibc is this
+      - name: Build and package the archive exactly as release.yml does
         run: |
           set -euo pipefail
-          uname -m
-          ldd --version | head -1
+          cargo build --release --locked -p stikk --target "$TARGET"
+          # **The same four lines `release.yml`'s "Package (unix)" step runs**, with the
+          # published version's name so the installer asks for this file and not another.
+          dist="stikk-${STIKK_VER}-${TARGET}"
+          mkdir "$dist"
+          cp "target/${TARGET}/release/stikk" "$dist/"
+          cp README.md LICENSE CHANGELOG.md "$dist/"
+          tar -czf "${dist}.tar.gz" "$dist"
+          sha256sum "${dist}.tar.gz" > "${dist}.tar.gz.sha256"
+          mirror="$RUNNER_TEMP/mirror"; mkdir -p "$mirror"
+          mv "${dist}.tar.gz" "${dist}.tar.gz.sha256" "$mirror/"
+          ls -l "$mirror"
 
-      - name: Install the aarch64 build and run it, recording stderr
+      - name: It is static — no interpreter, no shared library, no glibc requirement
+        run: |
+          set -euo pipefail
+          exe="target/${TARGET}/release/stikk"
+          file "$exe"
+          # **The three things that made the gnu build fail here**, each asserted rather than
+          # described: a loader to find, a library to resolve, and a glibc version to satisfy.
+          ! readelf -l "$exe" | grep -q INTERP   || { echo "::error::it needs a dynamic loader"; exit 1; }
+          ! readelf -d "$exe" | grep -q NEEDED   || { echo "::error::it needs a shared library"; exit 1; }
+          ! readelf -V "$exe" | grep -q 'Version needs' \
+            || { echo "::error::it carries a glibc version requirement"; exit 1; }
+
+      - name: Install it and run it on glibc 2.35
         run: |
           set -euo pipefail
           export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
-          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" | tee "$RUNNER_TEMP/install.log"
-          grep -q 'aarch64-unknown-linux-gnu' "$RUNNER_TEMP/install.log"
-          # stdout and stderr kept apart: the question is whether the **loader** says anything.
-          "$RUNNER_TEMP/bin/stikk" --version > "$RUNNER_TEMP/out.txt" 2> "$RUNNER_TEMP/err.txt" || true
+          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" \
+            --base-url "file://$RUNNER_TEMP/mirror" | tee "$RUNNER_TEMP/install.log"
+          # **The installer must choose musl here.** If it ever goes back to the gnu build, the
+          # mirror will not hold what it asks for and this fails on the fetch -- so the target is
+          # asserted by name too, and the failure says which.
+          grep -q "$TARGET" "$RUNNER_TEMP/install.log" \
+            || { echo "::error::install.sh did not take $TARGET"; exit 1; }
+          # **stderr empty is the assertion now**, not a notice: Handoff A asked whether the
+          # loader says anything here, and the answer is that it must not.
+          "$RUNNER_TEMP/bin/stikk" --version > "$RUNNER_TEMP/out.txt" 2> "$RUNNER_TEMP/err.txt"
           echo "== stdout"; cat "$RUNNER_TEMP/out.txt"
           echo "== stderr"; cat "$RUNNER_TEMP/err.txt"
-          if [ -s "$RUNNER_TEMP/err.txt" ]; then
-            echo "::notice::stikk printed to stderr on glibc $(ldd --version | head -1 | awk '{print $NF}'): $(cat "$RUNNER_TEMP/err.txt")"
-          else
-            echo "::notice::stikk printed nothing to stderr on glibc $(ldd --version | head -1 | awk '{print $NF}')"
-          fi
-          # **The assertion is that it ran**, whatever the loader said alongside.
+          test ! -s "$RUNNER_TEMP/err.txt" \
+            || { echo "::error::stikk printed to stderr on glibc $(ldd --version | head -1 | awk '{print $NF}')"; exit 1; }
           grep -qx "stikk ${STIKK_VER}" "$RUNNER_TEMP/out.txt"

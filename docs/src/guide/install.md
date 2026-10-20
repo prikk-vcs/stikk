@@ -145,13 +145,20 @@ use to tell the file arrived exactly as published.
 |---|---|
 | Linux, Intel/AMD | `stikk-<version>-x86_64-unknown-linux-gnu.tar.gz` |
 | Linux, Intel/AMD (older systems, or Alpine) | `stikk-<version>-x86_64-unknown-linux-musl.tar.gz` |
-| Linux, ARM | `stikk-<version>-aarch64-unknown-linux-gnu.tar.gz` |
+| Linux, ARM | `stikk-<version>-aarch64-unknown-linux-musl.tar.gz` |
+| Linux, ARM (glibc 2.39 or newer) | `stikk-<version>-aarch64-unknown-linux-gnu.tar.gz` |
 | Mac, Apple Silicon (M1 and later) | `stikk-<version>-aarch64-apple-darwin.tar.gz` |
 | Mac, Intel | `stikk-<version>-x86_64-apple-darwin.tar.gz` |
 | Windows | `stikk-<version>-x86_64-pc-windows-msvc.zip` |
 
 Replace `<version>` with the version on that release page, and `<file>` below with the name from
 the table.
+
+The `musl` files are **statically linked**: they carry everything they need and run on any system
+of that architecture. The `gnu` ones are smaller but need a system at least as new as the one they
+were built on — on ARM that means **glibc 2.39**, which Debian 12, Raspberry Pi OS bookworm and
+Ubuntu 22.04 do not have. The one-line installer takes the `musl` file on both architectures for
+that reason; pick a `gnu` file only if you know your system is new enough.
 
 **Linux and macOS.** Download both files, check the one against the other, unpack, and install:
 

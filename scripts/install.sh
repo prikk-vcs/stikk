@@ -81,16 +81,23 @@ esac
 os="$(uname -s)"
 arch="$(uname -m)"
 case "$os/$arch" in
-  # **The static musl build on x86_64 Linux, not the glibc one.** Measured: the musl archive is
-  # static-pie with no interpreter and runs in an empty chroot with no libc at all, while the glibc
-  # build there fails with "No such file or directory" -- which names the missing *loader*, not the
-  # file, and is the one error the person this installer is for cannot diagnose. The glibc build
-  # also refuses to start on Alpine, or against a glibc older than the one it was built on. Both
-  # builds produce identical output on an ordinary glibc system (checked, including a real
-  # orientation). The manual table in the README still offers both.
+  # **The static musl build on Linux, on both architectures, never the glibc one.**
+  #
+  # A glibc build carries the glibc of the machine it was built on, and will not start on an
+  # older one. On **x86_64** that was measured first: the musl archive is static-pie with no
+  # interpreter and runs in an empty chroot with no libc at all, while the glibc build fails with
+  # "No such file or directory" -- which names the missing *loader*, not the file, and is the one
+  # error the person this installer is for cannot diagnose. It also refuses to start on Alpine.
+  #
+  # On **aarch64** it is worse, and was measured on real hardware (RFC 048 F4, corrected): the
+  # glibc build's `GLIBC_2.39` requirement is **enforced** there -- unlike x86_64, where the same
+  # requirement is flagged optional and skipped -- so it does not start at all on Debian 12,
+  # Raspberry Pi OS bookworm or Ubuntu 22.04. Nothing printed, no diagnosis, no stikk.
+  #
+  # Both musl builds produce identical output to their glibc twins on a system new enough to run
+  # either. The manual table on the install page still offers both.
   Linux/x86_64)          target="x86_64-unknown-linux-musl" ;;
-  # aarch64 has no musl build published, so it stays glibc.
-  Linux/aarch64|Linux/arm64) target="aarch64-unknown-linux-gnu" ;;
+  Linux/aarch64|Linux/arm64) target="aarch64-unknown-linux-musl" ;;
   Darwin/arm64)          target="aarch64-apple-darwin" ;;
   Darwin/x86_64)         target="x86_64-apple-darwin" ;;
   *)

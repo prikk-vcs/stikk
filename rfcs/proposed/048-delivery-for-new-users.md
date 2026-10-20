@@ -3,7 +3,8 @@
 **Status.** **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
 authorized), on the project owner's direction of 2026-10-18: *"we will have to consider and design carefully about
 delivery this time and in the future. It should be easy enough for unmatured users as possible and reasonable."*
-**Four questions only the owner can answer** (§ *For the owner*); the rest is ready to hand off on acceptance.
+**The owner answered the four questions on 2026-10-20** (§ *For the owner*): decision 2 waits on prikk's reply to
+letter 022; the tap waits on the owner; no paid signing. **One question remains (O5).**
 Measured on Linux against the published stikk 0.14.0 and prikk 0.53.0 assets:
 `.git-exclude/reports/048-delivery/measure048.txt`. Channel facts are sourced, **not measured on macOS or Windows**:
 `.git-exclude/reports/048-delivery/channels-research.md`. prikk's side read in the clone (`docs/src/guide/install.md`,
@@ -48,15 +49,27 @@ Two smaller things a novice meets:
 
 ### F2 — the security prompts, and which paths meet them
 
-| Path | macOS Gatekeeper | Windows SmartScreen |
+| Path | macOS Gatekeeper | Windows: Mark-of-the-Web, SmartScreen |
 |---|---|---|
 | The one-line installers | **none**: curl does not set the quarantine attribute | **none**: PowerShell's web cmdlets do not write Mark-of-the-Web, and stikk is started from a console |
 | A Homebrew formula | none (fetched by curl; inferred, not stated by Homebrew) | — |
-| An archive downloaded **in a browser** | quarantined. Since Sequoia, no Control-click bypass: System Settings → Privacy & Security → *Open Anyway*, within about an hour, then a password | marked; double-clicking `stikk.exe` shows SmartScreen. Run from a console it is not checked |
+| An archive downloaded **in a browser** | quarantined. Since Sequoia, no Control-click bypass: System Settings → Privacy & Security → *Open Anyway*, within about an hour, then a password | marked, and **Explorer's *Extract all* carries the mark onto `stikk.exe`**; double-clicking shows SmartScreen. Run from a console it is not checked. **Unblocking the zip before extracting** (Properties → *Unblock*, or `Unblock-File`) removes the mark |
 
-**Sourced, not measured** (channels-research §macOS, §Windows). So **signing helps exactly one path — a browser
-download — and that is the path the guide can steer a novice away from.** The manual section today mentions the
-quarantine only in a macOS aside and SmartScreen not at all.
+**One Windows gate no path avoids: Smart App Control** (the owner raised Mark-of-the-Web, 2026-10-20; looking into
+it found this). On Windows 11 where it is **enforcing**, *"if the app is unsigned or its signature is invalid, it is
+treated as untrusted and blocked"* when Microsoft's cloud has no confident verdict, and *"there is currently no way to
+bypass Smart App Control protection for individual apps"* — only turning it off
+(https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003). It is
+**not tied to Mark-of-the-Web**: an unsigned, unknown console program started from a command prompt is refused with a
+text error (https://textslashplain.com/2026/04/28/smart-app-control/). It starts in evaluation mode and **turns itself
+off for developer-type use** — so the user it does stop is exactly the newcomer this RFC is for. **It applies to
+`prikk.exe` as much as to `stikk.exe`**: both are unsigned.
+
+**Sourced, not measured** (channels-research §macOS, §Windows; no Windows 11 machine with it enforcing is available to
+us, and GitHub's Windows Server runners do not have it). So: **on macOS, signing helps only a browser download, which
+the guide can steer away from. On Windows, Mark-of-the-Web is the same, but Smart App Control is answered only by
+signing**, or by a reputation stikk cannot earn on a weekly cadence. The manual section today mentions the quarantine
+only in a macOS aside and Windows not at all.
 
 ### F3 — the channels, by what each asks of a novice and of us
 
@@ -92,8 +105,8 @@ whether the warning prints outside an explicitly invoked loader is not known.
 ## Decisions
 
 1. **The one-line installers stay the first path on every platform, and every other channel is in addition.** They
-   ask for no account, no tool installed first and no administrator password; neither meets Gatekeeper or SmartScreen
-   (F2); running the same line again upgrades.
+   ask for no account, no tool installed first and no administrator password; neither meets Gatekeeper or Mark-of-the-Web
+   (F2); running the same line again upgrades. (Smart App Control meets every path alike: decision 7.)
 
 2. **On Windows, stikk's installer installs prikk itself, from prikk's own release** — revising RFC 039 decision 4 for
    Windows only, where prikk has a build and no installer:
@@ -122,9 +135,15 @@ whether the warning prints outside an explicitly invoked loader is not known.
    - Paste the one line; **what you should see** when it worked (the installer's last lines), and what to type next.
    - **Updating** is running the same line again; **removing** is the uninstall line.
    - **By hand (advanced)**: the archives, as now, opened by one plain warning — *a file downloaded in a browser is
-     checked by macOS or Windows, which will warn because stikk is not signed; the one-line command avoids that* — and
-     what to do if it happened (macOS: *Open Anyway* in Privacy & Security; Windows: run it from PowerShell rather than
-     double-clicking).
+     marked by macOS or Windows, which will warn because stikk is not signed; the one-line command avoids that* — and
+     the mitigations, each one step: **macOS**, *Open Anyway* in Privacy & Security (or `xattr -d
+     com.apple.quarantine <file>`); **Windows**, **unblock the zip before extracting it** (right-click → Properties →
+     *Unblock*, or `Unblock-File <zip>`), and start `stikk` from PowerShell, not by double-clicking.
+   - **The page never tells a user to download `install.ps1` and run it as a file**: a downloaded script is marked,
+     and PowerShell's execution policy then refuses it. `irm … | iex` is not a file and is not refused.
+   - **If Windows says Smart App Control blocked stikk or prikk**: one plain paragraph saying what it is and why it
+     happens (both programs are unsigned), with Microsoft's own page. **stikk does not tell a newcomer to turn a
+     security feature off**; the choice and its consequences are on Microsoft's page.
    - `README.md`'s Install keeps only the two lines and links the page. The stale pin example (`--version 0.51.0`
      beside *"tested through 0.53.0"*) is fixed while there.
 
@@ -145,48 +164,56 @@ whether the warning prints outside an explicitly invoked loader is not known.
    - **Snap, Flatpak**: ruled out by confinement and policy, not by effort.
    - **cargo-dist**: would replace what exists and is tested.
 
-7. **No signing spend now.** Signing helps only browser downloads (F2), which decision 4 steers away from. **It becomes
-   worth paying for when stikk ships something a user double-clicks** — the GUI, an `.app`, an `.msi` — or users
-   report browser-download trouble. The costs recorded for that day: Apple Developer Program **$99/year** (individual
-   enrolment possible; notarization from Linux CI via rcodesign); Windows: **SignPath Foundation, free** for OSS with
-   per-release approval and a code-signing-policy page, or **Azure Artifact Signing ≈ $9.99/month** (individuals: US
-   and Canada only), or an OV certificate $150–300/year on a hardware token.
+7. **No paid signing** (owner, 2026-10-20: no capacity now).
+   - **macOS**: no signing until stikk ships something a user double-clicks — the GUI, an `.app`. Then the Apple
+     Developer Program, **$99/year** (individual enrolment; notarization from Linux CI via rcodesign).
+   - **Windows**: Mark-of-the-Web is mitigated by decision 4. **Smart App Control is not, and the free route is the
+     SignPath Foundation**: free for OSS; it asks for an OSI licence, a released and maintained project, builds from
+     this repository in CI, MFA, **a team member approving each signing request**, and a code-signing-policy page
+     (https://signpath.org/terms). **When to apply is O5.** Paid alternatives, recorded only: Azure Artifact Signing
+     ≈ $9.99/month (individuals: US and Canada only), an OV certificate $150–300/year on a hardware token.
+   - **Signing stikk alone does not finish the path**: `prikk.exe` meets the same gate (letter 022 tells prikk).
 
-8. **Three items for prikk are held, not sent** (`.git-exclude/upstream/prikk/hold-for-next-letter.md`): an
-   `install.ps1` (which retires decision 2), an x86_64-apple-darwin build its installer accepts (the Intel-Mac gap
-   stikk cannot close), and binstall's Windows override (M4, with the one-line fix). None blocks this RFC.
+8. **prikk is consulted before decision 2 ships** (owner, 2026-10-20): **letter 022** asks which folder prikk's own
+   Windows installer would use, or whether prikk would rather stikk did not install it yet, and passes on binstall's
+   Windows override (M4, with the one-line fix), the Intel-Mac gap stikk cannot close, and Smart App Control.
 
 ## For the owner
 
-| | Question | Recommendation |
+| | Question | Answer (owner, 2026-10-20) |
 |---|---|---|
-| **O1** | Accept decision 2: stikk's Windows installer installs prikk's own published build, verified, until prikk has an installer. | **Yes.** It removes the manual step on the platform where it costs most. |
-| **O2** | Homebrew tap: create the public, empty repository **`prikk-vcs/homebrew-tap`**, and in `prikk-vcs/stikk` a secret **`HOMEBREW_TAP_TOKEN`**: a fine-grained token with *Contents: read and write* on that one repository and nothing else. | **Yes, when convenient.** Nothing waits on it; Handoff B starts when it exists. |
-| **O3** | May that tap also carry a **prikk** formula (prikk's own release archives and checksums; on Intel Macs it could build prikk from source, which would close that gap for Homebrew users — **unmeasured**, since prikk has never built that target)? It is packaging another team's program. | **Your call** — as owner of both, it needs no letter; I would tell prikk in the next one. |
-| **O4** | Signing: confirm no spend until decision 7's condition. | **Confirm.** |
+| **O1** | Decision 2: stikk's Windows installer installs prikk's own published build, verified, until prikk has an installer. | **Almost approved; consult prikk first** — letter 022. Handoff B waits on the reply. |
+| **O2** | Homebrew tap: the repository `prikk-vcs/homebrew-tap` and a secret `HOMEBREW_TAP_TOKEN` (fine-grained, *Contents: read and write* on that one repository). | **Considered, not ready.** Handoff C waits on it; not in 0.15.0. |
+| **O3** | May that tap carry a **prikk** formula? | **Not without prikk.** Asked when the tap is ready, not before. |
+| **O4** | Signing spend. | **No capacity to pay now.** Mark-of-the-Web is an issue, with ways to mitigate it (decision 4). |
+| **O5** | **Open.** Apply to the SignPath Foundation for free Windows signing (decision 7) — now, or when a Smart App Control block is first reported? Each release then needs one approval of its signing request. | **Recommendation: after 0.15.0, together with prikk's answer**, since signing stikk alone leaves prikk blocked. |
 
 ## Changelog
 
 `### Changed`: on Windows, the installer offers to install prikk too, from prikk's own release, and stikk and prikk
-work in the same window afterwards. The install page starts from opening a terminal. (Handoff B, if O2: `### Added`,
+work in the same window afterwards. The install page starts from opening a terminal. (Handoff C, if O2: `### Added`,
 `brew install prikk-vcs/tap/stikk`.)
 
 ## Delivery
 
-- **Handoff A** (decisions 2–4), on acceptance with O1, **for 0.15.0**. `install.ps1` and `uninstall.ps1`;
+- **Handoff A** (decisions 3 and 4), **on acceptance, for 0.15.0** — it needs nothing from prikk. The install page and
+  README, written for what the installers do **at that commit** (on Windows, prikk still by hand); `install.ps1`
+  updating the session's `$env:Path`, with `installers.yml`'s Windows leg proving **`stikk --version` resolves in the
+  same session**. **A Linux leg on `ubuntu-22.04-arm`** (glibc 2.35) installs the aarch64 build and runs it, settling F4
+  on real hardware and recording whether the loader warning prints.
+- **Handoff B** (decision 2), **on prikk's reply to letter 022**, in the folder prikk names — 0.15.0 if the reply
+  arrives before the cut, otherwise 0.16.0; never a reason to hold the cut. `install.ps1` and `uninstall.ps1`;
   `installers.yml`'s Windows leg gains: prikk installed from prikk's **real** release on yes and not on no; **a bad prikk
-  checksum installs no prikk** (failing for the checksum reason); an existing prikk untouched; **`stikk --version` and
-  `prikk --version` resolve in the same session**; uninstall leaves prikk. **A Linux leg on `ubuntu-22.04-arm`**
-  (glibc 2.35) installs the aarch64 build and runs it, settling F4 on real hardware and recording whether the loader
-  warning prints. The install page and README.
-- **Handoff B** (decision 5), **once O2 exists** — 0.15.0 if it arrives before the cut, otherwise 0.16.0; never a
-  reason to hold the cut. A formula template filled by `release.yml` like the installers; `brew install` measured on
-  macOS and Linux runners, including tap trust; prikk's formula only if O3.
+  checksum installs no prikk** (failing for the checksum reason); an existing prikk untouched; `prikk --version`
+  resolves in the same session; uninstall leaves prikk. The page's Windows paragraph follows.
+- **Handoff C** (decision 5), **once O2 exists**; not in 0.15.0. A formula template filled by `release.yml` like the
+  installers; `brew install` measured on macOS and Linux runners, including tap trust; prikk's formula only after O3.
 
 ## What this RFC does not do
 
 - **No package manager besides the tap**, and the tap only on O2 (decision 6 says why, per channel).
-- **No signing, no notarization, no new account** unless the owner chooses one.
+- **No paid signing, no notarization, no new account** unless the owner chooses one (O5 is free, and still the
+  owner's).
 - **No Intel-Mac prikk**: stikk cannot build or vouch for a prikk binary prikk has never built (held for prikk).
 - **No re-hosting or modifying prikk** anywhere.
 - **No GUI installer** (`.dmg`, `.msi`): there is nothing to double-click until there is a GUI.

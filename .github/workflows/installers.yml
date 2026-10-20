@@ -23,20 +23,29 @@ jobs:
     outputs:
       stikk: ${{ steps.v.outputs.stikk }}
       prikk: ${{ steps.v.outputs.prikk }}
+      floor: ${{ steps.v.outputs.floor }}
+      below: ${{ steps.v.outputs.below }}
+      above: ${{ steps.v.outputs.above }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - name: The latest published stikk, and the prikk version.rs validates
+      - name: The latest published stikk, and the prikk range version.rs validates
         id: v
-        # Both derived, never written here: the prikk pin comes from `version.rs` the way the
-        # real-binary suite's matrix does, so raising the ceiling re-pins the installers too.
+        # All derived, never written here: the range comes from `version.rs` the way the
+        # real-binary suite's matrix does, so changing it re-words the installers too.
+        # **Neither end is a pin** since RFC 048 -- the installers install no prikk; the floor
+        # and ceiling word the version report, and `below`/`above` are the two fake versions the
+        # out-of-range legs put on PATH.
         run: |
           set -euo pipefail
           stikk="$(gh release view --repo ${{ github.repository }} --json tagName --jq .tagName)"
-          read -r _floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
-          echo "stikk=${stikk}"      >> "$GITHUB_OUTPUT"
-          echo "prikk=0.${ceiling}.0" >> "$GITHUB_OUTPUT"
-          echo "testing the installers against stikk ${stikk}, prikk pinned to 0.${ceiling}.0"
+          read -r floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
+          echo "stikk=${stikk}"              >> "$GITHUB_OUTPUT"
+          echo "prikk=0.${ceiling}.0"        >> "$GITHUB_OUTPUT"
+          echo "floor=${floor}"              >> "$GITHUB_OUTPUT"
+          echo "below=0.$((floor - 1)).0"    >> "$GITHUB_OUTPUT"
+          echo "above=0.$((ceiling + 1)).0"  >> "$GITHUB_OUTPUT"
+          echo "testing the installers against stikk ${stikk}, prikk 0.${floor} through 0.${ceiling}.0"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -51,6 +60,9 @@ jobs:
     env:
       STIKK_VER: ${{ needs.derive.outputs.stikk }}
       PRIKK_VER: ${{ needs.derive.outputs.prikk }}
+      PRIKK_FLOOR: ${{ needs.derive.outputs.floor }}
+      PRIKK_BELOW: ${{ needs.derive.outputs.below }}
+      PRIKK_ABOVE: ${{ needs.derive.outputs.above }}
     steps:
       - uses: actions/checkout@v5
 
@@ -59,16 +71,19 @@ jobs:
           set -euo pipefail
           mkdir -p filled
           for f in install.sh uninstall.sh; do
-            sed -e "s/@STIKK_VERSION@/${STIKK_VER}/g" -e "s/@PRIKK_VERSION@/${PRIKK_VER}/g" \
+            sed -e "s/@STIKK_VERSION@/${STIKK_VER}/g" \
+                -e "s/@PRIKK_FLOOR@/${PRIKK_FLOOR}/g" \
+                -e "s/@PRIKK_VERSION@/${PRIKK_VER}/g" \
               "scripts/$f" > "filled/$f"
             chmod +x "filled/$f"
           done
-          ! grep -q '@STIKK_VERSION@\|@PRIKK_VERSION@' filled/* || { echo "::error::placeholder survived"; exit 1; }
+          ! grep -q '@STIKK_VERSION@\|@PRIKK_FLOOR@\|@PRIKK_VERSION@' filled/* \
+            || { echo "::error::placeholder survived"; exit 1; }
 
       - name: The unfilled template refuses to run
         run: |
           set -euo pipefail
-          if sh scripts/install.sh --prefix "$RUNNER_TEMP/never" --no-prikk; then
+          if sh scripts/install.sh --prefix "$RUNNER_TEMP/never"; then
             echo "::error::the template installed something; it must refuse"
             exit 1
           fi
@@ -80,7 +95,7 @@ jobs:
           export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
           printf '# test shell config\n' > "$HOME/.zshrc"
           cp "$HOME/.zshrc" "$RUNNER_TEMP/zshrc.before"
-          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" --no-prikk | tee "$RUNNER_TEMP/install.log"
+          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" | tee "$RUNNER_TEMP/install.log"
           "$RUNNER_TEMP/bin/stikk" --version
           "$RUNNER_TEMP/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
           # On x86_64 Linux it must take the **static musl** build, not the glibc one: the glibc
@@ -94,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
           export HOME="$RUNNER_TEMP/home"
-          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" --no-prikk
+          sh filled/install.sh --prefix "$RUNNER_TEMP/bin"
           "$RUNNER_TEMP/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
 
       - name: The uninstaller leaves things as it found them
@@ -129,7 +144,7 @@ jobs:
           curl -fsSL -o "$mirror/$archive.sha256" "$base/$archive.sha256"
           # The real checksum, a tampered archive.
           printf 'this is not the real archive' > "$mirror/$archive"
-          if sh filled/install.sh --prefix "$RUNNER_TEMP/tampered" --no-prikk \
+          if sh filled/install.sh --prefix "$RUNNER_TEMP/tampered" \
                --base-url "file://$mirror" > "$RUNNER_TEMP/tamper.log" 2>&1; then
             echo "::error::the installer accepted a file that failed its checksum"
             exit 1
@@ -140,82 +155,98 @@ jobs:
           grep -q 'does NOT match the published checksum' "$RUNNER_TEMP/tamper.log"
           test ! -e "$RUNNER_TEMP/tampered/stikk"
 
-      - name: --with-prikk installs the pinned prikk through prikk's own installer
-        run: |
-          set -euo pipefail
-          export HOME="$RUNNER_TEMP/home2"; mkdir -p "$HOME"
-          sh filled/install.sh --prefix "$RUNNER_TEMP/both" --with-prikk
-          "$RUNNER_TEMP/both/prikk" --version | grep -qx "prikk ${PRIKK_VER}"
-          "$RUNNER_TEMP/both/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+      # ---------------------------------------------------------------- RFC 048: no prikk, ever
+      #
+      # The four rows of the version report, and the proof that the first of them costs prikk
+      # nothing: each program installs itself, so these legs are as much about what the script
+      # does *not* do as about what it prints.
 
-      # The command the README actually gives: the script arrives on a pipe while the person is at
-      # a terminal. `[ -t 0 ]` is false there, which is why the question is asked through
-      # /dev/tty -- and why this leg drives a real pty rather than a pipe (review v1 §2.1).
-      - name: curl | sh at a terminal asks about prikk, and takes both answers
+      - name: prikk missing — stikk installs, prikk's command is printed, and nothing of prikk's is fetched
         run: |
           set -euo pipefail
-          for answer in y n; do
-            home="$RUNNER_TEMP/tty-$answer"; mkdir -p "$home"
-            out="$RUNNER_TEMP/tty-$answer.log"
-            python3 - "$answer" filled/install.sh "$home/.local/bin" "$home" > "$out" <<'PYEOF'
-          import os, pty, select, subprocess, sys, fcntl, termios, time
-          answer, script, prefix, home = sys.argv[1:5]
-          master, slave = pty.openpty()
-          def setup():
-              os.setsid(); fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
-          proc = subprocess.Popen(["sh", "-s", "--", "--prefix", prefix],
-              stdin=subprocess.PIPE, stdout=slave, stderr=slave, preexec_fn=setup, close_fds=True,
-              env={**os.environ, "HOME": home, "PATH": prefix + ":/usr/bin:/bin"})
-          os.close(slave)
-          proc.stdin.write(open(script, "rb").read()); proc.stdin.close()
-          out, asked, deadline = b"", False, time.time() + 300
-          while time.time() < deadline:
-              r, _, _ = select.select([master], [], [], 0.5)
-              if r:
-                  try: chunk = os.read(master, 4096)
-                  except OSError: break
-                  if not chunk: break
-                  out += chunk
-                  if not asked and b"[Y/n]" in out:
-                      os.write(master, answer.encode() + b"\n"); asked = True
-              elif proc.poll() is not None: break
-          proc.wait(timeout=60)
-          sys.stdout.write(out.decode(errors="replace").replace("\r\n", "\n"))
-          sys.exit(0 if (asked and proc.returncode == 0) else 1)
-          PYEOF
-            cat "$out"
-            grep -q 'install prikk .* \[Y/n\]' "$out" || { echo "::error::it never asked ($answer)"; exit 1; }
-            "$home/.local/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
-            if [ "$answer" = y ]; then
-              "$home/.local/bin/prikk" --version | grep -qx "prikk ${PRIKK_VER}"
-            else
-              test ! -e "$home/.local/bin/prikk"
+          home="$RUNNER_TEMP/no-prikk"; mkdir -p "$home"
+          # **Prove the premise before testing on it.** A `prikk` left on PATH by another leg
+          # would make this pass while testing the wrong row.
+          ! command -v prikk >/dev/null 2>&1 || { echo "::error::prikk is on PATH; this leg tests the missing case"; exit 1; }
+          # **Every URL the script fetches, recorded.** The assertion below is not "no prikk was
+          # installed" -- that would pass if the script downloaded prikk's installer and the run
+          # failed. It is that prikk's assets were never asked for at all.
+          wrap="$RUNNER_TEMP/wrap"; mkdir -p "$wrap"
+          real_curl="$(command -v curl)"
+          cat > "$wrap/curl" <<WRAP
+          #!/bin/sh
+          for a in "\$@"; do case "\$a" in http*|file*) echo "\$a" >> "$RUNNER_TEMP/urls.txt" ;; esac; done
+          exec "$real_curl" "\$@"
+          WRAP
+          chmod +x "$wrap/curl"
+          : > "$RUNNER_TEMP/urls.txt"
+          HOME="$home" PATH="$wrap:$PATH" sh filled/install.sh --prefix "$home/bin" \
+            | tee "$RUNNER_TEMP/missing.log"
+          # Exit 0: stikk is installed, and a missing prikk is reported, not an error.
+          "$home/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+          grep -qF 'stikk reads prikk repositories, so you need prikk too.' "$RUNNER_TEMP/missing.log"
+          grep -qF 'prikk installs itself. Run this:' "$RUNNER_TEMP/missing.log"
+          # **prikk's command, exactly as prikk publishes it.**
+          grep -qF 'curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh' \
+            "$RUNNER_TEMP/missing.log"
+          grep -qF '1. install prikk (the command is above)' "$RUNNER_TEMP/missing.log"
+          # Nothing of prikk's was written …
+          ! find "$home" "$HOME/.local/bin" -name 'prikk*' 2>/dev/null | grep -q . \
+            || { echo "::error::something of prikk's was written"; exit 1; }
+          # … and nothing of prikk's was even requested.
+          echo "URLs fetched:"; cat "$RUNNER_TEMP/urls.txt"
+          ! grep -q 'prikk-vcs/prikk' "$RUNNER_TEMP/urls.txt" \
+            || { echo "::error::the installer asked for one of prikk's assets"; exit 1; }
+
+      - name: The version report — too old, inside the range, newer than tested
+        run: |
+          set -euo pipefail
+          fake() {
+            d="$RUNNER_TEMP/fake-$1"; mkdir -p "$d"
+            printf '#!/bin/sh\necho "prikk %s"\n' "$1" > "$d/prikk"
+            chmod +x "$d/prikk"
+            echo "$d"
+          }
+          run_with() {
+            home="$RUNNER_TEMP/h-$1"; mkdir -p "$home"
+            HOME="$home" PATH="$(fake "$1"):$PATH" sh filled/install.sh --prefix "$home/bin" \
+              | tee "$RUNNER_TEMP/report-$1.log"
+            "$home/bin/stikk" --version | grep -qx "stikk ${STIKK_VER}"
+          }
+
+          # **Too old: the one row that must not say "still runs".**
+          run_with "${PRIKK_BELOW}"
+          grep -qF "that is too old for this stikk, which needs prikk 0.${PRIKK_FLOOR} or newer." \
+            "$RUNNER_TEMP/report-${PRIKK_BELOW}.log"
+          grep -qF 'curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh' \
+            "$RUNNER_TEMP/report-${PRIKK_BELOW}.log"
+          ! grep -qi 'still runs' "$RUNNER_TEMP/report-${PRIKK_BELOW}.log" \
+            || { echo "::error::it told someone an unreadable prikk still runs"; exit 1; }
+
+          # Inside the range.
+          run_with "${PRIKK_VER}"
+          grep -qF "that is inside the range this stikk was tested against (0.${PRIKK_FLOOR} through ${PRIKK_VER})" \
+            "$RUNNER_TEMP/report-${PRIKK_VER}.log"
+
+          # **Newer than tested: calm, and it still runs.** This is the normal state for a few
+          # days after every prikk release.
+          run_with "${PRIKK_ABOVE}"
+          grep -qF "that is newer than this stikk was tested against (0.${PRIKK_FLOOR} through ${PRIKK_VER})." \
+            "$RUNNER_TEMP/report-${PRIKK_ABOVE}.log"
+          grep -qF 'It still runs' "$RUNNER_TEMP/report-${PRIKK_ABOVE}.log"
+
+      - name: The removed flags fail loudly
+        run: |
+          set -euo pipefail
+          # A stale copy-pasted command must not appear to work.
+          for flag in --with-prikk --no-prikk; do
+            if sh filled/install.sh --prefix "$RUNNER_TEMP/flagged" "$flag" > "$RUNNER_TEMP/flag.log" 2>&1; then
+              echo "::error::$flag was accepted"; exit 1
             fi
+            cat "$RUNNER_TEMP/flag.log"
+            grep -qF "unknown option: $flag" "$RUNNER_TEMP/flag.log"
+            test ! -e "$RUNNER_TEMP/flagged/stikk"
           done
-
-      # `setsid` is Linux-only -- macOS has no such command (its first run failed here). A new
-      # session is started from Python instead, which is portable and leaves the child with no
-      # controlling terminal on either platform.
-      - name: With no controlling terminal it does not block
-        run: |
-          set -euo pipefail
-          home="$RUNNER_TEMP/notty"; mkdir -p "$home"
-          python3 - "$home" > "$RUNNER_TEMP/notty.log" 2>&1 <<'PYEOF'
-          import os, subprocess, sys
-          home = sys.argv[1]
-          prefix = os.path.join(home, ".local", "bin")
-          proc = subprocess.run(
-              ["sh", "-s", "--", "--prefix", prefix],
-              stdin=open("filled/install.sh", "rb"),
-              stdout=sys.stdout, stderr=subprocess.STDOUT,
-              preexec_fn=os.setsid,          # no controlling terminal, on Linux and macOS alike
-              env={**os.environ, "HOME": home, "PATH": prefix + ":/usr/bin:/bin"},
-          )
-          sys.exit(proc.returncode)
-          PYEOF
-          cat "$RUNNER_TEMP/notty.log"
-          grep -q 'no terminal to ask on' "$RUNNER_TEMP/notty.log"
-          test ! -e "$home/.local/bin/prikk"
 
   windows:
     name: install.ps1 (windows-latest)
@@ -224,6 +255,9 @@ jobs:
     env:
       STIKK_VER: ${{ needs.derive.outputs.stikk }}
       PRIKK_VER: ${{ needs.derive.outputs.prikk }}
+      PRIKK_FLOOR: ${{ needs.derive.outputs.floor }}
+      PRIKK_BELOW: ${{ needs.derive.outputs.below }}
+      PRIKK_ABOVE: ${{ needs.derive.outputs.above }}
     steps:
       - uses: actions/checkout@v5
 
@@ -233,10 +267,13 @@ jobs:
           set -euo pipefail
           mkdir -p filled
           for f in install.ps1 uninstall.ps1; do
-            sed -e "s/@STIKK_VERSION@/${STIKK_VER}/g" -e "s/@PRIKK_VERSION@/${PRIKK_VER}/g" \
+            sed -e "s/@STIKK_VERSION@/${STIKK_VER}/g" \
+                -e "s/@PRIKK_FLOOR@/${PRIKK_FLOOR}/g" \
+                -e "s/@PRIKK_VERSION@/${PRIKK_VER}/g" \
               "scripts/$f" > "filled/$f"
           done
-          ! grep -q '@STIKK_VERSION@\|@PRIKK_VERSION@' filled/* || { echo "::error::placeholder survived"; exit 1; }
+          ! grep -q '@STIKK_VERSION@\|@PRIKK_FLOOR@\|@PRIKK_VERSION@' filled/* \
+            || { echo "::error::placeholder survived"; exit 1; }
 
       # Run it as its own process: the script refuses by calling `exit 1`, and invoked inline that
       # ends the step itself before anything can be checked (its first run failed exactly so,
@@ -245,7 +282,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          & (Get-Process -Id $PID).Path -NoProfile -File ./scripts/install.ps1 -Prefix "$env:RUNNER_TEMP\never" -NoPrikk
+          & (Get-Process -Id $PID).Path -NoProfile -File ./scripts/install.ps1 -Prefix "$env:RUNNER_TEMP\never"
           $code = $LASTEXITCODE
           if ($code -eq 0) { Write-Error 'the template installed something; it must refuse'; exit 1 }
           Write-Host "refused with exit $code, as it should"
@@ -258,7 +295,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\bin" -NoPrikk
+          & ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\bin"
           $v = & "$env:RUNNER_TEMP\bin\stikk.exe" --version
           if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
 
@@ -266,7 +303,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\bin" -NoPrikk
+          & ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\bin"
           $v = & "$env:RUNNER_TEMP\bin\stikk.exe" --version
           if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
 
@@ -296,7 +333,7 @@ jobs:
           $uri = ([System.Uri]("file:///" + $mirror.Replace('\','/'))).AbsoluteUri
           # Its own process, for the same reason the template check uses one: the script refuses
           # with `exit 1`, and inline that would end this step before anything is asserted.
-          & (Get-Process -Id $PID).Path -NoProfile -File ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\tampered" -NoPrikk -BaseUrl $uri 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\tamper.log"
+          & (Get-Process -Id $PID).Path -NoProfile -File ./filled/install.ps1 -Prefix "$env:RUNNER_TEMP\tampered" -BaseUrl $uri 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\tamper.log"
           $code = $LASTEXITCODE
           if ($code -eq 0) { Write-Error 'the installer accepted a file that failed its checksum'; exit 1 }
           Write-Host "refused with exit $code, as it should"
@@ -307,3 +344,163 @@ jobs:
           }
           if (Test-Path "$env:RUNNER_TEMP\tampered\stikk.exe") { Write-Error 'it installed anyway'; exit 1 }
           exit 0
+
+      # ---------------------------------------------------------------- RFC 048: no prikk, ever
+
+      - name: prikk missing — stikk installs, prikk's guide is printed, and nothing of prikk's is fetched
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # **Prove the premise before testing on it.**
+          if (Get-Command prikk -ErrorAction SilentlyContinue) {
+            Write-Error 'prikk is on PATH; this leg tests the missing case'; exit 1
+          }
+          $prefix = "$env:RUNNER_TEMP\noprikk"
+          & ./filled/install.ps1 -Prefix $prefix *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\missing.log"
+          $log = Get-Content "$env:RUNNER_TEMP\missing.log" -Raw
+          if ($log -notmatch 'stikk reads prikk repositories, so you need prikk too\.') {
+            Write-Error 'it did not say prikk is needed'; exit 1
+          }
+          if ($log -notmatch 'prikk installs itself\.') { Write-Error 'it did not say prikk installs itself'; exit 1 }
+          # prikk publishes no Windows installer yet, so the guide is what is printed.
+          if ($log -notmatch [regex]::Escape('https://prikk-vcs.github.io/prikk/docs/guide/install.html')) {
+            Write-Error "prikk's guide was not printed"; exit 1
+          }
+          if ($log -notmatch '1\. install prikk \(see above\)') { Write-Error 'the Next list did not lead with prikk'; exit 1 }
+          $v = & "$prefix\stikk.exe" --version
+          if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
+          # **Nothing of prikk's was written.** Windows has no curl wrapper here; what it can
+          # prove is that no prikk arrived, and the script's own text is checked above.
+          if (Get-ChildItem -Path $prefix -Filter 'prikk*' -Recurse -ErrorAction SilentlyContinue) {
+            Write-Error "something of prikk's was written"; exit 1
+          }
+
+      - name: The version report — too old, inside the range, newer than tested
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-WithFakePrikk {
+            param([string] $PrikkVersion)
+            $dir = "$env:RUNNER_TEMP\fake-$PrikkVersion"
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            Set-Content -Path "$dir\prikk.cmd" -Value "@echo prikk $PrikkVersion"
+            $saved = $env:Path
+            try {
+              $env:Path = "$dir;$env:Path"
+              $prefix = "$env:RUNNER_TEMP\r-$PrikkVersion"
+              & ./filled/install.ps1 -Prefix $prefix *>&1 |
+                Tee-Object -FilePath "$env:RUNNER_TEMP\report-$PrikkVersion.log" | Out-Null
+            } finally { $env:Path = $saved }
+            Get-Content "$env:RUNNER_TEMP\report-$PrikkVersion.log" -Raw
+          }
+
+          # **Too old: the one row that must not say "still runs".**
+          $old = Invoke-WithFakePrikk $env:PRIKK_BELOW
+          Write-Host $old
+          if ($old -notmatch [regex]::Escape("that is too old for this stikk, which needs prikk 0.$env:PRIKK_FLOOR or newer.")) {
+            Write-Error 'the too-old wording is missing'; exit 1
+          }
+          if ($old -match 'still runs') { Write-Error 'it told someone an unreadable prikk still runs'; exit 1 }
+
+          # Inside the range.
+          $inside = Invoke-WithFakePrikk $env:PRIKK_VER
+          Write-Host $inside
+          if ($inside -notmatch [regex]::Escape("that is inside the range this stikk was tested against (0.$env:PRIKK_FLOOR through $env:PRIKK_VER)")) {
+            Write-Error 'the inside-range wording is missing'; exit 1
+          }
+
+          # **Newer than tested: calm, and it still runs.**
+          $newer = Invoke-WithFakePrikk $env:PRIKK_ABOVE
+          Write-Host $newer
+          if ($newer -notmatch [regex]::Escape("that is newer than this stikk was tested against (0.$env:PRIKK_FLOOR through $env:PRIKK_VER).")) {
+            Write-Error 'the newer-than-tested wording is missing'; exit 1
+          }
+          if ($newer -notmatch 'It still runs') { Write-Error 'it did not say it still runs'; exit 1 }
+
+      - name: The removed parameters fail loudly
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          # A stale copy-pasted command must not appear to work. PowerShell rejects an unknown
+          # parameter itself, before the script's own code runs.
+          foreach ($flag in @('-WithPrikk', '-NoPrikk')) {
+            & (Get-Process -Id $PID).Path -NoProfile -Command `
+              "& ./filled/install.ps1 -Prefix '$env:RUNNER_TEMP\flagged' $flag" 2>&1 |
+              Tee-Object -FilePath "$env:RUNNER_TEMP\flag.log"
+            if ($LASTEXITCODE -eq 0) { Write-Error "$flag was accepted"; exit 1 }
+            Write-Host "$flag refused with exit $LASTEXITCODE, as it should"
+            if (Test-Path "$env:RUNNER_TEMP\flagged\stikk.exe") { Write-Error 'it installed anyway'; exit 1 }
+          }
+          exit 0
+
+      # RFC 048 decision 3: `irm ... | iex` runs in the user's own session, so the installer puts
+      # the folder on that session's PATH and `stikk` works in the same window. **Run the way the
+      # README gives it** -- `iex` of the script's content, never as a downloaded file, which is
+      # what the install page also refuses to tell anyone to do.
+      - name: stikk resolves in the same session that installed it
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $before = Get-Command stikk -ErrorAction SilentlyContinue
+          if ($before) { Write-Error 'stikk already resolves; this leg would prove nothing'; exit 1 }
+          & ([scriptblock]::Create((Get-Content ./filled/install.ps1 -Raw)))
+          # **No new session, no reloaded PATH**: the same `pwsh` that ran the installer.
+          $cmd = Get-Command stikk -ErrorAction SilentlyContinue
+          if (-not $cmd) { Write-Error 'stikk does not resolve in the session that installed it'; exit 1 }
+          $v = & stikk --version
+          if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
+          Write-Host "stikk resolves at $($cmd.Source) in the installing session"
+
+  # RFC 048 F4: both `-gnu` builds reference GLIBC_2.39 through **weak** symbols only, and the
+  # hard floor is 2.34 -- so aarch64 (the one target that has no musl build) should run on
+  # glibc 2.35. Measured under Debian 12's loader it printed a one-line warning and ran; whether
+  # that warning prints on an ordinary system was never measured on real hardware.
+  #
+  # **This leg does not fail on the warning.** It records stderr so the question is settled with
+  # evidence instead of inference; what it asserts is that stikk installs and runs.
+  linux-aarch64:
+    name: install.sh (ubuntu-22.04-arm, glibc 2.35)
+    needs: derive
+    runs-on: ubuntu-22.04-arm
+    env:
+      STIKK_VER: ${{ needs.derive.outputs.stikk }}
+      PRIKK_VER: ${{ needs.derive.outputs.prikk }}
+      PRIKK_FLOOR: ${{ needs.derive.outputs.floor }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fill the placeholders the way release.yml does
+        run: |
+          set -euo pipefail
+          mkdir -p filled
+          sed -e "s/@STIKK_VERSION@/${STIKK_VER}/g" \
+              -e "s/@PRIKK_FLOOR@/${PRIKK_FLOOR}/g" \
+              -e "s/@PRIKK_VERSION@/${PRIKK_VER}/g" \
+            scripts/install.sh > filled/install.sh
+          chmod +x filled/install.sh
+          ! grep -q '@STIKK_VERSION@\|@PRIKK_FLOOR@\|@PRIKK_VERSION@' filled/install.sh \
+            || { echo "::error::placeholder survived"; exit 1; }
+
+      - name: What glibc is this
+        run: |
+          set -euo pipefail
+          uname -m
+          ldd --version | head -1
+
+      - name: Install the aarch64 build and run it, recording stderr
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          sh filled/install.sh --prefix "$RUNNER_TEMP/bin" | tee "$RUNNER_TEMP/install.log"
+          grep -q 'aarch64-unknown-linux-gnu' "$RUNNER_TEMP/install.log"
+          # stdout and stderr kept apart: the question is whether the **loader** says anything.
+          "$RUNNER_TEMP/bin/stikk" --version > "$RUNNER_TEMP/out.txt" 2> "$RUNNER_TEMP/err.txt" || true
+          echo "== stdout"; cat "$RUNNER_TEMP/out.txt"
+          echo "== stderr"; cat "$RUNNER_TEMP/err.txt"
+          if [ -s "$RUNNER_TEMP/err.txt" ]; then
+            echo "::notice::stikk printed to stderr on glibc $(ldd --version | head -1 | awk '{print $NF}'): $(cat "$RUNNER_TEMP/err.txt")"
+          else
+            echo "::notice::stikk printed nothing to stderr on glibc $(ldd --version | head -1 | awk '{print $NF}')"
+          fi
+          # **The assertion is that it ran**, whatever the loader said alongside.
+          grep -qx "stikk ${STIKK_VER}" "$RUNNER_TEMP/out.txt"

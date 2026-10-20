@@ -3,28 +3,34 @@
 **Status.** **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
 authorized), on the project owner's direction of 2026-10-18: *"we will have to consider and design carefully about
 delivery this time and in the future. It should be easy enough for unmatured users as possible and reasonable."*
-**The owner answered the four questions on 2026-10-20** (§ *For the owner*); **prikk agreed to decision 2 the same
-day** (letter 025: the folder is theirs too); the tap waits on the owner; no paid signing. **One question remains
-(O5).**
+**Revised the same day on the owner's principle** that *"the responsibility for installing core software should not be
+placed on peripheral convenient tools"*, which prikk adopted in **letter 026**: each program installs itself. The
+first draft's decision 2 (stikk's Windows installer installing prikk's build) is withdrawn, and with it the Linux and
+macOS half of RFC 039 decision 4. **One question remains (O5).**
 Measured on Linux against the published stikk 0.14.0 and prikk 0.53.0 assets:
 `.git-exclude/reports/048-delivery/measure048.txt`. Channel facts are sourced, **not measured on macOS or Windows**:
 `.git-exclude/reports/048-delivery/channels-research.md`. prikk's side read in the clone (`docs/src/guide/install.md`,
-`.github/workflows/release.yml`, `crates/prikk-cli/Cargo.toml`, `ROADMAP.md`).
-**Tracks.** RFC 039 (the installers; **decision 4 is revised here for Windows**), `NFR-R03`, `CON-5`.
-**Touches.** `scripts/install.ps1`, `scripts/uninstall.ps1`, `.github/workflows/installers.yml`, the guide's install
-page, `README.md`'s Install section; later, if the owner chooses it, `release.yml` and a tap repository.
+`.github/workflows/release.yml`, `crates/prikk-cli/Cargo.toml`, `ROADMAP.md`) and in letters 025 and 026.
+**Tracks.** RFC 039 (the installers; **decision 4 is replaced here, on every platform**), `NFR-R03`, `CON-5`.
+**Touches.** `scripts/install.sh`, `scripts/install.ps1`, both uninstallers, `.github/workflows/installers.yml`, the
+guide's install page, `README.md`'s Install section; later, if the owner chooses it, `release.yml` and a tap repository.
 
 ## Summary
 
-RFC 039 gave every platform one command. **Measured against a user who has never installed a program from a
-terminal, that command works end to end on Linux and on Apple-Silicon Macs, and stops halfway on Windows**: stikk is
-installed, prikk is not, and the user is told to download a zip and *"put prikk.exe in a folder on your PATH"* — the
-step this whole effort exists to remove. On Intel Macs the same happens, with `cargo install` as the way out.
+RFC 039 gave every platform one command, and made stikk's installer install prikk too where prikk had an installer to
+run. **Measured against a user who has never installed a program from a terminal**, that works end to end on Linux
+and Apple-Silicon Macs and stops halfway on Windows, where prikk has a build and no installer.
 
-This RFC fixes the Windows half in stikk's own installer, writes the first page for someone who has never opened a
-terminal, and settles **which channels are worth adding and which are not, and why**, so the question is not reopened
-at every release. **It spends no money and creates no account by default.** One channel — a Homebrew tap — waits only
-on the owner.
+The first draft of this RFC closed the Windows gap by having stikk's installer install prikk's build. **The owner
+asked whose responsibility that is, and the answer is prikk's**: an installer decides where a program lives, how it is
+verified and what that claims, how it changes `PATH`, upgrades and uninstalls, and which version a user gets. Two
+installers for one program drift apart, and every tool built on prikk would carry the same copy and the same version
+pin, changed at every prikk release. **prikk agreed (letter 026) and ships its own Windows installer in 0.54.0.**
+
+So: **each program installs itself.** stikk's installers install stikk, **check** for prikk, and when it is missing or
+too old **print prikk's own install command**. The install page starts from opening a terminal and has two steps,
+prikk's then stikk's. The RFC also settles **which channels are worth adding and which are not, and why**, and spends
+no money.
 
 ## Findings
 
@@ -32,15 +38,10 @@ on the owner.
 
 | Platform | stikk | prikk | Where a novice stops |
 |---|---|---|---|
-| Linux x86_64 / aarch64 | one line (`curl … \| sh`) | offered, via prikk's own `install.sh` | nowhere |
+| Linux x86_64 / aarch64 | one line (`curl … \| sh`) | offered, by running prikk's own `install.sh` | nowhere |
 | macOS, Apple Silicon | one line | offered, the same way | nowhere |
 | macOS, Intel | one line | **prikk publishes no binary** | `cargo install prikk` — needs Rust, compiles |
-| Windows x86_64 (ARM64 by emulation) | one line (`irm … \| iex`) | **prikk publishes no installer** | *"download the zip … put prikk.exe in a folder on your PATH"* (`scripts/install.ps1:167-181`) |
-
-**Windows is where most people new to terminals are likely to be, and it is the one that stops.** prikk *does* publish a
-Windows build — `prikk-x86_64-pc-windows-msvc.zip` (`prikk.exe` + `LICENSE`) with its `.sha256` (M1) — only no
-installer for it (prikk's guide, `install.md:36-38`: *"A PowerShell equivalent is a separate, later increment"*; no
-plan for it in prikk's roadmap or RFCs). RFC 039 decision 4 chose to *"not improvise"* there.
+| Windows x86_64 (ARM64 by emulation) | one line (`irm … \| iex`) | **prikk publishes no installer** (until 0.54.0) | *"download the zip … put prikk.exe in a folder on your PATH"* (`scripts/install.ps1:167-181`) |
 
 Two smaller things a novice meets:
 - **The guide never says how to open a terminal.** It defines one (*"the window where you type commands"*) and moves on.
@@ -96,48 +97,61 @@ whether the warning prints outside an explicitly invoked loader is not known.
 
 ### F5 — prikk's side
 
-- **No Windows installer, no Intel-Mac binary** (prikk's `release.yml:39-43`: x86_64-apple-darwin *"has never actually
-  been built or run"* in its CI). No package-manager work scheduled; its roadmap names Homebrew, Scoop, the AUR and
-  nixpkgs as *"worth doing alongside"* (`ROADMAP.md:62`).
-- **`cargo binstall prikk` finds nothing on Windows** (M4): its `[package.metadata.binstall]` names a `.tar.gz` for every
-  target, and the Windows asset is a `.zip`. stikk's own override finds its zip.
-- Nothing of prikk's is signed (`install.md:130`).
+- **No Windows installer today; one is scheduled for prikk 0.54.0** (letter 026): `install.ps1` and `uninstall.ps1`,
+  into `%LOCALAPPDATA%\Programs\prikk`, verifying the checksum and saying what it proves.
+- **No Intel-Mac binary**, and none planned until a runner proves it (`release.yml:39-43`; letter 025). prikk's
+  `install.sh` refuses that platform itself and says what to do instead.
+- **`cargo binstall prikk` finds nothing on Windows** (M4); prikk fixes it in 0.54.0 (letter 025).
+- Nothing of prikk's is signed (`install.md:130`); signing is prikk's owner's decision, not scheduled (letter 025).
+
+### F6 — why one installer per program (owner, 2026-10-20; prikk, letter 026)
+
+What RFC 039 decision 4 had stikk's installer do on Linux and macOS was already more than *offering*: it downloaded
+prikk's installer, checked prikk's checksum, and ran it **with stikk's version pin and stikk's install folder**
+(`scripts/install.sh:186-220`). Each of those is prikk's decision, and each is copied into every tool that does the
+same:
+- **where prikk lives, how it is verified and what that claims, how it upgrades and uninstalls** — prikk's release
+  design, which may change (for example with signing) and must change in one place;
+- **which version a user runs** — two tools pinning different prikk versions would move it back and forth on every
+  install. stikk already handles a prikk newer than it has checked: it runs and says so (`NFR-R03`);
+- **a stikk change at every prikk release**, and the same for every other tool built on prikk.
 
 ## Decisions
 
-1. **The one-line installers stay the first path on every platform, and every other channel is in addition.** They
-   ask for no account, no tool installed first and no administrator password; neither meets Gatekeeper or Mark-of-the-Web
-   (F2); running the same line again upgrades. (Smart App Control meets every path alike: decision 7.)
+1. **The one-line installers stay the first path for stikk on every platform, and every other channel is in
+   addition.** They ask for no account, no tool installed first and no administrator password; neither meets
+   Gatekeeper or Mark-of-the-Web (F2); running the same line again upgrades. (Smart App Control meets every path
+   alike: decision 7.)
 
-2. **On Windows, stikk's installer installs prikk itself, from prikk's own release** — revising RFC 039 decision 4 for
-   Windows only, where prikk has a build and no installer:
-   - **Asked first**, as on Linux and macOS: `[Y/n]` when interactive, *no* when not; `-WithPrikk` / `-NoPrikk` decide
-     in advance.
-   - Downloads `prikk-x86_64-pc-windows-msvc.zip` **and its `.sha256` from prikk's release at the pinned, validated
-     version** (the same pin `install.sh` passes to prikk's installer); **installs nothing if the checksum fails.**
-   - Puts **only `prikk.exe`** in `%LOCALAPPDATA%\Programs\prikk` — prikk's own folder, never stikk's — and adds that
-     folder to the **user** `PATH` once, as it does for stikk. **prikk named this folder** (letter 025): its own
-     installer, if it ever ships one, would use it, and prikk will tell us before choosing another.
-   - **Says what prikk's checksum proves**, as prikk's `install.sh` does and prikk asked (letter 025): that the file
-     matches what prikk's release page published, **not who published it**.
-   - **An existing prikk is left alone**, reported with its version against the validated range, as today.
-   - `uninstall.ps1` **still never removes prikk**; it prints the two steps that do (the folder, the `PATH` entry).
-   - **stikk never rebuilds, re-hosts or alters prikk**: it fetches prikk's published file from prikk's release and
-     checks it against prikk's published checksum. **When prikk publishes its own `install.ps1`, stikk switches to
-     running it**, exactly as on Linux and macOS, and this decision is retired.
+2. **Each program installs itself: stikk's installers install nothing of prikk's, on every platform** — replacing RFC
+   039 decision 4 (F6). They:
+   - **check** whether `prikk` is on `PATH`, and report its version against the range this stikk was tested with
+     (*inside*, *newer than tested — it still runs and stikk will say so*, or **too old**: below the floor);
+   - when prikk is **missing or too old**, say that stikk needs prikk and **print prikk's own install command** for
+     that system: `curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh` on Linux and
+     macOS; on Windows, `irm https://github.com/prikk-vcs/prikk/releases/latest/download/install.ps1 | iex` **once prikk
+     0.54.0 publishes it**, and until then prikk's release page and install guide (prikk's steps, not a copy of them);
+   - **never download or run anything of prikk's**, and carry **no prikk version pin**: prikk's installer installs what
+     prikk publishes. The tested ceiling is used only to word the version report;
+   - leave **which platforms prikk supports** to prikk's installer, which says so itself (an Intel Mac is refused by
+     prikk's `install.sh` with prikk's own advice);
+   - finish with stikk installed and exit 0 either way: prikk missing is reported, not an error.
 
-   Why the revision is reasonable now: RFC 039 declined to own prikk's install layout. The layout is one folder named
-   for prikk, and the alternative is the manual step on the platform where it costs most.
+   **`--with-prikk` / `--no-prikk` and `-WithPrikk` / `-NoPrikk` are removed** (no user depends on them). The
+   uninstallers never touched prikk and still do not; they say that prikk is removed by prikk's own uninstaller.
 
-3. **The Windows installer updates the current session's `$env:Path`** as well as the user `PATH`, so `stikk` and
-   `prikk` work in the same window; the *"open a new PowerShell window"* step goes. (On Linux and macOS the installer
-   runs in a child shell and cannot; that step stays.)
+3. **The Windows installer updates the current session's `$env:Path`** as well as the user `PATH`, so `stikk` works in
+   the same window; the *"open a new PowerShell window"* step goes. (On Linux and macOS the installer runs in a child
+   shell and cannot; that step stays.)
 
 4. **The install page is written for someone who has never opened a terminal.** In order:
    - **How to open one**, per platform, in one or two lines each (macOS: Spotlight, *Terminal*; Windows: Start,
      *PowerShell*; Linux: the *Terminal* app).
-   - Paste the one line; **what you should see** when it worked (the installer's last lines), and what to type next.
-   - **Updating** is running the same line again; **removing** is the uninstall line.
+   - **Step 1, prikk**: prikk's one-line command for that system, **linked to prikk's install guide as the authority**;
+     anything longer (Windows before prikk 0.54.0, an Intel Mac) is a link to prikk's guide, never a copy of it.
+   - **Step 2, stikk**: our one line, and **what you should see** when it worked (the installer's last lines), then
+     what to type next.
+   - **Updating** is running each program's line again; **removing** is each program's uninstall line.
    - **By hand (advanced)**: the archives, as now, opened by one plain warning — *a file downloaded in a browser is
      marked by macOS or Windows, which will warn because stikk is not signed; the one-line command avoids that* — and
      the mitigations, each one step: **macOS**, *Open Anyway* in Privacy & Security (or `xattr -d
@@ -148,16 +162,16 @@ whether the warning prints outside an explicitly invoked loader is not known.
    - **If Windows says Smart App Control blocked stikk or prikk**: one plain paragraph saying what it is and why it
      happens (both programs are unsigned), with Microsoft's own page. **stikk does not tell a newcomer to turn a
      security feature off**; the choice and its consequences are on Microsoft's page.
-   - `README.md`'s Install keeps only the two lines and links the page. The stale pin example (`--version 0.51.0`
-     beside *"tested through 0.53.0"*) is fixed while there.
+   - `README.md`'s Install keeps the two steps and links the page. The stale pin example (`--version 0.51.0` beside
+     *"tested through 0.53.0"*) is fixed while there.
 
-5. **A Homebrew tap is the one package manager worth adding now — if the owner creates it** (O2). A **formula, not a
-   cask** (casks are quarantined and unsigned ones are deprecated), shipping the prebuilt archives for macOS and Linux,
+5. **A Homebrew tap is the one package manager worth adding — when the owner is ready** (O2). A **formula, not a cask**
+   (casks are quarantined and unsigned ones are deprecated), shipping the prebuilt archives for macOS and Linux,
    **pushed by `release.yml` after the assets are published**, with a fine-grained token that can write only the tap.
    **It is not a novice's first path** — installing Homebrew is harder than our one line — its value is `brew upgrade`
-   for people who already use Homebrew. Whether it may also carry **prikk** is O3; if not, the formula's caveats say how
-   to install prikk. **Homebrew 6's tap trust** (a fully qualified `brew install` trusts that formula; whether it also
-   trusts a dependency in the same tap is unconfirmed) **is measured before anything is documented.**
+   for people who already use Homebrew. **A prikk formula is prikk's to publish** (decision 2's principle); stikk's
+   formula depends on it only if prikk publishes one, and otherwise its caveats print prikk's install command.
+   **Homebrew 6's tap trust is measured before anything is documented.**
 
 6. **Not now, each with the condition that would change it:**
    - **winget**: per-version human review against a weekly cadence, a classic token, and no novice gain unless prikk
@@ -176,46 +190,46 @@ whether the warning prints outside an explicitly invoked loader is not known.
      this repository in CI, MFA, **a team member approving each signing request**, and a code-signing-policy page
      (https://signpath.org/terms). **When to apply is O5.** Paid alternatives, recorded only: Azure Artifact Signing
      ≈ $9.99/month (individuals: US and Canada only), an OV certificate $150–300/year on a hardware token.
-   - **Signing stikk alone does not finish the path**: `prikk.exe` meets the same gate. prikk does not sign it, and
-     signing is a decision for prikk's owner, not scheduled (letter 025); prikk asked to hear what we decide.
+   - **Signing stikk alone does not finish the path**: `prikk.exe` meets the same gate, and signing it is prikk's
+     owner's decision (letter 025). prikk asked to hear what we decide.
 
-8. **prikk was consulted before decision 2** (owner, 2026-10-20). **Letter 022** asked which folder prikk's own Windows
-   installer would use; **letter 025** answered: `%LOCALAPPDATA%\Programs\prikk`, no objection, and one sentence to
-   print. It also accepted binstall's Windows override **for prikk 0.54.0** (M4, reproduced on their side); keeps
-   Intel Macs out until a runner proves them; and schedules neither a Windows installer nor signing.
+8. **prikk's part, as agreed** (letters 022, 025, 026): its own Windows installer and the `cargo binstall` fix in
+   **0.54.0**, in the folder already named. **stikk's re-baseline to prikk 0.54.0 switches the Windows message** to
+   prikk's `irm` line — or Handoff A does, if 0.54.0 is published before it is submitted.
 
 ## For the owner
 
 | | Question | Answer (owner, 2026-10-20) |
 |---|---|---|
-| **O1** | Decision 2: stikk's Windows installer installs prikk's own published build, verified, until prikk has an installer. | **Almost approved; consult prikk first.** prikk agreed (letter 025), naming the folder. |
+| **O1** | stikk's Windows installer installs prikk's build. | **Withdrawn on the owner's principle**: each program installs itself. prikk agreed (letter 026) and ships its own Windows installer in 0.54.0. The same principle removes stikk's running of prikk's installer on Linux and macOS (decision 2). |
 | **O2** | Homebrew tap: the repository `prikk-vcs/homebrew-tap` and a secret `HOMEBREW_TAP_TOKEN` (fine-grained, *Contents: read and write* on that one repository). | **Considered, not ready.** Handoff B waits on it; not in 0.15.0. |
-| **O3** | May that tap carry a **prikk** formula? | **Not without prikk.** Asked when the tap is ready, not before. |
+| **O3** | May that tap carry a **prikk** formula? | **It is prikk's to publish** (decision 2's principle). |
 | **O4** | Signing spend. | **No capacity to pay now.** Mark-of-the-Web is an issue, with ways to mitigate it (decision 4). |
-| **O5** | **Open.** Apply to the SignPath Foundation for free Windows signing (decision 7) — now, or when a Smart App Control block is first reported? Each release then needs one approval of its signing request. | **Recommendation: after 0.15.0**, and tell prikk what we decide, as they asked: signing stikk alone leaves prikk blocked, and prikk's signing is its owner's decision. |
+| **O5** | **Open.** Apply to the SignPath Foundation for free Windows signing (decision 7) — now, or when a Smart App Control block is first reported? Each release then needs one approval of its signing request. | **Recommendation: after 0.15.0**, and tell prikk what we decide, as they asked. |
 
 ## Changelog
 
-`### Changed`: on Windows, the installer offers to install prikk too, from prikk's own release, and stikk and prikk
-work in the same window afterwards. The install page starts from opening a terminal. (Handoff B, if O2: `### Added`,
-`brew install prikk-vcs/tap/stikk`.)
+`### Changed`: the installers install stikk only. They check for prikk and, when it is missing or too old, print prikk's
+own install command; prikk's installer decides prikk's version and location. On Windows, stikk works in the same window
+after installing. The install page starts from opening a terminal. `### Removed`: the installers' `--with-prikk` /
+`--no-prikk` (`-WithPrikk` / `-NoPrikk`). (Handoff B, if O2: `### Added`, `brew install prikk-vcs/tap/stikk`.)
 
 ## Delivery
 
-- **Handoff A** (decisions 2–4), **on acceptance, for 0.15.0.** `install.ps1` and `uninstall.ps1`; `installers.yml`'s
-  Windows leg gains: prikk installed from prikk's **real** release on yes and not on no; **a bad prikk checksum
-  installs no prikk** (failing for the checksum reason); an existing prikk untouched; **`stikk --version` and
-  `prikk --version` resolve in the same session**; uninstall leaves prikk. **A Linux leg on `ubuntu-22.04-arm`** (glibc
-  2.35) installs the aarch64 build and runs it, settling F4 on real hardware and recording whether the loader warning
-  prints. The install page and README.
+- **Handoff A** (decisions 2–4), **on acceptance, for 0.15.0.** All four scripts. `installers.yml` on Linux, macOS and
+  Windows: **prikk missing** → stikk installed, prikk's command printed, exit 0, **and nothing of prikk's downloaded or
+  written** (no prikk on `PATH` afterwards, no prikk folder); **prikk present** inside the range, and **below the
+  floor** (a fake `prikk` printing an old version) → the matching report; the removed flags rejected or ignored as the
+  handoff says; uninstall leaves prikk; on Windows, **`stikk --version` resolves in the same session**. **A Linux leg on
+  `ubuntu-22.04-arm`** (glibc 2.35) installs the aarch64 build and runs it, settling F4 on real hardware and recording
+  whether the loader warning prints. The install page and README.
 - **Handoff B** (decision 5), **once O2 exists**; not in 0.15.0. A formula template filled by `release.yml` like the
-  installers; `brew install` measured on macOS and Linux runners, including tap trust; prikk's formula only after O3.
+  installers; `brew install` measured on macOS and Linux runners, including tap trust.
 
 ## What this RFC does not do
 
+- **No installing, pinning, re-hosting or modifying prikk**, anywhere: prikk installs itself.
 - **No package manager besides the tap**, and the tap only on O2 (decision 6 says why, per channel).
 - **No paid signing, no notarization, no new account** unless the owner chooses one (O5 is free, and still the
   owner's).
-- **No Intel-Mac prikk**: stikk cannot build or vouch for a prikk binary prikk has never built (held for prikk).
-- **No re-hosting or modifying prikk** anywhere.
 - **No GUI installer** (`.dmg`, `.msi`): there is nothing to double-click until there is a GUI.

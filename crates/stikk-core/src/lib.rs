@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod bundle;
 pub mod change_token;
 pub mod changes;
 pub mod commit;
@@ -34,6 +35,12 @@ pub mod session;
 pub mod switch;
 pub mod verify;
 
+pub use bundle::{
+    ALREADY_HELD, BUNDLE_EFFECTS_SHOWN, BUNDLE_FROM_MINOR, BundleOpened, BundleView,
+    DIVERGED_CLEAN, DIVERGED_CONFLICT, DIVERGED_UNDETERMINED, NEW_TO_THIS_REPOSITORY,
+    SHARES_NOTHING, WOULD_BRING_FORWARD, bundle_unavailable, open_bundle, sentence_for,
+    unshown_effects_line,
+};
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{
     Authoring, ChangeEntry, ChangeKind, ChangesRead, ChangesView, DeclarationResolution,

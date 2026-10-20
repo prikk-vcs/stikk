@@ -64,6 +64,9 @@ pub enum Action {
     /// Open the Merge plan for *the marked branch into the selected one* (the ref picker;
     /// RFC 047 decision 4). **Reads only**: it shows prikk's plan and merges nothing.
     MergePlan,
+    /// Open a bundle file: prikk's verification and what importing it would change (RFC 050
+    /// decision 3). **Reads only**: nothing is imported and nothing is written.
+    OpenBundle,
     /// Toggle the seal consent acknowledgement (RFC 016 §8) — meaningful only while
     /// [`crate::overlay::Overlay::SealConsent`] is on top; a no-op everywhere else.
     ToggleSealConsent,
@@ -122,6 +125,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('x') => Action::CloseBranch,
         KeyCode::Char('s') => Action::SwitchBranch,
         KeyCode::Char('M') => Action::MergePlan,
+        KeyCode::Char('i') => Action::OpenBundle,
         KeyCode::Char(' ') => Action::ToggleSealConsent,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,

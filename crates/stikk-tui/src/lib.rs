@@ -166,6 +166,7 @@ fn ui_loop(
                     Action::CloseBranch => app.begin_close_branch(),
                     Action::SwitchBranch => app.begin_switch_branch(),
                     Action::MergePlan => app.begin_merge_plan(),
+                    Action::OpenBundle => app.begin_open_bundle(),
                     Action::ToggleSealConsent => app.toggle_seal_consent(),
                     Action::OpenGlossary => app.open_glossary(),
                     Action::OpenPalette => app.open_palette(),

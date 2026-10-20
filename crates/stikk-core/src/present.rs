@@ -37,6 +37,10 @@ pub enum OperationContext {
     /// Reading prikk's merge plan for two branches (the Merge plan view; `FR-080`, RFC 047).
     /// **Nothing is merged here**: the plan is read-only, and a refusal of it wrote nothing.
     MergePlan,
+    /// Reading what a bundle file is and what it would change (the Bundle view; `FR-091`,
+    /// RFC 050). **Nothing is imported here**: both reads are read-only, and a refusal of
+    /// either wrote nothing.
+    Bundle,
     /// Running prikk's repository verification (Verify; `FR-100`, RFC 040). **A damaged
     /// repository is not a refusal** and never reaches here (RFC 040 decision 1); what does is an
     /// exit 1 that carried no report at all.
@@ -574,6 +578,12 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
         OperationContext::MergePlan => {
             "prikk declined to plan this merge. Nothing was merged and nothing was written; stikk              shows prikk's reason above."
         }
+        // **Its own sentence.** The failure here is about a *file*, not the repository, which
+        // is the distinction a reader needs before they go looking for damage they do not have.
+        OperationContext::Bundle => {
+            "stikk could not read this bundle. **Nothing was imported and nothing was written** — \
+             opening a bundle only reads it. stikk shows prikk's reason above."
+        }
         OperationContext::Verify => {
             "prikk declined to verify this repository. **This is not a verdict on the repository** \
              — prikk reports damage with a complete report, not a refusal; something stopped it \
@@ -636,6 +646,7 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
         | OperationContext::LoadPatch
         | OperationContext::Compare
         | OperationContext::MergePlan
+        | OperationContext::Bundle
         | OperationContext::Verify
         | OperationContext::Orient => {
             vec![NextStep {

@@ -178,6 +178,18 @@ pub enum Screen {
         /// past a short terminal, and `FR-081` asks for all of it.
         offset: std::cell::Cell<u16>,
     },
+    /// What one bundle file is, and what it would change (`FR-091`; RFC 050 decision 3).
+    ///
+    /// **Inert.** It shows prikk's verification and prikk's preview, and nothing on it acts;
+    /// importing is RFC 050's Handoff B, and until it lands the view advertises no key that
+    /// would do nothing.
+    Bundle {
+        /// The resolved path, prikk's two answers and stikk's sentence -- or prikk's refusal.
+        view: Box<stikk_core::BundleOpened>,
+        /// First content row drawn, clamped and written back by the renderer: a verification
+        /// and a long effect list run past a short terminal.
+        offset: std::cell::Cell<u16>,
+    },
     /// prikk's verdict on whether the repository is sound (`FR-100`; RFC 040).
     Verify {
         /// The report, or the band's reason there is none.
@@ -305,6 +317,8 @@ pub enum Focus<'a> {
     Compare(CompareFocus<'a>),
     /// prikk's merge plan for two branches, and the screen's scroll offset.
     MergePlan(&'a stikk_core::MergePlanView, &'a std::cell::Cell<u16>),
+    /// What one bundle file is and what it would change, and the screen's scroll offset.
+    Bundle(&'a stikk_core::BundleOpened, &'a std::cell::Cell<u16>),
     /// The Verify report, whether the raw view is showing, whether a re-run is in flight, and the
     /// scroll offset.
     Verify(
@@ -861,8 +875,14 @@ impl App {
             // **The Merge plan is not re-read in place** (RFC 047): it holds no `refreshing`
             // slot, and a plan is about the two tips as they stood when it was read. `q` and `M`
             // ask for a current one, which is the same two reads without a half-updated screen.
+            // **The Bundle view is not re-read in place either** (RFC 050): it holds no
+            // `refreshing` slot, and what a file is does not change under the reader. `i` asks
+            // again, with the path still in hand.
             Some(
-                Screen::BlockDetail { .. } | Screen::MergePlan { .. } | Screen::Loading { .. },
+                Screen::BlockDetail { .. }
+                | Screen::MergePlan { .. }
+                | Screen::Bundle { .. }
+                | Screen::Loading { .. },
             )
             | None => None,
         };
@@ -1508,6 +1528,54 @@ impl App {
         });
     }
 
+    /// Open the path prompt for a bundle file (the `i` key; RFC 050 decision 3).
+    ///
+    /// **Wherever a repository is open**, not only in the ref picker: a bundle arrives from
+    /// outside the repository and belongs to no ref, so there is no row for it to hang off.
+    ///
+    /// **The band answers before the prompt**, from orientation and without spawning anything:
+    /// asking a reader to type a path and then telling them this prikk cannot read it would
+    /// waste the typing.
+    pub fn begin_open_bundle(&mut self) {
+        self.banner = None;
+        if !self.overlays.is_empty() {
+            return;
+        }
+        if let Some(minor) = self.prikk_minor()
+            && minor < stikk_core::BUNDLE_FROM_MINOR
+        {
+            self.banner = Some(stikk_core::bundle_unavailable(minor));
+            return;
+        }
+        self.overlays.push(Overlay::BundlePath {
+            typed: String::new(),
+        });
+    }
+
+    /// The bundle path prompt's `Enter` (RFC 050 decision 3). **An empty path is not sent** --
+    /// the same rule the name prompt applies, for the same reason: there is nothing to ask prikk.
+    ///
+    /// **The path is resolved here, on the UI thread**, against the directory stikk was started
+    /// in -- the process's own working directory, which stikk never changes. Resolving here and
+    /// passing the result means the worker runs, and the view shows, one string.
+    fn submit_bundle_path(&mut self, typed: &str) {
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return;
+        }
+        self.overlays.pop();
+        // `std::path::absolute` joins and tidies **without touching the filesystem**:
+        // `canonicalize` would fail on a path that does not exist, and *this file is not there*
+        // is prikk's answer to give, in prikk's words, not a shape stikk invents before asking.
+        let path = std::path::Path::new(typed);
+        let path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+        let seq = self.dispatch(RequestKind::OpenBundle { path });
+        self.screens.push(Screen::Loading {
+            what: "bundle",
+            seq,
+        });
+    }
+
     /// The pair `M` means -- **the marked branch into the selected one** -- or `None` with
     /// stikk's own reason already in the banner.
     fn merge_pair(&mut self) -> Option<(String, String)> {
@@ -1933,6 +2001,10 @@ impl App {
                 let (kind, source, typed) = (*kind, source.clone(), typed.clone());
                 self.submit_ref_name(kind, source, &typed);
             }
+            Some(Overlay::BundlePath { typed }) => {
+                let typed = typed.clone();
+                self.submit_bundle_path(&typed);
+            }
             Some(Overlay::TagMessage {
                 name,
                 target,
@@ -2057,6 +2129,10 @@ impl App {
             // **`Enter` is the merge** (RFC 047 decision 6) — offered only from a plan prikk
             // judged `Confluent`, because that is the only outcome prikk will merge from.
             Some(Screen::MergePlan { .. }) => self.begin_merge(),
+            // **The Bundle view is a leaf, and nothing on it acts** (RFC 050 Handoff A §4c):
+            // `I` arrives with Handoff B, and until it does `Enter` here must do nothing rather
+            // than find something to do.
+            Some(Screen::Bundle { .. }) => {}
             None => self.open_history(),
         }
     }
@@ -2376,6 +2452,7 @@ impl App {
             Some(
                 Overlay::CommitMessage { typed, .. }
                 | Overlay::RefName { typed, .. }
+                | Overlay::BundlePath { typed }
                 | Overlay::TagMessage { typed, .. },
             ) => typed.push(ch),
             _ => {}
@@ -2396,6 +2473,7 @@ impl App {
             Some(
                 Overlay::CommitMessage { typed, .. }
                 | Overlay::RefName { typed, .. }
+                | Overlay::BundlePath { typed }
                 | Overlay::TagMessage { typed, .. },
             ) => {
                 typed.pop();
@@ -2415,6 +2493,7 @@ impl App {
                 Overlay::Palette { .. }
                     | Overlay::CommitMessage { .. }
                     | Overlay::RefName { .. }
+                    | Overlay::BundlePath { .. }
                     | Overlay::TagMessage { .. }
             )
         ) || matches!(
@@ -2447,6 +2526,7 @@ impl App {
                 | Overlay::SealConsent { .. }
                 | Overlay::SealResult { .. }
                 | Overlay::RefName { .. }
+                | Overlay::BundlePath { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
@@ -2469,6 +2549,7 @@ impl App {
                 Some(
                     Screen::PatchDetail { offset, .. }
                     | Screen::MergePlan { offset, .. }
+                    | Screen::Bundle { offset, .. }
                     | Screen::Verify { offset, .. },
                 ) => {
                     offset.set(offset.get().saturating_sub(1));
@@ -2517,6 +2598,7 @@ impl App {
                 | Overlay::SealConsent { .. }
                 | Overlay::SealResult { .. }
                 | Overlay::RefName { .. }
+                | Overlay::BundlePath { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
@@ -2537,6 +2619,7 @@ impl App {
                 Some(
                     Screen::PatchDetail { offset, .. }
                     | Screen::MergePlan { offset, .. }
+                    | Screen::Bundle { offset, .. }
                     | Screen::Verify { offset, .. },
                 ) => {
                     offset.set(offset.get().saturating_add(1));
@@ -2639,6 +2722,9 @@ impl App {
             ResponseKind::MergePlan(r) => r.is_ok(),
             ResponseKind::MergePreview(r) => r.is_ok(),
             ResponseKind::MergeConfirmExecute(r) => r.is_ok(),
+            // **Whether the *read* succeeded, never whether the bundle is sound.** A file prikk
+            // refuses is a successful read of a refusal, the same posture Verify takes.
+            ResponseKind::OpenBundle(r) => r.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -2674,6 +2760,7 @@ impl App {
             ResponseKind::MergeConfirmExecute(result) => {
                 self.apply_merge_confirm_execute(seq, result);
             }
+            ResponseKind::OpenBundle(result) => self.apply_open_bundle(seq, result),
         }
         // **One flush point for every transition a response completes** (RFC 046 decision 4):
         // the view that just landed, the focus a switch just moved, the picker's pick once its
@@ -2732,6 +2819,7 @@ impl App {
                 | Screen::PatchDetail { .. }
                 | Screen::Compare { .. }
                 | Screen::MergePlan { .. }
+                | Screen::Bundle { .. }
                 | Screen::Verify { .. }
                 | Screen::Loading { .. } => {}
             }
@@ -3097,6 +3185,40 @@ impl App {
             Err(error) => {
                 self.screens.remove(index);
                 self.surface(&error, OperationContext::MergePlan);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::OpenBundle`].
+    ///
+    /// **A refusal and a band are screens here, not banners** — unlike the Merge plan's decline.
+    /// The reader asked about one named file, and prikk's reason for not reading it is the whole
+    /// answer to that question: a banner over the view they came from would put prikk's words
+    /// where the path is not, and the path is what they would want to check.
+    fn apply_open_bundle(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::BundleOpened>,
+    ) {
+        let Some(index) = self
+            .screens
+            .iter()
+            .position(|s| matches!(s, Screen::Loading { seq: s, .. } if *s == seq))
+        else {
+            return;
+        };
+        match result {
+            Ok(opened) => {
+                if let Some(slot) = self.screens.get_mut(index) {
+                    *slot = Screen::Bundle {
+                        view: Box::new(opened),
+                        offset: std::cell::Cell::new(0),
+                    };
+                }
+            }
+            Err(error) => {
+                self.screens.remove(index);
+                self.surface(&error, OperationContext::Bundle);
             }
         }
     }
@@ -4006,6 +4128,7 @@ impl App {
                 view, raw, offset, ..
             }) => Focus::PatchDetail(view, *raw, offset),
             Some(Screen::MergePlan { view, offset }) => Focus::MergePlan(view, offset),
+            Some(Screen::Bundle { view, offset }) => Focus::Bundle(view, offset),
             Some(Screen::Verify {
                 view,
                 raw,

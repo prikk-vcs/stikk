@@ -4605,3 +4605,175 @@ fn a_landed_merge_shows_prikks_lines_and_re_reads() {
     assert!(kinds.iter().any(|k| k.starts_with("Orient")), "{kinds:?}");
     assert!(kinds.iter().any(|k| k.starts_with("Refs")), "{kinds:?}");
 }
+
+// =============================================================================================
+// RFC 050 Handoff A — `i`, the path prompt, and the Bundle view.
+//
+// What is checked here is what the key decides **before** anything is dispatched, and what the
+// prompt does with what is typed. The sentences, the strict parse and the no-preview-after-a-
+// refusal rule are `stikk-core::bundle::tests`'.
+// =============================================================================================
+
+/// A session that may open a bundle: prikk 0.53 and nothing else required -- no key, no branch.
+fn bundle_app(minor: u32) -> (App, mpsc::Receiver<Request>) {
+    let mut view = orientation_view(0, None, Some("abc123"));
+    view.prikk_minor = minor;
+    from_state("/repo", loaded(view), Palette::default())
+}
+
+fn type_in(app: &mut App, text: &str) {
+    for ch in text.chars() {
+        app.input_char(ch);
+    }
+}
+
+/// **`i` opens the prompt and spawns nothing**, and `Enter` on a path dispatches the open with
+/// the path **resolved** against the directory stikk was started in.
+#[test]
+fn rfc050_i_prompts_then_enter_dispatches_the_resolved_path() {
+    let (mut app, rx) = bundle_app(53);
+    app.begin_open_bundle();
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::BundlePath { typed }) if typed.is_empty()),
+        "the prompt opens empty: {:?}",
+        app.top_overlay()
+    );
+    assert!(rx.try_recv().is_err(), "nothing is asked of prikk yet");
+
+    type_in(&mut app, "/tmp/v1.bundle");
+    app.select();
+    match next_request(&rx).kind {
+        RequestKind::OpenBundle { path } => {
+            assert_eq!(path, std::path::Path::new("/tmp/v1.bundle"));
+        }
+        other => panic!("expected an OpenBundle, got {other:?}"),
+    }
+    assert!(app.top_overlay().is_none(), "the prompt closes on its way");
+    assert!(matches!(app.focus(), Focus::Loading("bundle")));
+}
+
+/// **A relative path is resolved**, not passed through: the worker runs and the view shows one
+/// string, and it is the one prikk read.
+#[test]
+fn rfc050_a_relative_path_is_resolved_before_it_is_dispatched() {
+    let (mut app, rx) = bundle_app(53);
+    app.begin_open_bundle();
+    type_in(&mut app, "v1.bundle");
+    app.select();
+    match next_request(&rx).kind {
+        RequestKind::OpenBundle { path } => {
+            assert!(path.is_absolute(), "{}", path.display());
+            assert!(path.ends_with("v1.bundle"), "{}", path.display());
+        }
+        other => panic!("expected an OpenBundle, got {other:?}"),
+    }
+}
+
+/// **An empty path is not sent**, and the prompt stays open -- the name prompt's own rule, for
+/// the same reason: there is nothing to ask prikk.
+#[test]
+fn rfc050_an_empty_path_declines_without_dispatching() {
+    let (mut app, rx) = bundle_app(53);
+    app.begin_open_bundle();
+    app.select();
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::BundlePath { .. })),
+        "the prompt stays open: {:?}",
+        app.top_overlay()
+    );
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+
+    // Whitespace is no more a path than nothing is.
+    type_in(&mut app, "   ");
+    app.select();
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::BundlePath { .. })
+    ));
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+}
+
+/// **`Esc` cancels**, leaving nothing behind.
+#[test]
+fn rfc050_esc_cancels_the_prompt() {
+    let (mut app, rx) = bundle_app(53);
+    app.begin_open_bundle();
+    type_in(&mut app, "/tmp/v1.bundle");
+    app.back();
+    assert!(app.top_overlay().is_none(), "{:?}", app.top_overlay());
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+}
+
+/// **Below the band `i` spawns nothing and does not even prompt** -- asking a reader to type a
+/// path and then telling them this prikk cannot read it would waste the typing.
+#[test]
+fn rfc050_below_the_band_i_says_so_and_does_not_prompt() {
+    let (mut app, rx) = bundle_app(52);
+    app.begin_open_bundle();
+    assert!(app.top_overlay().is_none(), "{:?}", app.top_overlay());
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+    let banner = app.banner().expect("stikk's own reason");
+    assert!(banner.contains("0.53"), "{banner}");
+    assert!(banner.contains("0.52"), "{banner}");
+}
+
+/// A response becomes the Bundle screen, **refusals included**: the reader asked about one named
+/// file, and prikk's reason for not reading it is the whole answer to that question.
+#[test]
+fn rfc050_the_answer_is_a_screen_whether_prikk_read_it_or_not() {
+    for opened in [
+        stikk_core::BundleOpened::Refused(
+            "error: malformed persisted data: invalid bundle magic".to_string(),
+        ),
+        stikk_core::BundleOpened::Unavailable(stikk_core::bundle_unavailable(52)),
+    ] {
+        let (mut app, rx) = bundle_app(53);
+        app.begin_open_bundle();
+        type_in(&mut app, "/tmp/v1.bundle");
+        app.select();
+        let req = next_request(&rx);
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::OpenBundle(Ok(opened)),
+        });
+        assert!(
+            matches!(app.focus(), Focus::Bundle(..)),
+            "a refusal is a screen, not a banner"
+        );
+        assert!(app.banner().is_none(), "{:?}", app.banner());
+    }
+}
+
+/// **The Bundle view is a leaf and nothing on it acts** (Handoff A §4c): `Enter` does nothing,
+/// and `↑`/`↓` scroll it as they scroll Verify.
+#[test]
+fn rfc050_nothing_on_the_bundle_view_acts_and_the_arrows_scroll_it() {
+    let (mut app, rx) = bundle_app(53);
+    app.begin_open_bundle();
+    type_in(&mut app, "/tmp/v1.bundle");
+    app.select();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::OpenBundle(Ok(stikk_core::BundleOpened::Refused("no".to_string()))),
+    });
+
+    app.select();
+    assert!(rx.try_recv().is_err(), "Enter dispatches nothing here");
+    assert!(matches!(app.focus(), Focus::Bundle(..)));
+
+    let Focus::Bundle(_, offset) = app.focus() else {
+        panic!("the Bundle view");
+    };
+    assert_eq!(offset.get(), 0);
+    app.nav_down();
+    let Focus::Bundle(_, offset) = app.focus() else {
+        panic!("the Bundle view");
+    };
+    assert_eq!(offset.get(), 1, "the same keys that scroll Verify");
+    app.nav_up();
+    let Focus::Bundle(_, offset) = app.focus() else {
+        panic!("the Bundle view");
+    };
+    assert_eq!(offset.get(), 0);
+}

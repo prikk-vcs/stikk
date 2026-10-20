@@ -1277,6 +1277,9 @@ fn coverage(overlay: &Overlay) -> Coverage {
         // RFC 044 decision 5: a prompt. Its prose is fixed and its input is one row; the affordance
         // region holds both, so there is nothing selectable and nothing that grows without bound.
         Overlay::RefName { .. } | Overlay::TagMessage { .. } => Coverage::NoSelection,
+        // RFC 050 decision 3: the same shape, for a path. Its prose is fixed and its input is one
+        // row, which the affordance region holds with the footer.
+        Overlay::BundlePath { .. } => Coverage::NoSelection,
         // RFC 044 decision 8: a content card. prikk prints four lines at most today, but the count
         // is prikk's, not stikk's, so it is treated as content that can grow.
         Overlay::RefWriteResult { .. } => Coverage::NoSelection,
@@ -1589,6 +1592,16 @@ fn cases() -> Vec<Case> {
                 typed: "feature".to_string(),
             }),
             last_row: "Enter to continue".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "BundlePath",
+            build: Box::new(|_| Overlay::BundlePath {
+                typed: "/home/someone/downloads/".to_string()
+                    + &"a-long-folder-".repeat(4)
+                    + "v1.bundle",
+            }),
+            last_row: "Esc to cancel".to_string(),
             entry: None,
         },
         Case {

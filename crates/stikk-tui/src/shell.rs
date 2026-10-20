@@ -183,6 +183,9 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         Focus::BlockDetail(detail, cursor) => {
             view::block::render(detail, cursor, palette, frame, area);
         }
+        Focus::Bundle(opened, offset) => {
+            view::bundle::render(opened, offset, palette, frame, area);
+        }
         Focus::Changes(v, hide_untracked, history) => {
             // RFC 032: the `renames` count is shown at prikk ≥ 0.38, where a rename can be declared.
             let renames_reported =

@@ -224,6 +224,16 @@ pub enum Overlay {
         /// The part after the prefix, typed so far.
         typed: String,
     },
+    /// RFC 050 decision 3: the path of a bundle file to open.
+    ///
+    /// **Its own overlay, not [`Self::RefName`]'s.** That prompt fixes a prefix (`heads/` or
+    /// `tags/`) from its `kind` and exists to build a ref name; a file path takes no prefix, is
+    /// not a ref, and is resolved rather than parsed. Reusing it would have meant a third
+    /// `RefNameKind` whose prefix is empty and whose name is not a name.
+    BundlePath {
+        /// The path typed so far, exactly as typed — resolved on submission, not while typing.
+        typed: String,
+    },
     /// RFC 044 decision 5: a tag's message, prompted after its name and **allowed to be empty** —
     /// an empty one sends no `-m`, which is prikk's own shape for a tag without a message.
     TagMessage {
@@ -336,6 +346,7 @@ impl Overlay {
                 kind: RefNameKind::Tag,
                 ..
             } => " New tag ",
+            Self::BundlePath { .. } => " Open a bundle ",
             Self::TagMessage { .. } => " Tag message ",
             Self::RefWriteResult { kind, .. } => kind.done_title(),
             Self::SwitchResult { .. } => " Switched ",
@@ -380,6 +391,7 @@ pub fn render(
             frame,
             area,
         ),
+        Overlay::BundlePath { typed } => render_bundle_path(typed, palette, frame, area),
         Overlay::Refusal { card, cursor } => render_refusal(card, *cursor, palette, frame, area),
         Overlay::Stale {
             operation,
@@ -580,6 +592,11 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
             palette,
             "M",
             "merge plan — the marked branch into this one (ref picker)",
+        ),
+        key_line(
+            palette,
+            "i",
+            "open a bundle file — what it is, and what it would change",
         ),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
@@ -2239,6 +2256,55 @@ fn render_ref_name(
             RefNameKind::Branch => " New branch ",
             RefNameKind::Tag => " New tag ",
         },
+        width: CONFIRM_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 050 decision 3: the path of a bundle file to open.
+///
+/// **No prefix, and nothing is validated here.** A ref prompt fixes `heads/` or `tags/` and this
+/// one fixes nothing: what a path may contain is the filesystem's business, and whether the file
+/// is a bundle is prikk's. The notice says what will happen — a read, and nothing written —
+/// because that is the question a reader typing a path into a version-control tool is actually
+/// asking.
+fn render_bundle_path(typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
+    let mut prose: Vec<Line> = vec![Line::from(Span::styled(
+        "Open a bundle file",
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    ))];
+    prose.push(Line::from(""));
+    for row in wrap_indented(
+        "A path is required. stikk asks prikk what the file is and what importing it would \
+         change, and writes nothing. A relative path is taken from the directory stikk was \
+         started in, and the view shows the path it used.",
+        PANEL_TEXT_WIDTH,
+        "  ",
+    ) {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+    prose.push(Line::from(""));
+
+    let actions = vec![
+        Line::from(vec![
+            Span::styled("  › ", Style::default().fg(palette.accent)),
+            Span::styled(inert(typed), Style::default().fg(palette.fg)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Enter to open · Esc to cancel",
+            Style::default().fg(palette.accent),
+        )),
+    ];
+
+    Panel {
+        title: " Open a bundle ",
         width: CONFIRM_WIDTH,
         prose,
         actions,

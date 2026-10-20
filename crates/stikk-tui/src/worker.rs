@@ -195,6 +195,14 @@ pub(crate) enum RequestKind {
         /// The branch whose work would come in -- the marked one, `--from`.
         from: String,
     },
+    /// Open a bundle file: verify it, and preview it against the local branch of its own name
+    /// (RFC 050 Handoff A).
+    OpenBundle {
+        /// The file, **already resolved** against the directory stikk was started in. Resolved
+        /// on the UI thread, where the start directory is known, so the worker runs and the view
+        /// shows the same string.
+        path: std::path::PathBuf,
+    },
 }
 
 /// The worker's answer to one [`Request`], echoing its `seq`.
@@ -253,6 +261,8 @@ pub(crate) enum ResponseKind {
     SwitchConfirmExecute(Result<Outcome<stikk_prikk::SwitchResult>>),
     /// Answers [`RequestKind::MergePlan`].
     MergePlan(Result<stikk_core::MergePlanRead>),
+    /// Answers [`RequestKind::OpenBundle`].
+    OpenBundle(Result<stikk_core::BundleOpened>),
     /// Answers [`RequestKind::MergePreview`].
     MergePreview(Result<stikk_core::MergePreview>),
     /// Answers [`RequestKind::MergeConfirmExecute`].
@@ -320,6 +330,7 @@ impl RequestKind {
             Self::RefWriteConfirmExecute { .. } => "ref write",
             Self::SwitchPreview { .. } => "switch preview",
             Self::MergePlan { .. } => "merge plan",
+            Self::OpenBundle { .. } => "bundle",
             Self::MergePreview { .. } => "merge preview",
             Self::MergeConfirmExecute { .. } => "merge",
             Self::SwitchConfirmExecute { .. } => "switch",
@@ -480,6 +491,9 @@ pub(crate) fn run(
                     &from,
                     stikk_core::MERGE_LINEAGE_LIMIT,
                 ))
+            }
+            RequestKind::OpenBundle { path } => {
+                ResponseKind::OpenBundle(stikk_core::open_bundle(prikk, repo, &path))
             }
             RequestKind::SwitchConfirmExecute {
                 token,

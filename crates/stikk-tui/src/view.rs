@@ -8,6 +8,7 @@
 //! string.
 
 pub mod block;
+pub mod bundle;
 pub mod changes;
 pub mod compare;
 pub mod history;

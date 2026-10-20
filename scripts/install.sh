@@ -92,10 +92,12 @@ case "$os/$arch" in
   # On **aarch64** it is worse, and was measured on real hardware (RFC 048 F4, corrected): the
   # glibc build's `GLIBC_2.39` requirement is **enforced** there -- unlike x86_64, where the same
   # requirement is flagged optional and skipped -- so it does not start at all on Debian 12,
-  # Raspberry Pi OS bookworm or Ubuntu 22.04. Nothing printed, no diagnosis, no stikk.
+  # Raspberry Pi OS bookworm or Ubuntu 22.04. What the user gets is an empty stdout and one
+  # loader line on stderr naming a glibc version, which tells a newcomer nothing they can act on.
   #
-  # Both musl builds produce identical output to their glibc twins on a system new enough to run
-  # either. The manual table on the install page still offers both.
+  # On x86_64 the two builds were checked to produce identical output on a system new enough to
+  # run either, including a real orientation; on aarch64 only `--version` has been run. The
+  # manual table on the install page still offers both.
   Linux/x86_64)          target="x86_64-unknown-linux-musl" ;;
   Linux/aarch64|Linux/arm64) target="aarch64-unknown-linux-musl" ;;
   Darwin/arm64)          target="aarch64-apple-darwin" ;;

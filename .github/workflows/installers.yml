@@ -559,6 +559,18 @@ jobs:
         run: |
           set -euo pipefail
           cargo build --release --locked -p stikk --target "$TARGET"
+          # **Two versions here, and they are not the same one** (review v1 C1).
+          #
+          # `STIKK_VER` is the latest *published* release, which is the name `install.sh` will
+          # ask the mirror for -- so the archive must carry it. But the binary inside was built
+          # from this commit, and from release prep onward that is the *next* version: the prep
+          # commit sets the workspace to 0.15.0 while 0.14.0 is still the latest release. So the
+          # version this leg asserts is read from the workspace, not from `STIKK_VER`; asserting
+          # `STIKK_VER` would redden this job on the very commit we would be asked to tag.
+          built="$(cargo metadata --no-deps --format-version 1 \
+                    | jq -r '.packages[] | select(.name=="stikk") | .version')"
+          echo "BUILT_VER=${built}" >> "$GITHUB_ENV"
+          echo "archive named for the published ${STIKK_VER}; the binary in it is ${built}"
           # **The same four lines `release.yml`'s "Package (unix)" step runs**, with the
           # published version's name so the installer asks for this file and not another.
           dist="stikk-${STIKK_VER}-${TARGET}"
@@ -601,4 +613,6 @@ jobs:
           echo "== stderr"; cat "$RUNNER_TEMP/err.txt"
           test ! -s "$RUNNER_TEMP/err.txt" \
             || { echo "::error::stikk printed to stderr on glibc $(ldd --version | head -1 | awk '{print $NF}')"; exit 1; }
-          grep -qx "stikk ${STIKK_VER}" "$RUNNER_TEMP/out.txt"
+          # **The version the build carries**, not the published one the archive is named for
+          # (review v1 C1); they diverge from release prep onward.
+          grep -qx "stikk ${BUILT_VER}" "$RUNNER_TEMP/out.txt"

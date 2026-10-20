@@ -73,7 +73,7 @@ Write-Host ''
 # guide rather than writing prikk's steps out: they are prikk's to change.
 Say 'prikk was NOT removed -- it is a separate program, and prikk uninstalls itself. Its guide'
 Say 'has the steps:'
-Say '  https://prikk-vcs.github.io/prikk/docs/guide/install.html'
+Say '  https://prikk.org/docs/guide/install.html'
 
 Say 'To install stikk again:'
 Say "  irm https://github.com/$Repo/releases/latest/download/install.ps1 | iex"

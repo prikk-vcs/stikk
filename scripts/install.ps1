@@ -55,8 +55,13 @@ $PrikkRepo = 'prikk-vcs/prikk'
 # 0.54.0 (RFC 048 F5), and stikk's re-baseline to it replaces these two lines with prikk's own
 # `irm ... | iex`. Until then this links prikk's steps and never copies them: they are prikk's to
 # change, and a copy here would go stale without anyone noticing.
+#
+# **prikk.org, not the GitHub Pages address** (review v1 C1): measured, the Pages URL answers 301
+# to *plain http* at prikk.org, and sending a newcomer from https to http is not something this
+# script should do on prikk's behalf.
 $PrikkReleasePage  = "https://github.com/$PrikkRepo/releases/latest"
-$PrikkInstallGuide = 'https://prikk-vcs.github.io/prikk/docs/guide/install.html'
+$PrikkInstallGuide = 'https://prikk.org/docs/guide/install.html'
+$StikkReleases     = "https://github.com/$Repo/releases/latest"
 
 function Say  { param([string] $Message) Write-Host "stikk-install: $Message" }
 function Die  { param([string] $Message) Write-Host "stikk-install: $Message" -ForegroundColor Red; exit 1 }
@@ -181,7 +186,11 @@ if (-not $inSession) {
 # claims stay prikk's decisions, made once, for every tool built on it.
 #
 # Whatever this reports, stikk is installed and this script exits 0.
-$prikkIsMissing = $false
+# **What the reader has to do about prikk, if anything** -- empty when nothing. Held as the
+# sentence itself rather than a flag, because the five rows do not all ask for the same thing:
+# a missing prikk is installed, an old one is updated, and a prikk from another major is answered
+# by a newer *stikk*.
+$prikkNextStep = ''
 
 function Show-PrikkHowToGetIt {
   # **prikk's steps are linked, never copied.** prikk publishes no Windows installer yet
@@ -202,12 +211,23 @@ if ($prikkCmd) {
   $floorMinor   = [int] $PrikkFloorMinor
   $ceilingMinor = [int] ($PrikkTestedCeiling -split '\.')[1]
   if ($installed -match '(\d+)\.(\d+)\.(\d+)') {
+    $major = [int] $Matches[1]
     $minor = [int] $Matches[2]
-    if ($minor -lt $floorMinor) {
-      # **Below the floor is the one row that is not "yours still runs".** stikk cannot read
-      # this prikk, so there is nothing reassuring to say about it.
-      $prikkIsMissing = $true
-      Say "that is too old for this stikk, which needs prikk 0.$floorMinor or newer."
+    if ($major -ne 0) {
+      # **A prikk from another major is not "too old"** (review v1 C3). stikk supports major 0
+      # only (`Version::is_supported`), so the fix is a newer *stikk*: pointing at prikk would
+      # leave the reader on the prikk they already have. Measured: stikk opens such a repository
+      # **read-only** rather than refusing.
+      $prikkNextStep = 'update stikk (see above)'
+      Say "this stikk was built for prikk 0.x and does not know prikk $major.x. It will open your"
+      Say 'repository read-only and change nothing. A newer stikk will know it:'
+      Say "  $StikkReleases"
+    } elseif ($minor -lt $floorMinor) {
+      # **Below the floor is the one 0.x row that is not "yours still runs".** Measured: stikk
+      # opens read-only here too, so that is what it says rather than leaving it to be found.
+      $prikkNextStep = 'install or update prikk (see above)'
+      Say "that is too old for this stikk, which needs prikk 0.$floorMinor or newer. stikk will open your"
+      Say 'repository read-only until you update prikk.'
       Show-PrikkHowToGetIt
     } elseif ($minor -le $ceilingMinor) {
       Say "that is inside the range this stikk was tested against (0.$floorMinor through $PrikkTestedCeiling)"
@@ -218,12 +238,15 @@ if ($prikkCmd) {
       Say 'It still runs; stikk will say its output has not been checked, rather than assume it has.'
     }
   } else {
-    # **Not a verdict either way.** A version stikk could not read is not an old prikk.
-    Say 'stikk could not read a version number from that. It still runs; stikk will say its'
-    Say 'output has not been checked, rather than assume it has.'
+    # **Measured** (review v1 C2): stikk's handshake parses this line, and a version it cannot
+    # read makes stikk exit with *could not find a version in prikk output*. So this row says
+    # what happens, and must not borrow the reassuring sentence the two in-range rows use.
+    $prikkNextStep = 'install or update prikk (see above)'
+    Say 'stikk could not read a version number from that, and will refuse to start with this prikk.'
+    Show-PrikkHowToGetIt
   }
 } else {
-  $prikkIsMissing = $true
+  $prikkNextStep = 'install prikk (see above)'
   Say 'stikk reads prikk repositories, so you need prikk too.'
   Show-PrikkHowToGetIt
 }
@@ -235,8 +258,8 @@ Say 'done. Next:'
 # **No "open a new window" step** (decision 3): this session's PATH was updated above, so stikk
 # works right here. The steps are numbered as they are actually needed.
 $step = 1
-if ($prikkIsMissing) {
-  Say "  $step. install prikk (see above)"
+if ($prikkNextStep) {
+  Say "  $step. $prikkNextStep"
   $step++
 }
 Say "  $step. make a repository:  prikk init"

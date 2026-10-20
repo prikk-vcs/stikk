@@ -20,7 +20,7 @@ is typed there, one line at a time, each followed by Enter.
 ## Step 1 — install prikk
 
 prikk is the version control system; stikk reads the repositories it makes. prikk publishes its
-own installer, and [prikk's install guide](https://prikk-vcs.github.io/prikk/docs/guide/install.html)
+own installer, and [prikk's install guide](https://prikk.org/docs/guide/install.html)
 is the authority on it.
 
 **Linux and macOS**:
@@ -30,7 +30,7 @@ curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.s
 ```
 
 **Windows**: prikk does not publish a Windows installer yet — one is coming. Until it does, follow
-[prikk's install guide](https://prikk-vcs.github.io/prikk/docs/guide/install.html), which has the
+[prikk's install guide](https://prikk.org/docs/guide/install.html), which has the
 steps for Windows; the files are on [prikk's latest release](https://github.com/prikk-vcs/prikk/releases/latest).
 
 Check it worked:
@@ -39,9 +39,10 @@ Check it worked:
 prikk --version
 ```
 
-stikk works with **prikk 0.28 and above**, and says so if yours is older. A prikk newer than the
-one this stikk was tested against still works; stikk tells you its output has not been checked
-rather than assuming it has.
+stikk works with **prikk 0.28 and above**. With an older prikk it opens your repository read-only
+and says so, rather than changing anything it has not been checked against. A prikk *newer* than
+the one this stikk was tested against works normally; stikk just tells you its output has not been
+checked rather than assuming it has.
 
 ## Step 2 — install stikk
 
@@ -114,7 +115,7 @@ irm https://github.com/prikk-vcs/stikk/releases/latest/download/uninstall.ps1 | 
 
 That removes stikk and the `PATH` entry it added, and nothing else — not your repositories, which
 stikk never writes to. To remove prikk, use
-[prikk's own uninstaller](https://prikk-vcs.github.io/prikk/docs/guide/install.html).
+[prikk's own uninstaller](https://prikk.org/docs/guide/install.html).
 
 ## If Windows says Smart App Control blocked stikk or prikk
 

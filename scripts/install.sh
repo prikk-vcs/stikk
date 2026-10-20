@@ -39,11 +39,15 @@ PRIKK_TESTED_CEILING="@PRIKK_VERSION@"
 REPO="prikk-vcs/stikk"
 
 # prikk's own install command and guide, printed when prikk is missing or too old. **Not
-# downloaded, not run** -- printed, for the reader to run themselves. The guide is prikk's
-# rendered documentation site rather than the Markdown source: the person this installer is for
-# is better served by a page than by a file.
+# downloaded, not run** -- printed, for the reader to run themselves.
+#
+# **prikk.org, not the GitHub Pages address** (review v1 C1): measured, the Pages URL answers 301
+# to *plain http* at prikk.org, and sending a newcomer from https to http is not something this
+# script should do on prikk's behalf. prikk.org is prikk's canonical site and answers over https
+# directly.
 PRIKK_INSTALL_CMD="curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh"
-PRIKK_INSTALL_GUIDE="https://prikk-vcs.github.io/prikk/docs/guide/install.html"
+PRIKK_INSTALL_GUIDE="https://prikk.org/docs/guide/install.html"
+STIKK_RELEASES="https://github.com/$REPO/releases/latest"
 
 version="${STIKK_INSTALL_VERSION:-$STIKK_VERSION}"
 prefix="${STIKK_INSTALL_PREFIX:-$HOME/.local/bin}"
@@ -188,7 +192,11 @@ fi
 #
 # Whatever this reports, stikk is installed and this script exits 0: a missing prikk is a thing
 # to tell you about, not a failure of the install you asked for.
-prikk_is_missing=0
+# **What the reader has to do about prikk, if anything** -- empty when nothing. Held as the
+# sentence itself rather than a flag, because the five rows do not all ask for the same thing:
+# a missing prikk is installed, an old one is updated, and a prikk from another major is answered
+# by a newer *stikk*.
+prikk_next_step=""
 
 prikk_how_to_get_it() {
   say "prikk installs itself. Run this:"
@@ -199,18 +207,31 @@ prikk_how_to_get_it() {
 if command -v prikk >/dev/null 2>&1; then
   installed="$(prikk --version 2>/dev/null | tr -d '\r')"
   say "prikk is already installed: $installed"
+  major="$(echo "$installed" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1/p')"
   minor="$(echo "$installed" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\2/p')"
   ceiling_minor="$(echo "$PRIKK_TESTED_CEILING" | cut -d. -f2)"
   if [ -z "$minor" ]; then
-    # **Not a verdict either way.** A version stikk could not read is not an old prikk, and
-    # saying "too old" here would send someone to fix something that may be fine.
-    say "stikk could not read a version number from that. It still runs; stikk will say its"
-    say "output has not been checked, rather than assume it has."
+    # **Measured** (review v1 C2): stikk's handshake parses this line, and a version it cannot
+    # read makes stikk exit with *could not find a version in prikk output*. So this row says
+    # what happens, and must not borrow the reassuring sentence the two in-range rows use.
+    prikk_next_step="install or update prikk (the command is above)"
+    say "stikk could not read a version number from that, and will refuse to start with this prikk."
+    prikk_how_to_get_it
+  elif [ "$major" != "0" ]; then
+    # **A prikk from another major is not "too old"** (review v1 C3). stikk supports major 0 only
+    # (`Version::is_supported`), so the fix is a newer *stikk*: pointing at prikk's installer
+    # would leave the reader on the prikk they already have. Measured: stikk opens such a
+    # repository **read-only** rather than refusing.
+    prikk_next_step="update stikk (see above)"
+    say "this stikk was built for prikk 0.x and does not know prikk $major.x. It will open your"
+    say "repository read-only and change nothing. A newer stikk will know it:"
+    say "  $STIKK_RELEASES"
   elif [ "$minor" -lt "$PRIKK_FLOOR_MINOR" ]; then
-    # **Below the floor is the one row that is not "yours still runs".** stikk cannot read this
-    # prikk, so there is nothing reassuring to say about it.
-    prikk_is_missing=1
-    say "that is too old for this stikk, which needs prikk 0.$PRIKK_FLOOR_MINOR or newer."
+    # **Below the floor is the one 0.x row that is not "yours still runs".** Measured: stikk
+    # opens read-only here too, so that is what it says rather than leaving it to be discovered.
+    prikk_next_step="install or update prikk (the command is above)"
+    say "that is too old for this stikk, which needs prikk 0.$PRIKK_FLOOR_MINOR or newer. stikk will open your"
+    say "repository read-only until you update prikk."
     prikk_how_to_get_it
   elif [ "$minor" -le "$ceiling_minor" ]; then
     say "that is inside the range this stikk was tested against (0.$PRIKK_FLOOR_MINOR through $PRIKK_TESTED_CEILING)"
@@ -221,7 +242,7 @@ if command -v prikk >/dev/null 2>&1; then
     say "It still runs; stikk will say its output has not been checked, rather than assume it has."
   fi
 else
-  prikk_is_missing=1
+  prikk_next_step="install prikk (the command is above)"
   say "stikk reads prikk repositories, so you need prikk too."
   prikk_how_to_get_it
 fi
@@ -233,8 +254,8 @@ say "done. Next:"
 # **The steps are numbered as they are actually needed**, so a reader never has to work out which
 # of them apply to them. A missing prikk is step 1 because `prikk init` cannot run without it.
 step=1
-if [ "$prikk_is_missing" -eq 1 ]; then
-  say "  $step. install prikk (the command is above)"
+if [ -n "$prikk_next_step" ]; then
+  say "  $step. $prikk_next_step"
   step=$((step + 1))
 fi
 if [ "$on_path" -eq 0 ]; then

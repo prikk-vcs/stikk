@@ -50,7 +50,7 @@ installs itself**. Two commands, in order.
 curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh
 ```
 
-On Windows, follow [prikk's install guide](https://prikk-vcs.github.io/prikk/docs/guide/install.html);
+On Windows, follow [prikk's install guide](https://prikk.org/docs/guide/install.html);
 prikk's own Windows installer is on its way.
 
 **2. stikk** — Linux and macOS:

@@ -40,7 +40,7 @@ ships ready-to-run binaries for Linux, macOS and Windows, with checksums — see
 compatible `prikk` on your `PATH` as well. **prikk installs itself** — on Linux and macOS in one
 line (`curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh`),
 and on Windows through
-[prikk's install guide](https://prikk-vcs.github.io/prikk/docs/guide/install.html), which is the
+[prikk's install guide](https://prikk.org/docs/guide/install.html), which is the
 authority on all of it. stikk's own installers install stikk and nothing else; they check for
 prikk and print prikk's command when it is missing.
 This release requires prikk **≥ 0.28** and is validated

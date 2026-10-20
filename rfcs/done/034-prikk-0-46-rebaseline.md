@@ -1,6 +1,7 @@
 # RFC 034 — The prikk 0.46 re-baseline: a ref with no published history stopped being readable
 
 **Status.** **Done 2026-09-22** — Handoffs A and B delivered on `main` (`ad95152`, `8a23045`); shipped in **0.9.0**.
+**Handoff C** (the declarations card fits) delivered on `main` (`bf8d067`); shipped in **0.15.0**.
 **Accepted by the project owner 2026-09-22**, **Q1 ruled (b)** the same day: no 0.8.1 — stikk has no
 users yet, so the repair rides in 0.9.0 with the re-baseline. **Amended on acceptance (A1)** — the ceiling raise comes
 *first*, not last. **Proposed 2026-09-22** by the architect, the day prikk's letter 017 arrived. **Supersedes

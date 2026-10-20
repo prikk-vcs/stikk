@@ -84,32 +84,35 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.14.x release is (and is not)
+## What a v0.15.x release is (and is not)
 
-v0.14.x reads orientation, history, block detail — including the files at **any** block, with their
+v0.15.x reads orientation, history, block detail — including the files at **any** block, with their
 modes, at prikk ≥ 0.46 — worktree changes, the Queue view, **Patch detail** (what one patch changed,
 from prikk's own `show` report, with content shown byte for byte), **Compare** (what changed between
 two points, from prikk's own `diff` hunks, at prikk ≥ 0.46 — two blocks, a block and the one before
 it, any two refs, or the worktree), **Verify** (prikk's verdict on whether the repository is sound,
 with its failing conditions and every stage it ran, at prikk ≥ 0.39) and the
-refusal/glossary surfaces, and performs six mutations — **commit** (author a worktree capture),
-**seal** (freeze the queue into signed history), **create a branch**, **create a tag** and **close
-a branch** (at prikk ≥ 0.42), and **switch branch** (at prikk ≥ 0.46) — every one of them
+refusal/glossary surfaces, and performs seven mutations — **commit** (author a worktree capture),
+**seal** (freeze the queue into signed history), **create a branch**, **create a tag**, **close
+a branch** and **merge one branch into another** (at prikk ≥ 0.42), and **switch branch** (at
+prikk ≥ 0.46) — every one of them
 preview-first with tiered confirmation, naming the key that will sign where one signs at all. A
 confirmed commit authors only the worktree its preview showed, the seal confirmation names the
-patches it freezes, and a switch's confirmation names the exact files it will write and delete. It also notices a change made outside it and refreshes what is on screen,
+patches it freezes, a switch's confirmation names the exact files it will write and delete, and a
+merge runs only where prikk's own plan proves the two sides confluent — never into the branch you
+are on, and writing nothing to your worktree. It also notices a change made outside it and refreshes what is on screen,
 and its commit preview shows a declared rename as prikk's own verdict resolves it, makes commit
 unavailable where prikk would refuse a declaration, and names a ref with no published history.
 Every string it did not write is rendered so that what you read is what prikk reported.
 Signing readiness is read from prikk itself on prikk ≥ 0.41. **It reopens each repository where
 you left it** — the focused ref, the top-level view and the untracked filter, re-checked against
 prikk before any of it is shown and stored outside every repository; `STIKK_PRIVATE=1` remembers
-nothing. Merge, sync and checkout of a block
-or a path remain unbuilt, and so is a **Trust & Keys** view, and a **doctor** or lock-inspector
-view (`doctor` has no JSON): the `Prikk` seam has nineteen methods — `handshake`, `readiness`,
+nothing. Sync, and checkout of a block
+or a path, remain unbuilt, and so is a **Trust & Keys** view, and a **doctor** or lock-inspector
+view (`doctor` has no JSON): the `Prikk` seam has twenty-one methods — `handshake`, `readiness`,
 `orientation`, `history`, `block_state`, `refs`, `tags`, `worktree_status`, `queue`, `show`,
-`diff`, `verify`, `change_token`, `commit`, `seal`, `create_branch`, `create_tag`, `close_branch`
-and `switch_branch` — and none for any of them.
+`diff`, `verify`, `change_token`, `commit`, `seal`, `create_branch`, `create_tag`, `close_branch`,
+`switch_branch`, `merge_plan` and `merge` — and none for any of them.
 A release also publishes **the four installer scripts** (`install.sh`, `uninstall.sh`,
 `install.ps1`, `uninstall.ps1`), each with its own `.sha256`, filled with that release's version.
 It drives the external `prikk` binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.53.0** — so the release

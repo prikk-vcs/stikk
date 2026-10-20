@@ -1,6 +1,6 @@
 # RFC 049 — The prikk 0.53 re-baseline
 
-**Status.** **Done 2026-10-19**: Handoff A delivered on `main` (`596e609`); a **0.15.0** candidate. **Accepted by the project owner 2026-10-19**; [Handoff A](../handoffs/049-prikk-0-53-rebaseline/a-rebaseline-handoff-v1.md) issued. **Proposed 2026-10-19** by the architect, as 0.15.0's conditional increment
+**Status.** **Done 2026-10-19**: Handoff A delivered on `main` (`596e609`); shipped in **0.15.0**. **Accepted by the project owner 2026-10-19**; [Handoff A](../handoffs/049-prikk-0-53-rebaseline/a-rebaseline-handoff-v1.md) issued. **Proposed 2026-10-19** by the architect, as 0.15.0's conditional increment
 (`.git-exclude/release/0-15-0-scope.md`: *"if prikk 0.53.0 publishes before the cut, a re-baseline joins"*). prikk
 0.53.0 published 2026-10-18 (crates.io; prikk's letter 024). **No open question.**
 Measured against real prikk **0.53.0** and **0.28.0** binaries. Evidence:

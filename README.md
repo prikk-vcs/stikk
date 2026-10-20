@@ -120,8 +120,11 @@ ref picker, **Verify** (`V`) — prikk's verdict on whether the repository is so
 conditions and every stage it ran (prikk ≥ 0.39) — and commit or seal behind preview-first
 confirmation, and from the ref picker **create a branch** (`n`), **create a tag** (`t`, or at any
 block from History), **close a branch** (`x`) and **switch to a branch** (`s`, previewed as the
-exact files it will write and delete) — prikk ≥ 0.42, and ≥ 0.46 for a switch. stikk **reopens
-each repository where you left it** — the focused ref, the view and the untracked filter,
+exact files it will write and delete) — prikk ≥ 0.42, and ≥ 0.46 for a switch. stikk also
+**merges one branch into another** — mark the branch to merge from (`m`), select the one it goes
+into, `M` for prikk's own plan, `Enter` to run it — only where prikk's plan proves the two sides
+confluent, previewed like every other write and never into the branch you are on (prikk ≥ 0.42).
+stikk **reopens each repository where you left it** — the focused ref, the view and the untracked filter,
 re-checked against prikk first and stored outside every repository; `STIKK_PRIVATE=1` remembers
 nothing.
 To see it with no repository at all, from a clone of

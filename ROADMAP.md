@@ -273,6 +273,31 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk merges one branch into another, and installs in two plain steps (0.15.0, breaking)
+
+- **The declarations card fits** ([RFC 034 Handoff C](rfcs/handoffs/034-prikk-0-46-rebaseline/c-declarations-card-fits-handoff-v1.md)):
+  *"what commit would refuse"* shows whole declarations and says how many more there are, never a heading over an
+  empty quote and never a row the reader cannot reach on a card that does not scroll.
+- **Merge, read-only** (`FR-080/081`, [RFC 047](rfcs/done/047-merge.md)): mark a branch, select another, `M` — and
+  prikk's own plan for the pair, word for word, against the baseline block stikk found. **stikk names a baseline
+  only where it can name the true one**: prikk reports no parent ids, so past a merge there is nothing to follow,
+  and where stikk cannot it says so and names the prikk command that takes a baseline you choose. Four merges are
+  declined before prikk is asked, each in stikk's own words.
+- **Merge, execution** (`FR-082`, RFC 047): `Enter` merges, at seal's tier, behind a card that names the branch
+  merged from, the branch merged into, the baseline and the tip being adopted, with prikk's plan beneath it.
+  **Every guard is re-asked at the moment you confirm**, not reused from when the view opened, and nothing is
+  written to your worktree.
+- **Delivery for users new to all of this** ([RFC 048](rfcs/done/048-delivery-for-new-users.md)): **each program
+  installs itself** — stikk's installers install stikk, check prikk and print **prikk's own install command**, so
+  where prikk lives and how it is verified stay prikk's decisions; an install page that starts from opening a
+  terminal; and a **static build for 64-bit ARM Linux**, because the glibc one did not start below glibc 2.39 —
+  found by the new ARM CI job, fixed, and proven on real hardware at glibc 2.35. The Homebrew tap (Handoff C) and
+  SignPath signing wait on the owner and are not in 0.15.0.
+- **The prikk 0.53.0 re-baseline** ([RFC 049](rfcs/done/049-prikk-0-53-rebaseline.md)): nothing stikk reads changed
+  — 0.53's one output change is to `checkout`'s refusals, which stikk calls only below prikk 0.46.
+- **The validated prikk range is `>= 0.28`, through `0.53.0`** (was `0.52.0`); the real-binary suite drives 63 cases
+  at 0.28.0 and 0.53.0 on Linux, macOS and Windows.
+
 ## Shipped — stikk reopens each repository where you left it, and never stores anything inside one (0.14.0, breaking)
 
 - **Session persistence** (`FR-122`, [RFC 046](rfcs/done/046-session-persistence.md)): each repository reopens on
@@ -396,27 +421,7 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.15.0, scoped 2026-10-18 (authorized), in delivery order
-
-**0.15.0: stikk merges branches.** Scope: `.git-exclude/release/0-15-0-scope.md`.
-
-1. **The declarations card fits — landed on `main`** ([Handoff C](rfcs/handoffs/034-prikk-0-46-rebaseline/c-declarations-card-fits-handoff-v1.md), `bf8d067`):
-   whole declarations and a count, never rows the reader cannot reach.
-2. **Merge, read-only — landed on `main`** (`FR-080/081`, [RFC 047](rfcs/done/047-merge.md), `f8075ea`): prikk's merge
-   plan for two branches, with the baseline block stikk finds shown for checking.
-3. **Merge, execution — landed on `main`** (`FR-082`, RFC 047, `02771df`): previewed with the plan it seals, at seal's
-   tier, the card saying which branch is merged into which.
-4. **Delivery for unskilled users — landed on `main`** ([RFC 048](rfcs/done/048-delivery-for-new-users.md), `bbdca15`,
-   [Handoff A](rfcs/handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) **landed on
-   `main`**, `9f91ee9`): **each program installs itself** — stikk's installers install stikk, check for prikk and print
-   prikk's own install command; the install page starts from opening a terminal. **Then
-   [Handoff B](rfcs/handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md)**: Handoff A's ARM job
-   found that stikk's 64-bit ARM Linux build does not start below glibc 2.39, so ARM gets a static build as x86_64 has.
-   The Homebrew tap (Handoff C) waits on the owner and is not in 0.15.0.
-5. **The prikk 0.53.0 re-baseline — landed on `main`** ([RFC 049](rfcs/done/049-prikk-0-53-rebaseline.md), `596e609`): validated
-   through 0.53.0; nothing stikk reads changed.
-
-## Later — verification, merge, session, exchange, trust, and the GUI
+## Next — 0.16.0, not yet scoped
 
 - **Decision points for 0.16.0's scoping** (owner, 2026-10-20: *"managed in our milestones (to implement or to drop)
   and our schedule"*):
@@ -427,6 +432,8 @@ a fabricated worktree entry was fixed.
     waiting.**
   - **The prikk 0.54.0 re-baseline**, when prikk publishes it: its Windows installer (switch stikk's Windows message to
     prikk's `irm` line, if Handoff A could not) and the `cargo binstall` Windows fix to check.
+
+## Later — verification, merge, session, exchange, trust, and the GUI
 
 - **Orientation on `status --format json`** (prikk ≥ 0.35). A refactor with no visible change: it would unify
   Orientation's read with the queue's and retire a prose parser. RFC 034's interrupted-materialization marker is read
@@ -439,8 +446,10 @@ a fabricated worktree entry was fixed.
 - **Checkout / deletion planning and materialization** (`FR-053`'s remainder, `FR-054`): a block or
   a path, not only a branch. *(Branches and tags — `FR-070`/`FR-071` — and branch switch shipped in
   0.13.0; the focused-ref model shipped in 0.4.0 and 0.11.0.)*
-- **Merge evidence → plan → execution** (`FR-080…082`) and the **rollback flow** (`FR-083`) — the
-  merge refusal path is where the explanation surface earns its place.
+- **The rollback flow** (`FR-083`). *(Merge evidence → plan → execution — `FR-080…082` — shipped
+  in 0.15.0, RFC 047: the merge refusal path is where the explanation surface earned its place,
+  with four merges declined in stikk's own words before prikk is asked and prikk's own refusal
+  shown verbatim where it is prikk's.)*
 - **Progressive disclosure** (`TU-12`): default vs. advanced depth. *(Session persistence —
   `FR-122`, the focused ref, view and filter — shipped in 0.14.0, and with it `C-E2`'s first
   production caller. What is left of `DM-04` is **deep restore**: Block detail, Patch detail and

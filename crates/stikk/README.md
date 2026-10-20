@@ -60,11 +60,12 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.14.x installs in one command, prikk included, and tells you whether your repository is
-sound — now against prikk 0.53.0.** **One line installs stikk** — `curl … install.sh | sh`, or `irm … install.ps1 | iex` on
-Windows — checking the download against the checksum published beside it, installing where you own
-it, and offering to install **prikk** through prikk's own verified installer; `cargo binstall
-stikk` fetches the same prebuilt binary. **Verify** (`V`, prikk ≥ 0.39) shows prikk's verdict on
+**v0.15.x merges one branch into another, and installs in two plain steps — prikk's, then
+stikk's — against prikk 0.53.0.** **Each program installs itself**: one line installs stikk —
+`curl … install.sh | sh`, or `irm … install.ps1 | iex` on Windows — checking the download against
+the checksum published beside it, installing where you own it, and printing **prikk's own install
+command** when prikk is missing or too old, rather than installing prikk itself; `cargo binstall
+stikk` fetches the same prebuilt binary. 64-bit ARM Linux gets a statically-linked build. **Verify** (`V`, prikk ≥ 0.39) shows prikk's verdict on
 whether the repository is sound, every condition it fails and every stage it ran — and a damaged
 repository reads as a verdict, never as a refusal. **Compare** (prikk ≥ 0.46) shows what changed
 between two points in **prikk's own `diff` hunks** — two marked blocks or a block and the one
@@ -81,12 +82,14 @@ Block detail, which lists every block's patches **and the files present at that 
 modes** (prikk ≥ 0.46), or from the Queue. `v` shows prikk's own fields instead. Around that it
 reads orientation, ref history, worktree changes and the **Queue view**, with refusal explanations
 and a glossary; the **ref picker offers the branch you are on before its first seal** (prikk ≥
-0.47). It performs six mutations: **commit** (author a worktree capture into the active queue),
+0.47). It performs seven mutations: **commit** (author a worktree capture into the active queue),
 **seal** (freeze that queue into permanent, MAINTAINER-signed history, naming the patches it
 freezes), and — from the ref picker — **create a branch** (`n`), **create a tag** (`t`, or at any
-block from History), **close a branch** (`x`) and **switch to a branch** (`s`, previewed as the
-exact files it will write and delete), at prikk ≥ 0.42 and ≥ 0.46 for a switch — every one of
-them always preview-first, with tiered confirmation a compile error can't let you skip.
+block from History), **close a branch** (`x`), **switch to a branch** (`s`, previewed as the
+exact files it will write and delete) and **merge one branch into another** (`m` to mark the
+branch to merge from, `M` for prikk's own plan, `Enter` to run it), at prikk ≥ 0.42 and ≥ 0.46 for
+a switch — every one of them always preview-first, with tiered confirmation a compile error can't
+let you skip.
 **A confirmed commit authors only the worktree its preview showed.** **stikk notices a commit, seal
 or branch switch made in another terminal** and refreshes what is on screen. **A `prikk mv` is shown
 as the rename prikk says it will author**, from prikk's own verdict at prikk ≥ 0.44, and a
@@ -95,8 +98,9 @@ as one**, and reads again on prikk 0.45 and 0.46, where prikk refused it by name
 compare from the ref picker** (`b`, then `m` to mark one and `d` to compare it with the selected
 one). **stikk reopens each repository where you left it** — the focused ref, the top-level view
 and the untracked filter, re-checked against prikk before any of it is shown, stored outside
-every repository, and `STIKK_PRIVATE=1` for a launch that remembers nothing. Merge, sync, and
-checkout of a block or a path are not built yet.
+every repository, and `STIKK_PRIVATE=1` for a launch that remembers nothing. **A merge runs only
+where prikk's own plan proves the two sides confluent**, never into the branch you are on, and
+writes nothing to your worktree. Sync, and checkout of a block or a path, are not built yet.
 
 ## Links
 

@@ -2,7 +2,56 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.15.0 — 2026-10-21
+
+**stikk now merges one branch into another when prikk proves it safe, and installs in two plain
+steps — prikk's, then stikk's — on every system, including 64-bit ARM.** In the ref picker, mark a
+branch with `m`, select the branch it should go into, and press `M`: stikk finds the baseline block
+itself and shows **prikk's own plan** for the pair, word for word. `Enter` merges, behind a card
+that names which branch is merged into which and re-reads every guard at the moment you confirm;
+nothing is written to your worktree, and four merges are declined before prikk is ever asked
+(RFC 047). Installing changed hands: **each program installs itself**, so stikk's installer
+installs stikk, checks prikk, and prints **prikk's own install command** when prikk is missing or
+too old — two plain steps, and an install guide that starts from opening a terminal (RFC 048).
+**64-bit ARM Linux gets a statically-linked build**: the glibc one did not start at all on Debian
+12, Raspberry Pi OS bookworm or Ubuntu 22.04, where it required `GLIBC_2.39` and said so instead of
+running. Validated through prikk 0.53.0. The real-binary suite drives **63 cases** against real
+prikk binaries at 0.28.0 and 0.53.0, on Linux, macOS and Windows.
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-state` and the `stikk` launcher are unchanged.**
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | **The `Prikk` trait gains two required methods**, `merge_plan` and `merge`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+| `stikk-core` | **`ConfirmationSummary::target_ids` is `Vec<TargetId>`**, not `Vec<String>`. Each row now carries an optional role — stikk's own word for what the value is — because a merge restates four values and the direction between two of them is the operation's whole meaning. `TargetId::bare(id)` is the old behaviour; `TargetId::named(role, id)` labels a row. The role and the id stay separate fields so a frontend escapes repository text and not stikk's chrome |
+| `stikk-core` | **`ConfirmationSummary` gained a public field**, `merge_plan: Option<Vec<String>>` — prikk's own plan lines, carried through the token so the card can restate them, and `None` for every other operation. The struct is not `#[non_exhaustive]`, so outside code that builds one as a literal, or destructures one exhaustively, must account for it |
+| `stikk-tui` | **`Overlay` gained `MergeResult`, `Screen` gained `MergePlan` and `Focus` gained `MergePlan`.** None of the three is `#[non_exhaustive]`, so any outside exhaustive `match` must cover the new variant |
+
+**Additive:** `stikk_prikk::MergeOutcome`, `MergePlan` and `MergeResult`, with
+`NullBackend::with_merge_plan`, `with_merge_plan_refusal`, `with_merge`, `with_merge_refusal` and
+`with_history_of`; `stikk_core::merge` with `MergeBaseline`, `MergePlanRead`, `MergePlanView`,
+`MergePreview`, `MergeTarget`, `merge_baseline`, `merge_plan_view`, `merge_preview`,
+`merge_confirm_and_execute`, `merge_unavailable`, `not_confluent` and its constants;
+`stikk_core::TargetId`, `unshown_plan_lines_line` and `unshown_declarations_line`;
+`stikk_tui::App::begin_merge_plan` and `begin_merge`;
+`OperationContext::MergePlan`, which is additive only because that enum is `#[non_exhaustive]`
+and has been since it existed. **No public item was removed**: `cargo public-api diff 0.14.0`
+reports *(none)* under *Removed items* for every crate. Its one `-` line sits under *Changed
+items* — `ConfirmationSummary::target_ids` in its old `Vec<String>` shape, which the table's
+second row describes. Nothing else changed shape. The MSRV is unchanged at 1.88.
+
+**Not Breaking rows, and why.** `RequestCategory` gained no variant: a merge is `Publication`, the
+category seal already used, so its `ALL` is still `[Self; 10]` and its signing requirement is
+unchanged. `OperationContext::MergePlan` is a new variant of a `#[non_exhaustive]` enum, so an
+outside `match` already carries a wildcard. The `stikk_core::merge` module, the `MergeOutcome`,
+`MergePlan`, `MergeResult`, `MergeBaseline`, `MergePlanRead`, `MergePlanView`, `MergePreview`,
+`MergeTarget` and `TargetId` types, the new `NullBackend` builders and the two `App::begin_*`
+methods are all new items on existing modules and types: nothing that compiled against 0.14.0
+stops compiling because of them. The installers' `--with-prikk` and `--no-prikk` are a real
+removal, but of a command-line flag and not of a public API item — they are under `### Removed`.
 
 ### Added
 
@@ -43,14 +92,18 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 - **The installers install stikk, and point at prikk's own.** Each program installs itself:
   stikk's installer no longer downloads, verifies or runs anything of prikk's. It installs stikk,
-  checks whether prikk is there and new enough, and prints **prikk's own install command** when it
-  is missing or too old — so where prikk lives, how it is verified and which version you get are
-  prikk's decisions, in one place, rather than a copy inside every tool built on prikk.
+  checks whether prikk is there and new enough, and prints **prikk's own install command** where
+  prikk is the thing to fix — so where prikk lives, how it is verified and which version you get
+  are prikk's decisions, in one place, rather than a copy inside every tool built on prikk.
 
-  Four reports, and only one of them is bad news: prikk missing, prikk too old, prikk inside the
-  range this stikk was tested against, and prikk newer than that — which still runs, and says so
-  calmly, because that is the normal state for a few days after every prikk release. A missing
-  prikk is told to you, not treated as a failed install.
+  Six reports, each saying what stikk will do with the prikk you have. **Missing**, **a version
+  stikk cannot read** (stikk will refuse to start) and **too old** (stikk opens read-only until
+  you update) each print prikk's own command. **A prikk from another major** opens your
+  repository read-only and changes nothing, and points at stikk's releases rather than prikk's,
+  because the fix there is a newer stikk. **Inside the range this stikk was tested against** asks
+  nothing of you. **Newer than that range** still runs, and is reported calmly, because it is the
+  normal state for a few days after every prikk release. None of the six is a failed install: a
+  missing prikk is told to you, with the one step left to take.
 
 - **On Windows, stikk works in the window you installed it from.** The installer now puts its
   folder on that session's `PATH` as well as your user `PATH`, so the *open a new PowerShell
@@ -66,6 +119,12 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   `tree` from there. The real-binary suite was green at 0.28.0 and 0.53.0 with only the ceiling
   moved and no test changed. A newer prikk still runs, and stikk still says when it is past the
   range it has checked.
+
+### Removed
+
+- **The installers' `--with-prikk` and `--no-prikk`** (`-WithPrikk` and `-NoPrikk` on Windows).
+  They chose whether stikk's installer installed prikk, which it no longer does at all. A stale
+  copy-pasted command carrying one of them now fails loudly rather than appearing to work.
 
 ### Fixed
 
@@ -86,33 +145,6 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   It now shows as many **complete** declarations as fit, always at least the first — the one
   prikk's commit would stop on — and ends with a line saying how many more there are and that
   each has its own reason.
-
-### Removed
-
-- **The installers' `--with-prikk` and `--no-prikk`** (`-WithPrikk` and `-NoPrikk` on Windows).
-  They chose whether stikk's installer installed prikk, which it no longer does at all. A stale
-  copy-pasted command carrying one of them now fails loudly rather than appearing to work.
-
-### Breaking
-
-Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
-`stikk-state`, `stikk-tui` and the `stikk` launcher are unchanged.**
-
-| Crate | Change |
-|---|---|
-| `stikk-prikk` | **The `Prikk` trait gains two required methods**, `merge_plan` and `merge`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
-| `stikk-core` | **`ConfirmationSummary::target_ids` is `Vec<TargetId>`**, not `Vec<String>`. Each row now carries an optional role — stikk's own word for what the value is — because a merge restates four values and the direction between two of them is the operation's whole meaning. `TargetId::bare(id)` is the old behaviour; `TargetId::named(role, id)` labels a row. The role and the id stay separate fields so a frontend escapes repository text and not stikk's chrome |
-
-**Additive:** `stikk_prikk::MergeOutcome`, `MergePlan` and `MergeResult`, with
-`NullBackend::with_merge_plan`, `with_merge_plan_refusal`, `with_merge`, `with_merge_refusal` and
-`with_history_of`; `stikk_core::merge` with `MergeBaseline`, `MergePlanRead`, `MergePlanView`, `MergePreview`,
-`MergeTarget`, `merge_baseline`, `merge_plan_view`, `merge_preview`, `merge_confirm_and_execute`,
-`merge_unavailable`, `not_confluent` and its constants; `stikk_core::TargetId` and
-`unshown_plan_lines_line`;
-`OperationContext::MergePlan`, which is additive only because that enum is `#[non_exhaustive]`
-and has been since it existed. **No public item was removed** — `cargo public-api diff 0.14.0`
-reports no `-` line for any crate — and nothing else changed shape. The MSRV is unchanged at
-1.88.
 
 ## 0.14.0 — 2026-10-18
 

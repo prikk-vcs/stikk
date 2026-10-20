@@ -75,7 +75,9 @@ echo
 say "done. stikk's config and state were not touched; 'stikk config path' showed where they live."
 say "Your repositories are untouched: stikk never wrote to them."
 echo
-say "prikk was NOT removed -- it is a separate program with its own uninstaller:"
+# **prikk is removed by prikk's own uninstaller**, never by this one: each program installs and
+# removes itself (RFC 048 decision 2). The command below is prikk's, printed for you to run.
+say "prikk was NOT removed -- it is a separate program, and prikk uninstalls itself:"
 say "  curl -fsSL https://github.com/$PRIKK_REPO/releases/latest/download/uninstall.sh | sh"
 say "To install stikk again:"
 say "  curl -fsSL https://github.com/$REPO/releases/latest/download/install.sh | sh"

@@ -3,20 +3,21 @@
 #
 # It downloads the stikk release this script was published with, checks it against the checksum
 # published beside it, and installs it into a directory you own. It installs nothing if that check
-# fails. It can also install prikk -- the version control system stikk reads -- through prikk's own
-# installer, if prikk is missing.
+# fails.
+#
+# It installs stikk and nothing else. stikk reads prikk repositories, so it also *checks* whether
+# prikk is there and new enough -- and when it is not, prints prikk's own install command. prikk
+# installs itself: where it lives, how it is verified and which version you get are prikk's to
+# decide, in one place, for every tool built on it.
 #
 # Read it before you run it. That is why it is one file.
 #
 # Usage:
 #   curl -fsSL https://github.com/prikk-vcs/stikk/releases/latest/download/install.sh | sh
-#   curl -fsSL https://github.com/prikk-vcs/stikk/releases/latest/download/install.sh | sh -s -- --no-prikk
 #
 # Options (environment variable in brackets):
 #   --version X.Y.Z   the stikk version to install      [STIKK_INSTALL_VERSION]
 #   --prefix DIR      where to put the binary           [STIKK_INSTALL_PREFIX], default ~/.local/bin
-#   --with-prikk      install prikk if missing, without asking
-#   --no-prikk        never install prikk
 #   --base-url URL    download from a mirror instead    [STIKK_INSTALL_BASE_URL]
 #
 # What the checksum proves: the file you downloaded is the file the release published -- it was not
@@ -26,16 +27,27 @@
 set -eu
 
 # Filled by release.yml at release time. @-delimited so a half-substituted script is obvious.
+#
+# **Neither of these is a pin.** stikk installs no prikk, so no version here is ever passed to
+# anything; they word the version report below and nothing else. Both are derived from
+# `stikk_prikk::version`'s own bounds at release time, so raising the range in one Rust file
+# re-words these scripts automatically and no number is written twice.
 STIKK_VERSION="@STIKK_VERSION@"
-PRIKK_PINNED_VERSION="@PRIKK_VERSION@"
+PRIKK_FLOOR_MINOR="@PRIKK_FLOOR@"
+PRIKK_TESTED_CEILING="@PRIKK_VERSION@"
 
 REPO="prikk-vcs/stikk"
-PRIKK_REPO="prikk-vcs/prikk"
+
+# prikk's own install command and guide, printed when prikk is missing or too old. **Not
+# downloaded, not run** -- printed, for the reader to run themselves. The guide is prikk's
+# rendered documentation site rather than the Markdown source: the person this installer is for
+# is better served by a page than by a file.
+PRIKK_INSTALL_CMD="curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh"
+PRIKK_INSTALL_GUIDE="https://prikk-vcs.github.io/prikk/docs/guide/install.html"
 
 version="${STIKK_INSTALL_VERSION:-$STIKK_VERSION}"
 prefix="${STIKK_INSTALL_PREFIX:-$HOME/.local/bin}"
 base_url="${STIKK_INSTALL_BASE_URL:-}"
-want_prikk="ask"
 
 say() { echo "stikk-install: $*"; }
 die() { echo "stikk-install: $*" >&2; exit 1; }
@@ -45,9 +57,7 @@ while [ $# -gt 0 ]; do
     --version) [ $# -ge 2 ] || die "--version needs a value"; version="$2"; shift 2 ;;
     --prefix)  [ $# -ge 2 ] || die "--prefix needs a value";  prefix="$2";  shift 2 ;;
     --base-url) [ $# -ge 2 ] || die "--base-url needs a value"; base_url="$2"; shift 2 ;;
-    --with-prikk) want_prikk="yes"; shift ;;
-    --no-prikk)   want_prikk="no";  shift ;;
-    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
 done
@@ -55,7 +65,7 @@ done
 # The placeholders above are replaced at release time. Detect an unfilled one by its shape rather
 # than by comparing against the literal -- the substitution would rewrite the comparison too, and
 # the guard would then fire on every real install. (It did, the first time this was run.)
-case "$version$PRIKK_PINNED_VERSION" in
+case "$version$PRIKK_FLOOR_MINOR$PRIKK_TESTED_CEILING" in
   *@*)
     die "this is the template from the repository, not a published installer.
   Download it from a release:
@@ -167,80 +177,73 @@ fi
 
 # ---------------------------------------------------------------- prikk
 
-prikk_note() {
-  say "stikk reads prikk repositories, so you need prikk too."
+# **stikk installs no prikk.** It checks, and when prikk is missing or too old it prints prikk's
+# own command for the reader to run. Nothing below downloads, verifies, pins or runs anything of
+# prikk's: each program installs itself (RFC 048 decision 2), so prikk's version, its location
+# and what its checksum claims stay prikk's decisions, made once, for every tool built on it.
+#
+# **The platform is not checked here either.** prikk's own installer decides what prikk supports
+# and says so itself -- on an Intel Mac it refuses with prikk's own advice. A list of prikk's
+# platforms kept in this file would be a second copy to go stale.
+#
+# Whatever this reports, stikk is installed and this script exits 0: a missing prikk is a thing
+# to tell you about, not a failure of the install you asked for.
+prikk_is_missing=0
+
+prikk_how_to_get_it() {
+  say "prikk installs itself. Run this:"
+  say "  $PRIKK_INSTALL_CMD"
+  say "prikk's install guide: $PRIKK_INSTALL_GUIDE"
 }
 
 if command -v prikk >/dev/null 2>&1; then
   installed="$(prikk --version 2>/dev/null | tr -d '\r')"
   say "prikk is already installed: $installed"
   minor="$(echo "$installed" | sed -n 's/.*[^0-9]\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\2/p')"
-  pinned_minor="$(echo "$PRIKK_PINNED_VERSION" | cut -d. -f2)"
-  if [ -n "$minor" ] && [ "$minor" -ge 28 ] && [ "$minor" -le "$pinned_minor" ]; then
-    say "that is inside the range this stikk was tested against (0.28 through $PRIKK_PINNED_VERSION)"
+  ceiling_minor="$(echo "$PRIKK_TESTED_CEILING" | cut -d. -f2)"
+  if [ -z "$minor" ]; then
+    # **Not a verdict either way.** A version stikk could not read is not an old prikk, and
+    # saying "too old" here would send someone to fix something that may be fine.
+    say "stikk could not read a version number from that. It still runs; stikk will say its"
+    say "output has not been checked, rather than assume it has."
+  elif [ "$minor" -lt "$PRIKK_FLOOR_MINOR" ]; then
+    # **Below the floor is the one row that is not "yours still runs".** stikk cannot read this
+    # prikk, so there is nothing reassuring to say about it.
+    prikk_is_missing=1
+    say "that is too old for this stikk, which needs prikk 0.$PRIKK_FLOOR_MINOR or newer."
+    prikk_how_to_get_it
+  elif [ "$minor" -le "$ceiling_minor" ]; then
+    say "that is inside the range this stikk was tested against (0.$PRIKK_FLOOR_MINOR through $PRIKK_TESTED_CEILING)"
   else
-    say "this stikk was tested against prikk 0.28 through $PRIKK_PINNED_VERSION. Yours still runs;"
-    say "stikk will say its output has not been checked, rather than assume it has."
+    # **Calm on purpose.** This is the normal state for a few days after every prikk release, and
+    # a newcomer must not read it as a fault.
+    say "that is newer than this stikk was tested against (0.$PRIKK_FLOOR_MINOR through $PRIKK_TESTED_CEILING)."
+    say "It still runs; stikk will say its output has not been checked, rather than assume it has."
   fi
 else
-  prikk_note
-  case "$os/$arch" in
-    Linux/x86_64|Linux/aarch64|Linux/arm64|Darwin/arm64)
-      if [ "$want_prikk" = "ask" ]; then
-        # **Ask through the controlling terminal, not through standard input.** Under the command
-        # the README gives -- `curl ... | sh` -- stdin is the pipe, so `[ -t 0 ]` is false even
-        # though the person is sitting at a terminal, and they would never be offered prikk at all.
-        # What decides it is whether /dev/tty can be opened; in CI it cannot, and the answer is no.
-        if (exec 3</dev/tty) 2>/dev/null; then
-          printf 'stikk-install: install prikk %s now, with prikk own installer? [Y/n] ' "$PRIKK_PINNED_VERSION"
-          read -r answer </dev/tty || answer=""
-          case "$answer" in [Nn]*) want_prikk="no" ;; *) want_prikk="yes" ;; esac
-        else
-          # No controlling terminal -- CI, or a detached run. Never block.
-          want_prikk="no"
-          say "no terminal to ask on, so prikk was not installed. Re-run with --with-prikk to install it."
-        fi
-      fi
-      if [ "$want_prikk" = "yes" ]; then
-        say "downloading prikk's own installer for $PRIKK_PINNED_VERSION"
-        prikk_base="https://github.com/$PRIKK_REPO/releases/download/$PRIKK_PINNED_VERSION"
-        curl -fsSL -o "$tmp/prikk-install.sh" "$prikk_base/install.sh" \
-          || die "could not download prikk's installer. prikk was not installed; stikk was."
-        curl -fsSL -o "$tmp/prikk-install.sh.sha256" "$prikk_base/install.sh.sha256" \
-          || die "could not download the checksum for prikk's installer. prikk was not installed; stikk was."
-        p_published="$(awk '{print $1}' < "$tmp/prikk-install.sh.sha256" | tr '[:upper:]' '[:lower:]')"
-        p_computed="$(cd "$tmp" && $checksum_cmd prikk-install.sh | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
-        if [ -z "$p_published" ] || [ "$p_published" != "$p_computed" ]; then
-          die "prikk's installer does NOT match its published checksum. It was not run, and prikk
-  was not installed. stikk is installed and will tell you prikk is missing."
-        fi
-        say "running prikk's installer (it checks prikk's own download the same way)"
-        sh "$tmp/prikk-install.sh" --version "$PRIKK_PINNED_VERSION" --prefix "$prefix" \
-          || say "prikk's installer did not finish. stikk is installed; install prikk yourself when you can."
-      fi
-      ;;
-    *)
-      say "prikk has no installer for $os $arch. Install it one of these ways:"
-      if [ "$os" = "Darwin" ]; then
-        say "  cargo install prikk --version $PRIKK_PINNED_VERSION"
-      fi
-      say "  download it from https://github.com/$PRIKK_REPO/releases/tag/$PRIKK_PINNED_VERSION"
-      ;;
-  esac
+  prikk_is_missing=1
+  say "stikk reads prikk repositories, so you need prikk too."
+  prikk_how_to_get_it
 fi
 
 # ---------------------------------------------------------------- what to do next
 
 echo
 say "done. Next:"
-if [ "$on_path" -eq 0 ]; then
-  say "  1. open a new terminal (PATH changed)"
-  say "  2. make a repository:  prikk init"
-  say "  3. open it:            stikk"
-else
-  say "  1. make a repository:  prikk init"
-  say "  2. open it:            stikk"
+# **The steps are numbered as they are actually needed**, so a reader never has to work out which
+# of them apply to them. A missing prikk is step 1 because `prikk init` cannot run without it.
+step=1
+if [ "$prikk_is_missing" -eq 1 ]; then
+  say "  $step. install prikk (the command is above)"
+  step=$((step + 1))
 fi
+if [ "$on_path" -eq 0 ]; then
+  say "  $step. open a new terminal (PATH changed)"
+  step=$((step + 1))
+fi
+say "  $step. make a repository:  prikk init"
+step=$((step + 1))
+say "  $step. open it:            stikk"
 say "Press ? inside stikk for help."
 echo
 say "The checksum above proves this download is the file the release published. It does not prove"

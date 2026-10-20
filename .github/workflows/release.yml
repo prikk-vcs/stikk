@@ -278,34 +278,40 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install Rust (derived MSRV)
         uses: dtolnay/rust-toolchain@stable
-      - name: Read the validated prikk ceiling from stikk-prikk::version, never hardcode it here
+      - name: Read the validated prikk range from stikk-prikk::version, never hardcode it here
         id: prikk
-        # The same derivation the real-binary suite uses (RFC 019 §6): the number lives in
-        # `version.rs` and nowhere else, so raising the ceiling re-pins the installers automatically.
+        # The same derivation the real-binary suite uses (RFC 019 §6): the numbers live in
+        # `version.rs` and nowhere else, so changing the range there re-words the installers
+        # automatically. **Both ends, since RFC 048**: the floor used to be written `28` in two
+        # scripts, which is a number in three places and a quiet lie the day it moves.
+        # **Neither is a pin**: the installers install no prikk, and use these only for wording.
         run: |
           set -euo pipefail
-          read -r _floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
+          read -r floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
+          echo "floor=${floor}"         >> "$GITHUB_OUTPUT"
           echo "version=0.${ceiling}.0" >> "$GITHUB_OUTPUT"
       - name: Fill the placeholders and checksum each script
         env:
+          PRIKK_FLOOR: ${{ steps.prikk.outputs.floor }}
           PRIKK_VERSION: ${{ steps.prikk.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p dist
           for f in install.sh uninstall.sh install.ps1 uninstall.ps1; do
             sed -e "s/@STIKK_VERSION@/${VERSION}/g" \
+                -e "s/@PRIKK_FLOOR@/${PRIKK_FLOOR}/g" \
                 -e "s/@PRIKK_VERSION@/${PRIKK_VERSION}/g" \
                 "scripts/$f" > "dist/$f"
             # No placeholder may survive into a published script.
-            if grep -q '@STIKK_VERSION@\|@PRIKK_VERSION@' "dist/$f"; then
+            if grep -q '@STIKK_VERSION@\|@PRIKK_FLOOR@\|@PRIKK_VERSION@' "dist/$f"; then
               echo "::error::$f still holds a placeholder after substitution"
               exit 1
             fi
             # The same checksum shape every other asset uses.
             ( cd dist && sha256sum "$f" > "$f.sha256" )
           done
-          echo "== filled for stikk ${VERSION}, prikk ${PRIKK_VERSION}"
-          grep -h 'STIKK_VERSION=\|PRIKK_PINNED_VERSION=\|StikkVersion \|PrikkPinnedVersion ' dist/* || true
+          echo "== filled for stikk ${VERSION}, prikk 0.${PRIKK_FLOOR} through ${PRIKK_VERSION}"
+          grep -h 'STIKK_VERSION=\|PRIKK_FLOOR_MINOR=\|PRIKK_TESTED_CEILING=\|StikkVersion \|PrikkFloorMinor \|PrikkTestedCeiling ' dist/* || true
       - name: Upload the installers to the release
         uses: softprops/action-gh-release@v3
         with:

@@ -7,8 +7,10 @@
   published beside it, and installs it into a directory you own. It installs nothing if that check
   fails.
 
-  prikk -- the version control system stikk reads -- has no Windows installer of its own, so this
-  script does not improvise one. If prikk is missing it says exactly how to get it.
+  It installs stikk and nothing else. stikk reads prikk repositories, so it also *checks* whether
+  prikk is there and new enough -- and when it is not, says where to get it. prikk installs
+  itself: where it lives, how it is verified and which version you get are prikk's to decide, in
+  one place, for every tool built on it.
 
   Read it before you run it. That is why it is one file.
 
@@ -29,22 +31,32 @@ param(
   # Where to put stikk.exe.
   [string] $Prefix    = $env:STIKK_INSTALL_PREFIX,
   # Download from a mirror instead.
-  [string] $BaseUrl   = $env:STIKK_INSTALL_BASE_URL,
-  # Accepted so the same options work on every platform. prikk has no Windows installer, so
-  # -WithPrikk cannot install it here -- it says so rather than failing silently.
-  [switch] $WithPrikk,
-  [switch] $NoPrikk
+  [string] $BaseUrl   = $env:STIKK_INSTALL_BASE_URL
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 # Filled by release.yml at release time. @-delimited so a half-substituted script is obvious.
-$StikkVersion       = '@STIKK_VERSION@'
-$PrikkPinnedVersion = '@PRIKK_VERSION@'
+#
+# **Neither of these is a pin.** stikk installs no prikk, so no version here is ever passed to
+# anything; they word the version report below and nothing else. Both are derived from
+# `stikk_prikk::version`'s own bounds at release time, so raising the range in one Rust file
+# re-words these scripts automatically and no number is written twice.
+$StikkVersion        = '@STIKK_VERSION@'
+$PrikkFloorMinor     = '@PRIKK_FLOOR@'
+$PrikkTestedCeiling  = '@PRIKK_VERSION@'
 
 $Repo      = 'prikk-vcs/stikk'
 $PrikkRepo = 'prikk-vcs/prikk'
+
+# Where to send someone who needs prikk. **prikk publishes no Windows installer yet** -- measured
+# at submission: 0.53.0 is the latest release and `install.ps1` is 404 there. prikk ships one in
+# 0.54.0 (RFC 048 F5), and stikk's re-baseline to it replaces these two lines with prikk's own
+# `irm ... | iex`. Until then this links prikk's steps and never copies them: they are prikk's to
+# change, and a copy here would go stale without anyone noticing.
+$PrikkReleasePage  = "https://github.com/$PrikkRepo/releases/latest"
+$PrikkInstallGuide = 'https://prikk-vcs.github.io/prikk/docs/guide/install.html'
 
 function Say  { param([string] $Message) Write-Host "stikk-install: $Message" }
 function Die  { param([string] $Message) Write-Host "stikk-install: $Message" -ForegroundColor Red; exit 1 }
@@ -55,7 +67,7 @@ if (-not $Prefix)  { $Prefix  = Join-Path $env:LOCALAPPDATA 'Programs\stikk' }
 # The placeholders above are replaced at release time. Detect an unfilled one by its shape rather
 # than by comparing against the literal -- the substitution would rewrite the comparison too, and
 # the guard would then fire on every real install.
-if (($Version + $PrikkPinnedVersion) -like '*@*') {
+if (($Version + $PrikkFloorMinor + $PrikkTestedCeiling) -like '*@*') {
   Die @"
 this is the template from the repository, not a published installer.
   Download it from a release:
@@ -137,61 +149,99 @@ the download does NOT match the published checksum.
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (-not $userPath) { $userPath = '' }
 $already = ($userPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ieq $Prefix.TrimEnd('\')) })
-$pathChanged = $false
 if (-not $already) {
   $newPath = if ($userPath.TrimEnd(';')) { $userPath.TrimEnd(';') + ';' + $Prefix } else { $Prefix }
   [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-  $env:Path = "$env:Path;$Prefix"
   Say "added $Prefix to your user PATH"
-  $pathChanged = $true
 } else {
   Say "$Prefix is already on your user PATH"
 }
 
+# **And this session's own PATH, so `stikk` works in the window you are standing in**
+# (RFC 048 decision 3). `irm ... | iex` runs inside the user's session, so the installer can do
+# this and the "open a new PowerShell window" step disappears -- it was the last thing between a
+# newcomer and a working command. (On Linux and macOS the installer runs in a child shell and
+# cannot reach the parent's environment, so that step stays there.)
+#
+# **Decided on this session, not on the user PATH.** A window opened before an earlier install
+# has the folder in the user PATH and not in `$env:Path`, and keying this off the user PATH
+# would leave exactly that window unable to find stikk.
+$inSession = ($env:Path -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ieq $Prefix.TrimEnd('\')) })
+if (-not $inSession) {
+  # Prepended: this stikk is the one just installed, and it should win over any older copy
+  # further along the path.
+  $env:Path = "$Prefix;$env:Path"
+}
+
 # ---------------------------------------------------------------- prikk
+
+# **stikk installs no prikk.** It checks, and when prikk is missing or too old it says where to
+# get it. Nothing below downloads, verifies, pins or runs anything of prikk's: each program
+# installs itself (RFC 048 decision 2), so prikk's version, its location and what its checksum
+# claims stay prikk's decisions, made once, for every tool built on it.
+#
+# Whatever this reports, stikk is installed and this script exits 0.
+$prikkIsMissing = $false
+
+function Show-PrikkHowToGetIt {
+  # **prikk's steps are linked, never copied.** prikk publishes no Windows installer yet
+  # (measured at submission: 0.53.0 is the latest release and `install.ps1` is 404 there), and
+  # one is coming in prikk 0.54.0 -- at which point this becomes prikk's own one-line command.
+  # Writing prikk's manual steps out here would be a second copy of prikk's install design,
+  # going stale the day prikk changes it.
+  Say 'prikk installs itself. A Windows installer is coming from prikk; until then its guide has'
+  Say 'the steps:'
+  Say "  $PrikkInstallGuide"
+  Say "  downloads: $PrikkReleasePage"
+}
 
 $prikkCmd = Get-Command prikk -ErrorAction SilentlyContinue
 if ($prikkCmd) {
   $installed = (& prikk --version 2>$null | Out-String).Trim()
   Say "prikk is already installed: $installed"
+  $floorMinor   = [int] $PrikkFloorMinor
+  $ceilingMinor = [int] ($PrikkTestedCeiling -split '\.')[1]
   if ($installed -match '(\d+)\.(\d+)\.(\d+)') {
-    $minor       = [int] $Matches[2]
-    $pinnedMinor = [int] ($PrikkPinnedVersion -split '\.')[1]
-    if ($minor -ge 28 -and $minor -le $pinnedMinor) {
-      Say "that is inside the range this stikk was tested against (0.28 through $PrikkPinnedVersion)"
+    $minor = [int] $Matches[2]
+    if ($minor -lt $floorMinor) {
+      # **Below the floor is the one row that is not "yours still runs".** stikk cannot read
+      # this prikk, so there is nothing reassuring to say about it.
+      $prikkIsMissing = $true
+      Say "that is too old for this stikk, which needs prikk 0.$floorMinor or newer."
+      Show-PrikkHowToGetIt
+    } elseif ($minor -le $ceilingMinor) {
+      Say "that is inside the range this stikk was tested against (0.$floorMinor through $PrikkTestedCeiling)"
     } else {
-      Say "this stikk was tested against prikk 0.28 through $PrikkPinnedVersion. Yours still runs;"
-      Say 'stikk will say its output has not been checked, rather than assume it has.'
+      # **Calm on purpose.** This is the normal state for a few days after every prikk release,
+      # and a newcomer must not read it as a fault.
+      Say "that is newer than this stikk was tested against (0.$floorMinor through $PrikkTestedCeiling)."
+      Say 'It still runs; stikk will say its output has not been checked, rather than assume it has.'
     }
-  }
-} elseif (-not $NoPrikk) {
-  # prikk publishes no Windows installer, so there is nothing honest to run here.
-  Say 'stikk reads prikk repositories, so you need prikk too.'
-  if ($WithPrikk) {
-    # The flag was given and cannot be honoured. Say that, rather than appearing to have acted.
-    Say 'you asked for prikk to be installed, but prikk publishes no Windows installer, and stikk'
-    Say 'will not improvise one. Install it one of these ways:'
   } else {
-    Say 'prikk has no Windows installer, so stikk will not improvise one. Install it one of these ways:'
+    # **Not a verdict either way.** A version stikk could not read is not an old prikk.
+    Say 'stikk could not read a version number from that. It still runs; stikk will say its'
+    Say 'output has not been checked, rather than assume it has.'
   }
-  Say "  1. download prikk-x86_64-pc-windows-msvc.zip from"
-  Say "     https://github.com/$PrikkRepo/releases/tag/$PrikkPinnedVersion"
-  Say '     and put prikk.exe in a folder on your PATH'
-  Say "  2. cargo install prikk --version $PrikkPinnedVersion   (needs Rust, and compiles)"
+} else {
+  $prikkIsMissing = $true
+  Say 'stikk reads prikk repositories, so you need prikk too.'
+  Show-PrikkHowToGetIt
 }
 
 # ---------------------------------------------------------------- what to do next
 
 Write-Host ''
 Say 'done. Next:'
-if ($pathChanged) {
-  Say '  1. open a new PowerShell window (PATH changed)'
-  Say '  2. make a repository:  prikk init'
-  Say '  3. open it:            stikk'
-} else {
-  Say '  1. make a repository:  prikk init'
-  Say '  2. open it:            stikk'
+# **No "open a new window" step** (decision 3): this session's PATH was updated above, so stikk
+# works right here. The steps are numbered as they are actually needed.
+$step = 1
+if ($prikkIsMissing) {
+  Say "  $step. install prikk (see above)"
+  $step++
 }
+Say "  $step. make a repository:  prikk init"
+$step++
+Say "  $step. open it:            stikk"
 Say 'Press ? inside stikk for help.'
 Write-Host ''
 Say 'The checksum above proves this download is the file the release published. It does not prove'

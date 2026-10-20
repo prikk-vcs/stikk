@@ -427,7 +427,7 @@ a fabricated worktree entry was fixed.
 
 1. **The panels' prose gets a right gutter** ([RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
    no word sits against a card's border; identifiers and prikk's lines keep the full width.
-2. **Exchange, read-only** (`FR-090…093`, RFC 050, to be proposed): open a bundle file and see prikk's verification and
+2. **Exchange, read-only** (`FR-090/091`, [RFC 050](rfcs/proposed/050-exchange-bundles.md), proposed 2026-10-21): open a bundle file and see prikk's verification and
    its preview against your branch — applies cleanly or conflicts, and what it would change — before anything is
    written.
 3. **Exchange, the writes** (RFC 050): export a branch to a file, and import a bundle as a received ref, previewed;

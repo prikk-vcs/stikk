@@ -406,13 +406,24 @@ a fabricated worktree entry was fixed.
    plan for two branches, with the baseline block stikk finds shown for checking.
 3. **Merge, execution — landed on `main`** (`FR-082`, RFC 047, `02771df`): previewed with the plan it seals, at seal's
    tier, the card saying which branch is merged into which.
-4. **Delivery for unskilled users** ([RFC 048](rfcs/proposed/048-delivery-for-new-users.md), proposed 2026-10-20): designed before any package manager is chosen, on the owner's
-   direction — the channels, what each asks of a user, prikk's own installation beside stikk's, and what only the
-   owner can decide (accounts, signing, cost).
+4. **Delivery for unskilled users** ([RFC 048](rfcs/accepted/048-delivery-for-new-users.md), accepted 2026-10-20,
+   [Handoff A](rfcs/handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md)): **each program
+   installs itself** — stikk's installers install stikk, check for prikk and print prikk's own install command; the
+   install page starts from opening a terminal. The Homebrew tap (Handoff B) waits on the owner and is not in 0.15.0.
 5. **The prikk 0.53.0 re-baseline — landed on `main`** ([RFC 049](rfcs/done/049-prikk-0-53-rebaseline.md), `596e609`): validated
-   through 0.53.0; nothing stikk reads changed, and the installers pin 0.53.0 by themselves.
+   through 0.53.0; nothing stikk reads changed.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
+
+- **Decision points for 0.16.0's scoping** (owner, 2026-10-20: *"managed in our milestones (to implement or to drop)
+  and our schedule"*):
+  - **Windows signing through the SignPath Foundation** (RFC 048 O5, decision 7): free, an approval per release, a
+    code-signing-policy page; answers Smart App Control for stikk only — prikk's signing is prikk's owner's. **Implement
+    or drop.** Tell prikk the outcome.
+  - **The Homebrew tap** (RFC 048 Handoff B): when the owner has the repository and token ready. **Schedule or keep
+    waiting.**
+  - **The prikk 0.54.0 re-baseline**, when prikk publishes it: its Windows installer (switch stikk's Windows message to
+    prikk's `irm` line, if Handoff A could not) and the `cargo binstall` Windows fix to check.
 
 - **Orientation on `status --format json`** (prikk ≥ 0.35). A refactor with no visible change: it would unify
   Orientation's read with the queue's and retire a prose parser. RFC 034's interrupted-materialization marker is read

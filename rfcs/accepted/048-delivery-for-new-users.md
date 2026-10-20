@@ -1,12 +1,12 @@
 # RFC 048 — Delivery for users new to all of this
 
-**Status.** **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-20**, O5 included; [Handoff A](../handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) issued. **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
 authorized), on the project owner's direction of 2026-10-18: *"we will have to consider and design carefully about
 delivery this time and in the future. It should be easy enough for unmatured users as possible and reasonable."*
 **Revised the same day on the owner's principle** that *"the responsibility for installing core software should not be
 placed on peripheral convenient tools"*, which prikk adopted in **letter 026**: each program installs itself. The
 first draft's decision 2 (stikk's Windows installer installing prikk's build) is withdrawn, and with it the Linux and
-macOS half of RFC 039 decision 4. **One question remains (O5).**
+macOS half of RFC 039 decision 4. **No open question.**
 Measured on Linux against the published stikk 0.14.0 and prikk 0.53.0 assets:
 `.git-exclude/reports/048-delivery/measure048.txt`. Channel facts are sourced, **not measured on macOS or Windows**:
 `.git-exclude/reports/048-delivery/channels-research.md`. prikk's side read in the clone (`docs/src/guide/install.md`,
@@ -188,7 +188,7 @@ same:
    - **Windows**: Mark-of-the-Web is mitigated by decision 4. **Smart App Control is not, and the free route is the
      SignPath Foundation**: free for OSS; it asks for an OSI licence, a released and maintained project, builds from
      this repository in CI, MFA, **a team member approving each signing request**, and a code-signing-policy page
-     (https://signpath.org/terms). **When to apply is O5.** Paid alternatives, recorded only: Azure Artifact Signing
+     (https://signpath.org/terms). **Implement or drop is decided when 0.16.0 is scoped** (O5). Paid alternatives, recorded only: Azure Artifact Signing
      ≈ $9.99/month (individuals: US and Canada only), an OV certificate $150–300/year on a hardware token.
    - **Signing stikk alone does not finish the path**: `prikk.exe` meets the same gate, and signing it is prikk's
      owner's decision (letter 025). prikk asked to hear what we decide.
@@ -205,7 +205,7 @@ same:
 | **O2** | Homebrew tap: the repository `prikk-vcs/homebrew-tap` and a secret `HOMEBREW_TAP_TOKEN` (fine-grained, *Contents: read and write* on that one repository). | **Considered, not ready.** Handoff B waits on it; not in 0.15.0. |
 | **O3** | May that tap carry a **prikk** formula? | **It is prikk's to publish** (decision 2's principle). |
 | **O4** | Signing spend. | **No capacity to pay now.** Mark-of-the-Web is an issue, with ways to mitigate it (decision 4). |
-| **O5** | **Open.** Apply to the SignPath Foundation for free Windows signing (decision 7) — now, or when a Smart App Control block is first reported? Each release then needs one approval of its signing request. | **Recommendation: after 0.15.0**, and tell prikk what we decide, as they asked. |
+| **O5** | Apply to the SignPath Foundation for free Windows signing (decision 7) — now, or later? Each release then needs one approval of its signing request. | **After 0.15.0, managed as a milestone: implement or drop, decided when 0.16.0 is scoped** (`ROADMAP.md`). Tell prikk what we decide, as they asked. |
 
 ## Changelog
 

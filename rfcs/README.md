@@ -25,12 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 048 | [Delivery for users new to all of this](./proposed/048-delivery-for-new-users.md) | `NFR-R03`, RFC 039: **each program installs itself** — stikk's installers check for prikk and print prikk's own install command, never run it; an install page that starts from opening a terminal; which channels to add and which not; no paid signing, and Smart App Control. **Proposed 2026-10-20**, revised the same day on the owner's principle (prikk letter 026); 0.15.0 increment 4; one open question (O5) |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 047 delivered and closed 2026-10-20._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 048 | [Delivery for users new to all of this](./accepted/048-delivery-for-new-users.md) | `NFR-R03`, RFC 039: **each program installs itself** — stikk's installers check for prikk and print prikk's own install command, never run it; an install page that starts from opening a terminal; a Homebrew tap when the owner is ready; no paid signing, SignPath decided at 0.16.0's scoping. **Accepted 2026-10-20**; 0.15.0 increment 4 | [A: installers and install page](./handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) |
 
 ## Done (implemented)
 

@@ -25,12 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 051 | [Arch Linux packages on the AUR](./proposed/051-arch-linux-packages.md) | RFC 048 decision 6 amended: `stikk` (from the crates.io crate) and `stikk-bin` (the static release build, byte-identical to the attested artifact), `prikk>=floor`, filled and pushed by `release.yml`, tested by `aur.yml`; not published before prikk's own AUR packages are real. **Proposed 2026-10-21**; four owner questions |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 048 delivered and closed 2026-10-20._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 051 | [Arch Linux packages on the AUR](./accepted/051-arch-linux-packages.md) | RFC 048 decision 6 amended: `stikk` (from the crates.io crate) and `stikk-bin` (the static release build, byte-identical to the attested artifact), `prikk>=floor`, filled and pushed by `release.yml` when the owner's secret exists, tested by `aur.yml`. **Accepted 2026-10-21**; 0.16.0 increment 5 | [A: AUR packages](./handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) |
 
 ## Done (implemented)
 

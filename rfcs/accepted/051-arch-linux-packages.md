@@ -1,8 +1,8 @@
 # RFC 051 — Arch Linux packages on the AUR
 
-**Status.** **Proposed 2026-10-21** by the architect, on the project owner's direction of the same day: *"As extension on
+**Status.** **Accepted by the project owner 2026-10-21**, with O1–O4 answered (§ *For the owner*); [Handoff A](../handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) issued, as 0.16.0's increment 5. **Proposed 2026-10-21** by the architect, on the project owner's direction of the same day: *"As extension on
 ArchLinux packaging, I registered the repositories which are expected to be integrated with GitHub Actions CI"* —
-`aur.archlinux.org/packages/stikk` and `…/stikk-bin`. **Four questions only the owner can answer** (§ *For the owner*).
+`aur.archlinux.org/packages/stikk` and `…/stikk-bin`. **No open question.**
 Measured on CachyOS (Arch-based, x86_64) with `makepkg` and `namcap` against the published stikk 0.15.0, building
 packages and installing nothing: `.git-exclude/reports/051-aur/measure051.txt`, with the two PKGBUILDs measured beside
 it.
@@ -75,8 +75,10 @@ that could push **all four**, prikk's included. Each push needs the PKGBUILD **a
    already public — it is reported, and a `workflow_dispatch` with a version input re-runs the job alone.
 5. **`aur.yml` builds the templates on every change** to `packaging/aur/**`, filled against the latest published
    release, with `makepkg` and `namcap`, and **pushes nothing**. A template is never first tested by a release.
-6. **stikk is not published to the AUR before prikk is** (F3). The job exists and is tested from the start; the push
-   is enabled by the owner (O3) once prikk's AUR packages install a real prikk.
+6. **Published as soon as possible** (owner, O3: *"As soon as possible, for prikk team is proceeding on their
+   packaging"*). The push runs **when the secret exists** and is skipped with a notice when it does not; once the owner
+   sets it, a `workflow_dispatch` publishes the current release at once rather than waiting for the next tag. Until
+   prikk's AUR packages are real, `prikk>=floor` keeps `stikk` from installing a placeholder prikk (F3).
 7. **The install page** gains a short *Arch Linux* section: `stikk-bin` (or `stikk` to build it), installed with
    `makepkg -si` from the AUR repository or an AUR helper, and that it pulls in prikk's own AUR package. It names neither
    helper as required.
@@ -85,12 +87,12 @@ that could push **all four**, prikk's included. Each push needs the PKGBUILD **a
 
 ## For the owner
 
-| | Question | Recommendation |
+| | Question | Answer (owner, 2026-10-21) |
 |---|---|---|
-| **O1** | Accept the design: two packages (crate source; static `-bin`), `prikk>=floor`, templates filled and pushed by `release.yml`, tested by `aur.yml`. | **Yes.** |
-| **O2** | **The push key.** Create a **dedicated** SSH key for this, add its public half to your AUR account, and store the private half in `prikk-vcs/stikk` as the secret **`AUR_SSH_PRIVATE_KEY`** (I never see it). Optionally a GitHub *environment* `aur` holding it, with you as required reviewer — one more click per release, but a compromised workflow then cannot push without you, which matters because the key can also push prikk's packages (F4). | **The dedicated key: yes. The environment with your approval: yes** — the AUR key reaches prikk's packages too. |
-| **O3** | **When stikk is first published**: when prikk's AUR packages install a real prikk (decision 6), or now, accepting that `stikk` cannot be installed until then. | **When prikk's are real.** |
-| **O4** | **prikk's side**: `prikk-bin` should declare `provides=('prikk=<ver>')` and `conflicts=('prikk')`, so `stikk-bin`'s dependency is met by either. That is prikk's PKGBUILD. Tell the prikk team yourself, or let me put it in a letter. | **Your call**; it is one line, and a letter is cheap only if something else is going. |
+| **O1** | The design: two packages (crate source; static `-bin`), `prikk>=floor`, templates filled and pushed by `release.yml`, tested by `aur.yml`. | **Yes.** |
+| **O2** | The push key: a dedicated SSH key on the AUR account, its private half as the secret `AUR_SSH_PRIVATE_KEY`; optionally a GitHub environment `aur` with the owner as required reviewer. | *"I can set it when necessary."* The job therefore pushes only when the secret exists. **The environment stays the owner's option**: the job names environment `aur`, which GitHub creates without a reviewer unless the owner adds one. |
+| **O3** | When stikk is first published. | *"As soon as possible, for prikk team is proceeding on their packaging."* Decision 6. |
+| **O4** | `prikk-bin` declares `provides=('prikk=<ver>')`, `conflicts=('prikk')`. | **Done by the owner with the prikk team.** No letter. |
 
 ## Changelog
 
@@ -99,11 +101,11 @@ each release.
 
 ## Delivery
 
-**One handoff on acceptance, for 0.16.0 if the owner adds it to the scope** (increment 5; it touches only packaging and
+**[Handoff A](../handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md), for 0.16.0** (increment 5, added on acceptance; it touches only packaging and
 CI, so it can run beside exchange): the two templates, `aur.yml`, the `release.yml` job with the push behind the
 owner's switch (O3), the install page's section. **Measured before review**: both templates filled for the published
 release build and pass `namcap` within the allow-list in `archlinux:base-devel` on CI; the `.SRCINFO` matches
-`makepkg --printsrcinfo`; the push step is exercised against a **dry run** (no push) until O2 and O3 exist.
+`makepkg --printsrcinfo`; the push step is exercised as a **dry run** (no push) until the owner sets the secret; then a dispatch publishes the current release.
 
 ## What this RFC does not do
 

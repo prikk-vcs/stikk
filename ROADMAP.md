@@ -437,6 +437,11 @@ a fabricated worktree entry was fixed.
 4. **The prikk 0.54.0 re-baseline**, if prikk publishes it before the cut: prikk's own Windows installer line, and its
    `cargo binstall` fix checked. The cut does not wait for it.
 
+5. **Arch Linux packages on the AUR** ([RFC 051](rfcs/accepted/051-arch-linux-packages.md), accepted 2026-10-21,
+   [Handoff A](rfcs/handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md)): `stikk` and `stikk-bin`, kept
+   current by each release, published as soon as the owner's AUR key is set. Packaging and CI only; it runs beside
+   exchange.
+
 **Decision points, settled 2026-10-21:** **SignPath signing dropped from 0.16.0** — re-entered only together with prikk's
 own signing decision, since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the
 owner's repository and token (RFC 048 Handoff C), and can join any release when they exist.

@@ -25,13 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 050 | [Exchange: sharing work as a bundle file](./proposed/050-exchange-bundles.md) | `FR-090/091`, `FL-11`: open a bundle (`i`) to see prikk's verification and its preview against your branch; import it (`I`) as a received branch, declined when it would move that branch back; export a branch (`E`) to a file outside the repository; Exchange at Tier Two with no key; prikk ≥ 0.53. **Proposed 2026-10-21**; 0.16.0 increments 2–3 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
+| 050 | [Exchange: sharing work as a bundle file](./accepted/050-exchange-bundles.md) | `FR-090/091`, `FL-11`: open a bundle (`i`) to see prikk's verification and its preview against your branch; import it (`I`) as a received branch, declined when it would change nothing or move that branch back; export a branch (`E`) to a file outside the repository; Exchange at Tier Two with no key; prikk ≥ 0.53. **Accepted 2026-10-21**; 0.16.0 increments 2–3 | [A: open a bundle](./handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) · [B: import and export](./handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) |
 | 051 | [Arch Linux packages on the AUR](./accepted/051-arch-linux-packages.md) | RFC 048 decision 6 amended: `stikk` (from the crates.io crate) and `stikk-bin` (the static release build, byte-identical to the attested artifact), `prikk>=floor`, filled and pushed by `release.yml` when the owner's secret exists, tested by `aur.yml`. **Accepted 2026-10-21**; 0.16.0 increment 5 | [A: AUR packages](./handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) |
 
 ## Done (implemented)

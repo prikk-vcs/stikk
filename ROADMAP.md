@@ -421,17 +421,21 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.16.0, not yet scoped
+## Next — 0.16.0, scoped 2026-10-21 (authorized), in delivery order
 
-- **Decision points for 0.16.0's scoping** (owner, 2026-10-20: *"managed in our milestones (to implement or to drop)
-  and our schedule"*):
-  - **Windows signing through the SignPath Foundation** (RFC 048 O5, decision 7): free, an approval per release, a
-    code-signing-policy page; answers Smart App Control for stikk only — prikk's signing is prikk's owner's. **Implement
-    or drop.** Tell prikk the outcome.
-  - **The Homebrew tap** (RFC 048 Handoff C): when the owner has the repository and token ready. **Schedule or keep
-    waiting.**
-  - **The prikk 0.54.0 re-baseline**, when prikk publishes it: its Windows installer (switch stikk's Windows message to
-    prikk's `irm` line, if Handoff A could not) and the `cargo binstall` Windows fix to check.
+**0.16.0: stikk can take a change back.** Scope: `.git-exclude/release/0-16-0-scope.md`.
+
+1. **The panels' prose gets a right gutter** ([RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
+   no word sits against a card's border; identifiers and prikk's lines keep the full width.
+2. **Rollback, read-only** (`FR-083`, RFC 050, to be proposed): prikk's own rollback preview for a sealed block.
+3. **Rollback, the draft** (`FR-083`, RFC 050): append the inverse patch, previewed, then prikk's draft verification and
+   the existing seal. **The first to move to 0.17.0** if the cycle runs long.
+4. **The prikk 0.54.0 re-baseline**, if prikk publishes it before the cut: prikk's own Windows installer line, and its
+   `cargo binstall` fix checked. The cut does not wait for it.
+
+**Decision points, settled 2026-10-21:** **SignPath signing dropped from 0.16.0** — re-entered only together with prikk's
+own signing decision, since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the
+owner's repository and token (RFC 048 Handoff C), and can join any release when they exist.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 

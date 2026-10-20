@@ -423,13 +423,17 @@ a fabricated worktree entry was fixed.
 
 ## Next — 0.16.0, scoped 2026-10-21 (authorized), in delivery order
 
-**0.16.0: stikk can take a change back.** Scope: `.git-exclude/release/0-16-0-scope.md`.
+**0.16.0: stikk shares work as a file.** Scope: `.git-exclude/release/0-16-0-scope.md`.
 
 1. **The panels' prose gets a right gutter** ([RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
    no word sits against a card's border; identifiers and prikk's lines keep the full width.
-2. **Rollback, read-only** (`FR-083`, RFC 050, to be proposed): prikk's own rollback preview for a sealed block.
-3. **Rollback, the draft** (`FR-083`, RFC 050): append the inverse patch, previewed, then prikk's draft verification and
-   the existing seal. **The first to move to 0.17.0** if the cycle runs long.
+2. **Exchange, read-only** (`FR-090…093`, RFC 050, to be proposed): open a bundle file and see prikk's verification and
+   its preview against your branch — applies cleanly or conflicts, and what it would change — before anything is
+   written.
+3. **Exchange, the writes** (RFC 050): export a branch to a file, and import a bundle as a received ref, previewed;
+   adopting received history and trusting its sealer stay out. **The first to move to 0.17.0** if the cycle runs long.
+   *(Rollback was scoped here first and withdrawn the same day, re-authorized as exchange: measured, prikk 0.53's
+   rollback inverts the whole chain to the empty state, not one change. It waits on prikk.)*
 4. **The prikk 0.54.0 re-baseline**, if prikk publishes it before the cut: prikk's own Windows installer line, and its
    `cargo binstall` fix checked. The cut does not wait for it.
 

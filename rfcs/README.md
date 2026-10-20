@@ -31,7 +31,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 048 | [Delivery for users new to all of this](./accepted/048-delivery-for-new-users.md) | `NFR-R03`, RFC 039: **each program installs itself** — stikk's installers check for prikk and print prikk's own install command, never run it; an install page that starts from opening a terminal; a Homebrew tap when the owner is ready; no paid signing, SignPath decided at 0.16.0's scoping. **Accepted 2026-10-20**; 0.15.0 increment 4 | [A: installers and install page](./handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) |
+| 048 | [Delivery for users new to all of this](./accepted/048-delivery-for-new-users.md) | `NFR-R03`, RFC 039: **each program installs itself** — stikk's installers check for prikk and print prikk's own install command, never run it; an install page that starts from opening a terminal; a Homebrew tap when the owner is ready; no paid signing, SignPath decided at 0.16.0's scoping. **Accepted 2026-10-20**; 0.15.0 increment 4 | [A: installers and install page](./handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) · [B: aarch64 static build](./handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md) |
 
 ## Done (implemented)
 

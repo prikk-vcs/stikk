@@ -1,6 +1,6 @@
 # RFC 048 — Delivery for users new to all of this
 
-**Status.** **Accepted by the project owner 2026-10-20**, O5 included; [Handoff A](../handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) issued. **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-20**, O5 included; [Handoff A](../handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) delivered on `main` (`9ea8487`..`9f91ee9`); [Handoff B](../handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md) issued for F4, corrected. **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
 authorized), on the project owner's direction of 2026-10-18: *"we will have to consider and design carefully about
 delivery this time and in the future. It should be easy enough for unmatured users as possible and reasonable."*
 **Revised the same day on the owner's principle** that *"the responsibility for installing core software should not be
@@ -87,13 +87,23 @@ only in a macOS aside and Windows not at all.
 | Snap / Flatpak | — | — | **no**: confinement blocks running `prikk` and reading hidden files; Flathub refuses console programs |
 | cargo-dist | — | replaces our `release.yml` and installers, which already exist and are tested | — |
 
-### F4 — the Linux builds run on older systems than their symbols suggest
+### F4 — the 64-bit ARM Linux build does not start below glibc 2.39 (corrected 2026-10-20)
 
-Both `-gnu` builds reference `GLIBC_2.39`, but only through **weak** symbols (`pidfd_spawnp`, `pidfd_getpid`); the hard
-floor is `GLIBC_2.34`. Run under **Debian 12's glibc 2.36** (its own loader), stikk 0.14.0 x86_64-gnu prints a one-line
-loader warning and runs; prikk 0.53.0 runs clean (M2, M3). x86_64 installs the static musl build anyway, so this
-matters for **aarch64** — Raspberry Pi OS bookworm is glibc 2.36. **Not measured on a real aarch64 system**, and
-whether the warning prints outside an explicitly invoked loader is not known.
+**As first written, this finding was wrong for aarch64.** It reasoned that the `GLIBC_2.39` references are weak
+symbols (`pidfd_spawnp`, `pidfd_getpid`), so the hard floor is `GLIBC_2.34`, and it measured that under Debian 12's glibc
+2.36 — by invoking that glibc's loader explicitly, on the **x86_64** build only.
+
+**Handoff A's `ubuntu-22.04-arm` job (glibc 2.35) measured the aarch64 build on real hardware: it does not start.**
+*"version `GLIBC_2.39' not found"*, stdout empty. The loader checks the **version-requirement entry**
+(`.gnu.version_r`), not the symbols' binding, and skips only an entry flagged weak: in the same 0.14.0 release the
+x86_64 build's `GLIBC_2.39` entry is flagged `WEAK` and the aarch64 build's is **`Flags: none`** — visible in M2's own
+`readelf -V` output, and misread then. (`.git-exclude/reports/048-delivery/measure048-f4-aarch64.txt`.)
+
+So **every aarch64 Linux below glibc 2.39** — Debian 12 and Raspberry Pi OS bookworm (2.36), Ubuntu 22.04 (2.35) — got
+a stikk that would not start, because `install.sh` installs the glibc build there (no aarch64 musl build exists). The
+requirement comes from building on `ubuntu-24.04-arm`. **x86_64 is unaffected**: the installer takes the static musl
+build. **prikk is unaffected**: its aarch64 build requires only `GLIBC_2.34` (measured, prikk 0.53.0; it does not link
+`pidfd_spawnp`). Decision 9 fixes it.
 
 ### F5 — prikk's side
 
@@ -197,12 +207,17 @@ same:
    **0.54.0**, in the folder already named. **stikk's re-baseline to prikk 0.54.0 switches the Windows message** to
    prikk's `irm` line — or Handoff A does, if 0.54.0 is published before it is submitted.
 
+9. **64-bit ARM Linux gets a static musl build, and the installer takes it** (F4, corrected), as x86_64 already
+   does. `release.yml` publishes `aarch64-unknown-linux-musl` beside the glibc archive, which stays. The
+   `ubuntu-22.04-arm` installer job builds and installs that archive at every commit and requires that stikk starts
+   with nothing on stderr. Added 2026-10-20 by the architect, within this RFC's scope; Handoff B.
+
 ## For the owner
 
 | | Question | Answer (owner, 2026-10-20) |
 |---|---|---|
 | **O1** | stikk's Windows installer installs prikk's build. | **Withdrawn on the owner's principle**: each program installs itself. prikk agreed (letter 026) and ships its own Windows installer in 0.54.0. The same principle removes stikk's running of prikk's installer on Linux and macOS (decision 2). |
-| **O2** | Homebrew tap: the repository `prikk-vcs/homebrew-tap` and a secret `HOMEBREW_TAP_TOKEN` (fine-grained, *Contents: read and write* on that one repository). | **Considered, not ready.** Handoff B waits on it; not in 0.15.0. |
+| **O2** | Homebrew tap: the repository `prikk-vcs/homebrew-tap` and a secret `HOMEBREW_TAP_TOKEN` (fine-grained, *Contents: read and write* on that one repository). | **Considered, not ready.** Handoff C waits on it; not in 0.15.0. |
 | **O3** | May that tap carry a **prikk** formula? | **It is prikk's to publish** (decision 2's principle). |
 | **O4** | Signing spend. | **No capacity to pay now.** Mark-of-the-Web is an issue, with ways to mitigate it (decision 4). |
 | **O5** | Apply to the SignPath Foundation for free Windows signing (decision 7) — now, or later? Each release then needs one approval of its signing request. | **After 0.15.0, managed as a milestone: implement or drop, decided when 0.16.0 is scoped** (`ROADMAP.md`). Tell prikk what we decide, as they asked. |
@@ -212,7 +227,7 @@ same:
 `### Changed`: the installers install stikk only. They check for prikk and, when it is missing or too old, print prikk's
 own install command; prikk's installer decides prikk's version and location. On Windows, stikk works in the same window
 after installing. The install page starts from opening a terminal. `### Removed`: the installers' `--with-prikk` /
-`--no-prikk` (`-WithPrikk` / `-NoPrikk`). (Handoff B, if O2: `### Added`, `brew install prikk-vcs/tap/stikk`.)
+`--no-prikk` (`-WithPrikk` / `-NoPrikk`). (Handoff C, if O2: `### Added`, `brew install prikk-vcs/tap/stikk`.)
 
 ## Delivery
 
@@ -223,7 +238,9 @@ after installing. The install page starts from opening a terminal. `### Removed`
   handoff says; uninstall leaves prikk; on Windows, **`stikk --version` resolves in the same session**. **A Linux leg on
   `ubuntu-22.04-arm`** (glibc 2.35) installs the aarch64 build and runs it, settling F4 on real hardware and recording
   whether the loader warning prints. The install page and README.
-- **Handoff B** (decision 5), **once O2 exists**; not in 0.15.0. A formula template filled by `release.yml` like the
+- **Handoff B** (decision 9), **for 0.15.0**: the aarch64 static build, the installer's target, and the
+  `ubuntu-22.04-arm` job made a hard requirement.
+- **Handoff C** (decision 5), **once O2 exists**; not in 0.15.0. A formula template filled by `release.yml` like the
   installers; `brew install` measured on macOS and Linux runners, including tap trust.
 
 ## What this RFC does not do

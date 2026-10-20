@@ -2,7 +2,7 @@
 
 **Companion to:** [RFC 048](../../accepted/048-delivery-for-new-users.md), **accepted 2026-10-20**. **Read the RFC
 first**, F6 and decisions 2–4. **Covers:** decisions 2, 3 and 4. 0.15.0's increment 4.
-**Not a release.** The tap (decision 5) is Handoff B, later; signing (decision 7) is not code.
+**Not a release.** The tap (decision 5) is Handoff C (renumbered 2026-10-20), later; signing (decision 7) is not code.
 
 > **What this increment is.** The owner's principle, which prikk adopted in its letter 026: **each program installs
 > itself.** stikk's installers install stikk, **check** for prikk, and print **prikk's own** install command when it is

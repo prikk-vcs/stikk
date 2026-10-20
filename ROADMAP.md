@@ -407,9 +407,12 @@ a fabricated worktree entry was fixed.
 3. **Merge, execution — landed on `main`** (`FR-082`, RFC 047, `02771df`): previewed with the plan it seals, at seal's
    tier, the card saying which branch is merged into which.
 4. **Delivery for unskilled users** ([RFC 048](rfcs/accepted/048-delivery-for-new-users.md), accepted 2026-10-20,
-   [Handoff A](rfcs/handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md)): **each program
-   installs itself** — stikk's installers install stikk, check for prikk and print prikk's own install command; the
-   install page starts from opening a terminal. The Homebrew tap (Handoff B) waits on the owner and is not in 0.15.0.
+   [Handoff A](rfcs/handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) **landed on
+   `main`**, `9f91ee9`): **each program installs itself** — stikk's installers install stikk, check for prikk and print
+   prikk's own install command; the install page starts from opening a terminal. **Then
+   [Handoff B](rfcs/handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md)**: Handoff A's ARM job
+   found that stikk's 64-bit ARM Linux build does not start below glibc 2.39, so ARM gets a static build as x86_64 has.
+   The Homebrew tap (Handoff C) waits on the owner and is not in 0.15.0.
 5. **The prikk 0.53.0 re-baseline — landed on `main`** ([RFC 049](rfcs/done/049-prikk-0-53-rebaseline.md), `596e609`): validated
    through 0.53.0; nothing stikk reads changed.
 
@@ -420,7 +423,7 @@ a fabricated worktree entry was fixed.
   - **Windows signing through the SignPath Foundation** (RFC 048 O5, decision 7): free, an approval per release, a
     code-signing-policy page; answers Smart App Control for stikk only — prikk's signing is prikk's owner's. **Implement
     or drop.** Tell prikk the outcome.
-  - **The Homebrew tap** (RFC 048 Handoff B): when the owner has the repository and token ready. **Schedule or keep
+  - **The Homebrew tap** (RFC 048 Handoff C): when the owner has the repository and token ready. **Schedule or keep
     waiting.**
   - **The prikk 0.54.0 re-baseline**, when prikk publishes it: its Windows installer (switch stikk's Windows message to
     prikk's `irm` line, if Handoff A could not) and the `cargo binstall` Windows fix to check.

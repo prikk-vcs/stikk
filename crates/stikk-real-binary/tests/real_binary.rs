@@ -7459,3 +7459,532 @@ fn rfc047_a_conflicting_pair_is_never_armed() {
         ),
     }
 }
+
+// =============================================================================================
+// RFC 050 Handoff A — opening a bundle, against real prikk binaries.
+//
+// `measure050b.sh`'s shape: the receiver is a **copy** of the sender's repository, so the two
+// share history and prikk can answer `fast-forward`, `already-included` and `diverged`. A
+// receiver built from scratch cannot connect to the sender's blocks at all, which is why the
+// first measurement script only ever saw `no-local-history` and `does-not-connect`.
+//
+// Nothing here imports or exports through stikk: Handoff A has no writes. The bundles these
+// legs read are made with raw `prikk bundle export`, which is the file a user would be handed.
+// =============================================================================================
+
+/// Copy a directory tree. The receiver is a copy of the sender's repository (`measure050b.sh`),
+/// and std has no recursive copy.
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap_or_else(|e| panic!("create {}: {e}", to.display()));
+    let entries =
+        std::fs::read_dir(from).unwrap_or_else(|e| panic!("read {}: {e}", from.display()));
+    for entry in entries.flatten() {
+        let kind = entry
+            .file_type()
+            .unwrap_or_else(|e| panic!("stat {}: {e}", entry.path().display()));
+        let target = to.join(entry.file_name());
+        if kind.is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else if kind.is_file() {
+            std::fs::copy(entry.path(), &target)
+                .unwrap_or_else(|e| panic!("copy {}: {e}", entry.path().display()));
+        }
+    }
+}
+
+/// A [`Prikk`] that counts `bundle_preview` and delegates everything else to the real backend —
+/// so a leg can prove a bundle prikk refused to verify was **never previewed**, against the real
+/// binary rather than against a fake.
+struct CountingPreviews {
+    inner: CliBackend,
+    /// Atomic rather than a `Cell`: [`Prikk`] is `Sync`, as every backend the worker thread
+    /// holds must be, and a counter is the whole of this wrapper's state.
+    previews: std::sync::atomic::AtomicUsize,
+}
+
+impl CountingPreviews {
+    fn new(bin: &PrikkBin) -> Self {
+        Self {
+            inner: CliBackend::with_program(&bin.path),
+            previews: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+}
+
+impl Prikk for CountingPreviews {
+    fn handshake(&self) -> stikk_model::Result<stikk_prikk::Handshake> {
+        self.inner.handshake()
+    }
+    fn readiness(
+        &self,
+        repo: &std::path::Path,
+    ) -> stikk_model::Result<stikk_prikk::ReadinessReport> {
+        self.inner.readiness(repo)
+    }
+    fn orientation(&self, repo: &std::path::Path) -> stikk_model::Result<stikk_prikk::Orientation> {
+        self.inner.orientation(repo)
+    }
+    fn history(
+        &self,
+        repo: &std::path::Path,
+        reff: &str,
+        limit: usize,
+    ) -> stikk_model::Result<stikk_prikk::History> {
+        self.inner.history(repo, reff, limit)
+    }
+    fn block_state(
+        &self,
+        repo: &std::path::Path,
+        reff: &str,
+        block_id: &str,
+        is_tip: bool,
+    ) -> stikk_model::Result<stikk_prikk::StateReport> {
+        self.inner.block_state(repo, reff, block_id, is_tip)
+    }
+    fn refs(&self, repo: &std::path::Path) -> stikk_model::Result<stikk_prikk::BranchList> {
+        self.inner.refs(repo)
+    }
+    fn tags(&self, repo: &std::path::Path) -> stikk_model::Result<Vec<stikk_prikk::RefEntry>> {
+        self.inner.tags(repo)
+    }
+    fn worktree_status(
+        &self,
+        repo: &std::path::Path,
+        reff: &str,
+    ) -> stikk_model::Result<stikk_prikk::WorktreeStatus> {
+        self.inner.worktree_status(repo, reff)
+    }
+    fn queue(&self, repo: &std::path::Path) -> stikk_model::Result<stikk_prikk::QueueReport> {
+        self.inner.queue(repo)
+    }
+    fn show(
+        &self,
+        repo: &std::path::Path,
+        id: &str,
+    ) -> stikk_model::Result<stikk_prikk::ShowReport> {
+        self.inner.show(repo, id)
+    }
+    fn diff(
+        &self,
+        repo: &std::path::Path,
+        comparison: &stikk_prikk::Comparison,
+    ) -> stikk_model::Result<stikk_prikk::DiffReport> {
+        self.inner.diff(repo, comparison)
+    }
+    fn verify(&self, repo: &std::path::Path) -> stikk_model::Result<stikk_prikk::VerifyReport> {
+        self.inner.verify(repo)
+    }
+    fn change_token(
+        &self,
+        repo: &std::path::Path,
+    ) -> stikk_model::Result<stikk_model::ChangeToken> {
+        self.inner.change_token(repo)
+    }
+    fn commit(
+        &self,
+        repo: &std::path::Path,
+        reff: &str,
+        message: &str,
+    ) -> stikk_model::Result<stikk_prikk::CommitResult> {
+        self.inner.commit(repo, reff, message)
+    }
+    fn seal(
+        &self,
+        repo: &std::path::Path,
+        reff: &str,
+    ) -> stikk_model::Result<stikk_prikk::SealResult> {
+        self.inner.seal(repo, reff)
+    }
+    fn create_branch(
+        &self,
+        repo: &std::path::Path,
+        name: &str,
+        from: &str,
+    ) -> stikk_model::Result<stikk_prikk::RefWrite> {
+        self.inner.create_branch(repo, name, from)
+    }
+    fn create_tag(
+        &self,
+        repo: &std::path::Path,
+        name: &str,
+        target: &str,
+        message: &str,
+    ) -> stikk_model::Result<stikk_prikk::RefWrite> {
+        self.inner.create_tag(repo, name, target, message)
+    }
+    fn close_branch(
+        &self,
+        repo: &std::path::Path,
+        name: &str,
+    ) -> stikk_model::Result<stikk_prikk::RefWrite> {
+        self.inner.close_branch(repo, name)
+    }
+    fn switch_branch(
+        &self,
+        repo: &std::path::Path,
+        name: &str,
+    ) -> stikk_model::Result<stikk_prikk::SwitchResult> {
+        self.inner.switch_branch(repo, name)
+    }
+    fn merge_plan(
+        &self,
+        repo: &std::path::Path,
+        baseline: &str,
+        left: &str,
+        right: &str,
+    ) -> stikk_model::Result<stikk_prikk::MergePlan> {
+        self.inner.merge_plan(repo, baseline, left, right)
+    }
+    fn merge(
+        &self,
+        repo: &std::path::Path,
+        baseline: &str,
+        into: &str,
+        from: &str,
+    ) -> stikk_model::Result<stikk_prikk::MergeResult> {
+        self.inner.merge(repo, baseline, into, from)
+    }
+    fn bundle_verify(
+        &self,
+        path: &std::path::Path,
+    ) -> stikk_model::Result<stikk_prikk::BundleVerify> {
+        self.inner.bundle_verify(path)
+    }
+    fn bundle_preview(
+        &self,
+        repo: &std::path::Path,
+        path: &std::path::Path,
+        local_ref: Option<&str>,
+    ) -> stikk_model::Result<stikk_prikk::BundlePreview> {
+        self.previews
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.bundle_preview(repo, path, local_ref)
+    }
+}
+
+/// **RFC 050 at the ceiling: every connectivity stikk draws a sentence for, from prikk's own
+/// report.**
+///
+/// Four of the six need a receiver that shares the sender's history, which is why this builds
+/// one by copying the repository — `measure050b.sh`'s shape, and the only way `fast-forward`,
+/// `already-included` and the two `diverged` rows can be reached at all.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc050_every_connectivity_reads_from_prikks_own_report() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::BUNDLE_FROM_MINOR {
+        eprintln!(
+            "RFC 050 SKIPPED at 0.{} — bundles are banded at 0.{}. Announced rather than silent \
+             (RFC 022 §3).",
+            bin.minor,
+            stikk_core::BUNDLE_FROM_MINOR
+        );
+        return;
+    }
+    let sender = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = sender.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    let write = |at: &std::path::Path, name: &str, body: &str| {
+        std::fs::write(at.join(name), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+    };
+    let seal = |fixture: &Fixture, at: &std::path::Path, message: &str| {
+        fixture.set_author_env();
+        backend
+            .commit(at, "heads/main", message)
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(at, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+    };
+    let export = |at: &std::path::Path, to: &std::path::Path| {
+        prikk_ok(
+            &bin,
+            at,
+            &[
+                "bundle",
+                "export",
+                "--ref",
+                "heads/main",
+                "--output",
+                &to.display().to_string(),
+            ],
+        );
+    };
+    let read = |at: &std::path::Path, file: &std::path::Path| -> stikk_core::BundleView {
+        match stikk_core::open_bundle(&backend, at, file) {
+            Ok(stikk_core::BundleOpened::Read(view)) => *view,
+            other => panic!("0.{}: expected a read bundle, got {other:?}", bin.minor),
+        }
+    };
+
+    // ── the sender at v1, and a receiver that is a copy of it ────────────────────────────────
+    write(&repo, "a.txt", "a\n");
+    write(&repo, "b.txt", "b\n");
+    seal(&sender, &repo, "base");
+    let v1 = root.join("v1.bundle");
+    export(&repo, &v1);
+
+    let receiver = root.join("receiver");
+    copy_tree(&repo, &receiver);
+
+    write(&repo, "a.txt", "a2\n");
+    seal(&sender, &repo, "sender edits a");
+    let v2 = root.join("v2.bundle");
+    export(&repo, &v2);
+
+    // **fast-forward**: the receiver is at the bundle's parent block.
+    let view = read(&receiver, &v2);
+    assert_eq!(
+        view.preview.connectivity,
+        stikk_prikk::Connectivity::FastForward,
+        "0.{}: {view:?}",
+        bin.minor
+    );
+    assert_eq!(view.sentence, stikk_core::WOULD_BRING_FORWARD);
+    assert!(
+        view.verified
+            .iter()
+            .any(|line| line.contains("not yet a trusted one")),
+        "0.{}: prikk's caveat travels with the verification: {:?}",
+        bin.minor,
+        view.verified
+    );
+    assert!(
+        view.preview.sealed_by_note.contains("not a trust decision"),
+        "0.{}: {}",
+        bin.minor,
+        view.preview.sealed_by_note
+    );
+
+    // **already-included**: the same pair the other way round. prikk reports `conflict: null`
+    // here, which is why the field is read as nullable rather than as a fourth word.
+    let view = read(&receiver, &v1);
+    assert_eq!(
+        view.preview.connectivity,
+        stikk_prikk::Connectivity::AlreadyIncluded
+    );
+    assert_eq!(view.preview.conflict, None, "0.{}: {view:?}", bin.minor);
+    assert_eq!(view.sentence, stikk_core::ALREADY_HELD);
+
+    // **diverged, applying cleanly**: each side edited a different file.
+    write(&receiver, "b.txt", "b-receiver\n");
+    seal(&sender, &receiver, "receiver edits b");
+    let view = read(&receiver, &v2);
+    assert_eq!(
+        view.preview.connectivity,
+        stikk_prikk::Connectivity::Diverged
+    );
+    assert_eq!(
+        view.preview.conflict,
+        Some(stikk_prikk::BundleConflict::AppliesCleanly)
+    );
+    assert_eq!(view.sentence, stikk_core::DIVERGED_CLEAN);
+    assert_eq!(view.conflict_detail(), None);
+
+    // **diverged, in conflict**: both sides edited the same file. prikk's replay error is
+    // carried verbatim, and stikk's sentence says only that there is one.
+    write(&receiver, "a.txt", "a-receiver\n");
+    seal(&sender, &receiver, "receiver edits a");
+    let view = read(&receiver, &v2);
+    assert_eq!(
+        view.preview.connectivity,
+        stikk_prikk::Connectivity::Diverged
+    );
+    assert_eq!(
+        view.preview.conflict,
+        Some(stikk_prikk::BundleConflict::Conflict)
+    );
+    assert_eq!(view.sentence, stikk_core::DIVERGED_CONFLICT);
+    let detail = view
+        .conflict_detail()
+        .unwrap_or_else(|| panic!("0.{}: a conflict carries prikk's reason", bin.minor));
+    assert!(!detail.is_empty(), "0.{}: {detail}", bin.minor);
+
+    // **no-local-history**: a repository with nothing sealed on that ref.
+    let fresh = Fixture::build(&bin);
+    let view = read(fresh.repo(), &v1);
+    assert_eq!(
+        view.preview.connectivity,
+        stikk_prikk::Connectivity::NoLocalHistory
+    );
+    assert_eq!(view.sentence, stikk_core::NEW_TO_THIS_REPOSITORY);
+    assert!(
+        !view.preview.effects.is_empty(),
+        "0.{}: everything the bundle holds is new here",
+        bin.minor
+    );
+
+    // **does-not-connect**: an independent repository, with its own history of the same name.
+    let other = Fixture::build(&bin);
+    write(other.repo(), "a.txt", "a\n");
+    write(other.repo(), "b.txt", "b\n");
+    seal(&other, other.repo(), "an independent base");
+    let view = read(other.repo(), &v1);
+    assert_eq!(
+        view.preview.connectivity,
+        stikk_prikk::Connectivity::DoesNotConnect
+    );
+    assert_eq!(view.sentence, stikk_core::SHARES_NOTHING);
+}
+
+/// **A bundle prikk will not read is prikk's refusal, and no preview is spawned** — proved
+/// against the real binary with a counting wrapper, not with a fake.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc050_a_truncated_bundle_is_refused_and_never_previewed() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::BUNDLE_FROM_MINOR {
+        eprintln!(
+            "RFC 050 SKIPPED at 0.{} — bundles are banded at 0.{}.",
+            bin.minor,
+            stikk_core::BUNDLE_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingPreviews::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    std::fs::write(repo.join("a.txt"), "a\n")
+        .unwrap_or_else(|e| panic!("0.{}: write a.txt: {e}", bin.minor));
+    fixture.set_author_env();
+    counting
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    counting
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+
+    let whole = root.join("whole.bundle");
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "bundle",
+            "export",
+            "--ref",
+            "heads/main",
+            "--output",
+            &whole.display().to_string(),
+        ],
+    );
+    // A real truncation, not an invented file: the first 200 bytes of a real bundle, which is
+    // what `measure050.sh` cut and what prikk answered *"unexpected end of record"* to.
+    let bytes =
+        std::fs::read(&whole).unwrap_or_else(|e| panic!("0.{}: read the bundle: {e}", bin.minor));
+    let cut = root.join("truncated.bundle");
+    std::fs::write(&cut, &bytes[..200.min(bytes.len())])
+        .unwrap_or_else(|e| panic!("0.{}: write the truncated bundle: {e}", bin.minor));
+
+    let opened = stikk_core::open_bundle(&counting, &repo, &cut)
+        .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
+    let stikk_core::BundleOpened::Refused(message) = opened else {
+        panic!(
+            "0.{}: a truncated bundle is refused, got {opened:?}",
+            bin.minor
+        );
+    };
+    assert!(
+        message.contains("malformed persisted data"),
+        "0.{}: prikk's words, kept: {message}",
+        bin.minor
+    );
+    assert_eq!(
+        counting.previews.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "0.{}: a file prikk will not read has nothing to preview",
+        bin.minor
+    );
+
+    // The whole bundle, through the same wrapper, **is** previewed — so the assertion above is
+    // about the refusal and not about a path that never previews anything.
+    let opened = stikk_core::open_bundle(&counting, &repo, &whole)
+        .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
+    assert!(
+        matches!(opened, stikk_core::BundleOpened::Read(_)),
+        "0.{}: {opened:?}",
+        bin.minor
+    );
+    assert_eq!(
+        counting.previews.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "0.{}",
+        bin.minor
+    );
+}
+
+/// **Below the band nothing is spawned**, and *unavailable* is not *failed*.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc050_below_the_band_a_bundle_is_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    assert!(
+        bin.minor < stikk_core::BUNDLE_FROM_MINOR,
+        "the floor is below the band"
+    );
+    let fixture = Fixture::build(&bin);
+    let counting = CountingPreviews::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let nowhere = repo.join("not-a-bundle.bundle");
+
+    let verified = counting
+        .bundle_verify(&nowhere)
+        .unwrap_or_else(|e| panic!("0.{}: bundle_verify: {e}", bin.minor));
+    assert_eq!(
+        verified,
+        stikk_prikk::BundleVerify::Unavailable,
+        "0.{}: nothing is spawned below the band",
+        bin.minor
+    );
+    let previewed = counting
+        .bundle_preview(&repo, &nowhere, None)
+        .unwrap_or_else(|e| panic!("0.{}: bundle_preview: {e}", bin.minor));
+    assert_eq!(previewed, stikk_prikk::BundlePreview::Unavailable);
+
+    // **And the operation says so in stikk's own voice**, naming the two numbers — never a
+    // refusal, and never a file prikk was asked about.
+    let opened = stikk_core::open_bundle(&counting, &repo, &nowhere)
+        .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
+    let stikk_core::BundleOpened::Unavailable(message) = opened else {
+        panic!(
+            "0.{}: below the band is unavailable, got {opened:?}",
+            bin.minor
+        );
+    };
+    assert!(
+        message.contains(&format!("0.{}", stikk_core::BUNDLE_FROM_MINOR)),
+        "0.{}: {message}",
+        bin.minor
+    );
+    assert!(
+        message.contains(&format!("0.{}", bin.minor)),
+        "0.{}: {message}",
+        bin.minor
+    );
+}

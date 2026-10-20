@@ -2,6 +2,52 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-state` and
+the `stikk` launcher are unchanged.**
+
+| Crate | Change |
+|---|---|
+| `stikk-model` | **`RequestCategory::Exchange` is Tier Two and needs no key.** It said `Tier::Three` and `SigningRequirement::Maintainer`; measured at prikk 0.53, neither is right — `bundle export` and `bundle import` both succeed with no key configured at all, and an import creates and advances no local ref. Outside code that reads `tier()` or `signing_requirement()` for this category gets a different answer. **`cargo public-api` reports nothing for this crate**: no signature moved, only what the two functions answer |
+| `stikk-prikk` | **The `Prikk` trait gains two required methods**, `bundle_verify` and `bundle_preview`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+| `stikk-tui` | **`Screen` and `Focus` gained `Bundle`, and `Overlay` gained `BundlePath`.** None of the three enums is `#[non_exhaustive]`, so any outside exhaustive `match` must cover the new variant |
+
+**Additive:** `stikk_prikk::BundleVerify`, `BundlePreview`, `BundlePreviewRead`, `BundleEffect`,
+`Connectivity`, `BundleConflict`, `EffectKind` and `EXCHANGE_FROM_MINOR`, with
+`NullBackend::with_bundle_verify`, `with_bundle_verify_refusal`, `with_bundle_preview`,
+`with_bundle_preview_refusal` and `bundle_preview_calls`; `stikk_core::bundle` with
+`BundleOpened`, `BundleView`, `open_bundle`, `sentence_for`, `bundle_unavailable`,
+`unshown_effects_line`, `BUNDLE_FROM_MINOR`, `BUNDLE_EFFECTS_SHOWN` and its seven sentences;
+`stikk_tui::App::begin_open_bundle`; `OperationContext::Bundle`, which is additive only because
+that enum is `#[non_exhaustive]`. **No public item was removed**: `cargo public-api diff 0.15.0`
+reports *(none)* under both *Removed items* and *Changed items* for every crate.
+
+### Added
+
+- **Open a bundle file and see what it is, and what it would change.** `i`, wherever a
+  repository is open, asks for a path. stikk shows **prikk's own verification**, word for word —
+  including prikk's caveat that the check is structural only and *"a verified bundle is not yet
+  a trusted one"* — and, beside it, what prikk says importing would change against your branch
+  of the bundle's own name. Needs prikk 0.53 or newer.
+
+  prikk answers in its own vocabulary; stikk says it in a sentence. Nothing here is new to this
+  repository, shares nothing with your branch, is already held by it, would bring it forward, or
+  has moved on from it on both sides — applying cleanly, conflicting, or undetermined. Where it
+  conflicts, **prikk's own reason is quoted beneath**, because why is prikk's to say.
+
+  The files that would change are listed with prikk's own word for each — created, deleted,
+  edited, permission-changed — and their sizes, with prikk's note that a move is not yet
+  distinguishable from a delete plus a create. **Who sealed the bundle is shown with prikk's
+  continuity note beside it, never as a trust claim**: the key ids are recorded in the file, and
+  recording is not verifying.
+
+  **Nothing is written** — not by stikk, and not by prikk. A file prikk will not read is prikk's
+  refusal and nothing else, with no preview asked for: a malformed bundle has nothing to
+  preview. Importing a bundle, and exporting one, are not in this release.
+
 ## 0.15.0 — 2026-10-21
 
 **stikk now merges one branch into another when prikk proves it safe, and installs in two plain

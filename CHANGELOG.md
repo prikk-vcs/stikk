@@ -37,6 +37,26 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Changed
 
+- **The installers install stikk, and point at prikk's own.** Each program installs itself:
+  stikk's installer no longer downloads, verifies or runs anything of prikk's. It installs stikk,
+  checks whether prikk is there and new enough, and prints **prikk's own install command** when it
+  is missing or too old — so where prikk lives, how it is verified and which version you get are
+  prikk's decisions, in one place, rather than a copy inside every tool built on prikk.
+
+  Four reports, and only one of them is bad news: prikk missing, prikk too old, prikk inside the
+  range this stikk was tested against, and prikk newer than that — which still runs, and says so
+  calmly, because that is the normal state for a few days after every prikk release. A missing
+  prikk is told to you, not treated as a failed install.
+
+- **On Windows, stikk works in the window you installed it from.** The installer now puts its
+  folder on that session's `PATH` as well as your user `PATH`, so the *open a new PowerShell
+  window* step is gone.
+
+- **The install guide starts from opening a terminal**, then prikk, then stikk, with what a
+  successful run looks like. Downloading by hand is a clearly marked advanced section, with the
+  one step that clears macOS's and Windows's mark on a browser download — and a plain note about
+  Smart App Control, which neither program can avoid while they are unsigned.
+
 - **Validated through prikk 0.53.0.** prikk 0.53 changes nothing stikk reads: its one output
   change is to `checkout`'s refusals, and stikk calls `checkout` only below prikk 0.46, reading
   `tree` from there. The real-binary suite was green at 0.28.0 and 0.53.0 with only the ceiling
@@ -57,6 +77,12 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   It now shows as many **complete** declarations as fit, always at least the first — the one
   prikk's commit would stop on — and ends with a line saying how many more there are and that
   each has its own reason.
+
+### Removed
+
+- **The installers' `--with-prikk` and `--no-prikk`** (`-WithPrikk` and `-NoPrikk` on Windows).
+  They chose whether stikk's installer installed prikk, which it no longer does at all. A stale
+  copy-pasted command carrying one of them now fails loudly rather than appearing to work.
 
 ### Breaking
 

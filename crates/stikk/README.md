@@ -37,8 +37,12 @@ ships ready-to-run binaries for Linux, macOS and Windows, with checksums — see
 [Install](https://prikk-vcs.github.io/stikk/guide/install.html).
 
 **stikk drives the external `prikk` binary at runtime** (it is not a Cargo dependency): install a
-compatible `prikk` on your `PATH` as well, which prikk's own installer does in one line
-(`curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh`).
+compatible `prikk` on your `PATH` as well. **prikk installs itself** — on Linux and macOS in one
+line (`curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh`),
+and on Windows through
+[prikk's install guide](https://prikk-vcs.github.io/prikk/docs/guide/install.html), which is the
+authority on all of it. stikk's own installers install stikk and nothing else; they check for
+prikk and print prikk's command when it is missing.
 This release requires prikk **≥ 0.28** and is validated
 through **0.53.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
 against it rather than silently assuming they have. If `prikk` is missing, stikk opens and then

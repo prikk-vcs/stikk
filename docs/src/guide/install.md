@@ -2,146 +2,204 @@
 
 stikk needs two programs: **prikk** (the version control system itself) and **stikk** (this
 program, which shows you what is in a prikk repository). Neither needs a compiler — both ship as
-ready-to-run files. A *terminal* is the window where you type commands; everything below is typed
-there.
+ready-to-run files, and **each one installs itself**: prikk's installer installs prikk, stikk's
+installs stikk.
 
-**One command.** On **Linux and macOS**:
+Two commands, in order. If you have never used a terminal, start here.
+
+## Opening a terminal
+
+A *terminal* is a window where you type commands instead of clicking. Every command on this page
+is typed there, one line at a time, each followed by Enter.
+
+- **macOS** — press ⌘ Space, type `Terminal`, press Enter.
+- **Windows** — press the Start button, type `PowerShell`, and open *Windows PowerShell*.
+- **Linux** — open your *Terminal* application (on GNOME: press the Super/Windows key and type
+  `Terminal`).
+
+## Step 1 — install prikk
+
+prikk is the version control system; stikk reads the repositories it makes. prikk publishes its
+own installer, and [prikk's install guide](https://prikk-vcs.github.io/prikk/docs/guide/install.html)
+is the authority on it.
+
+**Linux and macOS**:
+
+```sh
+curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh
+```
+
+**Windows**: prikk does not publish a Windows installer yet — one is coming. Until it does, follow
+[prikk's install guide](https://prikk-vcs.github.io/prikk/docs/guide/install.html), which has the
+steps for Windows; the files are on [prikk's latest release](https://github.com/prikk-vcs/prikk/releases/latest).
+
+Check it worked:
+
+```sh
+prikk --version
+```
+
+stikk works with **prikk 0.28 and above**, and says so if yours is older. A prikk newer than the
+one this stikk was tested against still works; stikk tells you its output has not been checked
+rather than assuming it has.
+
+## Step 2 — install stikk
+
+**Linux and macOS**:
 
 ```sh
 curl -fsSL https://github.com/prikk-vcs/stikk/releases/latest/download/install.sh | sh
 ```
 
-On **Windows**, in PowerShell:
+**Windows**, in PowerShell:
 
 ```powershell
 irm https://github.com/prikk-vcs/stikk/releases/latest/download/install.ps1 | iex
 ```
 
 It downloads stikk, checks it against the checksum published beside it, installs nothing if that
-check fails, and puts stikk somewhere your terminal can find it. **If prikk is missing it offers to
-install it too**, using prikk's own installer and the prikk version this stikk was tested against —
-answer `n` to skip, or pass `--with-prikk` / `--no-prikk` to decide in advance. Run it again any
-time to upgrade. On Windows, prikk has no installer of its own, so the script tells you where to
-get it rather than guessing.
+check fails, and puts stikk somewhere your terminal can find it. It **installs only stikk** — it
+checks whether prikk is there and new enough, and tells you prikk's own command if it is not.
 
-To remove stikk later:
+### What you should see
+
+```text
+stikk-install: downloading stikk-0.14.0-x86_64-unknown-linux-musl.tar.gz (0.14.0, x86_64-unknown-linux-musl)
+stikk-install: checking the download
+stikk-install: extracting
+stikk-install: installed to ~/.local/bin/stikk
+stikk-install: added ~/.local/bin to PATH in ~/.bashrc
+stikk-install: open a new terminal, or run: . ~/.bashrc
+stikk-install: prikk is already installed: prikk 0.53.0
+stikk-install: that is inside the range this stikk was tested against (0.28 through 0.53.0)
+
+stikk-install: done. Next:
+stikk-install:   1. open a new terminal (PATH changed)
+stikk-install:   2. make a repository:  prikk init
+stikk-install:   3. open it:            stikk
+```
+
+The exact versions will differ. If it says `PATH changed`, open a new terminal before carrying on:
+your terminal looks for programs in a fixed list of folders, and it reads that list when it
+starts. **On Windows there is no such step** — stikk works in the same window straight away.
+
+Then make a repository and open it:
+
+```sh
+prikk init
+```
+
+```sh
+stikk
+```
+
+Press `?` inside stikk for help, and `q` to leave.
+
+## Updating
+
+Run each program's install line again. Both installers overwrite what is there, so running them
+twice is safe.
+
+## Removing
+
+Each program removes itself, the same way it installed itself:
 
 ```sh
 curl -fsSL https://github.com/prikk-vcs/stikk/releases/latest/download/uninstall.sh | sh
 ```
 
-It removes stikk and the `PATH` entry it added, and nothing else. **It never removes prikk** — and
-if the installer brought prikk in, prikk added its own `PATH` entry, which is prikk's to remove
-(`curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/uninstall.sh | sh`).
-
-The script is one file and is meant to be read before it is run — open the URL in a browser first
-if you would rather see it. The rest of this section is the same thing by hand.
-
-## Or, by hand
-
-### 1. Install prikk
-
-prikk publishes its own installer. One line:
-
-```sh
-curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh
+```powershell
+irm https://github.com/prikk-vcs/stikk/releases/latest/download/uninstall.ps1 | iex
 ```
 
-It downloads prikk, checks the download against the checksum prikk published, installs it into
-`~/.local/bin`, and adds that folder to your `PATH` — the list of places your terminal looks for
-programs. **If it changed your `PATH`, open a new terminal before carrying on.** Then:
+That removes stikk and the `PATH` entry it added, and nothing else — not your repositories, which
+stikk never writes to. To remove prikk, use
+[prikk's own uninstaller](https://prikk-vcs.github.io/prikk/docs/guide/install.html).
 
-```sh
-prikk --version
-```
+## If Windows says Smart App Control blocked stikk or prikk
 
-stikk works with prikk **0.28 and above, and is tested through 0.53.0** — which is what the command
-above installs today. To ask for exactly that version rather than the newest one:
+Smart App Control is a Windows 11 feature that blocks programs it cannot confidently recognise.
+Neither stikk nor prikk is signed with a paid code-signing certificate, so on a machine where
+Smart App Control is switched on, either of them may be refused.
 
-```sh
-curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh -s -- --version 0.51.0
-```
+There is no per-program exception for it. Microsoft's own page explains what the feature does and
+what your options are:
+[What is Smart App Control?](https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003)
+That decision is yours and Microsoft's; this guide does not advise turning a security feature off.
 
-**prikk's installer covers Linux and Apple-Silicon Macs only.** On Windows, or on an Intel Mac, use
-prikk's own [install guide](https://github.com/prikk-vcs/prikk/blob/main/docs/src/guide/install.md).
+## By hand (advanced)
 
-### 2. Install stikk
+You do not need this section if the commands above worked.
 
-Find the row for your computer — the commands below download that file for you, from the
-[latest release](https://github.com/prikk-vcs/stikk/releases/latest):
+> **A file you download in a browser is marked by macOS and by Windows**, which will then warn
+> about it or refuse to run it, because stikk is not signed. The one-line commands above do not
+> leave that mark, which is why they are the easy path. If you download by hand anyway, the two
+> notes below clear it.
 
-| Your computer | File to download |
+The archives are on the [latest release](https://github.com/prikk-vcs/stikk/releases/latest).
+Each has a second file beside it ending in `.sha256` — a *checksum*, a short fingerprint you can
+use to tell the file arrived exactly as published.
+
+| Your computer | File |
 |---|---|
-| Linux, Intel/AMD | `stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux, Intel/AMD (older systems) | `stikk-0.14.0-x86_64-unknown-linux-musl.tar.gz` |
-| Linux, ARM | `stikk-0.14.0-aarch64-unknown-linux-gnu.tar.gz` |
-| Mac, Apple Silicon (M1 and later) | `stikk-0.14.0-aarch64-apple-darwin.tar.gz` |
-| Mac, Intel | `stikk-0.14.0-x86_64-apple-darwin.tar.gz` |
-| Windows | `stikk-0.14.0-x86_64-pc-windows-msvc.zip` |
+| Linux, Intel/AMD | `stikk-<version>-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux, Intel/AMD (older systems, or Alpine) | `stikk-<version>-x86_64-unknown-linux-musl.tar.gz` |
+| Linux, ARM | `stikk-<version>-aarch64-unknown-linux-gnu.tar.gz` |
+| Mac, Apple Silicon (M1 and later) | `stikk-<version>-aarch64-apple-darwin.tar.gz` |
+| Mac, Intel | `stikk-<version>-x86_64-apple-darwin.tar.gz` |
+| Windows | `stikk-<version>-x86_64-pc-windows-msvc.zip` |
 
-Each file has a second file beside it ending in `.sha256`. That is a *checksum*: a short fingerprint
-of the download, so you can tell the file arrived exactly as published. The commands below fetch
-both. **Use them rather than downloading in a browser** — on macOS a browser download is treated as
-untrusted and the program will be refused the first time you run it (see the macOS note below).
+Replace `<version>` with the version on that release page, and `<file>` below with the name from
+the table.
 
-**Linux**
+**Linux and macOS.** Download both files, check the one against the other, unpack, and install:
 
 ```sh
-curl -fLO https://github.com/prikk-vcs/stikk/releases/download/0.14.0/stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/prikk-vcs/stikk/releases/latest/download/<file>
 ```
 
 ```sh
-curl -fLO https://github.com/prikk-vcs/stikk/releases/download/0.14.0/stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+curl -fLO https://github.com/prikk-vcs/stikk/releases/latest/download/<file>.sha256
 ```
-
-Check the download, so you know it was not altered on the way:
 
 ```sh
-sha256sum -c stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum -c <file>.sha256
 ```
 
-That prints `stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz: OK`. **If it says `FAILED`, stop and
-download again — do not run the file.** Then unpack it and put it somewhere your terminal looks:
+On macOS that last command is `shasum -a 256 -c <file>.sha256` instead. Either prints
+`<file>: OK`. **If it says `FAILED`, stop and download again — do not run the file.** Then:
 
 ```sh
-tar -xzf stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf <file>
 ```
-
-Make the folder you are going to keep it in, in case it does not exist yet:
 
 ```sh
 mkdir -p ~/.local/bin
 ```
 
 ```sh
-install -m755 stikk-0.14.0-x86_64-unknown-linux-gnu/stikk ~/.local/bin/stikk
+install -m755 stikk-<version>-<target>/stikk ~/.local/bin/stikk
 ```
 
-**macOS** is the same — `curl`, check, `tar -xzf`, `mkdir -p ~/.local/bin`, `install` — with the Mac
-file name and one different check command (replace `aarch64-apple-darwin` with
-`x86_64-apple-darwin` on an Intel Mac):
+If `~/.local/bin` is not already on your `PATH`, add `export PATH="$HOME/.local/bin:$PATH"` to your
+shell's startup file and open a new terminal.
 
-```sh
-shasum -a 256 -c stikk-0.14.0-aarch64-apple-darwin.tar.gz.sha256
-```
-
-**Download with the `curl` commands above, not with a browser.** macOS marks anything a browser
-downloads as quarantined, and refuses to run a quarantined program that has not been notarized —
-stikk is not — with a warning there is no obvious way past. Files fetched with `curl` are not
-marked. If you already used a browser and macOS refuses to open stikk, clear the mark:
-
-```sh
-xattr -d com.apple.quarantine ~/.local/bin/stikk
-```
+> **macOS, if you downloaded in a browser.** macOS marks browser downloads and refuses to run an
+> unsigned program that carries the mark. Either open System Settings → Privacy & Security and
+> press *Open Anyway* after the first refusal, or clear the mark yourself:
+>
+> ```sh
+> xattr -d com.apple.quarantine ~/.local/bin/stikk
+> ```
 
 **Windows**, in PowerShell. There is no `sha256sum` here, so you compare the fingerprint yourself:
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/download/0.14.0/stikk-0.14.0-x86_64-pc-windows-msvc.zip -OutFile stikk.zip
+Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/latest/download/<file> -OutFile stikk.zip
 ```
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/download/0.14.0/stikk-0.14.0-x86_64-pc-windows-msvc.zip.sha256 -OutFile stikk.zip.sha256
+Invoke-WebRequest -Uri https://github.com/prikk-vcs/stikk/releases/latest/download/<file>.sha256 -OutFile stikk.zip.sha256
 ```
 
 ```powershell
@@ -152,19 +210,22 @@ if ((Get-FileHash stikk.zip -Algorithm SHA256).Hash -eq (((Get-Content stikk.zip
 Expand-Archive stikk.zip -DestinationPath .
 ```
 
-That leaves `stikk-0.14.0-x86_64-pc-windows-msvc\stikk.exe`. Move it into a folder on your `PATH`.
+Move the `stikk.exe` that leaves behind into a folder on your `PATH`.
 
-If `~/.local/bin` (or the folder you chose) is not already on your `PATH`, add it — on Linux and
-macOS, `export PATH="$HOME/.local/bin:$PATH"` in your shell's startup file, then open a new
-terminal.
+> **Windows, if you downloaded the zip in a browser: unblock it *before* extracting.** The mark
+> travels from the zip onto `stikk.exe` when Explorer extracts it, and then Windows warns every
+> time you start the program. Right-click the zip → Properties → tick *Unblock* → OK, or:
+>
+> ```powershell
+> Unblock-File stikk.zip
+> ```
+>
+> Start `stikk` from PowerShell rather than by double-clicking it: it is a terminal program and
+> has nothing to show in a window of its own.
 
-Check it worked:
-
-```sh
-stikk --version
-```
-
-It prints `stikk 0.14.0`.
+**Do not download `install.ps1` and run it as a file.** A downloaded script is marked too, and
+PowerShell's execution policy then refuses to run it. The `irm … | iex` line above is not a file
+and is not refused.
 
 ### Optional: check who built it
 
@@ -172,7 +233,7 @@ The checksum proves the file was not altered on the way to you. It does **not** 
 If you want that too, and you have [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify stikk-0.14.0-x86_64-unknown-linux-gnu.tar.gz -R prikk-vcs/stikk
+gh attestation verify <file> -R prikk-vcs/stikk
 ```
 
 It exits successfully when the file really was built by this project's release workflow, and fails

@@ -4722,9 +4722,10 @@ fn rfc050_below_the_band_i_says_so_and_does_not_prompt() {
 #[test]
 fn rfc050_the_answer_is_a_screen_whether_prikk_read_it_or_not() {
     for opened in [
-        stikk_core::BundleOpened::Refused(
-            "error: malformed persisted data: invalid bundle magic".to_string(),
-        ),
+        stikk_core::BundleOpened::Refused {
+            path: "/tmp/v1.bundle".to_string(),
+            message: "error: malformed persisted data: invalid bundle magic".to_string(),
+        },
         stikk_core::BundleOpened::Unavailable(stikk_core::bundle_unavailable(52)),
     ] {
         let (mut app, rx) = bundle_app(53);
@@ -4755,7 +4756,10 @@ fn rfc050_nothing_on_the_bundle_view_acts_and_the_arrows_scroll_it() {
     let req = next_request(&rx);
     app.apply(Response {
         seq: req.seq,
-        kind: ResponseKind::OpenBundle(Ok(stikk_core::BundleOpened::Refused("no".to_string()))),
+        kind: ResponseKind::OpenBundle(Ok(stikk_core::BundleOpened::Refused {
+            path: "/tmp/v1.bundle".to_string(),
+            message: "error: malformed persisted data: invalid bundle magic".to_string(),
+        })),
     });
 
     app.select();

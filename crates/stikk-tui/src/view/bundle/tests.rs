@@ -174,11 +174,21 @@ fn capture_a_conflict_at_80x24() {
 /// **Capture: a file prikk would not read at 80×24** — prikk's words, and **nothing else**.
 #[test]
 fn capture_a_refused_file_at_80x24() {
-    let view = BundleOpened::Refused(
-        "error: malformed persisted data: unexpected end of record".to_string(),
-    );
+    let view = BundleOpened::Refused {
+        path: "/home/someone/downloads/v2.bundle".to_string(),
+        message: "error: malformed persisted data: unexpected end of record".to_string(),
+    };
     let text = draw_at(&view, 80, 24, 0);
     println!("{text}");
+    // **The path, because prikk's words do not carry one** (review v1 C1): *"malformed
+    // persisted data"* names no file, so a mistyped path and a damaged download would read
+    // the same screen without it.
+    assert!(text.contains("/home/someone/downloads/v2.bundle"), "{text}");
+    // **A label naming prikk**, so the words below are not read as stikk's own prose.
+    assert!(
+        flattened(&text).contains("prikk could not read it:"),
+        "{text}"
+    );
     assert!(
         flattened(&text).contains("malformed persisted data"),
         "{text}"

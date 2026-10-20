@@ -41,8 +41,8 @@ pub fn render(
     let width = usize::from(area.width.saturating_sub(3));
     let lines = match opened {
         BundleOpened::Read(view) => read_lines(view, palette, width),
-        BundleOpened::Refused(message) => stikk_said(message, palette, width, palette.warn),
-        BundleOpened::Unavailable(message) => stikk_said(message, palette, width, palette.dim),
+        BundleOpened::Refused { path, message } => refused_lines(path, message, palette, width),
+        BundleOpened::Unavailable(message) => stikk_said(message, palette, width),
     };
 
     let viewport = area.height.saturating_sub(2);
@@ -71,19 +71,53 @@ pub fn render(
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 
-/// A refusal or a band: one message, and **nothing else on the screen**. A refused file has no
-/// preview to show (`open_bundle` never asked for one), and a band has nothing at all.
-fn stikk_said<'a>(
-    message: &str,
-    palette: &Palette,
-    width: usize,
-    colour: ratatui::style::Color,
-) -> Vec<Line<'a>> {
+/// A band: **stikk's own sentence**, and nothing else. There is no file to name beyond the one
+/// the reader just typed and no prikk to quote, because nothing was spawned.
+fn stikk_said<'a>(message: &str, palette: &Palette, width: usize) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
-    for row in wrap_indented(&inert(message), width, TOP) {
-        lines.push(Line::from(Span::styled(row, Style::default().fg(colour))));
+    for row in wrap_indented(message, width, TOP) {
+        lines.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
     }
-    let _ = palette;
+    lines
+}
+
+/// A file prikk would not read: **the path, a label naming prikk, and prikk's words** — and no
+/// preview, because `open_bundle` never asked for one.
+///
+/// **The path is here because prikk's refusal often is not** (review v1 C1): *"malformed
+/// persisted data: …"* names no file, so without this a mistyped path and a damaged download
+/// read the same. **The label is here because the words are prikk's**: the read screen puts
+/// prikk's lines under *"prikk's verification, as prikk printed it:"*, and bare prose in the
+/// same panel would read as stikk's own.
+fn refused_lines<'a>(path: &str, message: &str, palette: &Palette, width: usize) -> Vec<Line<'a>> {
+    let mut lines: Vec<Line> = Vec::new();
+    for row in wrap_verbatim(&inert(path), width, TOP) {
+        lines.push(Line::from(Span::styled(
+            row,
+            Style::default()
+                .fg(palette.accent)
+                .add_modifier(Modifier::BOLD),
+        )));
+    }
+    lines.push(Line::from(""));
+    lines.push(dim("prikk could not read it:", palette, width));
+    // **Wrapped as prikk's lines are on the read screen**, not as stikk's prose: hard-wrapped
+    // at the quoted indent, so a long refusal keeps the shape prikk gave it (RFC 024).
+    for line in message.lines() {
+        if line.trim().is_empty() {
+            lines.push(Line::from(""));
+            continue;
+        }
+        for row in wrap_verbatim(&inert(line), width, QUOTED) {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.warn),
+            )));
+        }
+    }
     lines
 }
 

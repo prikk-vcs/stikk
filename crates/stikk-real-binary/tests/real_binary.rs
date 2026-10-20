@@ -7900,7 +7900,7 @@ fn rfc050_a_truncated_bundle_is_refused_and_never_previewed() {
 
     let opened = stikk_core::open_bundle(&counting, &repo, &cut)
         .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
-    let stikk_core::BundleOpened::Refused(message) = opened else {
+    let stikk_core::BundleOpened::Refused { path, message } = opened else {
         panic!(
             "0.{}: a truncated bundle is refused, got {opened:?}",
             bin.minor
@@ -7911,6 +7911,14 @@ fn rfc050_a_truncated_bundle_is_refused_and_never_previewed() {
         "0.{}: prikk's words, kept: {message}",
         bin.minor
     );
+    // **prikk names no file in this refusal**, which is why stikk carries the path itself
+    // (review v1 C1) -- measured here rather than assumed, against the real binary.
+    assert!(
+        !message.contains("truncated.bundle"),
+        "0.{}: prikk named the file after all; the screen's path would be a duplicate: {message}",
+        bin.minor
+    );
+    assert_eq!(path, cut.display().to_string(), "0.{}", bin.minor);
     assert_eq!(
         counting.previews.load(std::sync::atomic::Ordering::SeqCst),
         0,

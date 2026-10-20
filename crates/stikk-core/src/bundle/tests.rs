@@ -256,13 +256,17 @@ fn a_refused_bundle_is_prikks_words_and_no_preview_is_asked_for() {
             None,
             edited_a(),
         ));
-    let BundleOpened::Refused(message) = opened(&backend) else {
+    let BundleOpened::Refused { path, message } = opened(&backend) else {
         panic!("a malformed bundle is refused");
     };
     assert!(
         message.contains("malformed persisted data: unexpected end of record"),
         "prikk's words, kept: {message}"
     );
+    // **The path travels with the refusal** (review v1 C1): prikk's own words name no file
+    // here, so a reader who mistyped a path could not otherwise tell that from a damaged
+    // download.
+    assert_eq!(path, "/tmp/v1.bundle");
     assert_eq!(
         backend.bundle_preview_calls(),
         0,

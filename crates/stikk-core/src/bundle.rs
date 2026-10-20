@@ -97,9 +97,19 @@ pub const DIVERGED_UNDETERMINED: &str = "Both sides have moved on since they par
 pub enum BundleOpened {
     /// prikk verified the file, and previewed it against the local branch.
     Read(Box<BundleView>),
-    /// prikk would not read the file. **Its words, verbatim**, and nothing else — no preview was
-    /// asked for.
-    Refused(String),
+    /// prikk would not read the file. **Its words, verbatim**, and nothing else — no preview
+    /// was asked for.
+    ///
+    /// **The path travels with the refusal** (review v1 C1). prikk names the file in some of
+    /// its refusals and not in others — *"malformed persisted data: …"* names none — so a
+    /// reader who mistyped a path and a reader whose download is damaged would otherwise read
+    /// the same screen, with no way to check which file was opened.
+    Refused {
+        /// The file, **resolved**, exactly as [`BundleView::path`] carries it.
+        path: String,
+        /// prikk's refusal, verbatim (`ER-02`).
+        message: String,
+    },
     /// stikk did not ask prikk at all, and says why in its own voice.
     Unavailable(String),
 }
@@ -191,7 +201,12 @@ pub fn open_bundle(prikk: &impl Prikk, repo: &Path, path: &Path) -> Result<Bundl
         }
         // **prikk's words, and no preview** (§4a): a file prikk will not read has nothing to
         // preview, and asking anyway would stack a second refusal under the first for one cause.
-        Err(error) => return Ok(BundleOpened::Refused(error.to_string())),
+        Err(error) => {
+            return Ok(BundleOpened::Refused {
+                path: shown,
+                message: error.to_string(),
+            });
+        }
     };
     let preview = match prikk.bundle_preview(repo, path, None)? {
         BundlePreview::Read(read) => *read,

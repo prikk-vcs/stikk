@@ -106,34 +106,47 @@ impl RequestCategory {
             Self::ReadHistory | Self::ReadState | Self::WorktreeAnalysis | Self::Integrity => {
                 Tier::One
             }
-            Self::QueueMutation => Tier::Two,
+            // **Exchange is Tier Two** (RFC 050 decision 2): measured at prikk 0.53, neither
+            // `bundle export` nor `bundle import` signs anything, and an import creates and
+            // advances no local ref -- it stores received history under `remotes/`. `FL-11`
+            // asks for a tier-2 confirmation and no more.
+            Self::QueueMutation | Self::Exchange => Tier::Two,
             // **Materialization is Tier Three, not ThreeTyped** (RFC 045 decision 3): a switch
             // refuses rather than overwrite anything not in history, every refusal writes
             // nothing, and switching back restores every byte (F2, F3). What the user needs is to
             // see which files change, which the preview gives.
-            Self::Publication | Self::Exchange | Self::Materialization => Tier::Three,
+            Self::Publication | Self::Materialization => Tier::Three,
             Self::Trust | Self::Recovery => Tier::ThreeTyped,
         }
     }
 
     /// What signing readiness this category's requests need (RFC 045 §2b).
     ///
-    /// **This is the gate's key, and the tier is not.** Every category that existed before RFC 045
-    /// keeps exactly the requirement its tier used to imply — `the_requirement_matches_what_the_tier_used_to_imply`
-    /// asserts that over [`Self::ALL`]. [`Self::Materialization`] is the first to differ: Tier
-    /// Three, and no key, because prikk needs none (RFC 045 F1).
+    /// **This is the gate's key, and the tier is not.** Every category keeps exactly the
+    /// requirement its tier implies — `the_requirement_matches_what_the_tier_used_to_imply`
+    /// asserts that over [`Self::ALL`], with [`Self::Materialization`] as the one exception it
+    /// names: Tier Three, and no key, because prikk needs none (RFC 045 F1).
+    /// [`Self::Exchange`] moved the other way in RFC 050 — down to Tier Two, where the implied
+    /// requirement is AUTHOR — so it is the second exception: Tier Two, and **no key at all**,
+    /// because neither an export nor an import signs anything (measured at prikk 0.53).
     #[must_use]
     pub const fn signing_requirement(self) -> SigningRequirement {
         match self {
             Self::QueueMutation => SigningRequirement::Author,
-            Self::Publication | Self::Exchange => SigningRequirement::Maintainer,
+            Self::Publication => SigningRequirement::Maintainer,
             // The reads never reach a gate at all (`Tier::One` short-circuits it), and
             // `Trust`/`Recovery` are `ThreeTyped`, whose ceremony is the typed name rather than a
             // key: Operator is orthogonal to the signing ladder (`AC-04`).
+            //
+            // **`Exchange` needs no key** (RFC 050 decision 2): measured at prikk 0.53, an export
+            // and an import both succeed with no key configured at all. An import trusts nobody --
+            // it records the bundle's author-key material for continuity and says so -- so asking
+            // for a MAINTAINER key would have been ceremony over an operation that signs nothing.
             Self::ReadHistory
             | Self::ReadState
             | Self::WorktreeAnalysis
             | Self::Integrity
+            | Self::Exchange
             | Self::Trust
             | Self::Recovery
             | Self::Materialization => SigningRequirement::ReadWrite,

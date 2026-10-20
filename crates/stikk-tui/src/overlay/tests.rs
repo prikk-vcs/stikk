@@ -1089,8 +1089,9 @@ fn commits_confirmation_names_the_author_key_id_at_80x24() {
 ///
 /// v1 of this test built `Tier::ThreeTyped` and passed — the id row renders identically at both, so the
 /// assertion was true about a screen the product never shows. Seal's `Intent` carries
-/// `RequestCategory::Publication`, and `RequestCategory::tier` maps `Publication | Exchange` to
-/// `Tier::Three`; `ThreeTyped` is `Trust | Recovery`, neither of which any built operation constructs.
+/// `RequestCategory::Publication`, and `RequestCategory::tier` maps `Publication | Materialization`
+/// to `Tier::Three`; `ThreeTyped` is `Trust | Recovery`, neither of which any built operation
+/// constructs.
 /// RFC 016 decision 3 ruled seal untyped in as many words — *"two deliberate acts, not three"* — so a
 /// typed seal confirmation is precisely the thing that decision forbade.
 ///

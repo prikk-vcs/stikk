@@ -173,6 +173,17 @@ pub const PATCH_PATH_AT_PATCH_FROM_MINOR: u32 = 52;
 /// 0.42. **One constant for both facts**, rather than a second literal that could drift from it.
 pub const CURRENT_BRANCH_FROM_MINOR: u32 = 42;
 
+/// The first prikk minor stikk reads **bundles** at: prikk 0.53, the only version measured
+/// (RFC 050 decision 6).
+///
+/// `bundle export`, `verify`, `preview` and `import` exist further back, but **nothing below
+/// 0.53 has been measured**, and `bundle preview --format json` -- the one of the four that
+/// speaks JSON, and the only one stikk reads rather than shows -- is what stikk's reading of a
+/// bundle is built on. No user is on an older band, so the band is set where the evidence is
+/// rather than guessed backwards. Below it stikk spawns nothing and answers *unavailable*, as
+/// [`CURRENT_BRANCH_FROM_MINOR`] does for the ref writes.
+pub const EXCHANGE_FROM_MINOR: u32 = 53;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

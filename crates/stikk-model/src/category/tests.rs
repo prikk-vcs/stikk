@@ -55,14 +55,17 @@ fn read_categories_are_tier_one() {
 }
 
 #[test]
-fn queue_mutation_is_tier_two() {
+fn queue_mutation_and_exchange_are_tier_two() {
     assert_eq!(RequestCategory::QueueMutation.tier(), Tier::Two);
+    // RFC 050 decision 2: measured at prikk 0.53, an import creates and advances no local ref and
+    // signs nothing, and an export only writes a file outside the repository. `FL-11` asks for a
+    // tier-2 confirmation; it was Tier Three before, which no measurement supported.
+    assert_eq!(RequestCategory::Exchange.tier(), Tier::Two);
 }
 
 #[test]
-fn publication_exchange_and_materialization_are_tier_three() {
+fn publication_and_materialization_are_tier_three() {
     assert_eq!(RequestCategory::Publication.tier(), Tier::Three);
-    assert_eq!(RequestCategory::Exchange.tier(), Tier::Three);
     // RFC 045 decision 3: restate, then an explicit yes — not the typed name. A switch refuses
     // rather than overwrite anything not in history, and switching back restores every byte.
     assert_eq!(RequestCategory::Materialization.tier(), Tier::Three);
@@ -120,17 +123,19 @@ fn the_requirement_matches_what_the_tier_used_to_imply() {
             Tier::Three => SigningRequirement::Maintainer,
             Tier::One | Tier::ThreeTyped => SigningRequirement::ReadWrite,
         };
-        if cat == RequestCategory::Materialization {
+        if cat == RequestCategory::Materialization || cat == RequestCategory::Exchange {
             assert_eq!(
                 cat.signing_requirement(),
                 SigningRequirement::ReadWrite,
-                "materialization signs nothing, so it may ask for no key"
+                "{} signs nothing, so it may ask for no key",
+                cat.name()
             );
             assert_ne!(
                 implied_by_tier,
                 cat.signing_requirement(),
-                "this is the category the change exists for; if it stops differing, the change \
-                 is no longer doing anything"
+                "{} is a category the change exists for; if it stops differing, the change \
+                 is no longer doing anything",
+                cat.name()
             );
         } else {
             assert_eq!(
@@ -156,7 +161,7 @@ fn each_category_requires_exactly_what_the_table_says() {
         (C::Integrity, S::ReadWrite),
         (C::QueueMutation, S::Author),
         (C::Publication, S::Maintainer),
-        (C::Exchange, S::Maintainer),
+        (C::Exchange, S::ReadWrite),
         (C::Trust, S::ReadWrite),
         (C::Recovery, S::ReadWrite),
         (C::Materialization, S::ReadWrite),

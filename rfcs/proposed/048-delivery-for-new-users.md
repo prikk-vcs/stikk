@@ -3,8 +3,9 @@
 **Status.** **Proposed 2026-10-20** by the architect, as 0.15.0's increment 4 (`.git-exclude/release/0-15-0-scope.md`,
 authorized), on the project owner's direction of 2026-10-18: *"we will have to consider and design carefully about
 delivery this time and in the future. It should be easy enough for unmatured users as possible and reasonable."*
-**The owner answered the four questions on 2026-10-20** (§ *For the owner*): decision 2 waits on prikk's reply to
-letter 022; the tap waits on the owner; no paid signing. **One question remains (O5).**
+**The owner answered the four questions on 2026-10-20** (§ *For the owner*); **prikk agreed to decision 2 the same
+day** (letter 025: the folder is theirs too); the tap waits on the owner; no paid signing. **One question remains
+(O5).**
 Measured on Linux against the published stikk 0.14.0 and prikk 0.53.0 assets:
 `.git-exclude/reports/048-delivery/measure048.txt`. Channel facts are sourced, **not measured on macOS or Windows**:
 `.git-exclude/reports/048-delivery/channels-research.md`. prikk's side read in the clone (`docs/src/guide/install.md`,
@@ -115,7 +116,10 @@ whether the warning prints outside an explicitly invoked loader is not known.
    - Downloads `prikk-x86_64-pc-windows-msvc.zip` **and its `.sha256` from prikk's release at the pinned, validated
      version** (the same pin `install.sh` passes to prikk's installer); **installs nothing if the checksum fails.**
    - Puts **only `prikk.exe`** in `%LOCALAPPDATA%\Programs\prikk` — prikk's own folder, never stikk's — and adds that
-     folder to the **user** `PATH` once, as it does for stikk.
+     folder to the **user** `PATH` once, as it does for stikk. **prikk named this folder** (letter 025): its own
+     installer, if it ever ships one, would use it, and prikk will tell us before choosing another.
+   - **Says what prikk's checksum proves**, as prikk's `install.sh` does and prikk asked (letter 025): that the file
+     matches what prikk's release page published, **not who published it**.
    - **An existing prikk is left alone**, reported with its version against the validated range, as today.
    - `uninstall.ps1` **still never removes prikk**; it prints the two steps that do (the folder, the `PATH` entry).
    - **stikk never rebuilds, re-hosts or alters prikk**: it fetches prikk's published file from prikk's release and
@@ -172,41 +176,39 @@ whether the warning prints outside an explicitly invoked loader is not known.
      this repository in CI, MFA, **a team member approving each signing request**, and a code-signing-policy page
      (https://signpath.org/terms). **When to apply is O5.** Paid alternatives, recorded only: Azure Artifact Signing
      ≈ $9.99/month (individuals: US and Canada only), an OV certificate $150–300/year on a hardware token.
-   - **Signing stikk alone does not finish the path**: `prikk.exe` meets the same gate (letter 022 tells prikk).
+   - **Signing stikk alone does not finish the path**: `prikk.exe` meets the same gate. prikk does not sign it, and
+     signing is a decision for prikk's owner, not scheduled (letter 025); prikk asked to hear what we decide.
 
-8. **prikk is consulted before decision 2 ships** (owner, 2026-10-20): **letter 022** asks which folder prikk's own
-   Windows installer would use, or whether prikk would rather stikk did not install it yet, and passes on binstall's
-   Windows override (M4, with the one-line fix), the Intel-Mac gap stikk cannot close, and Smart App Control.
+8. **prikk was consulted before decision 2** (owner, 2026-10-20). **Letter 022** asked which folder prikk's own Windows
+   installer would use; **letter 025** answered: `%LOCALAPPDATA%\Programs\prikk`, no objection, and one sentence to
+   print. It also accepted binstall's Windows override **for prikk 0.54.0** (M4, reproduced on their side); keeps
+   Intel Macs out until a runner proves them; and schedules neither a Windows installer nor signing.
 
 ## For the owner
 
 | | Question | Answer (owner, 2026-10-20) |
 |---|---|---|
-| **O1** | Decision 2: stikk's Windows installer installs prikk's own published build, verified, until prikk has an installer. | **Almost approved; consult prikk first** — letter 022. Handoff B waits on the reply. |
-| **O2** | Homebrew tap: the repository `prikk-vcs/homebrew-tap` and a secret `HOMEBREW_TAP_TOKEN` (fine-grained, *Contents: read and write* on that one repository). | **Considered, not ready.** Handoff C waits on it; not in 0.15.0. |
+| **O1** | Decision 2: stikk's Windows installer installs prikk's own published build, verified, until prikk has an installer. | **Almost approved; consult prikk first.** prikk agreed (letter 025), naming the folder. |
+| **O2** | Homebrew tap: the repository `prikk-vcs/homebrew-tap` and a secret `HOMEBREW_TAP_TOKEN` (fine-grained, *Contents: read and write* on that one repository). | **Considered, not ready.** Handoff B waits on it; not in 0.15.0. |
 | **O3** | May that tap carry a **prikk** formula? | **Not without prikk.** Asked when the tap is ready, not before. |
 | **O4** | Signing spend. | **No capacity to pay now.** Mark-of-the-Web is an issue, with ways to mitigate it (decision 4). |
-| **O5** | **Open.** Apply to the SignPath Foundation for free Windows signing (decision 7) — now, or when a Smart App Control block is first reported? Each release then needs one approval of its signing request. | **Recommendation: after 0.15.0, together with prikk's answer**, since signing stikk alone leaves prikk blocked. |
+| **O5** | **Open.** Apply to the SignPath Foundation for free Windows signing (decision 7) — now, or when a Smart App Control block is first reported? Each release then needs one approval of its signing request. | **Recommendation: after 0.15.0**, and tell prikk what we decide, as they asked: signing stikk alone leaves prikk blocked, and prikk's signing is its owner's decision. |
 
 ## Changelog
 
 `### Changed`: on Windows, the installer offers to install prikk too, from prikk's own release, and stikk and prikk
-work in the same window afterwards. The install page starts from opening a terminal. (Handoff C, if O2: `### Added`,
+work in the same window afterwards. The install page starts from opening a terminal. (Handoff B, if O2: `### Added`,
 `brew install prikk-vcs/tap/stikk`.)
 
 ## Delivery
 
-- **Handoff A** (decisions 3 and 4), **on acceptance, for 0.15.0** — it needs nothing from prikk. The install page and
-  README, written for what the installers do **at that commit** (on Windows, prikk still by hand); `install.ps1`
-  updating the session's `$env:Path`, with `installers.yml`'s Windows leg proving **`stikk --version` resolves in the
-  same session**. **A Linux leg on `ubuntu-22.04-arm`** (glibc 2.35) installs the aarch64 build and runs it, settling F4
-  on real hardware and recording whether the loader warning prints.
-- **Handoff B** (decision 2), **on prikk's reply to letter 022**, in the folder prikk names — 0.15.0 if the reply
-  arrives before the cut, otherwise 0.16.0; never a reason to hold the cut. `install.ps1` and `uninstall.ps1`;
-  `installers.yml`'s Windows leg gains: prikk installed from prikk's **real** release on yes and not on no; **a bad prikk
-  checksum installs no prikk** (failing for the checksum reason); an existing prikk untouched; `prikk --version`
-  resolves in the same session; uninstall leaves prikk. The page's Windows paragraph follows.
-- **Handoff C** (decision 5), **once O2 exists**; not in 0.15.0. A formula template filled by `release.yml` like the
+- **Handoff A** (decisions 2–4), **on acceptance, for 0.15.0.** `install.ps1` and `uninstall.ps1`; `installers.yml`'s
+  Windows leg gains: prikk installed from prikk's **real** release on yes and not on no; **a bad prikk checksum
+  installs no prikk** (failing for the checksum reason); an existing prikk untouched; **`stikk --version` and
+  `prikk --version` resolve in the same session**; uninstall leaves prikk. **A Linux leg on `ubuntu-22.04-arm`** (glibc
+  2.35) installs the aarch64 build and runs it, settling F4 on real hardware and recording whether the loader warning
+  prints. The install page and README.
+- **Handoff B** (decision 5), **once O2 exists**; not in 0.15.0. A formula template filled by `release.yml` like the
   installers; `brew install` measured on macOS and Linux runners, including tap trust; prikk's formula only after O3.
 
 ## What this RFC does not do

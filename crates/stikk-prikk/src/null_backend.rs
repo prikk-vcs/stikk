@@ -78,6 +78,15 @@ pub struct NullBackend {
     /// What [`Prikk::merge_plan`] answers (RFC 047).
     merge_plan: Scripted<crate::MergePlan>,
     merge: Scripted<crate::MergeResult>,
+    /// What [`Prikk::bundle_verify`] answers (RFC 050).
+    bundle_verify: Scripted<crate::BundleVerify>,
+    /// What [`Prikk::bundle_preview`] answers (RFC 050). **Its own slot, not `bundle_verify`'s**:
+    /// the pair is read together, and a core test that shows a refused verify stopping before the
+    /// preview needs to script the two independently.
+    bundle_preview: Scripted<crate::BundlePreview>,
+    /// How many times [`Prikk::bundle_preview`] has been asked — so a test can prove that a
+    /// bundle prikk refused to verify is never previewed. Shared across clones.
+    bundle_preview_calls: Arc<AtomicUsize>,
     refs: Scripted<Vec<RefEntry>>,
     /// The unpublished current branch this backend reports beside the list (RFC 037 decision 3).
     unpublished_current: UnpublishedBranch,
@@ -157,6 +166,10 @@ impl NullBackend {
             // The default matches this backend's default version, which is below 0.42.
             merge_plan: Ok(crate::MergePlan::Unavailable),
             merge: Ok(crate::MergeResult::Unavailable),
+            // The default matches this backend's default version, which is below 0.53.
+            bundle_verify: Ok(crate::BundleVerify::Unavailable),
+            bundle_preview: Ok(crate::BundlePreview::Unavailable),
+            bundle_preview_calls: Arc::new(AtomicUsize::new(0)),
             state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
@@ -458,6 +471,42 @@ impl NullBackend {
         self
     }
 
+    /// Answer [`Prikk::bundle_verify`] with prikk's lines, as a bundle that verified (RFC 050).
+    #[must_use]
+    pub fn with_bundle_verify(mut self, printed: Vec<String>) -> Self {
+        self.bundle_verify = Ok(crate::BundleVerify::Verified(printed));
+        self
+    }
+
+    /// Fail [`Prikk::bundle_verify`], so a test can show prikk's refusal — a truncated or
+    /// foreign file, *"malformed persisted data: …"* — reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_bundle_verify_refusal(mut self, message: impl Into<String>) -> Self {
+        self.bundle_verify = Err(message.into());
+        self
+    }
+
+    /// Answer [`Prikk::bundle_preview`] with `read` (RFC 050).
+    #[must_use]
+    pub fn with_bundle_preview(mut self, read: crate::BundlePreviewRead) -> Self {
+        self.bundle_preview = Ok(crate::BundlePreview::Read(Box::new(read)));
+        self
+    }
+
+    /// Fail [`Prikk::bundle_preview`], so a test can show prikk's refusal reaching the usual path
+    /// verbatim.
+    #[must_use]
+    pub fn with_bundle_preview_refusal(mut self, message: impl Into<String>) -> Self {
+        self.bundle_preview = Err(message.into());
+        self
+    }
+
+    /// How many times [`Prikk::bundle_preview`] has been asked of this backend (and its clones).
+    #[must_use]
+    pub fn bundle_preview_calls(&self) -> usize {
+        self.bundle_preview_calls.load(Ordering::SeqCst)
+    }
+
     /// Answer [`Prikk::verify`] with `verification` (RFC 040).
     #[must_use]
     pub fn with_verification(mut self, verification: crate::Verification) -> Self {
@@ -714,6 +763,20 @@ impl Prikk for NullBackend {
         _from: &str,
     ) -> Result<crate::MergeResult> {
         deliver(&self.merge)
+    }
+
+    fn bundle_verify(&self, _path: &Path) -> Result<crate::BundleVerify> {
+        deliver(&self.bundle_verify)
+    }
+
+    fn bundle_preview(
+        &self,
+        _repo: &Path,
+        _path: &Path,
+        _local_ref: Option<&str>,
+    ) -> Result<crate::BundlePreview> {
+        self.bundle_preview_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.bundle_preview)
     }
 
     fn block_state(

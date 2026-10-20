@@ -2463,3 +2463,508 @@ fn below_the_band_merge_spawns_nothing() {
         "only `--version` ran, which is not recorded: {recorded:?}"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 050 — `bundle verify` and `bundle preview`.
+//
+// Every fixture below is prikk 0.53.0's own output, pasted from
+// `.git-exclude/reports/050-exchange/measure050-0.53.txt` and `measure050c-0.53.txt` as those
+// files hold it.
+
+/// `bundle verify` on a bundle prikk accepts — including prikk's closing caveat, which is the
+/// part a reader most needs and the part a summariser would drop.
+const VERIFY_OUT: &str = "bundle verifies: heads/main\n\
+     RefState: d3172482cabc746238f75f9842b30f0d0dff24ec580f4206c532e76c3991a29c\n\
+     tip block: 33b2b1bb2183deade7783dd25bdd37b101206e12280b16096731849be62901a9\n\
+     objects: 6\n\
+     author key material: 1 present (continuity only, not a trust decision)\n\
+     repository format: 7\n\
+     tool version: 0.53.0\n\
+     note: this bundle contains one ref's closure only -- other refs in the source repository, if \
+     any, are not included, and this bundle makes no claim about them\n\
+     note: this checks structural and internal consistency only -- no signature is \
+     cryptographically verified (a standalone bundle carries no trust material to check one \
+     against), and this bundle's own author-key section is recorded here, never independently \
+     verified, the same as at import. A verified bundle is not yet a trusted one -- import it and \
+     run `prikk verify` for that.\n";
+
+/// `bundle preview --format json` where the receiver is at the bundle's parent block.
+const PREVIEW_FAST_FORWARD: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "fast-forward",
+  "conflict": "applies-cleanly",
+  "conflict_detail": null,
+  "sealed_by": ["z-maint"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "effects": [
+    {"path": "a.txt", "kind": "edited", "current_bytes": 2, "after_bytes": 3}
+  ],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 7, "tool_version": "0.53.0"}
+}
+"#;
+
+/// The same pair the other way round: the receiver already holds everything. **`conflict` is
+/// `null` here**, which is why the field is read as nullable.
+const PREVIEW_ALREADY_INCLUDED: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "already-included",
+  "conflict": null,
+  "conflict_detail": null,
+  "sealed_by": ["z-maint"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "effects": [],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 7, "tool_version": "0.53.0"}
+}
+"#;
+
+/// Both sides moved on, each editing a different file.
+const PREVIEW_DIVERGED_CLEAN: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "diverged",
+  "conflict": "applies-cleanly",
+  "conflict_detail": null,
+  "sealed_by": ["z-maint"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "effects": [
+    {"path": "a.txt", "kind": "edited", "current_bytes": 2, "after_bytes": 3}
+  ],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 7, "tool_version": "0.53.0"}
+}
+"#;
+
+/// Both sides edited the same file. **`conflict_detail` is prikk's replay error**, carried word
+/// for word.
+const PREVIEW_DIVERGED_CONFLICT: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "diverged",
+  "conflict": "conflict",
+  "conflict_detail": "integrity error: EditText failed during localization for node 3a19e411d69484d0fb161ade5a1314958cffed2879110e40a834a72fdbf9e1ce span e82f0ff279eebc030990061542c6b215c0417b442c38e2c3a6a4d669df987a1d: no occurrence's anchors matched the record",
+  "sealed_by": ["z-maint"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "effects": [],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 7, "tool_version": "0.53.0"}
+}
+"#;
+
+/// A fresh repository. **`conflict` is `applies-cleanly` here, not `null`** — the one row where
+/// an empty local side still gets an answer.
+const PREVIEW_NO_LOCAL_HISTORY: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "no-local-history",
+  "conflict": "applies-cleanly",
+  "conflict_detail": null,
+  "sealed_by": ["z-maint"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "effects": [
+    {"path": "a.txt", "kind": "created", "current_bytes": null, "after_bytes": 2},
+    {"path": "b.txt", "kind": "created", "current_bytes": null, "after_bytes": 2}
+  ],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 7, "tool_version": "0.53.0"}
+}
+"#;
+
+/// An independent repository holding the same file contents by coincidence.
+const PREVIEW_DOES_NOT_CONNECT: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "does-not-connect",
+  "conflict": null,
+  "conflict_detail": null,
+  "sealed_by": ["z-maint"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "effects": [],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 7, "tool_version": "0.53.0"}
+}
+"#;
+
+/// **The argument vector**, and no `--format json`: asking for one is a usage error (F1,
+/// measured — `error: unknown bundle verify argument: --format`). **A path with a space stays one
+/// argument**: it is passed as a single `OsString`, never through a shell.
+#[cfg(unix)]
+#[test]
+fn bundle_verify_sends_one_input_argument_and_no_format_flag() {
+    let (script, argv) = fake_plan_prikk("bverify-args", "0.53.0", VERIFY_OUT, "", 0);
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| {
+        backend.bundle_verify(std::path::Path::new("/tmp/my bundles/v1.bundle"))
+    })
+    .expect("a bundle verifies");
+    assert_eq!(
+        recorded_argv(&argv),
+        vec!["bundle", "verify", "--input", "/tmp/my bundles/v1.bundle"]
+    );
+}
+
+/// prikk's lines are kept whole, in order, and **nothing of them is parsed** in this operation.
+#[cfg(unix)]
+#[test]
+fn a_verifications_lines_are_kept_verbatim_including_the_caveat() {
+    let (script, _argv) = fake_plan_prikk("bverify-lines", "0.53.0", VERIFY_OUT, "", 0);
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.bundle_verify(std::path::Path::new("/tmp/v1.bundle"))
+    })
+    .expect("a bundle verifies");
+    let crate::BundleVerify::Verified(lines) = out else {
+        panic!("a verified bundle reads: {out:?}");
+    };
+    assert_eq!(lines.len(), 9, "{lines:#?}");
+    assert_eq!(lines[0], "bundle verifies: heads/main");
+    assert!(
+        lines[8].contains("A verified bundle is not yet a trusted one"),
+        "prikk's caveat is part of what the reader must see: {}",
+        lines[8]
+    );
+}
+
+/// A file prikk will not read is **prikk's refusal, verbatim** (`ER-02`), not stikk's paraphrase.
+#[cfg(unix)]
+#[test]
+fn a_malformed_bundle_is_prikks_own_refusal() {
+    for (tag, message) in [
+        (
+            "trunc",
+            "error: malformed persisted data: unexpected end of record",
+        ),
+        (
+            "junk",
+            "error: malformed persisted data: invalid bundle magic",
+        ),
+        (
+            "flip",
+            "error: malformed persisted data: unknown CreateFile field tag: 253",
+        ),
+    ] {
+        let (script, _argv) = fake_plan_prikk(
+            &format!("bverify-{tag}"),
+            "0.53.0",
+            "",
+            &format!("{message}\n"),
+            1,
+        );
+        let backend = CliBackend::with_program(&script);
+        let error = retrying_transient_exec_busy(|| {
+            backend.bundle_verify(std::path::Path::new("/tmp/x.bundle"))
+        })
+        .expect_err("a malformed bundle is refused");
+        assert!(
+            error.to_string().contains("malformed persisted data"),
+            "{tag}: prikk's words, kept: {error}"
+        );
+    }
+}
+
+/// **Below the band nothing is spawned**, for either call, and *unavailable* is not *failed*.
+#[cfg(unix)]
+#[test]
+fn below_the_band_neither_bundle_call_spawns_anything() {
+    let (script, argv) = fake_plan_prikk("bundle-band", "0.52.0", VERIFY_OUT, "", 0);
+    let backend = CliBackend::with_program(&script);
+    let verified = retrying_transient_exec_busy(|| {
+        backend.bundle_verify(std::path::Path::new("/tmp/v1.bundle"))
+    })
+    .expect("below the band is not an error");
+    assert_eq!(verified, crate::BundleVerify::Unavailable);
+    let previewed = retrying_transient_exec_busy(|| {
+        backend.bundle_preview(
+            std::path::Path::new("."),
+            std::path::Path::new("/tmp/v1.bundle"),
+            None,
+        )
+    })
+    .expect("below the band is not an error");
+    assert_eq!(previewed, crate::BundlePreview::Unavailable);
+    assert!(
+        recorded_argv(&argv).is_empty(),
+        "no bundle command was run: {:?}",
+        recorded_argv(&argv)
+    );
+}
+
+/// **`--ref` is omitted when the caller has no opinion**, so prikk applies its own default (the
+/// local ref of the bundle's own name) — and passed as one argument when the caller has one.
+#[cfg(unix)]
+#[test]
+fn bundle_preview_omits_the_ref_flag_unless_a_local_ref_is_named() {
+    let (script, argv) = fake_plan_prikk("bpreview-args", "0.53.0", PREVIEW_FAST_FORWARD, "", 0);
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| {
+        backend.bundle_preview(
+            std::path::Path::new("."),
+            std::path::Path::new("/tmp/my bundles/v2.bundle"),
+            None,
+        )
+    })
+    .expect("a preview reads");
+    assert_eq!(
+        recorded_argv(&argv),
+        vec![
+            "bundle",
+            "preview",
+            "--input",
+            "/tmp/my bundles/v2.bundle",
+            "--format",
+            "json"
+        ]
+    );
+
+    let (script, argv) = fake_plan_prikk("bpreview-ref", "0.53.0", PREVIEW_FAST_FORWARD, "", 0);
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| {
+        backend.bundle_preview(
+            std::path::Path::new("."),
+            std::path::Path::new("/tmp/v2.bundle"),
+            Some("heads/work"),
+        )
+    })
+    .expect("a preview reads");
+    assert_eq!(
+        recorded_argv(&argv),
+        vec![
+            "bundle",
+            "preview",
+            "--input",
+            "/tmp/v2.bundle",
+            "--ref",
+            "heads/work",
+            "--format",
+            "json"
+        ]
+    );
+}
+
+/// **All five connectivities**, from prikk's own documents, parsed into stikk's values — and the
+/// two shapes `conflict` takes: a word, and `null` where there is nothing to apply.
+#[cfg(unix)]
+#[test]
+fn every_connectivity_prikk_reports_parses() {
+    use crate::{BundleConflict as K, Connectivity as C};
+    for (tag, text, want_connectivity, want_conflict) in [
+        (
+            "ff",
+            PREVIEW_FAST_FORWARD,
+            C::FastForward,
+            Some(K::AppliesCleanly),
+        ),
+        (
+            "included",
+            PREVIEW_ALREADY_INCLUDED,
+            C::AlreadyIncluded,
+            None,
+        ),
+        (
+            "diverged-clean",
+            PREVIEW_DIVERGED_CLEAN,
+            C::Diverged,
+            Some(K::AppliesCleanly),
+        ),
+        (
+            "diverged-conflict",
+            PREVIEW_DIVERGED_CONFLICT,
+            C::Diverged,
+            Some(K::Conflict),
+        ),
+        (
+            "fresh",
+            PREVIEW_NO_LOCAL_HISTORY,
+            C::NoLocalHistory,
+            Some(K::AppliesCleanly),
+        ),
+        (
+            "unrelated",
+            PREVIEW_DOES_NOT_CONNECT,
+            C::DoesNotConnect,
+            None,
+        ),
+    ] {
+        let (script, _argv) = fake_plan_prikk(&format!("bp-{tag}"), "0.53.0", text, "", 0);
+        let backend = CliBackend::with_program(&script);
+        let out = retrying_transient_exec_busy(|| {
+            backend.bundle_preview(
+                std::path::Path::new("."),
+                std::path::Path::new("/tmp/x.bundle"),
+                None,
+            )
+        })
+        .unwrap_or_else(|error| panic!("{tag}: {error}"));
+        let crate::BundlePreview::Read(read) = out else {
+            panic!("{tag}: a preview reads");
+        };
+        assert_eq!(read.connectivity, want_connectivity, "{tag}");
+        assert_eq!(read.conflict, want_conflict, "{tag}");
+        assert_eq!(read.bundle_ref, "heads/main", "{tag}");
+        assert_eq!(read.local_ref, "heads/main", "{tag}");
+        assert_eq!(read.sealed_by, vec!["z-maint".to_string()], "{tag}");
+        assert!(
+            read.sealed_by_note.contains("not a trust decision"),
+            "{tag}: prikk's continuity note travels with the ids: {}",
+            read.sealed_by_note
+        );
+        assert!(
+            read.rename_note.contains("delete plus a create"),
+            "{tag}: {}",
+            read.rename_note
+        );
+    }
+}
+
+/// The conflicting row's detail is **prikk's replay error, word for word**, and the clean rows
+/// carry none. The effects come through with both sizes, `null` included.
+#[cfg(unix)]
+#[test]
+fn a_conflicts_detail_and_the_effects_come_through_as_prikk_wrote_them() {
+    let (script, _argv) = fake_plan_prikk("bp-detail", "0.53.0", PREVIEW_DIVERGED_CONFLICT, "", 0);
+    let backend = CliBackend::with_program(&script);
+    let crate::BundlePreview::Read(read) = retrying_transient_exec_busy(|| {
+        backend.bundle_preview(
+            std::path::Path::new("."),
+            std::path::Path::new("/tmp/x.bundle"),
+            None,
+        )
+    })
+    .expect("a preview reads") else {
+        panic!("a preview reads");
+    };
+    assert_eq!(
+        read.conflict_detail.as_deref(),
+        Some(
+            "integrity error: EditText failed during localization for node \
+             3a19e411d69484d0fb161ade5a1314958cffed2879110e40a834a72fdbf9e1ce span \
+             e82f0ff279eebc030990061542c6b215c0417b442c38e2c3a6a4d669df987a1d: no occurrence's \
+             anchors matched the record"
+        )
+    );
+    assert!(read.effects.is_empty(), "{:?}", read.effects);
+
+    let (script, _argv) = fake_plan_prikk("bp-effects", "0.53.0", PREVIEW_NO_LOCAL_HISTORY, "", 0);
+    let backend = CliBackend::with_program(&script);
+    let crate::BundlePreview::Read(read) = retrying_transient_exec_busy(|| {
+        backend.bundle_preview(
+            std::path::Path::new("."),
+            std::path::Path::new("/tmp/x.bundle"),
+            None,
+        )
+    })
+    .expect("a preview reads") else {
+        panic!("a preview reads");
+    };
+    assert_eq!(read.conflict_detail, None);
+    assert_eq!(
+        read.effects,
+        vec![
+            crate::BundleEffect {
+                path: "a.txt".to_string(),
+                kind: crate::EffectKind::Created,
+                current_bytes: None,
+                after_bytes: Some(2),
+            },
+            crate::BundleEffect {
+                path: "b.txt".to_string(),
+                kind: crate::EffectKind::Created,
+                current_bytes: None,
+                after_bytes: Some(2),
+            },
+        ]
+    );
+}
+
+/// **A value outside one of prikk's three vocabularies refuses** (`UD-02`), and so does another
+/// schema. stikk does not guess at a word it does not know: the sentence it would draw about the
+/// bundle would be about the wrong thing.
+#[cfg(unix)]
+#[test]
+fn an_unknown_value_refuses_rather_than_guesses() {
+    for (tag, from, to, wanted) in [
+        (
+            "schema",
+            "\"bundle-preview-v1\"",
+            "\"bundle-preview-v2\"",
+            "does not guess at an unknown schema version",
+        ),
+        (
+            "connectivity",
+            "\"fast-forward\"",
+            "\"rebase-forward\"",
+            "not one of prikk's five",
+        ),
+        (
+            "conflict",
+            "\"applies-cleanly\"",
+            "\"probably-fine\"",
+            "not one of prikk's three",
+        ),
+        (
+            "kind",
+            "\"edited\"",
+            "\"renamed\"",
+            "not one of prikk's four kinds",
+        ),
+    ] {
+        let text = PREVIEW_FAST_FORWARD.replacen(from, to, 1);
+        assert_ne!(text, PREVIEW_FAST_FORWARD, "{tag}: the fixture changed");
+        let (script, _argv) = fake_plan_prikk(&format!("bp-bad-{tag}"), "0.53.0", &text, "", 0);
+        let backend = CliBackend::with_program(&script);
+        let error = retrying_transient_exec_busy(|| {
+            backend.bundle_preview(
+                std::path::Path::new("."),
+                std::path::Path::new("/tmp/x.bundle"),
+                None,
+            )
+        })
+        .map_or_else(
+            |error| error.to_string(),
+            |read| panic!("{tag}: an unknown value must refuse, got {read:?}"),
+        );
+        assert!(
+            error.contains(wanted),
+            "{tag}: the refusal must name what stikk could not read: {error}"
+        );
+    }
+}
+
+/// prikk's five connectivity words, three conflict words and four effect kinds round-trip, and
+/// nothing outside them parses.
+#[test]
+fn prikks_bundle_vocabularies_round_trip_and_are_closed() {
+    for word in [
+        "no-local-history",
+        "does-not-connect",
+        "already-included",
+        "fast-forward",
+        "diverged",
+    ] {
+        let value = crate::Connectivity::parse(word).unwrap_or_else(|| panic!("{word}"));
+        assert_eq!(value.name(), word);
+    }
+    assert_eq!(crate::Connectivity::parse("Diverged"), None);
+    assert_eq!(crate::Connectivity::parse(""), None);
+
+    for word in ["applies-cleanly", "conflict", "undetermined"] {
+        let value = crate::BundleConflict::parse(word).unwrap_or_else(|| panic!("{word}"));
+        assert_eq!(value.name(), word);
+    }
+    assert_eq!(crate::BundleConflict::parse("null"), None);
+
+    for word in ["created", "deleted", "edited", "permission-changed"] {
+        let value = crate::EffectKind::parse(word).unwrap_or_else(|| panic!("{word}"));
+        assert_eq!(value.name(), word);
+    }
+    assert_eq!(crate::EffectKind::parse("renamed"), None);
+}

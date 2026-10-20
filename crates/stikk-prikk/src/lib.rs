@@ -655,6 +655,206 @@ pub enum MergeResult {
     Unavailable,
 }
 
+/// What `bundle verify` printed, or why stikk did not run it (RFC 050 decision 1).
+///
+/// **Kept verbatim, shown and not read** — in this handoff nothing of it is parsed at all. There
+/// is no `--format json` for the command (asking for one is a usage error, measured at 0.53), and
+/// prose is not a schema. prikk's own closing caveat travels with the rest: a verified bundle is
+/// not a trusted one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BundleVerify {
+    /// prikk ran and exited 0. **Its printed lines, verbatim**, for the view.
+    Verified(Vec<String>),
+    /// Below [`crate::EXCHANGE_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
+}
+
+/// How the bundle's history relates to the local ref it was compared with — prikk's own five
+/// words, parsed strictly (RFC 050 F1).
+///
+/// **A sixth word is a shape error, never a guess** (`UD-02`). prikk chose a closed vocabulary and
+/// stikk reads it as one; a connectivity stikk does not know means stikk misread prikk, and the
+/// sentence it would draw would be about the wrong thing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Connectivity {
+    /// The repository has no local ref of the bundle's name.
+    NoLocalHistory,
+    /// There is a local ref of that name, and it shares nothing with the bundle.
+    DoesNotConnect,
+    /// The local ref already holds everything the bundle carries.
+    AlreadyIncluded,
+    /// The bundle continues the local ref, with nothing local the bundle lacks.
+    FastForward,
+    /// Both sides moved on from a shared point.
+    Diverged,
+}
+
+impl Connectivity {
+    /// prikk's own word for this connectivity.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::NoLocalHistory => "no-local-history",
+            Self::DoesNotConnect => "does-not-connect",
+            Self::AlreadyIncluded => "already-included",
+            Self::FastForward => "fast-forward",
+            Self::Diverged => "diverged",
+        }
+    }
+
+    /// prikk's word back into a value, or `None` for a word stikk does not know.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        [
+            Self::NoLocalHistory,
+            Self::DoesNotConnect,
+            Self::AlreadyIncluded,
+            Self::FastForward,
+            Self::Diverged,
+        ]
+        .into_iter()
+        .find(|connectivity| connectivity.name() == word)
+    }
+}
+
+/// Whether prikk's replay of the bundle against the local ref succeeded — three words, or
+/// **absent** (RFC 050 F1).
+///
+/// `null` is prikk's answer where there is nothing to apply: measured at 0.53, `already-included`
+/// and `does-not-connect` both report it, and `no-local-history` reports `applies-cleanly`
+/// instead. So the absence is carried as [`Option::None`] by the caller rather than folded into a
+/// fourth variant that would claim prikk said something it did not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BundleConflict {
+    /// prikk replayed the bundle's work onto the local ref without conflict.
+    AppliesCleanly,
+    /// The replay failed; the reason is in [`BundlePreviewRead::conflict_detail`], verbatim.
+    Conflict,
+    /// prikk could not determine either way.
+    Undetermined,
+}
+
+impl BundleConflict {
+    /// prikk's own word for this answer.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::AppliesCleanly => "applies-cleanly",
+            Self::Conflict => "conflict",
+            Self::Undetermined => "undetermined",
+        }
+    }
+
+    /// prikk's word back into a value, or `None` for a word stikk does not know.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        [Self::AppliesCleanly, Self::Conflict, Self::Undetermined]
+            .into_iter()
+            .find(|conflict| conflict.name() == word)
+    }
+}
+
+/// What importing the bundle would do to one path — prikk's four kinds, parsed strictly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectKind {
+    /// The path does not exist locally and would be created.
+    Created,
+    /// The path exists locally and would be removed.
+    Deleted,
+    /// The path exists locally and its content would change.
+    Edited,
+    /// The path exists locally and only its mode would change.
+    PermissionChanged,
+}
+
+impl EffectKind {
+    /// prikk's own word for this kind.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Deleted => "deleted",
+            Self::Edited => "edited",
+            Self::PermissionChanged => "permission-changed",
+        }
+    }
+
+    /// prikk's word back into a value, or `None` for a word stikk does not know.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        [
+            Self::Created,
+            Self::Deleted,
+            Self::Edited,
+            Self::PermissionChanged,
+        ]
+        .into_iter()
+        .find(|kind| kind.name() == word)
+    }
+}
+
+/// One row of `bundle preview`'s `effects` array.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BundleEffect {
+    /// The path, as prikk reported it — **repository text**, rendered through `inert` at every
+    /// cell (`C-T2a`).
+    pub path: String,
+    /// What would happen to it.
+    pub kind: EffectKind,
+    /// The path's current size in bytes, or `None` where it does not exist locally.
+    pub current_bytes: Option<u64>,
+    /// The size it would have, or `None` where it would not exist.
+    pub after_bytes: Option<u64>,
+}
+
+/// `bundle preview --format json` (`bundle-preview-v1`), or why stikk did not run it (RFC 050
+/// decision 1).
+///
+/// **The one bundle command that speaks JSON**, and so the only one stikk reads rather than
+/// shows. Every enumerated value is parsed strictly: an unknown `schema_version`, `connectivity`,
+/// `conflict` or effect `kind` is an environment error, never a guess (`UD-02`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BundlePreview {
+    /// prikk ran and exited 0.
+    Read(Box<BundlePreviewRead>),
+    /// Below [`crate::EXCHANGE_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
+}
+
+/// The report `bundle preview --format json` returned.
+///
+/// **Boxed inside [`BundlePreview`]** because it is much larger than the other variant, and a
+/// two-variant enum whose arms differ by hundreds of bytes makes every caller pay for the big one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BundlePreviewRead {
+    /// The ref the bundle carries, as prikk named it.
+    pub bundle_ref: String,
+    /// The local ref prikk compared it with — the bundle's own name unless the caller chose
+    /// another.
+    pub local_ref: String,
+    /// How the two relate.
+    pub connectivity: Connectivity,
+    /// Whether the bundle's work replays cleanly, or `None` where prikk reported `null` because
+    /// there is nothing to apply.
+    pub conflict: Option<BundleConflict>,
+    /// prikk's replay error, **verbatim** and shown as prikk wrote it (`ER-02`), or `None`.
+    pub conflict_detail: Option<String>,
+    /// The key ids recorded in the bundle, as prikk reported them.
+    ///
+    /// **Never a trust claim.** [`Self::sealed_by_note`] travels with them and is shown beside
+    /// them, because the ids alone read as an assurance prikk did not give.
+    pub sealed_by: Vec<String>,
+    /// prikk's continuity note for [`Self::sealed_by`], **verbatim**.
+    pub sealed_by_note: String,
+    /// What importing would do, path by path.
+    pub effects: Vec<BundleEffect>,
+    /// prikk's note that a move is not yet distinguishable from a delete plus a create,
+    /// **verbatim**.
+    pub rename_note: String,
+}
+
 /// What `branch switch` printed, or why stikk did not run it (RFC 045 decision 1).
 ///
 /// **Two streams, kept apart.** prikk writes its result to stdout and, at exit 0, can name a
@@ -1673,6 +1873,57 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError::NotReady`] when the session cannot publish, before anything is
     /// spawned; otherwise prikk's own refusal verbatim, or whatever stopped it running.
     fn merge(&self, repo: &Path, baseline: &str, into: &str, from: &str) -> Result<MergeResult>;
+
+    /// Verify a bundle file offline: `prikk bundle verify --input <path>`.
+    ///
+    /// **Run with no repository** (`run(None, …)`, as the handshake does). Measured at 0.53, the
+    /// command needs none — it reads the file and nothing else — so stikk does not require one
+    /// either, and a bundle can be checked from anywhere.
+    ///
+    /// **Read-only, and its lines are kept verbatim** (decision 1). Nothing of the prose is
+    /// parsed in this operation; prikk's closing caveat — that this checks structural and
+    /// internal consistency only, and *"a verified bundle is not yet a trusted one"* — is part of
+    /// what the reader must see, so it travels with the rest.
+    ///
+    /// **A malformed file is prikk's refusal**, verbatim: a truncated bundle, a text file and a
+    /// bundle with one byte flipped each exit 1 with *"malformed persisted data: …"* and prikk's
+    /// own reason (measured).
+    ///
+    /// **Banded at [`crate::EXCHANGE_FROM_MINOR`]**: below it nothing is spawned and the answer is
+    /// [`BundleVerify::Unavailable`] (decision 6).
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::diff`]: prikk's own refusal for a
+    /// file it will not read, verbatim (`ER-02`), or whatever stopped it running.
+    fn bundle_verify(&self, path: &Path) -> Result<BundleVerify>;
+
+    /// What importing a bundle would change, against a local ref: `prikk bundle preview --input
+    /// <path> [--ref <local>] --format json`.
+    ///
+    /// **Needs a repository, and writes nothing** (F1). `local_ref` chooses what to compare
+    /// against; `None` leaves prikk its own default, **the local ref of the bundle's own name**,
+    /// which is the comparison a reader expects and the only one stikk asks for today.
+    ///
+    /// **Parsed strictly** (`UD-02`). The schema is `bundle-preview-v1`; an unknown
+    /// `schema_version`, an unknown `connectivity`, `conflict` or effect `kind` is an environment
+    /// error. prikk chose closed vocabularies, and a word stikk does not know means stikk misread
+    /// prikk — the sentence it would otherwise draw would be about the wrong thing.
+    ///
+    /// **`conflict` is nullable, and the absence is carried as one** (measured): `already-included`
+    /// and `does-not-connect` report `null`, where there is nothing to apply.
+    ///
+    /// **Banded at [`crate::EXCHANGE_FROM_MINOR`]**: below it nothing is spawned and the answer is
+    /// [`BundlePreview::Unavailable`] (decision 6).
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`], classified as for [`Prikk::diff`]: prikk's refusal for a file
+    /// it will not read, verbatim; a report of another shape is an **environment** error.
+    fn bundle_preview(
+        &self,
+        repo: &Path,
+        path: &Path,
+        local_ref: Option<&str>,
+    ) -> Result<BundlePreview>;
 }
 
 #[cfg(test)]

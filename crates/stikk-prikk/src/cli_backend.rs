@@ -925,6 +925,62 @@ impl Prikk for CliBackend {
         })
     }
 
+    fn bundle_verify(&self, path: &Path) -> Result<crate::BundleVerify> {
+        // RFC 050 decision 6. The gate sits beside the command it chooses, as every other banded
+        // call in this file puts it.
+        if Prikk::handshake(self)?.version.minor < crate::EXCHANGE_FROM_MINOR {
+            return Ok(crate::BundleVerify::Unavailable);
+        }
+        // **No repository** (F1, measured): `bundle verify` reads the file and nothing else, so
+        // stikk runs it where the handshake runs -- with no working directory of its own. A
+        // bundle sitting in a download folder can be checked from anywhere.
+        //
+        // **`ReadState`, not `Exchange`**: the category is the classifier's hint for an ambiguous
+        // refusal, and this request reads. `Exchange` is for the two that write (Handoff B).
+        let out = self.run(
+            None,
+            RequestCategory::ReadState,
+            // **One argument per value.** `path` goes through as a single `OsString`, so a path
+            // with a space in it stays one argument and is never re-split by a shell stikk does
+            // not use.
+            [
+                OsStr::new("bundle"),
+                OsStr::new("verify"),
+                OsStr::new("--input"),
+                path.as_os_str(),
+            ],
+        )?;
+        Ok(crate::BundleVerify::Verified(printed_lines(&out)))
+    }
+
+    fn bundle_preview(
+        &self,
+        repo: &Path,
+        path: &Path,
+        local_ref: Option<&str>,
+    ) -> Result<crate::BundlePreview> {
+        if Prikk::handshake(self)?.version.minor < crate::EXCHANGE_FROM_MINOR {
+            return Ok(crate::BundlePreview::Unavailable);
+        }
+        let mut args: Vec<OsString> = vec![
+            OsString::from("bundle"),
+            OsString::from("preview"),
+            OsString::from("--input"),
+            path.as_os_str().to_os_string(),
+        ];
+        // **`--ref` is omitted, not passed empty, when the caller has no opinion**: prikk's own
+        // default is the local ref of the bundle's own name, and spelling that out here would
+        // make stikk responsible for a name prikk derives from the file.
+        if let Some(reff) = local_ref {
+            args.push(OsString::from("--ref"));
+            args.push(OsString::from(reff));
+        }
+        args.push(OsString::from("--format"));
+        args.push(OsString::from("json"));
+        let out = self.run(Some(repo), RequestCategory::ReadState, args)?;
+        parse_json::bundle_preview(&out).map(|read| crate::BundlePreview::Read(Box::new(read)))
+    }
+
     fn switch_branch(&self, repo: &Path, name: &str) -> Result<crate::SwitchResult> {
         // **Banded before anything else** (RFC 045 decision 4): below the band nothing is
         // spawned, not even the readiness read.

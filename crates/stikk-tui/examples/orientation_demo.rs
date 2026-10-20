@@ -109,6 +109,19 @@ impl Prikk for SlowOrientation {
         self.0.merge_plan(repo, baseline, left, right)
     }
 
+    fn bundle_verify(&self, path: &Path) -> Result<stikk_prikk::BundleVerify> {
+        self.0.bundle_verify(path)
+    }
+
+    fn bundle_preview(
+        &self,
+        repo: &Path,
+        path: &Path,
+        local_ref: Option<&str>,
+    ) -> Result<stikk_prikk::BundlePreview> {
+        self.0.bundle_preview(repo, path, local_ref)
+    }
+
     fn merge(
         &self,
         repo: &Path,

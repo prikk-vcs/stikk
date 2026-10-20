@@ -41,11 +41,12 @@ use stikk_model::{ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{
-    ActiveSessions, Authoring, BinaryBlob, BlockRow, Comparison, DeclarationResolution, Diff,
-    DiffEntry, DiffFile, DiffSide, DiffTarget, FailedCondition, FileContent, History,
-    OperationContent, PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold,
-    QueuedElsewhere, QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch, QueuedPath,
-    RefEntry, RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles, ThresholdStatus,
+    ActiveSessions, Authoring, BinaryBlob, BlockRow, BundleConflict, BundleEffect,
+    BundlePreviewRead, Comparison, Connectivity, DeclarationResolution, Diff, DiffEntry, DiffFile,
+    DiffSide, DiffTarget, EffectKind, FailedCondition, FileContent, History, OperationContent,
+    PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold, QueuedElsewhere,
+    QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch, QueuedPath, RefEntry,
+    RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles, ThresholdStatus,
     UnpublishedBranch, UnsupportedPath, Verdict, Verification, VerifyStage, WorktreeEntry,
     WorktreeStatus,
 };
@@ -61,6 +62,7 @@ const SHOW_SCHEMA: &str = "show-report-v1";
 const TREE_SCHEMA: &str = "tree-listing-v1";
 const DIFF_SCHEMA: &str = "diff-report-v1";
 const VERIFY_SCHEMA: &str = "verify-report-v1";
+const BUNDLE_PREVIEW_SCHEMA: &str = "bundle-preview-v1";
 
 /// The first prikk minor whose queued patches carry `message` (prikk 0.42; RFC 028 as revised).
 const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
@@ -1326,5 +1328,121 @@ fn binary_blob(content: &Json, key: &str) -> Result<BinaryBlob> {
     Ok(BinaryBlob {
         blob_id: object_id_field(blob, "blob_id")?.to_string(),
         size: blob.u64_field("size")?,
+    })
+}
+
+/// A rule this reader enforces, broken. An **environment** error, like every other shape rule here:
+/// prikk answered, and the answer was not the shape this stikk knows.
+fn bundle_rule(detail: impl std::fmt::Display) -> StikkError {
+    StikkError::environment_msg(format!(
+        "prikk's bundle preview is not the shape stikk reads: {detail}"
+    ))
+}
+
+/// A field that must be present, as a string or `null` — the bundle reader's own, so its errors
+/// name the report a reader is looking at.
+fn bundle_nullable_str<'a>(value: &'a Json, key: &str) -> Result<Option<&'a str>> {
+    match value.get(key) {
+        None => Err(bundle_rule(format!("missing field `{key}`"))),
+        Some(Json::Null) => Ok(None),
+        Some(Json::String(s)) => Ok(Some(s)),
+        Some(_) => Err(bundle_rule(format!("`{key}` should be a string or null"))),
+    }
+}
+
+/// As [`bundle_nullable_str`], for an integer.
+fn bundle_nullable_u64(value: &Json, key: &str) -> Result<Option<u64>> {
+    match value.get(key) {
+        None => Err(bundle_rule(format!("missing field `{key}`"))),
+        Some(Json::Null) => Ok(None),
+        Some(Json::Number(n)) => Ok(Some(*n)),
+        Some(_) => Err(bundle_rule(format!("`{key}` should be a number or null"))),
+    }
+}
+
+/// One `effects` row.
+fn bundle_effect(entry: &Json) -> Result<BundleEffect> {
+    let path = entry.str_field("path")?;
+    if path.is_empty() {
+        return Err(bundle_rule("an effect's `path` is empty"));
+    }
+    let word = entry.str_field("kind")?;
+    let kind = EffectKind::parse(word).ok_or_else(|| {
+        bundle_rule(format!(
+            "an effect is `{word}`, which is not one of prikk's four kinds (created, deleted, \
+             edited, permission-changed) — stikk does not guess at a kind it does not know"
+        ))
+    })?;
+    Ok(BundleEffect {
+        path: path.to_string(),
+        kind,
+        current_bytes: bundle_nullable_u64(entry, "current_bytes")?,
+        after_bytes: bundle_nullable_u64(entry, "after_bytes")?,
+    })
+}
+
+/// `prikk bundle preview --format json` (`bundle-preview-v1`), prikk ≥ 0.53 (RFC 050 decision 1).
+///
+/// **Every enumerated value is closed** (`UD-02`): `connectivity`, `conflict` and each effect's
+/// `kind` are prikk's own vocabularies, and a word outside one means stikk misread prikk. Refusing
+/// is the only safe answer — the sentence stikk would otherwise draw about the bundle would be
+/// about the wrong thing.
+///
+/// **`conflict` is nullable and the absence is carried, not invented** (measured at 0.53):
+/// `already-included` and `does-not-connect` report `null`, where there is nothing to apply, and
+/// `no-local-history` reports `applies-cleanly`. Folding `null` into a fourth word would make
+/// stikk claim prikk said something it did not.
+///
+/// `sealed_by_note` and `rename_note` are prikk's own sentences, carried verbatim; the ref names
+/// are validated at this boundary like every other (`INV-9`).
+///
+/// # Errors
+/// [`StikkError::Environment`] if the text is not JSON, announces another schema, is missing a
+/// field this shape requires, or carries a word outside one of the three vocabularies.
+pub(super) fn bundle_preview(text: &str) -> Result<BundlePreviewRead> {
+    let value = report(text, BUNDLE_PREVIEW_SCHEMA)?;
+    let word = value.str_field("connectivity")?;
+    let connectivity = Connectivity::parse(word).ok_or_else(|| {
+        bundle_rule(format!(
+            "`connectivity` is `{word}`, which is not one of prikk's five (no-local-history, \
+             does-not-connect, already-included, fast-forward, diverged) — stikk does not guess \
+             at a connectivity it does not know"
+        ))
+    })?;
+    let conflict = match bundle_nullable_str(&value, "conflict")? {
+        None => None,
+        Some(word) => Some(BundleConflict::parse(word).ok_or_else(|| {
+            bundle_rule(format!(
+                "`conflict` is `{word}`, which is not one of prikk's three (applies-cleanly, \
+                 conflict, undetermined) — stikk does not guess at an answer it does not know"
+            ))
+        })?),
+    };
+    let mut effects = Vec::new();
+    for entry in value.array_field("effects")? {
+        effects.push(bundle_effect(entry)?);
+    }
+    let mut sealed_by = Vec::new();
+    match value.get("sealed_by") {
+        Some(Json::Array(ids)) => {
+            for id in ids {
+                match id {
+                    Json::String(id) => sealed_by.push(id.clone()),
+                    _ => return Err(bundle_rule("`sealed_by` should hold strings")),
+                }
+            }
+        }
+        _ => return Err(bundle_rule("missing field `sealed_by`")),
+    }
+    Ok(BundlePreviewRead {
+        bundle_ref: ref_name_field(&value, "bundle_ref")?.to_string(),
+        local_ref: ref_name_field(&value, "local_ref")?.to_string(),
+        connectivity,
+        conflict,
+        conflict_detail: bundle_nullable_str(&value, "conflict_detail")?.map(str::to_string),
+        sealed_by,
+        sealed_by_note: value.str_field("sealed_by_note")?.to_string(),
+        effects,
+        rename_note: value.str_field("rename_note")?.to_string(),
     })
 }

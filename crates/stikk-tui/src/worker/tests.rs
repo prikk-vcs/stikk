@@ -203,6 +203,21 @@ impl Prikk for Recording {
         self.inner.merge_plan(repo, baseline, left, right)
     }
 
+    fn bundle_verify(&self, path: &Path) -> Result<stikk_prikk::BundleVerify> {
+        self.record("bundle_verify");
+        self.inner.bundle_verify(path)
+    }
+
+    fn bundle_preview(
+        &self,
+        repo: &Path,
+        path: &Path,
+        local_ref: Option<&str>,
+    ) -> Result<stikk_prikk::BundlePreview> {
+        self.record("bundle_preview");
+        self.inner.bundle_preview(repo, path, local_ref)
+    }
+
     fn merge(
         &self,
         repo: &Path,

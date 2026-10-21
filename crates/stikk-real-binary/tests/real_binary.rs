@@ -8023,3 +8023,412 @@ fn rfc050_below_the_band_a_bundle_is_unavailable() {
         bin.minor
     );
 }
+
+/// **RFC 050 Handoff B at the ceiling: an import lands, and the two guards decline without
+/// importing.**
+///
+/// The load-bearing assertion is the older-bundle one: F2 measured prikk moving
+/// `remotes/heads/main` **back** on an ordinary import, so the leg imports `v2`, reads the
+/// received tip with prikk's own `log`, offers `v1`, and asserts both that stikk declined and
+/// that the tip prikk reports is unchanged.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc050_an_import_lands_and_an_older_bundle_is_declined() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::BUNDLE_FROM_MINOR {
+        eprintln!(
+            "RFC 050 SKIPPED at 0.{} — bundles are banded at 0.{}.",
+            bin.minor,
+            stikk_core::BUNDLE_FROM_MINOR
+        );
+        return;
+    }
+    let sender = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = sender.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+    let limit = stikk_core::BUNDLE_LINEAGE_LIMIT;
+
+    let seal = |at: &std::path::Path, message: &str| {
+        sender.set_author_env();
+        counting
+            .commit(at, "heads/main", message)
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        sender.set_maintainer_env();
+        counting
+            .seal(at, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+    };
+    let export = |to: &std::path::Path| {
+        prikk_ok(
+            &bin,
+            &repo,
+            &[
+                "bundle",
+                "export",
+                "--ref",
+                "heads/main",
+                "--output",
+                &to.display().to_string(),
+            ],
+        );
+    };
+    // prikk's own answer for where the received branch points.
+    let received_tip = |at: &std::path::Path| -> String {
+        counting
+            .history(at, "remotes/heads/main", 1)
+            .unwrap_or_else(|e| panic!("0.{}: log remotes/heads/main: {e}", bin.minor))
+            .blocks
+            .first()
+            .unwrap_or_else(|| panic!("0.{}: the received branch has a tip", bin.minor))
+            .block_id
+            .clone()
+    };
+
+    std::fs::write(repo.join("a.txt"), "a\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    seal(&repo, "base");
+    let v1 = root.join("v1.bundle");
+    export(&v1);
+    std::fs::write(repo.join("a.txt"), "a2\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    seal(&repo, "sender edits a");
+    let v2 = root.join("v2.bundle");
+    export(&v2);
+
+    // ── the receiver: a repository of its own, with no history of that name ─────────────────
+    let receiver = Fixture::build(&bin);
+    let there = receiver.repo().to_path_buf();
+    let run = |file: &std::path::Path| -> stikk_core::ImportPreview {
+        stikk_core::import_preview(&counting, &there, file, limit)
+            .unwrap_or_else(|e| panic!("0.{}: import_preview: {e}", bin.minor))
+    };
+
+    // **v2 imports**: nothing received yet, so there is nothing to move back.
+    let stikk_core::ImportPreview::Ready { token } = run(&v2) else {
+        panic!("0.{}: a first import arms", bin.minor);
+    };
+    let target = stikk_core::ImportTarget {
+        path: v2.clone(),
+        received: "remotes/heads/main".to_string(),
+    };
+    let outcome = stikk_core::import_confirm_and_execute(
+        &counting,
+        &there,
+        *token,
+        counting
+            .readiness(&there)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness,
+        stikk_core::Evidence::ExplicitYes,
+        &target,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: import: {e}", bin.minor));
+    let stikk_prikk::BundleImport::Done(printed) = outcome.result else {
+        panic!("0.{}: the import ran", bin.minor);
+    };
+    assert!(
+        printed
+            .iter()
+            .any(|line| line.contains("no local ref was created or advanced")),
+        "0.{}: prikk's note travels: {printed:?}",
+        bin.minor
+    );
+    // `branch list` shows it, and its history reads.
+    let refs = counting
+        .refs(&there)
+        .unwrap_or_else(|e| panic!("0.{}: refs: {e}", bin.minor));
+    assert!(
+        refs.refs
+            .iter()
+            .any(|entry| entry.name == "remotes/heads/main" && entry.received),
+        "0.{}: the received ref is listed: {:?}",
+        bin.minor,
+        refs.refs.iter().map(|e| &e.name).collect::<Vec<_>>()
+    );
+    let after_v2 = received_tip(&there);
+
+    // **The guards, from here on.** Every one of them must leave `bundle import` unspawned.
+    let imports_before = counting.imports.load(std::sync::atomic::Ordering::SeqCst);
+
+    // Guard 2: v1 is older than what was received.
+    match run(&v1) {
+        stikk_core::ImportPreview::Blocked(reason) => assert_eq!(
+            reason,
+            stikk_core::WOULD_MOVE_THE_RECEIVED_BRANCH_BACK,
+            "0.{}",
+            bin.minor
+        ),
+        other => panic!(
+            "0.{}: an older bundle is declined, got {other:?}",
+            bin.minor
+        ),
+    }
+    // Guard 1: v2 again is already received.
+    match run(&v2) {
+        stikk_core::ImportPreview::Blocked(reason) => {
+            assert_eq!(reason, stikk_core::ALREADY_RECEIVED, "0.{}", bin.minor);
+        }
+        other => panic!(
+            "0.{}: the same bundle twice is declined, got {other:?}",
+            bin.minor
+        ),
+    }
+    assert_eq!(
+        counting.imports.load(std::sync::atomic::Ordering::SeqCst),
+        imports_before,
+        "0.{}: neither guard spawned `bundle import`",
+        bin.minor
+    );
+    // **And prikk's own `log` agrees the received branch did not move.**
+    assert_eq!(
+        received_tip(&there),
+        after_v2,
+        "0.{}: the received tip is where the import left it",
+        bin.minor
+    );
+}
+
+/// **RFC 050 Handoff B at the ceiling: the two export rules, and a round trip.**
+///
+/// A declined export must leave the filesystem exactly as it was — so the worktree is hashed
+/// before and after, and the file in the way is read back byte for byte.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc050_an_export_refuses_the_two_destinations_and_round_trips_otherwise() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::BUNDLE_FROM_MINOR {
+        eprintln!(
+            "RFC 050 SKIPPED at 0.{} — bundles are banded at 0.{}.",
+            bin.minor,
+            stikk_core::BUNDLE_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    std::fs::write(repo.join("a.txt"), "a\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    fixture.set_author_env();
+    counting
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    counting
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+
+    /// Every file in the worktree with its bytes, so a refusal can be proved to have written
+    /// nothing at all -- not merely no bundle.
+    fn worktree(at: &std::path::Path) -> Vec<(String, Vec<u8>)> {
+        let mut out = Vec::new();
+        let mut stack = vec![at.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.file_name().is_some_and(|n| n == ".prikk") {
+                    continue;
+                }
+                if path.is_dir() {
+                    stack.push(path);
+                } else if let Ok(bytes) = std::fs::read(&path) {
+                    out.push((path.display().to_string(), bytes));
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    let before = worktree(&repo);
+    let exports_before = counting.exports.load(std::sync::atomic::Ordering::SeqCst);
+
+    // **Inside the repository: declined, and the worktree is byte-identical.**
+    let inside = repo.join("out.bundle");
+    match stikk_core::export_preview(&counting, &repo, "heads/main", &inside)
+        .unwrap_or_else(|e| panic!("0.{}: export_preview: {e}", bin.minor))
+    {
+        stikk_core::ExportPreview::Blocked(reason) => {
+            assert_eq!(reason, stikk_core::INSIDE_THE_REPOSITORY, "0.{}", bin.minor);
+        }
+        other => panic!("0.{}: inside is declined, got {other:?}", bin.minor),
+    }
+    assert!(!inside.exists(), "0.{}: nothing was written", bin.minor);
+    assert_eq!(
+        worktree(&repo),
+        before,
+        "0.{}: the worktree is untouched",
+        bin.minor
+    );
+
+    // **An existing destination: declined, and the file in the way is untouched.**
+    let taken = root.join("taken.bundle");
+    std::fs::write(&taken, b"not a bundle")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    match stikk_core::export_preview(&counting, &repo, "heads/main", &taken)
+        .unwrap_or_else(|e| panic!("0.{}: export_preview: {e}", bin.minor))
+    {
+        stikk_core::ExportPreview::Blocked(reason) => {
+            assert_eq!(reason, stikk_core::DESTINATION_EXISTS, "0.{}", bin.minor);
+        }
+        other => panic!(
+            "0.{}: an existing file is declined, got {other:?}",
+            bin.minor
+        ),
+    }
+    assert_eq!(
+        std::fs::read(&taken).unwrap_or_default(),
+        b"not a bundle",
+        "0.{}: the file in the way is byte-identical",
+        bin.minor
+    );
+    assert_eq!(
+        counting.exports.load(std::sync::atomic::Ordering::SeqCst),
+        exports_before,
+        "0.{}: neither rule spawned `bundle export`",
+        bin.minor
+    );
+
+    // **The round trip**: stikk exports, prikk verifies, and a second repository imports it.
+    let out = root.join("main.bundle");
+    let target = stikk_core::ExportTarget {
+        reff: "heads/main".to_string(),
+        output: out.clone(),
+    };
+    let stikk_core::ExportPreview::Ready { token } =
+        stikk_core::export_preview(&counting, &repo, "heads/main", &out)
+            .unwrap_or_else(|e| panic!("0.{}: export_preview: {e}", bin.minor))
+    else {
+        panic!("0.{}: a clean destination exports", bin.minor);
+    };
+    stikk_core::export_confirm_and_execute(
+        &counting,
+        &repo,
+        *token,
+        counting
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness,
+        stikk_core::Evidence::ExplicitYes,
+        &target,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: export: {e}", bin.minor));
+    assert!(out.exists(), "0.{}: the bundle is written", bin.minor);
+    assert_eq!(
+        worktree(&repo),
+        before,
+        "0.{}: an export changes nothing in the repository",
+        bin.minor
+    );
+
+    let second = Fixture::build(&bin);
+    let opened = stikk_core::open_bundle(&counting, second.repo(), &out)
+        .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
+    let stikk_core::BundleOpened::Read(view) = opened else {
+        panic!(
+            "0.{}: the exported file verifies, got {opened:?}",
+            bin.minor
+        );
+    };
+    assert_eq!(
+        view.preview.connectivity,
+        stikk_prikk::Connectivity::NoLocalHistory
+    );
+    let stikk_core::ImportPreview::Ready { token } = stikk_core::import_preview(
+        &counting,
+        second.repo(),
+        &out,
+        stikk_core::BUNDLE_LINEAGE_LIMIT,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: import_preview: {e}", bin.minor)) else {
+        panic!("0.{}: the exported file imports", bin.minor);
+    };
+    stikk_core::import_confirm_and_execute(
+        &counting,
+        second.repo(),
+        *token,
+        counting
+            .readiness(second.repo())
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness,
+        stikk_core::Evidence::ExplicitYes,
+        &stikk_core::ImportTarget {
+            path: out,
+            received: "remotes/heads/main".to_string(),
+        },
+    )
+    .unwrap_or_else(|e| panic!("0.{}: import: {e}", bin.minor));
+    let refs = counting
+        .refs(second.repo())
+        .unwrap_or_else(|e| panic!("0.{}: refs: {e}", bin.minor));
+    assert!(
+        refs.refs
+            .iter()
+            .any(|entry| entry.name == "remotes/heads/main"),
+        "0.{}: what stikk exported, stikk imported",
+        bin.minor
+    );
+}
+
+/// **Below the band both writes are unavailable**, and nothing is spawned.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc050_below_the_band_the_bundle_writes_are_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    assert!(
+        bin.minor < stikk_core::BUNDLE_FROM_MINOR,
+        "the floor is below the band"
+    );
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let nowhere = repo.join("nothing.bundle");
+
+    assert_eq!(
+        counting
+            .bundle_import(&repo, &nowhere)
+            .unwrap_or_else(|e| panic!("0.{}: bundle_import: {e}", bin.minor)),
+        stikk_prikk::BundleImport::Unavailable,
+        "0.{}",
+        bin.minor
+    );
+    assert_eq!(
+        counting
+            .bundle_export(&repo, "heads/main", &nowhere)
+            .unwrap_or_else(|e| panic!("0.{}: bundle_export: {e}", bin.minor)),
+        stikk_prikk::BundleExport::Unavailable,
+        "0.{}",
+        bin.minor
+    );
+    assert!(
+        !nowhere.exists(),
+        "0.{}: nothing was written below the band",
+        bin.minor
+    );
+}

@@ -410,7 +410,8 @@ pub(super) fn verify(text: &str) -> Result<Verification> {
 
     if ok != failed_conditions.is_empty() {
         return Err(verify_rule(format!(
-            "says `ok` is {ok} while listing {} failing condition(s). prikk derives both from one              declaration, so stikk does not choose between them",
+            "says `ok` is {ok} while listing {} failing condition(s). prikk derives both from \
+             one declaration, so stikk does not choose between them",
             failed_conditions.len()
         )));
     }

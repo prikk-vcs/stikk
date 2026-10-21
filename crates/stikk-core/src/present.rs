@@ -576,7 +576,8 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
         // that is not an ancestor of both tips, or a block no longer in the repository (F2) --
         // and the reader needs to know the refusal cost them nothing.
         OperationContext::MergePlan => {
-            "prikk declined to plan this merge. Nothing was merged and nothing was written; stikk              shows prikk's reason above."
+            "prikk declined to plan this merge. Nothing was merged and nothing was written; \
+             stikk shows prikk's reason above."
         }
         // **Its own sentence.** The failure here is about a *file*, not the repository, which
         // is the distinction a reader needs before they go looking for damage they do not have.

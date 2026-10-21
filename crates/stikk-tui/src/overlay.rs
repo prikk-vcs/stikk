@@ -2897,7 +2897,8 @@ fn claim_rows<'a>(claim: KeyClaim, palette: &Palette) -> Vec<Line<'a>> {
             "Nothing has signed under this id in this repository yet — this signature binds it."
         }
         KeyClaim::Unchecked => {
-            "This prikk cannot report which key will sign, so stikk is naming the id it will pass,              not one prikk has confirmed."
+            "This prikk cannot report which key will sign, so stikk is naming the id it will \
+             pass, not one prikk has confirmed."
         }
     };
     wrap_indented(text, PANEL_TEXT_WIDTH, "    ")

@@ -278,7 +278,9 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
         // **Why there is no key**, rather than its silent absence: prikk's verification is on
         // screen above, and a reader comparing the two should not have to infer the link.
         for row in wrap_indented(
-            "stikk could not read a tip block from prikk's verification above, so it cannot              tell whether this bundle is older than work you have already received — and does              not offer to import it.",
+            "stikk could not read a tip block from prikk's verification above, so it cannot \
+             tell whether this bundle is older than work you have already received — and does \
+             not offer to import it.",
             width,
             TOP,
         ) {

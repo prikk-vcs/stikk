@@ -157,10 +157,12 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
 
     // ---- what it would change, against which branch.
     lines.push(Line::from(""));
+    // **The bundle's own ref, alone.** The local side used to be here too, as
+    // `<bundle> -> your <local>`; the label below now says it, and saying it twice in two rows
+    // made the sentence under them read as a statement about both (review v1 C1).
     let heading = format!(
-        "{}  \u{2192}  your {}",
-        identifier(&view.preview.bundle_ref),
-        identifier(&view.preview.local_ref)
+        "This bundle carries {}",
+        identifier(&view.preview.bundle_ref)
     );
     for row in crate::view::wrap_hanging(&heading, width, TOP, "      ") {
         lines.push(Line::from(Span::styled(
@@ -170,7 +172,26 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
                 .add_modifier(Modifier::BOLD),
         )));
     }
-    for row in wrap_indented(view.sentence, width, TOP) {
+    // **The same label the import card carries** (review v1 C1): beside an advertised `I`, a
+    // sentence like *"it would bring it forward"* reads as what the key does. It is what prikk's
+    // preview measured about a branch an import leaves exactly as it is.
+    for row in crate::view::wrap_hanging(
+        &format!(
+            "{} {} {}",
+            stikk_core::COMPARED_WITH_BEFORE,
+            identifier(&view.preview.local_ref),
+            stikk_core::COMPARED_WITH_AFTER
+        ),
+        width,
+        TOP,
+        "    ",
+    ) {
+        lines.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+    for row in wrap_indented(view.sentence, width, QUOTED) {
         lines.push(Line::from(Span::styled(
             row,
             Style::default().fg(palette.fg),

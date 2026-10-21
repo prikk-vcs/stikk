@@ -498,12 +498,6 @@ fn a_newer_bundle_arms_a_tier_two_card_that_asks_for_no_key() {
             (Some("file"), "/tmp/v1.bundle"),
         ]
     );
-    assert_eq!(summary.branch_notice.as_deref(), Some(WOULD_BRING_FORWARD));
-    assert_eq!(
-        summary.history_notice.as_deref(),
-        Some("recorded signer identity, continuity only -- not a trust decision"),
-        "prikk's caveat is on the card, verbatim"
-    );
     // The consequence is stikk's, and names nothing (RFC 044 C1).
     for name in ["remotes/heads/main", "heads/main", "/tmp/v1.bundle"] {
         assert!(
@@ -518,6 +512,33 @@ fn a_newer_bundle_arms_a_tier_two_card_that_asks_for_no_key() {
             .consequence
             .contains("nobody's signing key is trusted by this")
     );
+    // **prikk's note is on the card, as an aside, with the ids it qualifies** (review v1 C1) --
+    // and the sentence about the local branch says, in its label, that importing leaves it be.
+    let asides: Vec<(&str, &str, Vec<String>)> = summary
+        .asides
+        .iter()
+        .map(|aside| (aside.before, aside.name.as_str(), aside.body.clone()))
+        .collect();
+    assert_eq!(
+        asides,
+        vec![
+            (
+                COMPARED_WITH_BEFORE,
+                "heads/main",
+                vec![WOULD_BRING_FORWARD.to_string()]
+            ),
+            (SEALED_BY_BEFORE, "z-maint", vec![SEALED_NOTE.to_string()]),
+        ]
+    );
+    assert!(
+        summary.asides[0]
+            .after
+            .contains("importing leaves it as it is"),
+        "the label says what the comparison is not: {}",
+        summary.asides[0].after
+    );
+    assert!(summary.branch_notice.is_none(), "not a target row");
+    assert!(summary.history_notice.is_none(), "not a target row");
 }
 
 /// **Where the received branch does not exist yet, there is nothing to move back**: the guards

@@ -421,6 +421,7 @@ fn preview(
                     message_note: summary.message,
                     materializes: None,
                     merge_plan: None,
+                    asides: Vec::new(),
                 },
             ),
         })
@@ -462,6 +463,7 @@ fn blocked_summary(reason: String) -> ConfirmationSummary {
         message_note: None,
         materializes: None,
         merge_plan: None,
+        asides: Vec::new(),
     }
 }
 

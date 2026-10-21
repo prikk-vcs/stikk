@@ -370,6 +370,7 @@ pub fn merge_preview(
                 message_note: None,
                 materializes: None,
                 merge_plan: Some(plan.lines.clone()),
+                asides: Vec::new(),
             },
         ))
     })?;
@@ -503,6 +504,7 @@ fn blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
             message_note: None,
             materializes: None,
             merge_plan: None,
+            asides: Vec::new(),
         },
     )
 }

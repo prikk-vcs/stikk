@@ -26,7 +26,7 @@ use stikk_prikk::{
     Connectivity, Prikk, bundle_tip,
 };
 
-use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
+use crate::confirm::{self, Aside, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
 
 /// The first prikk minor that offers this, re-exported so a view says the number the seam gates
 /// on -- the one-constant rule every other band follows.
@@ -286,16 +286,37 @@ pub const LINEAGE_TOO_LONG_TO_TELL: &str = "This repository's received branch is
 
 /// The sentence under the import card, in stikk's own words — **with no name in it** (RFC 044
 /// C1): `consequence` is drawn unescaped, and every name is already restated in `target_ids`.
+///
+/// **It used to end by explaining the author-key material** (review v1 C1). The `Sealed by`
+/// aside now says that, in prikk's own words and beside the ids it is about, so the clause here
+/// was a second copy — and the one that cost the consequence its last two rows at 80×24, which
+/// is the one part of a card that must never give them up.
 const IMPORT_CONSEQUENCE: &str = "The bundle is stored as a received branch, which is read-only history beside your own. No \
      branch of yours is created or moved, nothing is written to your worktree, and nobody's \
-     signing key is trusted by this: prikk records the bundle's author-key material for \
-     continuity and says so itself.";
+     signing key is trusted by this.";
 
 /// **stikk's one line after an import lands**: what arrived is read-only, and the reader is
 /// now looking at it.
 pub const RECEIVED_IS_READ_ONLY: &str = "This is received history: it is read beside your own branches and nothing of yours moved. \
      Taking its work into a branch of yours is a merge, which stikk does not offer from a \
      received ref yet -- `prikk merge --from` does.";
+
+/// The label above prikk's comparison on the import card and the Bundle view (review v1 C1).
+///
+/// **It says what the sentence is and what it is not.** prikk's preview describes how the
+/// bundle relates to your branch of the same name; an import does not touch that branch, and
+/// without this the sentence — *"it would bring it forward"* — reads as the effect of pressing
+/// the key.
+pub const COMPARED_WITH_BEFORE: &str = "Compared with your";
+
+/// The second half of [`COMPARED_WITH_BEFORE`], after the branch name.
+pub const COMPARED_WITH_AFTER: &str = "(importing leaves it as it is):";
+
+/// The label above the recorded signer ids, which prikk's own note then qualifies.
+pub const SEALED_BY_BEFORE: &str = "Sealed by";
+
+/// The second half of [`SEALED_BY_BEFORE`], after the ids.
+pub const SEALED_BY_AFTER: &str = "\u{2014}";
 
 /// What an import can say before it runs.
 #[derive(Debug)]
@@ -406,16 +427,32 @@ pub fn import_preview(
                 signing_key_id: None,
                 signing_key_claim: confirm::KeyClaim::None,
                 signing_key_is_published_example: false,
-                // stikk's sentence for what this would do to the local branch of that name,
-                // and prikk's own caveat, carried as the card's two notices.
-                branch_notice: Some(sentence.to_string()),
+                branch_notice: None,
                 freezes: None,
-                history_notice: Some(preview.sealed_by_note.clone()),
+                history_notice: None,
                 rename_note: None,
                 declaration_notices: Vec::new(),
                 message_note: None,
                 materializes: None,
                 merge_plan: None,
+                // **Not targets** (review v1 C1). prikk's comparison is about a branch this
+                // operation does not touch, and prikk's continuity note is about the ids it
+                // sits with -- each gets a label saying which, so neither is read as a row in
+                // the list of things the import acts on.
+                asides: vec![
+                    Aside {
+                        before: COMPARED_WITH_BEFORE,
+                        name: preview.local_ref.clone(),
+                        after: COMPARED_WITH_AFTER,
+                        body: vec![sentence.to_string()],
+                    },
+                    Aside {
+                        before: SEALED_BY_BEFORE,
+                        name: preview.sealed_by.join(", "),
+                        after: SEALED_BY_AFTER,
+                        body: vec![preview.sealed_by_note.clone()],
+                    },
+                ],
             },
         ))
     })?;
@@ -510,6 +547,7 @@ fn blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
             message_note: None,
             materializes: None,
             merge_plan: None,
+            asides: Vec::new(),
         },
     )
 }
@@ -669,6 +707,7 @@ pub fn export_preview(
                 message_note: None,
                 materializes: None,
                 merge_plan: None,
+                asides: Vec::new(),
             },
         ))
     })?;

@@ -559,6 +559,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         message_note: None,
         materializes: None,
         merge_plan: None,
+        asides: Vec::new(),
     }
 }
 
@@ -1051,6 +1052,7 @@ fn summary_with_key_id(
         message_note: None,
         materializes: None,
         merge_plan: None,
+        asides: Vec::new(),
     }
 }
 
@@ -1339,6 +1341,7 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         message_note: None,
         materializes: None,
         merge_plan: None,
+        asides: Vec::new(),
     }
 }
 
@@ -1994,6 +1997,7 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         message_note: None,
         materializes: None,
         merge_plan: None,
+        asides: Vec::new(),
     }
 }
 

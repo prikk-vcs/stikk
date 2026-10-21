@@ -1525,6 +1525,39 @@ fn render_confirmation(
         lines.push(Line::from(""));
     }
 
+    // **Labelled asides, outside Targets** (RFC 050 review v1 C1). A row under `Targets:` reads
+    // as something the operation acts on; these are facts about something it does not touch, so
+    // each carries its own label and sits in its own block. The label is stikk's chrome and the
+    // name is repository text, drawn as two spans so the escape cannot reach one and skip the
+    // other -- the rule the target rows follow.
+    for aside in &summary.asides {
+        let mut heading = vec![Span::styled(
+            format!("  {} ", aside.before),
+            Style::default().fg(palette.dim),
+        )];
+        if !aside.name.is_empty() {
+            heading.push(Span::styled(
+                identifier(&aside.name),
+                Style::default().fg(palette.accent),
+            ));
+            heading.push(Span::raw(" "));
+        }
+        heading.push(Span::styled(
+            aside.after.to_string(),
+            Style::default().fg(palette.dim),
+        ));
+        lines.push(Line::from(heading));
+        for sentence in &aside.body {
+            for row in wrap_indented(&inert(sentence), PANEL_TEXT_WIDTH, "    ") {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.fg),
+                )));
+            }
+        }
+        lines.push(Line::from(""));
+    }
+
     if !summary.counts.is_empty() {
         let counts_line = summary
             .counts

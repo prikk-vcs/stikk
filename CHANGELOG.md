@@ -13,6 +13,7 @@ the `stikk` launcher are unchanged.**
 |---|---|
 | `stikk-model` | **`RequestCategory::Exchange` is Tier Two and needs no key.** It said `Tier::Three` and `SigningRequirement::Maintainer`; measured at prikk 0.53, neither is right — `bundle export` and `bundle import` both succeed with no key configured at all, and an import creates and advances no local ref. Outside code that reads `tier()` or `signing_requirement()` for this category gets a different answer. **`cargo public-api` reports nothing for this crate**: no signature moved, only what the two functions answer |
 | `stikk-prikk` | **The `Prikk` trait gains four required methods**, `bundle_verify`, `bundle_preview`, `bundle_import` and `bundle_export`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+| `stikk-core` | **`ConfirmationSummary` gained a public field**, `asides: Vec<Aside>` — labelled facts a card must state that are neither targets nor consequences of confirming. The struct is not `#[non_exhaustive]`, so outside code that builds one as a literal, or destructures one exhaustively, must account for it, exactly as it did for `merge_plan` in 0.15.0 |
 | `stikk-tui` | **`Screen` and `Focus` gained `Bundle`, and `Overlay` gained `BundlePath`, `ExportPath`, `ImportResult` and `ExportResult`.** None of the three enums is `#[non_exhaustive]`, so any outside exhaustive `match` must cover the new variants |
 
 **Additive:** `stikk_prikk::BundleVerify`, `BundlePreview`, `BundlePreviewRead`, `BundleEffect`,
@@ -23,7 +24,7 @@ the `stikk` launcher are unchanged.**
 `import_confirm_and_execute`, `export_preview`, `export_confirm_and_execute`,
 `suggested_destination`, `bundle_unavailable`, `export_unavailable`, `unshown_effects_line`,
 `BUNDLE_FROM_MINOR`, `BUNDLE_EFFECTS_SHOWN`, `BUNDLE_LINEAGE_LIMIT`, `RECEIVED_PREFIX`, the two
-operation names and its sentences; `stikk_tui::App::begin_open_bundle`, `begin_import` and
+operation names and its sentences; `stikk_core::confirm::Aside`; `stikk_tui::App::begin_open_bundle`, `begin_import` and
 `begin_export`; `OperationContext::Bundle`, which is additive only because that enum is
 `#[non_exhaustive]`. **No public item was removed**: `cargo public-api diff 0.15.0` reports
 *(none)* under both *Removed items* and *Changed items* for every crate.

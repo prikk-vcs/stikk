@@ -317,3 +317,22 @@ fn the_import_key_is_advertised_only_when_the_tip_was_read() {
         "the absence is explained, not silent: {text}"
     );
 }
+
+/// **The comparison is labelled as a comparison** (review v1 C1): beside an advertised `I`, the
+/// sentence must not read as what the key would do.
+#[test]
+fn the_comparison_says_importing_leaves_your_branch_alone() {
+    let text = draw_at(&fast_forward(), 80, 60, 0);
+    let flowed = flattened(&text);
+    assert!(
+        flowed.contains("Compared with your heads/main (importing leaves it as it is):"),
+        "{text}"
+    );
+    // The sentence sits under it, and the local name is not also in a heading above.
+    assert!(flowed.contains("it would bring it forward"), "{text}");
+    assert!(
+        !flowed.contains("heads/main → your heads/main"),
+        "the name is said once, by the label: {text}"
+    );
+    assert!(flowed.contains("This bundle carries heads/main"), "{text}");
+}

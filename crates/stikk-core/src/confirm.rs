@@ -189,6 +189,34 @@ pub struct ConfirmationSummary {
     /// [`unshown_plan_lines_line`]'s words. Every line is prikk's text: render each inert
     /// (`C-T2a`).
     pub merge_plan: Option<Vec<String>>,
+    /// RFC 050 review v1 C1: labelled asides — facts the card must state that are **not targets
+    /// and not consequences of confirming**.
+    ///
+    /// A target row says *this is what the operation acts on*. A sentence sitting among the
+    /// target rows is read the same way, and for an import that was wrong: prikk's preview
+    /// describes how the bundle relates to a branch the import **does not touch**, and read as
+    /// a target row it promised that branch would move. Each aside carries its own label, so
+    /// what it is cannot be inferred from where it sits.
+    ///
+    /// Empty for every operation that has none.
+    pub asides: Vec<Aside>,
+}
+
+/// One labelled aside on a confirmation card (RFC 050 review v1 C1).
+///
+/// **The label is stikk's chrome and the name is repository text**, kept in separate fields for
+/// the reason [`TargetId`] keeps its two apart: a frontend escapes the one and draws the other
+/// as itself, and it cannot do that to a string that has already been joined.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Aside {
+    /// stikk's words before the name (e.g. `"Compared with your"`). Drawn as itself.
+    pub before: &'static str,
+    /// The repository string the label is about — **render through `identifier`** (`C-T2a`).
+    pub name: String,
+    /// stikk's words after the name (e.g. `"(importing leaves it as it is):"`). Drawn as itself.
+    pub after: &'static str,
+    /// The sentences under it, stikk's or prikk's — **render each through `inert`**.
+    pub body: Vec<String>,
 }
 
 /// What a switch will do to the worktree, from stikk's own Compare (RFC 045 decision 5).

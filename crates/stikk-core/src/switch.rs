@@ -186,6 +186,7 @@ pub fn switch_preview(prikk: &impl Prikk, repo: &Path, target: &str) -> Result<S
                 message_note: None,
                 materializes: Some(plan),
                 merge_plan: None,
+                asides: Vec::new(),
             },
         ))
     })?;
@@ -267,6 +268,7 @@ fn blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
             message_note: None,
             materializes: None,
             merge_plan: None,
+            asides: Vec::new(),
         },
     )
 }

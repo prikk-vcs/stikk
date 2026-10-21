@@ -520,3 +520,39 @@ fn capture_rfc045_work_queued_for_the_target_at_80_columns() {
         "nothing ran: {text}"
     );
 }
+
+/// **Capture: the two refusals RFC 050 Handoff B adds, as the reader meets them** — banners, at
+/// exactly 80 columns, over the screen they were on.
+///
+/// Both are stikk's own sentences and both wrap, so what is captured here is the whole of each:
+/// a refusal that clipped would be the one thing `RFC 024` forbids on a message that exists to
+/// explain itself.
+#[test]
+fn capture_the_two_bundle_refusals_at_80x24() {
+    let backend = NullBackend::supported();
+    let (mut app, rx) = open("/repo", &Config::default());
+    drain(&mut app, &rx, &backend);
+
+    for (name, sentence) in [
+        (
+            "older bundle",
+            stikk_core::WOULD_MOVE_THE_RECEIVED_BRANCH_BACK,
+        ),
+        ("inside the repository", stikk_core::INSIDE_THE_REPOSITORY),
+    ] {
+        app.surface_error(
+            &stikk_model::StikkError::LockConflict {
+                message: sentence.into(),
+            },
+            stikk_core::OperationContext::Bundle,
+        );
+        let text = draw(&app, 80, 24);
+        println!("== {name}\n{text}");
+        let flowed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let wanted: String = sentence.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            flowed.contains(&wanted),
+            "{name}: every word of the refusal is on screen:\n{text}"
+        );
+    }
+}

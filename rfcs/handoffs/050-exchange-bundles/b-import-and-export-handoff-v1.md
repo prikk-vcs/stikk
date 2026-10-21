@@ -1,6 +1,6 @@
 # Handoff B — RFC 050: importing and exporting a bundle (v1)
 
-**Companion to:** [RFC 050](../../accepted/050-exchange-bundles.md), **accepted 2026-10-21**. **Covers:** decisions 1
+**Companion to:** [RFC 050](../../done/050-exchange-bundles.md), **accepted 2026-10-21**. **Covers:** decisions 1
 (`bundle_import`, `bundle_export`), 4 and 5. 0.16.0's increment 3. **Follows [Handoff A](./a-open-a-bundle-handoff-v1.md);
 start when A is pushed.** **The first to move to 0.17.0** if the cycle runs long.
 **Not a release.**

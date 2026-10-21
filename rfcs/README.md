@@ -31,13 +31,13 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 050 | [Exchange: sharing work as a bundle file](./accepted/050-exchange-bundles.md) | `FR-090/091`, `FL-11`: open a bundle (`i`) to see prikk's verification and its preview against your branch; import it (`I`) as a received branch, declined when it would change nothing or move that branch back; export a branch (`E`) to a file outside the repository; Exchange at Tier Two with no key; prikk ≥ 0.53. **Accepted 2026-10-21**; 0.16.0 increments 2–3 | [A: open a bundle](./handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) · [B: import and export](./handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) |
 | 051 | [Arch Linux packages on the AUR](./accepted/051-arch-linux-packages.md) | RFC 048 decision 6 amended: `stikk` (from the crates.io crate) and `stikk-bin` (the static release build, byte-identical to the attested artifact), `prikk>=floor`, filled and pushed by `release.yml` when the owner's secret exists, tested by `aur.yml`. **Accepted 2026-10-21**; 0.16.0 increment 5 | [A: AUR packages](./handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) |
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 050 | [Exchange: sharing work as a bundle file](./done/050-exchange-bundles.md) | 0.16.0 candidate (on `main`) | adopting a received branch (a merge), trusting its sealer, sync, opening a bundle with no repository, and choosing another branch to compare with; three prikk items held for a letter | [A: open a bundle](./handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) · [B: import and export](./handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) |
 | 048 | [Delivery for users new to all of this](./done/048-delivery-for-new-users.md) | **0.15.0** | the Homebrew tap (Handoff C, the owner's), SignPath signing (O5) and prikk's Windows installer line (prikk 0.54.0): decision points for 0.16.0 | [A: installers and install page](./handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) · [B: aarch64 static build](./handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md) |
 | 047 | [Merge](./done/047-merge.md) | **0.15.0** | per-witness glosses (`FR-080`); a baseline past an earlier merge, and merging into the current branch (both wait on prikk; held for a letter) | [A: the plan](./handoffs/047-merge/a-merge-plan-handoff-v1.md) · [B: the merge](./handoffs/047-merge/b-merge-execution-handoff-v1.md) |
 | 049 | [The prikk 0.53 re-baseline](./done/049-prikk-0-53-rebaseline.md) | **0.15.0** | none | [A: the re-baseline](./handoffs/049-prikk-0-53-rebaseline/a-rebaseline-handoff-v1.md) |

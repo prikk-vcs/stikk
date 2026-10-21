@@ -427,10 +427,10 @@ a fabricated worktree entry was fixed.
 
 1. **The panels' prose gets a right gutter** ([RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
    no word sits against a card's border; identifiers and prikk's lines keep the full width.
-2. **Exchange, read-only** (`FR-090/091`, [RFC 050](rfcs/accepted/050-exchange-bundles.md), accepted 2026-10-21): open a bundle file and see prikk's verification and
+2. **Exchange, read-only — landed on `main`** (`FR-090/091`, [RFC 050](rfcs/done/050-exchange-bundles.md), `0c2d52e`): open a bundle file and see prikk's verification and
    its preview against your branch — applies cleanly or conflicts, and what it would change — before anything is
    written.
-3. **Exchange, the writes** (RFC 050): export a branch to a file, and import a bundle as a received ref, previewed;
+3. **Exchange, the writes — landed on `main`** (RFC 050, `eafff77`): export a branch to a file, and import a bundle as a received ref, previewed;
    adopting received history and trusting its sealer stay out. **The first to move to 0.17.0** if the cycle runs long.
    *(Rollback was scoped here first and withdrawn the same day, re-authorized as exchange: measured, prikk 0.53's
    rollback inverts the whole chain to the empty state, not one change. It waits on prikk.)*

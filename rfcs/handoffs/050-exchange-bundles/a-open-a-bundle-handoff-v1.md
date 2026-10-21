@@ -1,6 +1,6 @@
 # Handoff A — RFC 050: opening a bundle, read-only (v1)
 
-**Companion to:** [RFC 050](../../accepted/050-exchange-bundles.md), **accepted 2026-10-21**, no open question. **Read the
+**Companion to:** [RFC 050](../../done/050-exchange-bundles.md), **accepted 2026-10-21**, no open question. **Read the
 RFC first**, F1–F3 and decisions 1–3 and 6. **Covers:** decisions 1 (`bundle_verify`, `bundle_preview`), 2, 3 and 6.
 0.16.0's increment 2. [Handoff B](./b-import-and-export-handoff-v1.md) follows with the writes.
 **Not a release.**

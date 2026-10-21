@@ -1,6 +1,6 @@
 # RFC 050 — Exchange: sharing work as a bundle file
 
-**Status.** **Accepted by the project owner 2026-10-21**; [Handoff A](../handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) and [Handoff B](../handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) issued. **Proposed 2026-10-21** by the architect, as 0.16.0's increments 2 and 3 (`.git-exclude/release/0-16-0-scope.md`,
+**Status.** **Done 2026-10-21**: Handoff A delivered on `main` (`f8b2ca8`..`0c2d52e`), Handoff B (`978173e`..`eafff77`); 0.16.0 candidate. **Accepted by the project owner 2026-10-21**; [Handoff A](../handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) and [Handoff B](../handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) issued. **Proposed 2026-10-21** by the architect, as 0.16.0's increments 2 and 3 (`.git-exclude/release/0-16-0-scope.md`,
 authorized; re-authorized as exchange the same day after rollback was withdrawn). **No open question.**
 Measured against a real prikk **0.53.0**, one fresh repository per role: `.git-exclude/reports/050-exchange/`
 (`measure050.sh` → `measure050-0.53.txt`; `measure050b.sh` → `measure050b-0.53.txt`, a receiver that shares the sender's
@@ -131,3 +131,30 @@ the worktree byte-identical; an exported file verifies and imports in a second r
 - **No adoption, no trust, no sync** (decision 7).
 - **No overwrite** of an existing file, and **no file inside a repository**.
 - **No parsing of prikk's prose** beyond the one pinned line (decision 4).
+
+## Delivered
+
+**Two handoffs, fourteen commits, green on `main` at `eafff77`**: CI, Docs, the real-binary suite (69 cases at 0.28.0
+and 0.53.0) and supply chain.
+
+- **A, opening a bundle** (`f8b2ca8`..`0c2d52e`). The Exchange category is Tier Two with no key, its two exceptions to
+  "the tier implies the key" each asserted. `bundle_verify` runs with no repository and keeps prikk's lines;
+  `bundle_preview` parses `bundle-preview-v1` strictly, with closed vocabularies. `i` opens a path prompt (its own
+  overlay; `std::path::absolute`, so a missing file is prikk's to report) and an inert Bundle view: prikk's
+  verification verbatim, stikk's sentence per connectivity and conflict, the effects bounded with prikk's command for
+  the rest, and the sealer only beside prikk's continuity note. Preview runs only after a successful verify, proved by
+  a counter. **Caught in review**: a refused file did not say which file, or that the words were prikk's.
+- **B, import and export** (`978173e`..`eafff77`). `--force` is never built. The tip is read from one pinned
+  `tip block:` line, exactly, refusing a short or upper-case value because a loose reader would silently disable the
+  guard. **Three import guards inside the preview** — already received, older (would move the received branch back),
+  lineage too long to tell — each declining with **zero `import` spawned**, and the suite checks the received tip with
+  prikk's own `log`. After an import, focus lands on the received branch. Export refuses a destination inside the
+  repository and an existing file, suggests a path outside by construction, and the suite compares the worktree file by
+  file; an exported bundle verifies and imports in a second repository. **Caught in review**: the preview sentence sat
+  among the import's targets and read as what importing does; it now sits under *"Compared with your <branch>
+  (importing leaves it as it is)"*, via a new `ConfirmationSummary::asides` (a Breaking row).
+- **Beyond the RFC, accepted in review**: `literal_guard.rs`, which found three released string literals and one new one
+  with a line continuation lost to a heredoc; `FR-090`'s line corrected to the design chosen (stikk, not prikk, answers
+  a destination collision).
+- **Held for the next necessary letter**: the silent received-ref rewind, no JSON on `bundle verify`/`import`, and
+  `preview --ref remotes/…` answering `no-local-history`.

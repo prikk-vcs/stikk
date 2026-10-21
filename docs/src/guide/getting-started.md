@@ -166,6 +166,48 @@ prikk compares without adopting them. **The branch you are on before its first s
 no block for prikk to compare, so `m` and `d` there say so and point you at `w` then `d`, which
 compares your worktree with what `commit` would author against.
 
+## Sharing work
+
+Two people share prikk history by **bundle files**. One exports a branch to a file, sends it any
+way they like — prikk moves no bytes over a network — and the other checks it, sees what it would
+change, and imports it. Needs prikk 0.53 or newer.
+
+**To export**, open the ref picker with `b`, put the cursor on one of your own open branches and
+press `E`. stikk suggests a name beside the repository (`<branch>-<short tip>.bundle`), which you
+can edit. **stikk will not write inside the repository** — the bundle would sit in your worktree
+as an untracked file, and your next commit would capture it — and **will not write over a file
+that is already there**. Tags, received refs, closed branches and a branch with nothing published
+are each declined, with the reason, before anything runs.
+
+**To open a bundle someone sent you**, press `i` anywhere a repository is open and give the path.
+stikk shows two things:
+
+- **prikk's verification**, word for word, including prikk's own caveat that it checks structure
+  only — *a verified bundle is not yet a trusted one*;
+- **what importing would change**, against your branch of the bundle's own name: new here,
+  nothing in common with yours, already held, would bring yours forward, or both sides have moved
+  on — applying cleanly, conflicting (with prikk's reason), or undetermined. The files that would
+  change are listed, and so are the key ids recorded in the file **with prikk's note that
+  recording a key is not trusting one**.
+
+Nothing is written by opening a bundle. If prikk will not read the file, you get prikk's reason
+and nothing else.
+
+**To import it**, press `I` on that view and confirm. The bundle is stored as a **received
+branch** — `remotes/<name>`, read-only history beside your own. No branch of yours is created or
+moved, nothing is written to your worktree, and nobody's signing key is trusted by it. Afterwards
+stikk takes you to that branch's history, which is where what arrived can be read.
+
+**stikk declines two imports prikk allows.** If the bundle is one you already received, importing
+changes nothing and stikk says so. If it is *older* than what you received — a stale file in a
+downloads folder is the ordinary way to get one — prikk would quietly move the received branch
+back to the older block and report an ordinary import; stikk declines instead and tells you why.
+Where your received branch is longer than stikk reads, it says it cannot tell rather than guess,
+and names `prikk bundle import` for doing it anyway.
+
+**Taking received work into a branch of yours is not in stikk yet.** A received ref cannot seed a
+branch, and adopting one is a merge: `prikk merge --from remotes/<name>` does it today.
+
 ## Capability and signing
 
 What you can do is *derived* from which signing keys are ready in your environment, not from any

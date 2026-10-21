@@ -12,18 +12,21 @@ the `stikk` launcher are unchanged.**
 | Crate | Change |
 |---|---|
 | `stikk-model` | **`RequestCategory::Exchange` is Tier Two and needs no key.** It said `Tier::Three` and `SigningRequirement::Maintainer`; measured at prikk 0.53, neither is right — `bundle export` and `bundle import` both succeed with no key configured at all, and an import creates and advances no local ref. Outside code that reads `tier()` or `signing_requirement()` for this category gets a different answer. **`cargo public-api` reports nothing for this crate**: no signature moved, only what the two functions answer |
-| `stikk-prikk` | **The `Prikk` trait gains two required methods**, `bundle_verify` and `bundle_preview`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
-| `stikk-tui` | **`Screen` and `Focus` gained `Bundle`, and `Overlay` gained `BundlePath`.** None of the three enums is `#[non_exhaustive]`, so any outside exhaustive `match` must cover the new variant |
+| `stikk-prikk` | **The `Prikk` trait gains four required methods**, `bundle_verify`, `bundle_preview`, `bundle_import` and `bundle_export`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+| `stikk-tui` | **`Screen` and `Focus` gained `Bundle`, and `Overlay` gained `BundlePath`, `ExportPath`, `ImportResult` and `ExportResult`.** None of the three enums is `#[non_exhaustive]`, so any outside exhaustive `match` must cover the new variants |
 
 **Additive:** `stikk_prikk::BundleVerify`, `BundlePreview`, `BundlePreviewRead`, `BundleEffect`,
-`Connectivity`, `BundleConflict`, `EffectKind` and `EXCHANGE_FROM_MINOR`, with
-`NullBackend::with_bundle_verify`, `with_bundle_verify_refusal`, `with_bundle_preview`,
-`with_bundle_preview_refusal` and `bundle_preview_calls`; `stikk_core::bundle` with
-`BundleOpened`, `BundleView`, `open_bundle`, `sentence_for`, `bundle_unavailable`,
-`unshown_effects_line`, `BUNDLE_FROM_MINOR`, `BUNDLE_EFFECTS_SHOWN` and its seven sentences;
-`stikk_tui::App::begin_open_bundle`; `OperationContext::Bundle`, which is additive only because
-that enum is `#[non_exhaustive]`. **No public item was removed**: `cargo public-api diff 0.15.0`
-reports *(none)* under both *Removed items* and *Changed items* for every crate.
+`BundleImport`, `BundleExport`, `Connectivity`, `BundleConflict`, `EffectKind`, `bundle_tip` and
+`EXCHANGE_FROM_MINOR`, with `NullBackend`'s eight new builders and three call counters;
+`stikk_core::bundle` with `BundleOpened`, `BundleView`, `ImportPreview`, `ImportTarget`,
+`ExportPreview`, `ExportTarget`, `open_bundle`, `sentence_for`, `import_preview`,
+`import_confirm_and_execute`, `export_preview`, `export_confirm_and_execute`,
+`suggested_destination`, `bundle_unavailable`, `export_unavailable`, `unshown_effects_line`,
+`BUNDLE_FROM_MINOR`, `BUNDLE_EFFECTS_SHOWN`, `BUNDLE_LINEAGE_LIMIT`, `RECEIVED_PREFIX`, the two
+operation names and its sentences; `stikk_tui::App::begin_open_bundle`, `begin_import` and
+`begin_export`; `OperationContext::Bundle`, which is additive only because that enum is
+`#[non_exhaustive]`. **No public item was removed**: `cargo public-api diff 0.15.0` reports
+*(none)* under both *Removed items* and *Changed items* for every crate.
 
 ### Added
 
@@ -44,9 +47,34 @@ reports *(none)* under both *Removed items* and *Changed items* for every crate.
   continuity note beside it, never as a trust claim**: the key ids are recorded in the file, and
   recording is not verifying.
 
-  **Nothing is written** — not by stikk, and not by prikk. A file prikk will not read is prikk's
-  refusal and nothing else, with no preview asked for: a malformed bundle has nothing to
-  preview. Importing a bundle, and exporting one, are not in this release.
+  **Nothing is written** by opening one — not by stikk, and not by prikk. A file prikk will not
+  read is prikk's refusal and nothing else, with no preview asked for: a malformed bundle has
+  nothing to preview.
+
+- **Import a bundle as a received branch.** `I` on the Bundle view, after a confirmation that
+  names where it will be stored, the tip it brings and the file it read. The bundle becomes
+  `remotes/<name>` — read-only history beside your own. **No branch of yours is created or
+  moved, nothing is written to your worktree, and nobody's signing key is trusted by it**;
+  prikk says all three itself, and stikk shows prikk's report word for word. Afterwards stikk
+  takes you to that branch's history, which is where what arrived can be read.
+
+  **stikk declines two imports prikk allows.** A bundle you have already received changes
+  nothing, and stikk says so. A bundle **older** than what you received — a stale file in a
+  downloads folder is the ordinary way to get one — would move the received branch back to an
+  older block and hide the newer work, which prikk does quietly and reports as an ordinary
+  import. Neither reaches prikk. Where your received branch is longer than stikk reads, stikk
+  says it cannot tell rather than guess, and names `prikk bundle import` for doing it anyway.
+
+  Taking received work into a branch of your own is **not** in this release: that is a merge,
+  and `prikk merge --from remotes/<name>` does it today.
+
+- **Export a branch to a bundle file.** `E` in the ref picker, on one of your own open published
+  branches, with the destination prefilled beside the repository and a confirmation naming the
+  branch, its tip and the file. **stikk will not write inside the repository** — the bundle
+  would sit in your worktree as an untracked file, and your next commit would capture it — and
+  **will not write over a file that is already there**. A tag, a received ref, a closed branch
+  and a branch with nothing published are each declined with the reason, before anything runs.
+  Nothing in the repository changes, and no signing key is used.
 
 ## 0.15.0 — 2026-10-21
 

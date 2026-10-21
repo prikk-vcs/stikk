@@ -469,6 +469,8 @@ pub struct App {
     /// The import in flight, if any (RFC 050 decision 4). Its own slot, not `pending_merge`'s:
     /// the two carry different targets and neither can be in flight while the other is.
     pending_import: Option<PendingImport>,
+    /// The export in flight, if any (RFC 050 decision 5).
+    pending_export: Option<PendingExport>,
     /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
     /// check compares against it; `None` until the first stamp, and no check is sent before it.
     stamp: Option<ChangeToken>,
@@ -660,6 +662,24 @@ enum PendingImport {
     },
 }
 
+/// See [`App::pending_export`] (RFC 050 decision 5).
+enum PendingExport {
+    /// `Overlay::Loading` is on the stack; a [`RequestKind::ExportPreview`] is in flight.
+    AwaitingPreview {
+        /// The branch and the destination.
+        target: stikk_core::ExportTarget,
+    },
+    /// The preview succeeded; `token` is armed and `Overlay::Confirmation` awaits a yes.
+    Confirming {
+        /// Feed this into [`stikk_core::export_confirm_and_execute`].
+        token: Box<stikk_core::PreviewToken>,
+        /// The branch and the destination (must match the preview's).
+        target: stikk_core::ExportTarget,
+    },
+    /// Confirm+execute is in flight.
+    Executing,
+}
+
 /// See [`App::pending_merge`] (RFC 047 decision 6).
 enum PendingMerge {
     /// `Overlay::Loading` is on the stack; a [`RequestKind::MergePreview`] is in flight.
@@ -787,6 +807,7 @@ impl App {
             pending_switch: None,
             pending_merge: None,
             pending_import: None,
+            pending_export: None,
             ref_rows: Vec::new(),
             session: None,
             stored: None,
@@ -1874,6 +1895,191 @@ impl App {
         }
     }
 
+    /// Begin exporting the selected branch (the `E` key in the ref picker; RFC 050 decision 5).
+    ///
+    /// **Four rows are declined from what stikk already holds**, before any preview: a tag, a
+    /// received ref, a closed branch and the unpublished row. The preview re-asks them all from
+    /// freshly read refs, because a branch can be closed between this key and the confirmation
+    /// -- so these are the picker's copy of one rule, not a second rule.
+    pub fn begin_export(&mut self) {
+        self.banner = None;
+        if let Some(minor) = self.prikk_minor()
+            && minor < stikk_core::BUNDLE_FROM_MINOR
+        {
+            self.banner = Some(stikk_core::export_unavailable(minor));
+            return;
+        }
+        let Some(Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+            unpublished_current,
+        }) = self.overlays.last()
+        else {
+            return;
+        };
+        // **The guessed row of an empty picker and the unpublished current branch are one
+        // case**, as they are for the ref writes: neither names a published tip, and a closure
+        // of nothing is not a bundle.
+        if *unpublished_main || (*unpublished_current && *cursor == 0) {
+            self.banner = Some(stikk_core::UNPUBLISHED_IS_NOT_EXPORTED.to_string());
+            return;
+        }
+        let Some(reff) = refs.get(*cursor).cloned() else {
+            return;
+        };
+        let Some(entry) = self.ref_rows.iter().find(|entry| entry.name == reff) else {
+            // In the picker but not in the rows is the unpublished case again.
+            self.banner = Some(stikk_core::UNPUBLISHED_IS_NOT_EXPORTED.to_string());
+            return;
+        };
+        if entry.is_tag() {
+            self.banner = Some(stikk_core::TAGS_ARE_NOT_EXPORTED.to_string());
+            return;
+        }
+        if entry.received {
+            self.banner = Some(stikk_core::RECEIVED_IS_NOT_EXPORTED.to_string());
+            return;
+        }
+        if entry.closed {
+            self.banner = Some(stikk_core::CLOSED_IS_NOT_EXPORTED.to_string());
+            return;
+        }
+        // **The suggestion uses the ref pointer the picker already holds**, so no read is spent
+        // on a prompt the reader may cancel. It is a display id either way: the card reads the
+        // tip again from `history`, which is the value prikk would name.
+        let suggested = stikk_core::suggested_destination(&self.repo, &reff, &entry.id);
+        self.overlays.pop(); // the picker closes on its way, as `n`, `t` and `M` do
+        self.overlays.push(Overlay::ExportPath {
+            reff,
+            typed: suggested.display().to_string(),
+        });
+    }
+
+    /// The export prompt's `Enter` (RFC 050 decision 5). **An empty path is not sent**, and the
+    /// path is resolved here, as the open prompt's is.
+    fn submit_export_path(&mut self, reff: String, typed: &str) {
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return;
+        }
+        self.overlays.pop();
+        let output = std::path::Path::new(typed);
+        let output = std::path::absolute(output).unwrap_or_else(|_| output.to_path_buf());
+        let target = stikk_core::ExportTarget { reff, output };
+        let seq = self.dispatch(RequestKind::ExportPreview {
+            target: target.clone(),
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "export preview",
+            seq,
+        });
+        self.pending_export = Some(PendingExport::AwaitingPreview { target });
+    }
+
+    /// The confirmation step's `Enter` for a pending export: Tier Two, and no key.
+    fn submit_export_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingExport::Confirming { token, target }) = self.pending_export.take() else {
+            return; // no export is actually pending
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let seq = self.dispatch(RequestKind::ExportConfirmExecute {
+            token,
+            readiness,
+            evidence,
+            target,
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "export",
+            seq,
+        });
+        self.pending_export = Some(PendingExport::Executing);
+    }
+
+    /// Answers [`RequestKind::ExportPreview`]. A block is a banner: the reader is back where
+    /// they were, with stikk's reason and the path still theirs to change.
+    fn apply_export_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::ExportPreview>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        let pending = self.pending_export.take();
+        match result {
+            Ok(stikk_core::ExportPreview::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            Ok(stikk_core::ExportPreview::Ready { token }) => {
+                let Some(PendingExport::AwaitingPreview { target }) = pending else {
+                    self.overlays.remove(index);
+                    return; // defensive
+                };
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::Confirmation {
+                        summary: Box::new(token.summary().clone()),
+                        tier: token.tier(),
+                        typed: String::new(),
+                        error: None,
+                    };
+                }
+                self.pending_export = Some(PendingExport::Confirming { token, target });
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Bundle);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::ExportConfirmExecute`]. prikk's lines verbatim, and **nothing in
+    /// the repository is re-read**: an export changes no ref, no block and no file of the
+    /// repository's -- it writes one file outside it.
+    fn apply_export_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::BundleExport>>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        self.pending_export = None;
+        match result {
+            Ok(outcome) => match outcome.result {
+                stikk_prikk::BundleExport::Done(printed) => {
+                    if let Some(slot) = self.overlays.get_mut(index) {
+                        *slot = Overlay::ExportResult { printed };
+                    }
+                }
+                stikk_prikk::BundleExport::Unavailable => {
+                    self.overlays.remove(index);
+                    self.banner = Some(stikk_core::export_unavailable(
+                        self.prikk_minor().unwrap_or_default(),
+                    ));
+                }
+            },
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Bundle);
+            }
+        }
+    }
+
     /// The confirmation step's `Enter` for a pending merge: Tier Three, as seal's is.
     fn submit_merge_confirmation(&mut self, tier: Tier, typed: &str) {
         let Some(PendingMerge::Confirming { token, target }) = self.pending_merge.take() else {
@@ -2192,6 +2398,10 @@ impl App {
                 let typed = typed.clone();
                 self.submit_bundle_path(&typed);
             }
+            Some(Overlay::ExportPath { reff, typed }) => {
+                let (reff, typed) = (reff.clone(), typed.clone());
+                self.submit_export_path(reff, &typed);
+            }
             Some(Overlay::TagMessage {
                 name,
                 target,
@@ -2219,6 +2429,8 @@ impl App {
                     self.submit_merge_confirmation(tier, &typed);
                 } else if self.pending_import.is_some() {
                     self.submit_import_confirmation(tier, &typed);
+                } else if self.pending_export.is_some() {
+                    self.submit_export_confirmation(tier, &typed);
                 }
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
@@ -2238,7 +2450,8 @@ impl App {
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
                 | Overlay::MergeResult { .. }
-                | Overlay::ImportResult { .. },
+                | Overlay::ImportResult { .. }
+                | Overlay::ExportResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -2643,6 +2856,7 @@ impl App {
                 Overlay::CommitMessage { typed, .. }
                 | Overlay::RefName { typed, .. }
                 | Overlay::BundlePath { typed }
+                | Overlay::ExportPath { typed, .. }
                 | Overlay::TagMessage { typed, .. },
             ) => typed.push(ch),
             _ => {}
@@ -2664,6 +2878,7 @@ impl App {
                 Overlay::CommitMessage { typed, .. }
                 | Overlay::RefName { typed, .. }
                 | Overlay::BundlePath { typed }
+                | Overlay::ExportPath { typed, .. }
                 | Overlay::TagMessage { typed, .. },
             ) => {
                 typed.pop();
@@ -2684,6 +2899,7 @@ impl App {
                     | Overlay::CommitMessage { .. }
                     | Overlay::RefName { .. }
                     | Overlay::BundlePath { .. }
+                    | Overlay::ExportPath { .. }
                     | Overlay::TagMessage { .. }
             )
         ) || matches!(
@@ -2717,11 +2933,13 @@ impl App {
                 | Overlay::SealResult { .. }
                 | Overlay::RefName { .. }
                 | Overlay::BundlePath { .. }
+                | Overlay::ExportPath { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
                 | Overlay::MergeResult { .. }
-                | Overlay::ImportResult { .. },
+                | Overlay::ImportResult { .. }
+                | Overlay::ExportResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
@@ -2790,11 +3008,13 @@ impl App {
                 | Overlay::SealResult { .. }
                 | Overlay::RefName { .. }
                 | Overlay::BundlePath { .. }
+                | Overlay::ExportPath { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
                 | Overlay::MergeResult { .. }
-                | Overlay::ImportResult { .. },
+                | Overlay::ImportResult { .. }
+                | Overlay::ExportResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { view, cursor, .. }) => {
@@ -2866,6 +3086,7 @@ impl App {
             if matches!(overlay, Overlay::Confirmation { .. }) {
                 self.pending_switch = None;
                 self.pending_import = None;
+                self.pending_export = None;
             }
             // Cancelling the consent step abandons the seal it belonged to (RFC 016 §8) — the same
             // posture, one step later in seal's own flow.
@@ -2921,6 +3142,8 @@ impl App {
             ResponseKind::OpenBundle(r) => r.is_ok(),
             ResponseKind::ImportPreview(r) => r.is_ok(),
             ResponseKind::ImportConfirmExecute(r) => r.is_ok(),
+            ResponseKind::ExportPreview(r) => r.is_ok(),
+            ResponseKind::ExportConfirmExecute(r) => r.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -2960,6 +3183,10 @@ impl App {
             ResponseKind::ImportPreview(result) => self.apply_import_preview(seq, result),
             ResponseKind::ImportConfirmExecute(result) => {
                 self.apply_import_confirm_execute(seq, result);
+            }
+            ResponseKind::ExportPreview(result) => self.apply_export_preview(seq, result),
+            ResponseKind::ExportConfirmExecute(result) => {
+                self.apply_export_confirm_execute(seq, result);
             }
         }
         // **One flush point for every transition a response completes** (RFC 046 decision 4):

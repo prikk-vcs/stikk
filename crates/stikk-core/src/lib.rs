@@ -37,11 +37,14 @@ pub mod verify;
 
 pub use bundle::{
     ALREADY_HELD, ALREADY_RECEIVED, BUNDLE_EFFECTS_SHOWN, BUNDLE_FROM_MINOR, BUNDLE_LINEAGE_LIMIT,
-    BundleOpened, BundleView, DIVERGED_CLEAN, DIVERGED_CONFLICT, DIVERGED_UNDETERMINED,
-    IMPORT_OPERATION, ImportPreview, ImportTarget, LINEAGE_TOO_LONG_TO_TELL,
-    NEW_TO_THIS_REPOSITORY, RECEIVED_IS_READ_ONLY, RECEIVED_PREFIX, SHARES_NOTHING,
-    WOULD_BRING_FORWARD, WOULD_MOVE_THE_RECEIVED_BRANCH_BACK, bundle_unavailable,
-    import_confirm_and_execute, import_preview, open_bundle, sentence_for, unshown_effects_line,
+    BundleOpened, BundleView, CLOSED_IS_NOT_EXPORTED, DESTINATION_EXISTS, DIVERGED_CLEAN,
+    DIVERGED_CONFLICT, DIVERGED_UNDETERMINED, EXPORT_OPERATION, ExportPreview, ExportTarget,
+    IMPORT_OPERATION, INSIDE_THE_REPOSITORY, ImportPreview, ImportTarget, LINEAGE_TOO_LONG_TO_TELL,
+    NEW_TO_THIS_REPOSITORY, RECEIVED_IS_NOT_EXPORTED, RECEIVED_IS_READ_ONLY, RECEIVED_PREFIX,
+    SHARES_NOTHING, TAGS_ARE_NOT_EXPORTED, UNPUBLISHED_IS_NOT_EXPORTED, WOULD_BRING_FORWARD,
+    WOULD_MOVE_THE_RECEIVED_BRANCH_BACK, bundle_unavailable, export_confirm_and_execute,
+    export_preview, export_unavailable, import_confirm_and_execute, import_preview, open_bundle,
+    sentence_for, suggested_destination, unshown_effects_line,
 };
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{

@@ -70,6 +70,8 @@ pub enum Action {
     /// Import the open bundle as a received branch (the Bundle view; RFC 050 decision 4).
     /// **Offered only where the view read prikk's verification and its tip line.**
     Import,
+    /// Export the selected branch to a bundle file (the ref picker; RFC 050 decision 5).
+    Export,
     /// Toggle the seal consent acknowledgement (RFC 016 §8) — meaningful only while
     /// [`crate::overlay::Overlay::SealConsent`] is on top; a no-op everywhere else.
     ToggleSealConsent,
@@ -130,6 +132,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('M') => Action::MergePlan,
         KeyCode::Char('i') => Action::OpenBundle,
         KeyCode::Char('I') => Action::Import,
+        KeyCode::Char('E') => Action::Export,
         KeyCode::Char(' ') => Action::ToggleSealConsent,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,

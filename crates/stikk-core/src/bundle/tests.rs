@@ -582,3 +582,153 @@ fn below_the_band_the_import_preview_blocks() {
     assert!(reason.contains("0.52"), "{reason}");
     assert_eq!(backend.bundle_import_calls(), 0);
 }
+
+// =============================================================================================
+// RFC 050 Handoff B — the export preview and its two destination rules.
+// =============================================================================================
+
+fn branch_entry(name: &str, closed: bool, received: bool) -> stikk_prikk::RefEntry {
+    stikk_prikk::RefEntry {
+        name: name.to_string(),
+        id: id("ee"),
+        closed,
+        received,
+    }
+}
+
+/// A backend at 0.53 with one open branch and a tip to name.
+fn exporting(entries: Vec<stikk_prikk::RefEntry>) -> NullBackend {
+    NullBackend::supported()
+        .with_version(0, 53, 0)
+        .with_refs(entries)
+        .with_history_of(
+            "heads/main",
+            History {
+                reff: "heads/main".to_string(),
+                blocks: vec![block(&id("dd"), 1)],
+            },
+        )
+        .with_bundle_export(vec!["wrote the bundle".to_string()])
+}
+
+fn export_blocked_for(backend: &NullBackend, reff: &str, out: &Path) -> String {
+    match export_preview(backend, Path::new("/repo"), reff, out) {
+        Ok(ExportPreview::Blocked(reason)) => reason,
+        other => panic!("expected a block, got {other:?}"),
+    }
+}
+
+/// **The destination is outside the repository, and does not exist**: the card arms, labelled.
+#[test]
+fn an_exportable_branch_arms_a_tier_two_card_with_no_key() {
+    let dir = std::env::temp_dir().join(format!("stikk-export-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a scratch directory");
+    let out = dir.join("main-ddddddddd.bundle");
+
+    let backend = exporting(vec![branch_entry("heads/main", false, false)]);
+    let Ok(ExportPreview::Ready { token }) =
+        export_preview(&backend, Path::new("/repo"), "heads/main", &out)
+    else {
+        panic!("an open published branch exports");
+    };
+    assert_eq!(token.tier(), stikk_model::Tier::Two);
+    let summary = token.summary();
+    assert_eq!(summary.operation, "Export");
+    assert_eq!(summary.capability, None, "an export signs nothing");
+    let roles: Vec<Option<&str>> = summary.target_ids.iter().map(|row| row.role).collect();
+    assert_eq!(
+        roles,
+        vec![Some("branch"), Some("tip"), Some("file")],
+        "every row says what it is"
+    );
+    assert_eq!(summary.target_ids[0].id, "heads/main");
+    assert_eq!(summary.target_ids[2].id, out.display().to_string());
+    assert_eq!(backend.bundle_export_calls(), 0, "a preview writes nothing");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **Inside the repository is blocked** — `C-E2`'s own resolved check, applied to the one file
+/// stikk asks prikk to write — and `export` is never spawned.
+#[test]
+fn a_destination_inside_the_repository_is_declined_without_exporting() {
+    let repo = std::env::temp_dir().join(format!("stikk-export-repo-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(&repo).expect("a scratch repository");
+    let backend = exporting(vec![branch_entry("heads/main", false, false)]);
+
+    for inside in [repo.join("out.bundle"), repo.join("deeper/out.bundle")] {
+        let reason = match export_preview(&backend, &repo, "heads/main", &inside) {
+            Ok(ExportPreview::Blocked(reason)) => reason,
+            other => panic!("{}: expected a block, got {other:?}", inside.display()),
+        };
+        assert_eq!(reason, INSIDE_THE_REPOSITORY, "{}", inside.display());
+    }
+    assert_eq!(backend.bundle_export_calls(), 0);
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// **An existing file is blocked**, and the file is not touched: stikk does not overwrite, and
+/// `--force` is never passed either.
+#[test]
+fn an_existing_destination_is_declined_without_exporting() {
+    let dir = std::env::temp_dir().join(format!("stikk-export-exists-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a scratch directory");
+    let out = dir.join("taken.bundle");
+    std::fs::write(&out, b"not a bundle").expect("a file in the way");
+
+    let backend = exporting(vec![branch_entry("heads/main", false, false)]);
+    assert_eq!(
+        export_blocked_for(&backend, "heads/main", &out),
+        DESTINATION_EXISTS
+    );
+    assert_eq!(backend.bundle_export_calls(), 0);
+    assert_eq!(
+        std::fs::read(&out).expect("still there"),
+        b"not a bundle",
+        "the file in the way is untouched"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **The four rows stikk will not export**, each with its own reason, re-asked from freshly
+/// read refs — the preview's copy of what the picker already declined.
+#[test]
+fn each_row_stikk_will_not_export_has_its_own_reason() {
+    let dir = std::env::temp_dir().join(format!("stikk-export-rows-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a scratch directory");
+    let out = dir.join("out.bundle");
+
+    let backend = exporting(vec![
+        branch_entry("heads/main", false, false),
+        branch_entry("heads/old", true, false),
+        branch_entry("remotes/heads/theirs", false, true),
+        branch_entry("tags/v1", false, false),
+    ]);
+    for (reff, want) in [
+        ("tags/v1", TAGS_ARE_NOT_EXPORTED),
+        ("remotes/heads/theirs", RECEIVED_IS_NOT_EXPORTED),
+        ("heads/old", CLOSED_IS_NOT_EXPORTED),
+        ("heads/never-sealed", UNPUBLISHED_IS_NOT_EXPORTED),
+    ] {
+        assert_eq!(export_blocked_for(&backend, reff, &out), want, "{reff}");
+    }
+    assert_eq!(backend.bundle_export_calls(), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// stikk's suggestion is **outside the repository by construction**, so a reader who accepts it
+/// never meets [`INSIDE_THE_REPOSITORY`].
+#[test]
+fn the_suggested_destination_is_outside_the_repository() {
+    let repo = Path::new("/home/someone/work/my-repo");
+    let suggested = suggested_destination(repo, "heads/feature/thing", &id("ab"));
+    assert_eq!(
+        suggested,
+        Path::new("/home/someone/work/thing-ab0000000000.bundle"),
+        "the parent, the last segment, and the short tip"
+    );
+    assert!(!suggested.starts_with(repo));
+}

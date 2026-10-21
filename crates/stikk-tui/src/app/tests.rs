@@ -4951,3 +4951,104 @@ fn rfc050_a_landed_import_moves_focus_to_the_received_branch() {
         .collect();
     assert!(kinds.iter().any(|k| k.starts_with("History")), "{kinds:?}");
 }
+
+/// **`E` declines each row kind from what stikk already holds**, without dispatching, and
+/// prefills the prompt for the one it does export.
+#[test]
+fn rfc050_e_declines_each_row_it_will_not_export_and_prefills_the_rest() {
+    let rows = vec![
+        entry("heads/main", false),
+        entry("heads/old", true),
+        entry("tags/v1", false),
+    ];
+    for (cursor, want) in [
+        (1usize, stikk_core::CLOSED_IS_NOT_EXPORTED),
+        (2, stikk_core::TAGS_ARE_NOT_EXPORTED),
+    ] {
+        let mut view = orientation_view(0, None, Some("abc123"));
+        view.prikk_minor = 53;
+        let (mut app, rx) = picker(
+            view,
+            rows.clone(),
+            stikk_prikk::UnpublishedBranch::None,
+            cursor,
+        );
+        app.begin_export();
+        assert_eq!(app.banner(), Some(want), "row {cursor}");
+        assert!(rx.try_recv().is_err(), "row {cursor}: nothing dispatched");
+    }
+
+    let mut view = orientation_view(0, None, Some("abc123"));
+    view.prikk_minor = 53;
+    let (mut app, rx) = picker(view, rows, stikk_prikk::UnpublishedBranch::None, 0);
+    app.begin_export();
+    assert!(rx.try_recv().is_err(), "the prompt comes first");
+    let Some(Overlay::ExportPath { reff, typed }) = app.top_overlay() else {
+        panic!("the prompt opens: {:?}", app.top_overlay());
+    };
+    assert_eq!(reff, "heads/main");
+    assert!(typed.ends_with(".bundle"), "{typed}");
+    assert!(
+        typed.contains("main-"),
+        "the branch's last segment is in the name: {typed}"
+    );
+    assert!(
+        !std::path::Path::new(typed).starts_with(app.repo()),
+        "the suggestion is outside the repository: {typed}"
+    );
+}
+
+/// **Below the band `E` says so and prompts for nothing.**
+#[test]
+fn rfc050_below_the_band_e_says_so_and_does_not_prompt() {
+    let mut view = orientation_view(0, None, Some("abc123"));
+    view.prikk_minor = 52;
+    let (mut app, rx) = picker(
+        view,
+        vec![entry("heads/main", false)],
+        stikk_prikk::UnpublishedBranch::None,
+        0,
+    );
+    app.begin_export();
+    let banner = app.banner().expect("stikk's own reason");
+    assert!(banner.contains("0.53"), "{banner}");
+    assert!(banner.contains("0.52"), "{banner}");
+    assert!(rx.try_recv().is_err());
+    assert!(matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })));
+}
+
+/// The prompt's `Enter` dispatches the preview with the **resolved** destination; an empty
+/// path sends nothing.
+#[test]
+fn rfc050_the_export_prompt_resolves_its_path_and_refuses_an_empty_one() {
+    let mut view = orientation_view(0, None, Some("abc123"));
+    view.prikk_minor = 53;
+    let (mut app, rx) = picker(
+        view,
+        vec![entry("heads/main", false)],
+        stikk_prikk::UnpublishedBranch::None,
+        0,
+    );
+    app.begin_export();
+    // Clear the suggestion, then type nothing: the prompt stays.
+    for _ in 0..200 {
+        app.backspace();
+    }
+    app.select();
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::ExportPath { .. })
+    ));
+    assert!(rx.try_recv().is_err());
+
+    type_in(&mut app, "out.bundle");
+    app.select();
+    match next_request(&rx).kind {
+        RequestKind::ExportPreview { target } => {
+            assert_eq!(target.reff, "heads/main");
+            assert!(target.output.is_absolute(), "{}", target.output.display());
+            assert!(target.output.ends_with("out.bundle"));
+        }
+        other => panic!("expected an ExportPreview, got {other:?}"),
+    }
+}

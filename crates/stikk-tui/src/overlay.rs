@@ -224,6 +224,18 @@ pub enum Overlay {
         /// The part after the prefix, typed so far.
         typed: String,
     },
+    /// RFC 050 decision 5: where to write a branch's bundle, prefilled with stikk's suggestion.
+    ///
+    /// **A second prompt, not [`Self::BundlePath`] with a flag.** The two ask for a path and
+    /// nothing else is the same: one opens empty and reads, the other opens filled and writes,
+    /// and the notice a reader needs is different in each. One overlay with a `kind` would
+    /// carry a branch name no opening prompt has.
+    ExportPath {
+        /// The branch being exported, for the heading.
+        reff: String,
+        /// The path typed so far, prefilled with stikk's suggestion.
+        typed: String,
+    },
     /// RFC 050 decision 3: the path of a bundle file to open.
     ///
     /// **Its own overlay, not [`Self::RefName`]'s.** That prompt fixes a prefix (`heads/` or
@@ -243,6 +255,13 @@ pub enum Overlay {
         target: String,
         /// The message typed so far.
         typed: String,
+    },
+    /// RFC 050 decision 5: prikk's own lines after an export, **verbatim and in order** — the
+    /// tip block, the object count and its own continuity note about the author keys. There is
+    /// no `--format json` for the command, so nothing is parsed.
+    ExportResult {
+        /// prikk's printed lines, exactly as it printed them.
+        printed: Vec<String>,
     },
     /// RFC 050 decision 4: prikk's own lines after an import, **verbatim and in order** —
     /// including its note that no local ref was created or advanced and no MAINTAINER key was
@@ -355,11 +374,13 @@ impl Overlay {
                 ..
             } => " New tag ",
             Self::BundlePath { .. } => " Open a bundle ",
+            Self::ExportPath { .. } => " Export a bundle ",
             Self::TagMessage { .. } => " Tag message ",
             Self::RefWriteResult { kind, .. } => kind.done_title(),
             Self::SwitchResult { .. } => " Switched ",
             Self::MergeResult { .. } => " Merged ",
             Self::ImportResult { .. } => " Imported ",
+            Self::ExportResult { .. } => " Exported ",
         }
     }
 }
@@ -401,6 +422,9 @@ pub fn render(
             area,
         ),
         Overlay::BundlePath { typed } => render_bundle_path(typed, palette, frame, area),
+        Overlay::ExportPath { reff, typed } => {
+            render_export_path(reff, typed, palette, frame, area);
+        }
         Overlay::Refusal { card, cursor } => render_refusal(card, *cursor, palette, frame, area),
         Overlay::Stale {
             operation,
@@ -479,6 +503,7 @@ pub fn render(
         }
         Overlay::MergeResult { printed } => render_merge_result(printed, palette, frame, area),
         Overlay::ImportResult { printed } => render_import_result(printed, palette, frame, area),
+        Overlay::ExportResult { printed } => render_export_result(printed, palette, frame, area),
     }
 }
 
@@ -612,6 +637,11 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
             palette,
             "I",
             "import the open bundle as a received branch (in Bundle)",
+        ),
+        key_line(
+            palette,
+            "E",
+            "export this branch to a bundle file (in the ref picker)",
         ),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
@@ -2328,6 +2358,56 @@ fn render_bundle_path(typed: &str, palette: &Palette, frame: &mut Frame, area: R
     .render(frame, area);
 }
 
+/// RFC 050 decision 5: where to write a branch's bundle, **prefilled** with stikk's suggestion.
+///
+/// **The suggestion is outside the repository by construction** (the repository's parent), so a
+/// reader who accepts it never meets the one rule stikk adds. The notice says both rules anyway,
+/// because the reader editing the path is the one who needs them.
+fn render_export_path(reff: &str, typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
+    let mut prose = labelled(
+        "Export ",
+        &identifier(reff),
+        PANEL_TEXT_WIDTH,
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        Style::default().fg(palette.accent),
+    );
+    prose.push(Line::from(""));
+    for row in wrap_indented(
+        "A path is required. stikk writes nowhere inside the repository -- the bundle would sit \
+         in your worktree as an untracked file -- and never over a file that is already there. \
+         A relative path is taken from the directory stikk was started in.",
+        PANEL_TEXT_WIDTH,
+        "  ",
+    ) {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+    prose.push(Line::from(""));
+
+    let actions = vec![
+        Line::from(vec![
+            Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
+            Span::styled(inert(typed), Style::default().fg(palette.fg)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Enter to continue \u{b7} Esc to cancel",
+            Style::default().fg(palette.accent),
+        )),
+    ];
+
+    Panel {
+        title: " Export a bundle ",
+        width: CONFIRM_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
 /// RFC 044 decision 5: a tag's message, prompted after its name. **Empty is a valid answer** — it
 /// sends no `-m`, which is prikk's own shape for a tag that carries no message, so the footer says
 /// so rather than leaving the reader to guess that Enter on an empty line is allowed here and
@@ -2615,6 +2695,54 @@ fn render_import_result(printed: &[String], palette: &Palette, frame: &mut Frame
 
     Panel {
         title: " Imported ",
+        width: SEAL_WIDTH,
+        prose,
+        actions: vec![Line::from(Span::styled(
+            "  Enter \u{b7} Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// The result of an export that landed (RFC 050 decision 5).
+///
+/// **prikk's lines verbatim, and nothing of stikk's.** prikk names the tip block, the object
+/// count and its own continuity note about the author keys; there is nothing here a reader will
+/// discover by surprise, so stikk adds no sentence -- unlike a merge, where the worktree's being
+/// unchanged is exactly such a surprise.
+fn render_export_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            "  the bundle is written",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    if !printed.is_empty() {
+        prose.push(Line::from(Span::styled(
+            "  prikk reported \u{2014}",
+            Style::default().fg(palette.dim),
+        )));
+        for line in printed {
+            let inert_line = inert(line);
+            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
+                prose.push(Line::from(vec![
+                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
+                    Span::styled(
+                        row.get(QUOTE_INDENT.len()..)
+                            .unwrap_or_default()
+                            .to_string(),
+                        Style::default().fg(palette.fg),
+                    ),
+                ]));
+            }
+        }
+    }
+
+    Panel {
+        title: " Exported ",
         width: SEAL_WIDTH,
         prose,
         actions: vec![Line::from(Span::styled(

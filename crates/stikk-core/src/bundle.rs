@@ -22,8 +22,8 @@ use std::path::Path;
 
 use stikk_model::{RequestCategory, Result};
 use stikk_prikk::{
-    BundleConflict, BundleImport, BundlePreview, BundlePreviewRead, BundleVerify, Connectivity,
-    Prikk, bundle_tip,
+    BundleConflict, BundleExport, BundleImport, BundlePreview, BundlePreviewRead, BundleVerify,
+    Connectivity, Prikk, bundle_tip,
 };
 
 use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
@@ -512,6 +512,220 @@ fn blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
             merge_plan: None,
         },
     )
+}
+
+// -------------------------------------------------------------------------------------------
+// Export (RFC 050 decision 5; Handoff B)
+// -------------------------------------------------------------------------------------------
+
+/// stikk's own short name for the operation, used in stale and declined messages.
+pub const EXPORT_OPERATION: &str = "export";
+
+/// **Why stikk will not export a tag** (decision 5). Not measured, and a bundle of a tag is not
+/// a thing this RFC claims to know the shape of.
+pub const TAGS_ARE_NOT_EXPORTED: &str = "stikk exports a branch. A tag has not been measured here, so stikk does not offer it — \
+     `prikk bundle export --ref <tag>` does it without stikk.";
+
+/// **Why stikk will not export a received ref** (decision 5). Received history is somebody
+/// else's bundle already; re-exporting it is not what the key is for.
+pub const RECEIVED_IS_NOT_EXPORTED: &str = "This is received history, not a branch of yours. stikk exports your own branches; \
+     `prikk bundle export --ref <ref>` exports anything prikk will.";
+
+/// **Why stikk will not export a closed branch** (decision 5).
+pub const CLOSED_IS_NOT_EXPORTED: &str =
+    "This branch is closed. stikk exports an open branch; reopening is prikk's to do.";
+
+/// **Why stikk will not export a branch with no published history** (decision 5). There is no
+/// ref for prikk to walk a closure from.
+pub const UNPUBLISHED_IS_NOT_EXPORTED: &str = "This branch has nothing published yet, so there is no history to put in a bundle. Seal \
+     first.";
+
+/// **stikk's own reason, below the band**, for the export key.
+#[must_use]
+pub fn export_unavailable(minor: u32) -> String {
+    format!(
+        "Exporting a bundle needs prikk ≥ 0.{BUNDLE_FROM_MINOR} — this prikk is 0.{minor}. The \
+         rest of stikk works."
+    )
+}
+
+/// **Why stikk will not write a bundle inside the repository** (decision 5, `C-E2`).
+///
+/// prikk writes one there happily, and it then sits in the worktree as an untracked file: the
+/// next `commit --from-worktree` captures it, and a bundle of a branch's history inside that
+/// branch's history is not something anyone asked for.
+pub const INSIDE_THE_REPOSITORY: &str = "That path is inside this repository. The bundle would sit in your worktree as an untracked \
+     file, and the next commit would capture it. Choose a path outside the repository.";
+
+/// **Why stikk will not overwrite** (decision 5). prikk refuses this too, without `--force`;
+/// stikk says it first, and names what to do, because the reader is about to be told `no` by a
+/// program they did not run.
+pub const DESTINATION_EXISTS: &str =
+    "A file is already there. stikk does not overwrite it — choose another name.";
+
+/// The sentence under the export card, in stikk's own words — **with no name in it**.
+const EXPORT_CONSEQUENCE: &str = "One ref's history is written to that file: the blocks, the patches and the recorded \
+     author-key material. Nothing in the repository changes, and no key is used. Whoever you \
+     send it to can read it with `prikk bundle verify` before importing anything.";
+
+/// What an export can say before it runs.
+#[derive(Debug)]
+pub enum ExportPreview {
+    /// stikk will not run it, and says why in its own voice.
+    Blocked(String),
+    /// Ready to confirm.
+    Ready {
+        /// The confirmation token.
+        token: Box<PreviewToken>,
+    },
+}
+
+/// The ref and the destination an export is run with, kept together.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportTarget {
+    /// The branch whose closure is written.
+    pub reff: String,
+    /// The file to write — resolved, and what the card showed.
+    pub output: std::path::PathBuf,
+}
+
+/// The destination stikk suggests for `reff`: the repository's parent, the branch's last
+/// segment, and the tip's short id (decision 5).
+///
+/// **Outside the repository by construction**, because that is where the one rule stikk adds
+/// says it must go — a reader who accepts the suggestion never meets [`INSIDE_THE_REPOSITORY`].
+#[must_use]
+pub fn suggested_destination(repo: &Path, reff: &str, tip: &str) -> std::path::PathBuf {
+    let leaf = reff.rsplit('/').next().unwrap_or(reff);
+    let parent = repo.parent().unwrap_or(repo);
+    parent.join(format!("{leaf}-{}.bundle", short(tip)))
+}
+
+/// Preview exporting `reff` to `output`.
+///
+/// **Two rules, and both are stikk's** (decision 5). prikk would write inside the repository and
+/// would refuse an existing file in its own words; stikk refuses the first outright and the
+/// second first, naming what to do. **A missing directory is prikk's refusal**, shown verbatim:
+/// stikk does not pre-check it, because prikk's message already says which directory and stikk
+/// adding a check would be a second opinion about the same filesystem.
+///
+/// # Errors
+/// Propagates every [`stikk_model::StikkError`] the ref and history reads raise.
+pub fn export_preview(
+    prikk: &impl Prikk,
+    repo: &Path,
+    reff: &str,
+    output: &Path,
+) -> Result<ExportPreview> {
+    let reff = reff.to_string();
+    let output = output.to_path_buf();
+    let intent = Intent {
+        category: RequestCategory::Exchange,
+        operation: EXPORT_OPERATION,
+    };
+    let (view, token): (ReadView, _) = confirm::preview(prikk, repo, intent, || {
+        // **The rows the picker declined are re-asked here**, as a merge re-asks its guards: a
+        // branch can be closed between the key and the confirmation.
+        if let Some(reason) = not_exportable(prikk, repo, &reff)? {
+            return Ok(export_blocked(&reason));
+        }
+        // **`C-E2`'s own check, resolved** -- the same control that keeps stikk's state files
+        // out of every repository, applied to the one file stikk asks prikk to write.
+        if stikk_state::paths::ensure_outside_repository(&output, Some(repo)).is_err() {
+            return Ok(export_blocked(INSIDE_THE_REPOSITORY));
+        }
+        // **Existence, and nothing more.** Whether the *directory* is there is prikk's to say.
+        if output.exists() {
+            return Ok(export_blocked(DESTINATION_EXISTS));
+        }
+        let tip = prikk
+            .history(repo, &reff, 1)?
+            .blocks
+            .first()
+            .map(|block| short(&block.block_id));
+        let mut target_ids = vec![confirm::TargetId::named("branch", reff.clone())];
+        target_ids.extend(tip.map(|tip| confirm::TargetId::named("tip", tip)));
+        target_ids.push(confirm::TargetId::named(
+            "file",
+            output.display().to_string(),
+        ));
+        Ok((
+            ReadView::Ready,
+            ConfirmationSummary {
+                operation: "Export".to_string(),
+                target_ids,
+                counts: Vec::new(),
+                capability: None,
+                consequence: EXPORT_CONSEQUENCE.to_string(),
+                target_name: None,
+                signing_key_id: None,
+                signing_key_claim: confirm::KeyClaim::None,
+                signing_key_is_published_example: false,
+                branch_notice: None,
+                freezes: None,
+                history_notice: None,
+                rename_note: None,
+                declaration_notices: Vec::new(),
+                message_note: None,
+                materializes: None,
+                merge_plan: None,
+            },
+        ))
+    })?;
+    Ok(match view {
+        ReadView::Blocked(reason) => ExportPreview::Blocked(reason),
+        ReadView::Ready => ExportPreview::Ready {
+            token: Box::new(token),
+        },
+    })
+}
+
+/// The four rows stikk will not export, from freshly read refs.
+fn not_exportable(prikk: &impl Prikk, repo: &Path, reff: &str) -> Result<Option<String>> {
+    if reff.starts_with("tags/") {
+        return Ok(Some(TAGS_ARE_NOT_EXPORTED.to_string()));
+    }
+    if reff.starts_with(RECEIVED_PREFIX) {
+        return Ok(Some(RECEIVED_IS_NOT_EXPORTED.to_string()));
+    }
+    let refs = prikk.refs(repo)?;
+    let Some(entry) = refs.refs.iter().find(|entry| entry.name == reff) else {
+        // Not in the list at all is the unpublished row: the picker offers it, and prikk has
+        // nothing to walk a closure from.
+        return Ok(Some(UNPUBLISHED_IS_NOT_EXPORTED.to_string()));
+    };
+    if entry.closed {
+        return Ok(Some(CLOSED_IS_NOT_EXPORTED.to_string()));
+    }
+    if entry.received {
+        return Ok(Some(RECEIVED_IS_NOT_EXPORTED.to_string()));
+    }
+    Ok(None)
+}
+
+/// Export the ref this token was previewed for.
+///
+/// # Errors
+/// As [`export_preview`], plus every refusal prikk raises -- a missing directory among them.
+pub fn export_confirm_and_execute(
+    prikk: &impl Prikk,
+    repo: &Path,
+    token: PreviewToken,
+    readiness: stikk_model::Readiness,
+    evidence: Evidence,
+    target: &ExportTarget,
+) -> Result<Outcome<BundleExport>> {
+    let confirmed = confirm::confirm(prikk, repo, token, readiness, evidence)?;
+    confirm::execute(prikk, repo, confirmed, || {
+        prikk.bundle_export(repo, &target.reff, &target.output)
+    })
+}
+
+/// A blocked export still needs a summary for the token; nothing shows it.
+fn export_blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
+    let (_, mut summary) = blocked(reason);
+    summary.operation = "Export".to_string();
+    (ReadView::Blocked(reason.to_string()), summary)
 }
 
 #[cfg(test)]

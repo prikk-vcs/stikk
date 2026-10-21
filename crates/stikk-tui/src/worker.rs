@@ -211,6 +211,22 @@ pub(crate) enum RequestKind {
         /// The file and the received branch (must match the preview's).
         target: stikk_core::ImportTarget,
     },
+    /// Preview exporting a branch to a file (RFC 050 Handoff B).
+    ExportPreview {
+        /// The branch and the resolved destination.
+        target: stikk_core::ExportTarget,
+    },
+    /// Confirm and run the export this token was previewed for.
+    ExportConfirmExecute {
+        /// The armed token.
+        token: Box<stikk_core::PreviewToken>,
+        /// The session's signing readiness, read on the UI thread as every other write does.
+        readiness: stikk_model::Readiness,
+        /// The reader's answer.
+        evidence: stikk_core::Evidence,
+        /// The branch and the destination (must match the preview's).
+        target: stikk_core::ExportTarget,
+    },
     /// Open a bundle file: verify it, and preview it against the local branch of its own name
     /// (RFC 050 Handoff A).
     OpenBundle {
@@ -283,6 +299,10 @@ pub(crate) enum ResponseKind {
     ImportPreview(Result<stikk_core::ImportPreview>),
     /// Answers [`RequestKind::ImportConfirmExecute`].
     ImportConfirmExecute(Result<stikk_core::Outcome<stikk_prikk::BundleImport>>),
+    /// Answers [`RequestKind::ExportPreview`].
+    ExportPreview(Result<stikk_core::ExportPreview>),
+    /// Answers [`RequestKind::ExportConfirmExecute`].
+    ExportConfirmExecute(Result<stikk_core::Outcome<stikk_prikk::BundleExport>>),
     /// Answers [`RequestKind::MergePreview`].
     MergePreview(Result<stikk_core::MergePreview>),
     /// Answers [`RequestKind::MergeConfirmExecute`].
@@ -353,6 +373,8 @@ impl RequestKind {
             Self::OpenBundle { .. } => "bundle",
             Self::ImportPreview { .. } => "import preview",
             Self::ImportConfirmExecute { .. } => "import",
+            Self::ExportPreview { .. } => "export preview",
+            Self::ExportConfirmExecute { .. } => "export",
             Self::MergePreview { .. } => "merge preview",
             Self::MergeConfirmExecute { .. } => "merge",
             Self::SwitchConfirmExecute { .. } => "switch",
@@ -525,6 +547,17 @@ pub(crate) fn run(
                     stikk_core::BUNDLE_LINEAGE_LIMIT,
                 ))
             }
+            RequestKind::ExportPreview { target } => ResponseKind::ExportPreview(
+                stikk_core::export_preview(prikk, repo, &target.reff, &target.output),
+            ),
+            RequestKind::ExportConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                target,
+            } => ResponseKind::ExportConfirmExecute(stikk_core::export_confirm_and_execute(
+                prikk, repo, *token, readiness, evidence, &target,
+            )),
             RequestKind::ImportConfirmExecute {
                 token,
                 readiness,

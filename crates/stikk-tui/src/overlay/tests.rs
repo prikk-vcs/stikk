@@ -1277,9 +1277,9 @@ fn coverage(overlay: &Overlay) -> Coverage {
         // RFC 044 decision 5: a prompt. Its prose is fixed and its input is one row; the affordance
         // region holds both, so there is nothing selectable and nothing that grows without bound.
         Overlay::RefName { .. } | Overlay::TagMessage { .. } => Coverage::NoSelection,
-        // RFC 050 decision 3: the same shape, for a path. Its prose is fixed and its input is one
-        // row, which the affordance region holds with the footer.
-        Overlay::BundlePath { .. } => Coverage::NoSelection,
+        // RFC 050 decisions 3 and 5: the same shape, for a path. Prose is fixed and the input
+        // is one row, which the affordance region holds with the footer.
+        Overlay::BundlePath { .. } | Overlay::ExportPath { .. } => Coverage::NoSelection,
         // RFC 044 decision 8: a content card. prikk prints four lines at most today, but the count
         // is prikk's, not stikk's, so it is treated as content that can grow.
         Overlay::RefWriteResult { .. } => Coverage::NoSelection,
@@ -1291,7 +1291,9 @@ fn coverage(overlay: &Overlay) -> Coverage {
         Overlay::MergeResult { .. } => Coverage::NoSelection,
         // RFC 050 decision 4: a content card carrying prikk's import lines and stikk's one
         // sentence. Six lines today, but the count is prikk's, so it can grow.
-        Overlay::ImportResult { .. } => Coverage::NoSelection,
+        // RFC 050 decisions 4 and 5: content cards carrying prikk's lines. The counts are
+        // prikk's, so both are treated as content that can grow.
+        Overlay::ImportResult { .. } | Overlay::ExportResult { .. } => Coverage::NoSelection,
     }
 }
 
@@ -1647,6 +1649,28 @@ fn cases() -> Vec<Case> {
                     .collect(),
             }),
             last_row: "Enter · Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "ExportPath",
+            build: Box::new(|_| Overlay::ExportPath {
+                reff: "heads/".to_string() + &"a-long-branch-".repeat(4),
+                typed: "/home/someone/".to_string() + &"a-long-folder-".repeat(4) + "v2.bundle",
+            }),
+            last_row: "Esc to cancel".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "ExportResult",
+            build: Box::new(|_| Overlay::ExportResult {
+                printed: vec![
+                    "wrote the bundle".to_string(),
+                    format!("tip block: {}", "7".repeat(64)),
+                    "author key material: 1 present (continuity only, not a trust decision)"
+                        .to_string(),
+                ],
+            }),
+            last_row: "Esc to dismiss".to_string(),
             entry: None,
         },
         Case {
@@ -3895,5 +3919,126 @@ fn capture_the_import_result_at_80x24() {
     assert!(
         flattened(&text).contains("Taking its work into a branch of yours is a merge"),
         "{text}"
+    );
+}
+
+/// The card `E` raises for an open, published branch and a destination outside the repository.
+///
+/// **Built by `stikk_core::export_preview`**, for the reason the merge and import fixtures give.
+fn export_summary(out: &std::path::Path) -> stikk_core::ConfirmationSummary {
+    let backend = stikk_prikk::NullBackend::supported()
+        .with_version(0, 53, 0)
+        .with_refs(vec![stikk_prikk::RefEntry {
+            name: "heads/main".to_string(),
+            id: "e".repeat(64),
+            closed: false,
+            received: false,
+        }])
+        .with_history_of(
+            "heads/main",
+            stikk_prikk::History {
+                reff: "heads/main".to_string(),
+                blocks: vec![stikk_prikk::BlockRow {
+                    block_id: "6d17f5f225b7".to_string() + &"0".repeat(52),
+                    ref_state_id: "r".repeat(64),
+                    update_seq: 3,
+                    kind: "Normal".to_string(),
+                    rollback_block: false,
+                    parents: 1,
+                    patches: 1,
+                    rollback_patches: 0,
+                    required_attestations: 0,
+                    messages: Vec::new(),
+                    previous_ref_state: None,
+                }],
+            },
+        );
+    let preview = stikk_core::export_preview(
+        &backend,
+        std::path::Path::new("/home/someone/work/my-repo"),
+        "heads/main",
+        out,
+    )
+    .expect("a preview");
+    let stikk_core::ExportPreview::Ready { token } = preview else {
+        panic!("an open published branch exports");
+    };
+    token.summary().clone()
+}
+
+/// **Capture: the export confirmation at 80×24.**
+#[test]
+fn capture_the_export_confirmation_at_80x24() {
+    let dir = std::env::temp_dir().join(format!("stikk-export-cap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a scratch directory");
+    let out = dir.join("main-6d17f5f225b7.bundle");
+
+    let overlay = Overlay::Confirmation {
+        summary: Box::new(export_summary(&out)),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("{text}");
+    assert!(text.contains("Export"), "{text}");
+    assert!(text.contains("branch"), "{text}");
+    assert!(text.contains("heads/main"), "{text}");
+    assert!(text.contains("tip"), "{text}");
+    assert!(text.contains("6d17f5f225b7"), "{text}");
+    assert!(text.contains("Consumes: no signing key"), "{text}");
+    assert!(text.contains("Enter to confirm"), "{text}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **Capture: the inside-the-repository refusal at 80×24.** It is a banner, so what is captured
+/// is the sentence; the shell draws it above the view the reader is on.
+#[test]
+fn capture_the_inside_the_repository_refusal() {
+    let repo = std::env::temp_dir().join(format!("stikk-export-in-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(&repo).expect("a scratch repository");
+    let backend = stikk_prikk::NullBackend::supported()
+        .with_version(0, 53, 0)
+        .with_refs(vec![stikk_prikk::RefEntry {
+            name: "heads/main".to_string(),
+            id: "e".repeat(64),
+            closed: false,
+            received: false,
+        }]);
+    let preview =
+        stikk_core::export_preview(&backend, &repo, "heads/main", &repo.join("out.bundle"))
+            .expect("a preview");
+    let stikk_core::ExportPreview::Blocked(reason) = preview else {
+        panic!("a destination inside the repository is declined");
+    };
+    println!("{reason}");
+    assert_eq!(reason, stikk_core::INSIDE_THE_REPOSITORY);
+    // It says what would happen, and what to do instead.
+    assert!(reason.contains("untracked file"), "{reason}");
+    assert!(reason.contains("outside the repository"), "{reason}");
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// **Capture: the export result at 80×24** — prikk's lines, and nothing of stikk's.
+#[test]
+fn capture_the_export_result_at_80x24() {
+    let overlay = Overlay::ExportResult {
+        printed: vec![
+            "wrote the bundle".to_string(),
+            "tip block: 6d17f5f225b7d0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70819"
+                .to_string(),
+            "objects: 6".to_string(),
+            "author key material: 1 present (continuity only, not a trust decision)".to_string(),
+        ],
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("{text}");
+    assert!(text.contains("Exported"), "{text}");
+    assert!(text.contains("wrote the bundle"), "{text}");
+    assert!(
+        flattened(&text).contains("not a trust decision"),
+        "prikk's continuity note is kept: {text}"
     );
 }

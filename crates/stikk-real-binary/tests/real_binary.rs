@@ -7492,26 +7492,34 @@ fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
     }
 }
 
-/// A [`Prikk`] that counts `bundle_preview` and delegates everything else to the real backend —
-/// so a leg can prove a bundle prikk refused to verify was **never previewed**, against the real
-/// binary rather than against a fake.
-struct CountingPreviews {
+/// A [`Prikk`] that counts the three bundle calls stikk must sometimes **not** make, and
+/// delegates everything else to the real backend — so a leg can prove, against the real binary
+/// rather than against a fake, that a refused bundle was never previewed and that a guard
+/// declined without importing.
+struct CountingWrites {
     inner: CliBackend,
     /// Atomic rather than a `Cell`: [`Prikk`] is `Sync`, as every backend the worker thread
-    /// holds must be, and a counter is the whole of this wrapper's state.
+    /// holds must be, and counters are the whole of this wrapper's state.
     previews: std::sync::atomic::AtomicUsize,
+    /// How many times `bundle_import` was spawned. **The number the guard legs assert is
+    /// zero** (RFC 050 F2): a guard that declines after the write would be no guard.
+    imports: std::sync::atomic::AtomicUsize,
+    /// How many times `bundle_export` was spawned, for the two destination rules.
+    exports: std::sync::atomic::AtomicUsize,
 }
 
-impl CountingPreviews {
+impl CountingWrites {
     fn new(bin: &PrikkBin) -> Self {
         Self {
             inner: CliBackend::with_program(&bin.path),
             previews: std::sync::atomic::AtomicUsize::new(0),
+            imports: std::sync::atomic::AtomicUsize::new(0),
+            exports: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 }
 
-impl Prikk for CountingPreviews {
+impl Prikk for CountingWrites {
     fn handshake(&self) -> stikk_model::Result<stikk_prikk::Handshake> {
         self.inner.handshake()
     }
@@ -7659,6 +7667,25 @@ impl Prikk for CountingPreviews {
         self.previews
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.bundle_preview(repo, path, local_ref)
+    }
+    fn bundle_import(
+        &self,
+        repo: &std::path::Path,
+        path: &std::path::Path,
+    ) -> stikk_model::Result<stikk_prikk::BundleImport> {
+        self.imports
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.bundle_import(repo, path)
+    }
+    fn bundle_export(
+        &self,
+        repo: &std::path::Path,
+        ref_name: &str,
+        output: &std::path::Path,
+    ) -> stikk_model::Result<stikk_prikk::BundleExport> {
+        self.exports
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.bundle_export(repo, ref_name, output)
     }
 }
 
@@ -7858,7 +7885,7 @@ fn rfc050_a_truncated_bundle_is_refused_and_never_previewed() {
         return;
     }
     let fixture = Fixture::build(&bin);
-    let counting = CountingPreviews::new(&bin);
+    let counting = CountingWrites::new(&bin);
     let repo = fixture.repo().to_path_buf();
     let root = repo
         .parent()
@@ -7957,7 +7984,7 @@ fn rfc050_below_the_band_a_bundle_is_unavailable() {
         "the floor is below the band"
     );
     let fixture = Fixture::build(&bin);
-    let counting = CountingPreviews::new(&bin);
+    let counting = CountingWrites::new(&bin);
     let repo = fixture.repo().to_path_buf();
     let nowhere = repo.join("not-a-bundle.bundle");
 

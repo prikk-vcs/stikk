@@ -2968,3 +2968,179 @@ fn prikks_bundle_vocabularies_round_trip_and_are_closed() {
     }
     assert_eq!(crate::EffectKind::parse("renamed"), None);
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 050 Handoff B — `bundle import`, `bundle export`, and the one pinned line.
+
+/// `bundle import`'s report at 0.53, from `measure050b-0.53.txt` as that file holds it.
+const IMPORT_OUT: &str = "received remotes/heads/main\n\
+     RefState: 89ab4b25e0c3826a679db6d1754d01351665cfb8b3c8f7b2c7a2b4d880b96b0b\n\
+     objects: 9\n\
+     new objects: 3\n\
+     author key material: 1 recorded (continuity only, not a trust decision)\n\
+     note: no local ref was created or advanced, and no MAINTAINER key was trusted; this \
+     repository now holds the received history at remotes/heads/main, which `prikk log --ref \
+     remotes/heads/main` and `prikk show` read, and `prikk verify` checks once `trust maintainer \
+     add` trusts the sealing key\n";
+
+/// **The argument vector, and `--force` is not in it** (decision 5, §7 trap 1). prikk refuses an
+/// existing destination without it, and that refusal is the behaviour stikk wants.
+#[cfg(unix)]
+#[test]
+fn bundle_export_never_passes_force_and_keeps_a_spaced_path_whole() {
+    let (script, argv) = fake_plan_prikk("bexport-args", "0.53.0", "wrote the bundle\n", "", 0);
+    let backend = CliBackend::with_program(&script);
+    retrying_transient_exec_busy(|| {
+        backend.bundle_export(
+            std::path::Path::new("."),
+            "heads/main",
+            std::path::Path::new("/tmp/my bundles/out.bundle"),
+        )
+    })
+    .expect("an export runs");
+    let argv = recorded_argv(&argv);
+    assert_eq!(
+        argv,
+        vec![
+            "bundle",
+            "export",
+            "--ref",
+            "heads/main",
+            "--output",
+            "/tmp/my bundles/out.bundle"
+        ]
+    );
+    assert!(
+        !argv.iter().any(|a| a == "--force"),
+        "stikk never overwrites: {argv:?}"
+    );
+}
+
+/// `bundle import`'s argument vector, and its lines kept whole — prikk's *"no local ref was
+/// created or advanced"* note among them.
+#[cfg(unix)]
+#[test]
+fn bundle_import_sends_one_input_argument_and_keeps_prikks_note() {
+    let (script, argv) = fake_plan_prikk("bimport-args", "0.53.0", IMPORT_OUT, "", 0);
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.bundle_import(
+            std::path::Path::new("."),
+            std::path::Path::new("/tmp/my bundles/v1.bundle"),
+        )
+    })
+    .expect("an import runs");
+    assert_eq!(
+        recorded_argv(&argv),
+        vec!["bundle", "import", "--input", "/tmp/my bundles/v1.bundle"]
+    );
+    let crate::BundleImport::Done(lines) = out else {
+        panic!("an import that ran: {out:?}");
+    };
+    assert_eq!(lines.len(), 6, "{lines:#?}");
+    assert_eq!(lines[0], "received remotes/heads/main");
+    assert!(
+        lines[5].contains("no local ref was created or advanced"),
+        "{}",
+        lines[5]
+    );
+}
+
+/// **Below the band neither write spawns anything**, and *unavailable* is not *failed*.
+#[cfg(unix)]
+#[test]
+fn below_the_band_neither_bundle_write_spawns_anything() {
+    let (script, argv) = fake_plan_prikk("bwrite-band", "0.52.0", IMPORT_OUT, "", 0);
+    let backend = CliBackend::with_program(&script);
+    let imported = retrying_transient_exec_busy(|| {
+        backend.bundle_import(
+            std::path::Path::new("."),
+            std::path::Path::new("/tmp/v1.bundle"),
+        )
+    })
+    .expect("below the band is not an error");
+    assert_eq!(imported, crate::BundleImport::Unavailable);
+    let exported = retrying_transient_exec_busy(|| {
+        backend.bundle_export(
+            std::path::Path::new("."),
+            "heads/main",
+            std::path::Path::new("/tmp/out.bundle"),
+        )
+    })
+    .expect("below the band is not an error");
+    assert_eq!(exported, crate::BundleExport::Unavailable);
+    assert!(
+        recorded_argv(&argv).is_empty(),
+        "no bundle command was run: {:?}",
+        recorded_argv(&argv)
+    );
+}
+
+/// **The one pinned line**, found in prikk's real verification — and nothing else of that prose
+/// read.
+#[test]
+fn the_tip_line_is_read_from_prikks_verification() {
+    let printed: Vec<String> = VERIFY_OUT.lines().map(ToString::to_string).collect();
+    assert_eq!(
+        crate::bundle_tip(&printed).expect("the line is there"),
+        "33b2b1bb2183deade7783dd25bdd37b101206e12280b16096731849be62901a9"
+    );
+}
+
+/// **Missing, repeated or malformed is a shape error** (`UD-02`), never a guess: this value
+/// decides whether an import is offered, and a wrong one would offer an import that moves a
+/// received branch backwards.
+#[test]
+fn a_missing_repeated_or_malformed_tip_line_refuses() {
+    let good = "tip block: 33b2b1bb2183deade7783dd25bdd37b101206e12280b16096731849be62901a9";
+
+    let absent: Vec<String> = VERIFY_OUT
+        .lines()
+        .filter(|line| !line.trim().starts_with("tip block:"))
+        .map(ToString::to_string)
+        .collect();
+    let error = crate::bundle_tip(&absent).expect_err("no line, no tip");
+    assert!(
+        error.to_string().contains("no `tip block:` line"),
+        "{error}"
+    );
+
+    let twice: Vec<String> = VERIFY_OUT
+        .lines()
+        .flat_map(|line| {
+            if line.trim().starts_with("tip block:") {
+                vec![line.to_string(), line.to_string()]
+            } else {
+                vec![line.to_string()]
+            }
+        })
+        .collect();
+    let error = crate::bundle_tip(&twice).expect_err("two lines, no tip");
+    assert!(
+        error.to_string().contains("more than one"),
+        "stikk does not choose which tip to believe: {error}"
+    );
+
+    // Short, upper-case and not-hex each refuse: a value that is not a block id compares
+    // unequal against every id in the lineage, which would turn the older-bundle guard into no
+    // guard at all rather than into a visible failure.
+    for bad in [
+        "tip block: 33b2b1bb",
+        "tip block: 33B2B1BB2183DEADE7783DD25BDD37B101206E12280B16096731849BE62901A9",
+        "tip block: zzb2b1bb2183deade7783dd25bdd37b101206e12280b16096731849be62901a9",
+        "tip block:",
+    ] {
+        let printed = vec![bad.to_string()];
+        let error = crate::bundle_tip(&printed).map_or_else(
+            |error| error.to_string(),
+            |tip| panic!("`{bad}` is not a block id, but parsed as `{tip}`"),
+        );
+        assert!(
+            error.contains("64 lowercase hex"),
+            "`{bad}`: the refusal must say what stikk could not read: {error}"
+        );
+    }
+    // The good one still parses, so the loop above is not asserting against a function that
+    // refuses everything.
+    assert!(crate::bundle_tip(&[good.to_string()]).is_ok());
+}

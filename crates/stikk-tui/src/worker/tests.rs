@@ -218,6 +218,21 @@ impl Prikk for Recording {
         self.inner.bundle_preview(repo, path, local_ref)
     }
 
+    fn bundle_import(&self, repo: &Path, path: &Path) -> Result<stikk_prikk::BundleImport> {
+        self.record("bundle_import");
+        self.inner.bundle_import(repo, path)
+    }
+
+    fn bundle_export(
+        &self,
+        repo: &Path,
+        ref_name: &str,
+        output: &Path,
+    ) -> Result<stikk_prikk::BundleExport> {
+        self.record("bundle_export");
+        self.inner.bundle_export(repo, ref_name, output)
+    }
+
     fn merge(
         &self,
         repo: &Path,

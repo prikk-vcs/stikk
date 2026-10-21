@@ -981,6 +981,55 @@ impl Prikk for CliBackend {
         parse_json::bundle_preview(&out).map(|read| crate::BundlePreview::Read(Box::new(read)))
     }
 
+    fn bundle_import(&self, repo: &Path, path: &Path) -> Result<crate::BundleImport> {
+        if Prikk::handshake(self)?.version.minor < crate::EXCHANGE_FROM_MINOR {
+            return Ok(crate::BundleImport::Unavailable);
+        }
+        // **No readiness check, unlike `write_ref`** (RFC 050 decision 2): measured at 0.53, an
+        // import succeeds with no key configured at all, and prikk says in its own report that
+        // no MAINTAINER key was trusted. A gate here would demand a key for an operation that
+        // signs nothing.
+        let out = self.run(
+            Some(repo),
+            RequestCategory::Exchange,
+            [
+                OsStr::new("bundle"),
+                OsStr::new("import"),
+                OsStr::new("--input"),
+                path.as_os_str(),
+            ],
+        )?;
+        Ok(crate::BundleImport::Done(printed_lines(&out)))
+    }
+
+    fn bundle_export(
+        &self,
+        repo: &Path,
+        ref_name: &str,
+        output: &Path,
+    ) -> Result<crate::BundleExport> {
+        if Prikk::handshake(self)?.version.minor < crate::EXCHANGE_FROM_MINOR {
+            return Ok(crate::BundleExport::Unavailable);
+        }
+        let out = self.run(
+            Some(repo),
+            RequestCategory::Exchange,
+            [
+                OsStr::new("bundle"),
+                OsStr::new("export"),
+                OsStr::new("--ref"),
+                OsStr::new(ref_name),
+                OsStr::new("--output"),
+                output.as_os_str(),
+                // **And no `--force`** (decision 5, §7 trap 1). prikk refuses an existing file
+                // without it; that refusal is the behaviour stikk wants, so the flag that
+                // removes it is never built here -- not behind a parameter, not behind a
+                // condition. There is nothing for a later caller to switch on.
+            ],
+        )?;
+        Ok(crate::BundleExport::Done(printed_lines(&out)))
+    }
+
     fn switch_branch(&self, repo: &Path, name: &str) -> Result<crate::SwitchResult> {
         // **Banded before anything else** (RFC 045 decision 4): below the band nothing is
         // spawned, not even the readiness read.

@@ -808,6 +808,37 @@ pub struct BundleEffect {
     pub after_bytes: Option<u64>,
 }
 
+/// What `bundle import` printed, or why stikk did not run it (RFC 050 decision 1).
+///
+/// **Never parsed for state.** There is no `--format json` for the command, and what the
+/// repository now holds is read back from `branch list` and `log`, which stikk parses already.
+/// prikk's note that *"no local ref was created or advanced, and no MAINTAINER key was
+/// trusted"* is part of what the reader must see, so it travels with the rest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BundleImport {
+    /// prikk ran and exited 0. **Its printed lines, verbatim**, for the result card.
+    Done(Vec<String>),
+    /// Below [`crate::EXCHANGE_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
+}
+
+/// What `bundle export` printed, or why stikk did not run it (RFC 050 decision 1).
+///
+/// **Its own type, not [`BundleImport`]**, although the two carry the same shape: an export
+/// writes a file outside the repository and an import writes received history inside it. They
+/// have different result cards and different reasons for existing, and sharing the enum would
+/// make the result layer ask *which kind of bundle write was this* where the caller already
+/// knows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BundleExport {
+    /// prikk ran and exited 0. **Its printed lines, verbatim**, for the result card.
+    Done(Vec<String>),
+    /// Below [`crate::EXCHANGE_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
+}
+
 /// `bundle preview --format json` (`bundle-preview-v1`), or why stikk did not run it (RFC 050
 /// decision 1).
 ///
@@ -1924,6 +1955,100 @@ pub trait Prikk: Send + Sync {
         path: &Path,
         local_ref: Option<&str>,
     ) -> Result<BundlePreview>;
+
+    /// Store a bundle as a received branch: `prikk bundle import --input <path>`.
+    ///
+    /// **It writes `remotes/<bundle_ref>` and nothing of yours** (F1, measured): prikk says so
+    /// itself — *"no local ref was created or advanced, and no MAINTAINER key was trusted"* —
+    /// and that note is part of what the reader must see, so the lines travel verbatim.
+    ///
+    /// **Needs no key**, and the category is [`stikk_model::RequestCategory::Exchange`], whose
+    /// signing requirement is `ReadWrite` for exactly this reason. **Never parsed for state**:
+    /// there is no `--format json`, and what the repository now holds is read back from
+    /// `branch list` and `log`.
+    ///
+    /// **The two guards stikk adds are above this seam** (F2): the seam's job is to run what it
+    /// is told. `stikk_core::bundle` asks them inside the preview, and declines without
+    /// reaching here.
+    ///
+    /// **Banded at [`crate::EXCHANGE_FROM_MINOR`]**: below it nothing is spawned and the answer
+    /// is [`BundleImport::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: prikk's own refusal for a file it will not read, verbatim
+    /// (`ER-02`), or whatever stopped it running.
+    fn bundle_import(&self, repo: &Path, path: &Path) -> Result<BundleImport>;
+
+    /// Write one ref's closure to a file: `prikk bundle export --ref <ref> --output <output>`.
+    ///
+    /// **Never `--force`** (decision 5). prikk refuses an existing file without it, and stikk
+    /// does not overwrite: the refusal is the behaviour stikk wants, so the flag that removes it
+    /// is never passed. A missing directory is prikk's refusal too, shown verbatim.
+    ///
+    /// **Needs no key** (F1, measured): an export reads history and writes a file outside the
+    /// repository. The category is [`stikk_model::RequestCategory::Exchange`], whose signing
+    /// requirement is `ReadWrite` for exactly this reason.
+    ///
+    /// **Banded at [`crate::EXCHANGE_FROM_MINOR`]**: below it nothing is spawned and the answer
+    /// is [`BundleExport::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: prikk's own refusal for a destination it will not write or a
+    /// ref it cannot find, verbatim (`ER-02`), or whatever stopped it running.
+    fn bundle_export(&self, repo: &Path, ref_name: &str, output: &Path) -> Result<BundleExport>;
+}
+
+/// The one line a bundle's tip is read from: `tip block: <64 lowercase hex>`, in
+/// [`Prikk::bundle_verify`]'s output (RFC 050 decision 4, F3).
+///
+/// **Exactly one, matched exactly** — RFC 047 decision 2's rule for `evidence outcome:`, and for
+/// the same reason. This value decides whether stikk offers the import at all: compared with the
+/// received branch's lineage it is what catches a bundle older than what the repository already
+/// received, which prikk itself does not report (F2) and its preview cannot detect (F3). A
+/// missing, repeated or malformed line is an environment error (`UD-02`), and import is not
+/// offered. **Nothing else of that prose is read.**
+///
+/// A free function, not a seam method: it reads lines the caller already holds and spawns
+/// nothing.
+///
+/// # Errors
+/// [`stikk_model::StikkError::Environment`] when the line is absent, when there is more than
+/// one, or when its value is not 64 lowercase hex digits.
+pub fn bundle_tip(printed: &[String]) -> Result<String> {
+    const LABEL: &str = "tip block:";
+    let mut found = printed
+        .iter()
+        .filter_map(|line| line.trim().strip_prefix(LABEL))
+        .map(str::trim);
+    let Some(value) = found.next() else {
+        return Err(stikk_model::StikkError::environment_msg(
+            "prikk's bundle verification carries no `tip block:` line; stikk will not guess at \
+             the bundle's tip, and will not offer an import without it",
+        ));
+    };
+    if found.next().is_some() {
+        return Err(stikk_model::StikkError::environment_msg(
+            "prikk's bundle verification carries more than one `tip block:` line; stikk will not \
+             choose which tip to believe",
+        ));
+    }
+    // **64 lowercase hex, checked here** — the same shape `ObjectId::parse` enforces everywhere
+    // else a block id crosses this boundary (`INV-9`). A short or upper-case value compares
+    // unequal against the lineage's own ids, which would silently turn the older-bundle guard
+    // into no guard at all.
+    if value.len() != 64
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+    {
+        let mut escaped = String::new();
+        escape::escape_into(&mut escaped, value);
+        return Err(stikk_model::StikkError::environment_msg(format!(
+            "prikk's bundle verification reports a tip stikk cannot read as a block id (64 \
+             lowercase hex): {escaped}"
+        )));
+    }
+    Ok(value.to_string())
 }
 
 #[cfg(test)]

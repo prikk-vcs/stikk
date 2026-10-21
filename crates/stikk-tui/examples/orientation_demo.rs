@@ -122,6 +122,19 @@ impl Prikk for SlowOrientation {
         self.0.bundle_preview(repo, path, local_ref)
     }
 
+    fn bundle_import(&self, repo: &Path, path: &Path) -> Result<stikk_prikk::BundleImport> {
+        self.0.bundle_import(repo, path)
+    }
+
+    fn bundle_export(
+        &self,
+        repo: &Path,
+        ref_name: &str,
+        output: &Path,
+    ) -> Result<stikk_prikk::BundleExport> {
+        self.0.bundle_export(repo, ref_name, output)
+    }
+
     fn merge(
         &self,
         repo: &Path,

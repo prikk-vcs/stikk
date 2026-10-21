@@ -80,6 +80,16 @@ pub struct NullBackend {
     merge: Scripted<crate::MergeResult>,
     /// What [`Prikk::bundle_verify`] answers (RFC 050).
     bundle_verify: Scripted<crate::BundleVerify>,
+    /// What [`Prikk::bundle_import`] answers (RFC 050).
+    bundle_import: Scripted<crate::BundleImport>,
+    /// How many times [`Prikk::bundle_import`] has been asked — so a test can prove a guard
+    /// declined **without spawning it** (F2's whole point). Shared across clones.
+    bundle_import_calls: Arc<AtomicUsize>,
+    /// What [`Prikk::bundle_export`] answers (RFC 050).
+    bundle_export: Scripted<crate::BundleExport>,
+    /// How many times [`Prikk::bundle_export`] has been asked — as
+    /// [`Self::bundle_import_calls`], for the two destination rules.
+    bundle_export_calls: Arc<AtomicUsize>,
     /// What [`Prikk::bundle_preview`] answers (RFC 050). **Its own slot, not `bundle_verify`'s**:
     /// the pair is read together, and a core test that shows a refused verify stopping before the
     /// preview needs to script the two independently.
@@ -170,6 +180,10 @@ impl NullBackend {
             bundle_verify: Ok(crate::BundleVerify::Unavailable),
             bundle_preview: Ok(crate::BundlePreview::Unavailable),
             bundle_preview_calls: Arc::new(AtomicUsize::new(0)),
+            bundle_import: Ok(crate::BundleImport::Unavailable),
+            bundle_import_calls: Arc::new(AtomicUsize::new(0)),
+            bundle_export: Ok(crate::BundleExport::Unavailable),
+            bundle_export_calls: Arc::new(AtomicUsize::new(0)),
             state: Ok(StateReport::Listed(StateFiles {
                 target_block: String::new(),
                 files: Vec::new(),
@@ -507,6 +521,51 @@ impl NullBackend {
         self.bundle_preview_calls.load(Ordering::SeqCst)
     }
 
+    /// Answer [`Prikk::bundle_import`] with prikk's lines, as an import that ran (RFC 050).
+    #[must_use]
+    pub fn with_bundle_import(mut self, printed: Vec<String>) -> Self {
+        self.bundle_import = Ok(crate::BundleImport::Done(printed));
+        self
+    }
+
+    /// Fail [`Prikk::bundle_import`], so a test can show prikk's refusal reaching the usual path
+    /// verbatim.
+    #[must_use]
+    pub fn with_bundle_import_refusal(mut self, message: impl Into<String>) -> Self {
+        self.bundle_import = Err(message.into());
+        self
+    }
+
+    /// How many times [`Prikk::bundle_import`] has been asked of this backend (and its clones).
+    ///
+    /// **The number a guard test asserts is zero**: RFC 050 F2's guards exist to decline
+    /// *without* importing, and a guard that declines after the write would be no guard.
+    #[must_use]
+    pub fn bundle_import_calls(&self) -> usize {
+        self.bundle_import_calls.load(Ordering::SeqCst)
+    }
+
+    /// Answer [`Prikk::bundle_export`] with prikk's lines, as an export that ran (RFC 050).
+    #[must_use]
+    pub fn with_bundle_export(mut self, printed: Vec<String>) -> Self {
+        self.bundle_export = Ok(crate::BundleExport::Done(printed));
+        self
+    }
+
+    /// Fail [`Prikk::bundle_export`], so a test can show prikk's refusal -- a missing directory,
+    /// a ref it cannot find -- reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_bundle_export_refusal(mut self, message: impl Into<String>) -> Self {
+        self.bundle_export = Err(message.into());
+        self
+    }
+
+    /// How many times [`Prikk::bundle_export`] has been asked of this backend (and its clones).
+    #[must_use]
+    pub fn bundle_export_calls(&self) -> usize {
+        self.bundle_export_calls.load(Ordering::SeqCst)
+    }
+
     /// Answer [`Prikk::verify`] with `verification` (RFC 040).
     #[must_use]
     pub fn with_verification(mut self, verification: crate::Verification) -> Self {
@@ -777,6 +836,21 @@ impl Prikk for NullBackend {
     ) -> Result<crate::BundlePreview> {
         self.bundle_preview_calls.fetch_add(1, Ordering::SeqCst);
         deliver(&self.bundle_preview)
+    }
+
+    fn bundle_import(&self, _repo: &Path, _path: &Path) -> Result<crate::BundleImport> {
+        self.bundle_import_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.bundle_import)
+    }
+
+    fn bundle_export(
+        &self,
+        _repo: &Path,
+        _ref_name: &str,
+        _output: &Path,
+    ) -> Result<crate::BundleExport> {
+        self.bundle_export_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.bundle_export)
     }
 
     fn block_state(

@@ -232,6 +232,42 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
         }
     }
 
+    // ---- what can be done here, and only where it can.
+    //
+    // **The view advertises `I` exactly when the key would act** (RFC 050 Handoff B §3b): the
+    // same `received_branch()` answers both, so a bundle whose tip line stikk could not read
+    // shows no key rather than a key whose preview would only block.
+    lines.push(Line::from(""));
+    if let Some(received) = view.received_branch() {
+        for row in crate::view::wrap_hanging(
+            &format!(
+                "I imports this as {}, after a confirmation.",
+                identifier(&received)
+            ),
+            width,
+            TOP,
+            "    ",
+        ) {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.accent),
+            )));
+        }
+    } else {
+        // **Why there is no key**, rather than its silent absence: prikk's verification is on
+        // screen above, and a reader comparing the two should not have to infer the link.
+        for row in wrap_indented(
+            "stikk could not read a tip block from prikk's verification above, so it cannot              tell whether this bundle is older than work you have already received — and does              not offer to import it.",
+            width,
+            TOP,
+        ) {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.warn),
+            )));
+        }
+    }
+
     // ---- who sealed it, and prikk's note that this is not trust.
     lines.push(Line::from(""));
     if view.preview.sealed_by.is_empty() {

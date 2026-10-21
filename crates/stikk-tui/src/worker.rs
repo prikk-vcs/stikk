@@ -195,6 +195,22 @@ pub(crate) enum RequestKind {
         /// The branch whose work would come in -- the marked one, `--from`.
         from: String,
     },
+    /// Preview importing a bundle (RFC 050 Handoff B).
+    ImportPreview {
+        /// The file and the received branch the card will name.
+        target: stikk_core::ImportTarget,
+    },
+    /// Confirm and run the import this token was previewed for.
+    ImportConfirmExecute {
+        /// The armed token.
+        token: Box<stikk_core::PreviewToken>,
+        /// The session's signing readiness, read on the UI thread as every other write does.
+        readiness: stikk_model::Readiness,
+        /// The reader's answer.
+        evidence: stikk_core::Evidence,
+        /// The file and the received branch (must match the preview's).
+        target: stikk_core::ImportTarget,
+    },
     /// Open a bundle file: verify it, and preview it against the local branch of its own name
     /// (RFC 050 Handoff A).
     OpenBundle {
@@ -263,6 +279,10 @@ pub(crate) enum ResponseKind {
     MergePlan(Result<stikk_core::MergePlanRead>),
     /// Answers [`RequestKind::OpenBundle`].
     OpenBundle(Result<stikk_core::BundleOpened>),
+    /// Answers [`RequestKind::ImportPreview`].
+    ImportPreview(Result<stikk_core::ImportPreview>),
+    /// Answers [`RequestKind::ImportConfirmExecute`].
+    ImportConfirmExecute(Result<stikk_core::Outcome<stikk_prikk::BundleImport>>),
     /// Answers [`RequestKind::MergePreview`].
     MergePreview(Result<stikk_core::MergePreview>),
     /// Answers [`RequestKind::MergeConfirmExecute`].
@@ -331,6 +351,8 @@ impl RequestKind {
             Self::SwitchPreview { .. } => "switch preview",
             Self::MergePlan { .. } => "merge plan",
             Self::OpenBundle { .. } => "bundle",
+            Self::ImportPreview { .. } => "import preview",
+            Self::ImportConfirmExecute { .. } => "import",
             Self::MergePreview { .. } => "merge preview",
             Self::MergeConfirmExecute { .. } => "merge",
             Self::SwitchConfirmExecute { .. } => "switch",
@@ -495,6 +517,22 @@ pub(crate) fn run(
             RequestKind::OpenBundle { path } => {
                 ResponseKind::OpenBundle(stikk_core::open_bundle(prikk, repo, &path))
             }
+            RequestKind::ImportPreview { target } => {
+                ResponseKind::ImportPreview(stikk_core::import_preview(
+                    prikk,
+                    repo,
+                    &target.path,
+                    stikk_core::BUNDLE_LINEAGE_LIMIT,
+                ))
+            }
+            RequestKind::ImportConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                target,
+            } => ResponseKind::ImportConfirmExecute(stikk_core::import_confirm_and_execute(
+                prikk, repo, *token, readiness, evidence, &target,
+            )),
             RequestKind::SwitchConfirmExecute {
                 token,
                 readiness,

@@ -466,6 +466,9 @@ pub struct App {
     /// shared one: a merge is the only flow that carries three names through a confirmation,
     /// and folding it into another pending would make both ask *which kind is this*.
     pending_merge: Option<PendingMerge>,
+    /// The import in flight, if any (RFC 050 decision 4). Its own slot, not `pending_merge`'s:
+    /// the two carry different targets and neither can be in flight while the other is.
+    pending_import: Option<PendingImport>,
     /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
     /// check compares against it; `None` until the first stamp, and no check is sent before it.
     stamp: Option<ChangeToken>,
@@ -632,6 +635,31 @@ enum PendingSwitch {
     },
 }
 
+/// See [`App::pending_import`] (RFC 050 decision 4).
+///
+/// **The same three states a merge keeps**, and for the same reasons: the target is needed
+/// again after the request that carried it is gone, because success re-reads the ref lists and
+/// opens the received branch's History.
+enum PendingImport {
+    /// `Overlay::Loading` is on the stack; a [`RequestKind::ImportPreview`] is in flight.
+    AwaitingPreview {
+        /// The file and the received branch.
+        target: stikk_core::ImportTarget,
+    },
+    /// The preview succeeded; `token` is armed and `Overlay::Confirmation` awaits a yes.
+    Confirming {
+        /// Feed this into [`stikk_core::import_confirm_and_execute`].
+        token: Box<stikk_core::PreviewToken>,
+        /// The file and the received branch (must match the preview's).
+        target: stikk_core::ImportTarget,
+    },
+    /// Confirm+execute is in flight.
+    Executing {
+        /// The file and the received branch the import ran with.
+        target: stikk_core::ImportTarget,
+    },
+}
+
 /// See [`App::pending_merge`] (RFC 047 decision 6).
 enum PendingMerge {
     /// `Overlay::Loading` is on the stack; a [`RequestKind::MergePreview`] is in flight.
@@ -758,6 +786,7 @@ impl App {
             pending_ref_write: None,
             pending_switch: None,
             pending_merge: None,
+            pending_import: None,
             ref_rows: Vec::new(),
             session: None,
             stored: None,
@@ -1687,6 +1716,164 @@ impl App {
         self.pending_merge = Some(PendingMerge::AwaitingPreview { target });
     }
 
+    /// Begin the import the open Bundle view describes (the `I` key; RFC 050 decision 4).
+    ///
+    /// **Only where the view has prikk's verification and its tip line** (§3b): without the tip
+    /// there is no older-bundle guard, and an import with no guard is the one F2 measured. The
+    /// view does not advertise `I` in that state either, so this is the same answer twice --
+    /// here because a key must not act on a screen that does not offer it.
+    pub fn begin_import(&mut self) {
+        self.banner = None;
+        let Some(Screen::Bundle { view, .. }) = self.screens.last() else {
+            return;
+        };
+        let stikk_core::BundleOpened::Read(view) = view.as_ref() else {
+            return;
+        };
+        let Some(received) = view.received_branch() else {
+            return;
+        };
+        let target = stikk_core::ImportTarget {
+            path: std::path::PathBuf::from(&view.path),
+            received,
+        };
+        let seq = self.dispatch(RequestKind::ImportPreview {
+            target: target.clone(),
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "import preview",
+            seq,
+        });
+        self.pending_import = Some(PendingImport::AwaitingPreview { target });
+    }
+
+    /// The confirmation step's `Enter` for a pending import: Tier Two, and no key.
+    fn submit_import_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingImport::Confirming { token, target }) = self.pending_import.take() else {
+            return; // no import is actually pending
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let seq = self.dispatch(RequestKind::ImportConfirmExecute {
+            token,
+            readiness,
+            evidence,
+            target: target.clone(),
+        });
+        self.overlays.push(Overlay::Loading {
+            what: "import",
+            seq,
+        });
+        self.pending_import = Some(PendingImport::Executing { target });
+    }
+
+    /// Answers [`RequestKind::ImportPreview`]. A block is a banner; the Bundle view stays open
+    /// underneath it, which is where the reader can see prikk's own words.
+    fn apply_import_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::ImportPreview>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale: the reader navigated away before the preview resolved
+        };
+        let pending = self.pending_import.take();
+        match result {
+            Ok(stikk_core::ImportPreview::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            Ok(stikk_core::ImportPreview::Ready { token }) => {
+                let Some(PendingImport::AwaitingPreview { target }) = pending else {
+                    self.overlays.remove(index);
+                    return; // defensive: nothing to confirm without this
+                };
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::Confirmation {
+                        summary: Box::new(token.summary().clone()),
+                        tier: token.tier(),
+                        typed: String::new(),
+                        error: None,
+                    };
+                }
+                self.pending_import = Some(PendingImport::Confirming { token, target });
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Bundle);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::ImportConfirmExecute`].
+    ///
+    /// On success: prikk's lines verbatim on the result card, the ref lists re-read, and
+    /// **focus moves to the received branch with its History open** (`FR-091`). Unlike a merge,
+    /// this is a move the reader asked for: they pointed stikk at a file and said import it,
+    /// and what arrived is a branch they have never seen. Leaving them on the Bundle view
+    /// would make them go and find it.
+    fn apply_import_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::BundleImport>>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        let target = match self.pending_import.take() {
+            Some(
+                PendingImport::Executing { target } | PendingImport::Confirming { target, .. },
+            ) => Some(target),
+            Some(PendingImport::AwaitingPreview { .. }) | None => None,
+        };
+        match result {
+            Ok(outcome) => match outcome.result {
+                stikk_prikk::BundleImport::Done(printed) => {
+                    if let Some(slot) = self.overlays.get_mut(index) {
+                        *slot = Overlay::ImportResult { printed };
+                    }
+                    if let Some(target) = target {
+                        self.clear_ref_mark_on_ref_change(&target.received);
+                        self.ref_focus = RefFocus::Ref(target.received.clone());
+                        let seq = self.dispatch(RequestKind::History {
+                            reff: target.received,
+                        });
+                        self.screens.push(Screen::Loading {
+                            what: "history",
+                            seq,
+                        });
+                    }
+                    self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
+                    self.dispatch(RequestKind::Refs);
+                }
+                // The band is checked before the key offers anything, so this is only reachable
+                // if prikk changed under the session.
+                stikk_prikk::BundleImport::Unavailable => {
+                    self.overlays.remove(index);
+                    self.banner = Some(stikk_core::bundle_unavailable(
+                        self.prikk_minor().unwrap_or_default(),
+                    ));
+                }
+            },
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Bundle);
+            }
+        }
+    }
+
     /// The confirmation step's `Enter` for a pending merge: Tier Three, as seal's is.
     fn submit_merge_confirmation(&mut self, tier: Tier, typed: &str) {
         let Some(PendingMerge::Confirming { token, target }) = self.pending_merge.take() else {
@@ -2030,6 +2217,8 @@ impl App {
                     self.submit_switch_confirmation(tier, &typed);
                 } else if self.pending_merge.is_some() {
                     self.submit_merge_confirmation(tier, &typed);
+                } else if self.pending_import.is_some() {
+                    self.submit_import_confirmation(tier, &typed);
                 }
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
@@ -2048,7 +2237,8 @@ impl App {
                 | Overlay::SealResult { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
-                | Overlay::MergeResult { .. },
+                | Overlay::MergeResult { .. }
+                | Overlay::ImportResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -2530,7 +2720,8 @@ impl App {
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
-                | Overlay::MergeResult { .. },
+                | Overlay::MergeResult { .. }
+                | Overlay::ImportResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
@@ -2602,7 +2793,8 @@ impl App {
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
-                | Overlay::MergeResult { .. },
+                | Overlay::MergeResult { .. }
+                | Overlay::ImportResult { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { view, cursor, .. }) => {
@@ -2670,8 +2862,10 @@ impl App {
                 self.pending_ref_write = None;
             }
             // RFC 045: the same posture for a switch, which shares `Confirmation` with the rest.
+            // RFC 050: and for an import, which shares it too.
             if matches!(overlay, Overlay::Confirmation { .. }) {
                 self.pending_switch = None;
+                self.pending_import = None;
             }
             // Cancelling the consent step abandons the seal it belonged to (RFC 016 §8) — the same
             // posture, one step later in seal's own flow.
@@ -2725,6 +2919,8 @@ impl App {
             // **Whether the *read* succeeded, never whether the bundle is sound.** A file prikk
             // refuses is a successful read of a refusal, the same posture Verify takes.
             ResponseKind::OpenBundle(r) => r.is_ok(),
+            ResponseKind::ImportPreview(r) => r.is_ok(),
+            ResponseKind::ImportConfirmExecute(r) => r.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -2761,6 +2957,10 @@ impl App {
                 self.apply_merge_confirm_execute(seq, result);
             }
             ResponseKind::OpenBundle(result) => self.apply_open_bundle(seq, result),
+            ResponseKind::ImportPreview(result) => self.apply_import_preview(seq, result),
+            ResponseKind::ImportConfirmExecute(result) => {
+                self.apply_import_confirm_execute(seq, result);
+            }
         }
         // **One flush point for every transition a response completes** (RFC 046 decision 4):
         // the view that just landed, the focus a switch just moved, the picker's pick once its

@@ -4745,10 +4745,11 @@ fn rfc050_the_answer_is_a_screen_whether_prikk_read_it_or_not() {
     }
 }
 
-/// **The Bundle view is a leaf and nothing on it acts** (Handoff A §4c): `Enter` does nothing,
-/// and `↑`/`↓` scroll it as they scroll Verify.
+/// **`Enter` does nothing on the Bundle view** -- the view is not a list and has nothing to
+/// drill into; `I` is the one key that acts there (Handoff B §3b), and it is its own key for
+/// that reason. `↑`/`↓` scroll it as they scroll Verify.
 #[test]
-fn rfc050_nothing_on_the_bundle_view_acts_and_the_arrows_scroll_it() {
+fn rfc050_enter_does_nothing_on_the_bundle_view_and_the_arrows_scroll_it() {
     let (mut app, rx) = bundle_app(53);
     app.begin_open_bundle();
     type_in(&mut app, "/tmp/v1.bundle");
@@ -4780,4 +4781,173 @@ fn rfc050_nothing_on_the_bundle_view_acts_and_the_arrows_scroll_it() {
         panic!("the Bundle view");
     };
     assert_eq!(offset.get(), 0);
+}
+
+// =============================================================================================
+// RFC 050 Handoff B — `I` on the Bundle view, the card, and where the reader lands.
+// =============================================================================================
+
+/// The Bundle view, read, with `tip` as prikk's pinned `tip block:` value.
+fn bundle_screen(app: &mut App, rx: &mpsc::Receiver<Request>, tip: Option<&str>) {
+    let verified: Vec<String> = [
+        "bundle verifies: heads/main".to_string(),
+        "objects: 6".to_string(),
+    ]
+    .into_iter()
+    .chain(tip.map(|tip| format!("tip block: {tip}")))
+    .collect();
+    let preview = stikk_prikk::BundlePreviewRead {
+        bundle_ref: "heads/main".to_string(),
+        local_ref: "heads/main".to_string(),
+        connectivity: stikk_prikk::Connectivity::FastForward,
+        conflict: Some(stikk_prikk::BundleConflict::AppliesCleanly),
+        conflict_detail: None,
+        sealed_by: vec!["z-maint".to_string()],
+        sealed_by_note: "recorded signer identity, continuity only -- not a trust decision"
+            .to_string(),
+        effects: Vec::new(),
+        rename_note: "a moved path is not yet distinguishable".to_string(),
+    };
+    app.begin_open_bundle();
+    type_in(app, "/tmp/v1.bundle");
+    app.select();
+    let req = next_request(rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::OpenBundle(Ok(stikk_core::BundleOpened::Read(Box::new(
+            stikk_core::BundleView {
+                path: "/tmp/v1.bundle".to_string(),
+                verified,
+                preview,
+                sentence: stikk_core::WOULD_BRING_FORWARD,
+            },
+        )))),
+    });
+}
+
+const TIP: &str = "ff00000000000000000000000000000000000000000000000000000000000000";
+
+/// **`I` dispatches the preview**, naming the file and the received branch the card will show.
+#[test]
+fn rfc050_i_previews_the_import_of_the_open_bundle() {
+    let (mut app, rx) = bundle_app(53);
+    bundle_screen(&mut app, &rx, Some(TIP));
+    app.begin_import();
+    match next_request(&rx).kind {
+        RequestKind::ImportPreview { target } => {
+            assert_eq!(target.path, std::path::Path::new("/tmp/v1.bundle"));
+            assert_eq!(target.received, "remotes/heads/main");
+        }
+        other => panic!("expected an ImportPreview, got {other:?}"),
+    }
+}
+
+/// **Without the tip line, `I` does nothing and spawns nothing** — the same answer the view
+/// gives by not advertising the key.
+#[test]
+fn rfc050_i_does_nothing_on_a_bundle_whose_tip_was_not_read() {
+    let (mut app, rx) = bundle_app(53);
+    bundle_screen(&mut app, &rx, None);
+    app.begin_import();
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+    assert!(app.top_overlay().is_none(), "{:?}", app.top_overlay());
+}
+
+/// **A blocked preview is a banner**, with the Bundle view still underneath it — where prikk's
+/// own words are.
+#[test]
+fn rfc050_a_blocked_import_is_a_banner_over_the_bundle_view() {
+    let (mut app, rx) = bundle_app(53);
+    bundle_screen(&mut app, &rx, Some(TIP));
+    app.begin_import();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::ImportPreview(Ok(stikk_core::ImportPreview::Blocked(
+            stikk_core::WOULD_MOVE_THE_RECEIVED_BRANCH_BACK.to_string(),
+        ))),
+    });
+    assert_eq!(
+        app.banner(),
+        Some(stikk_core::WOULD_MOVE_THE_RECEIVED_BRANCH_BACK)
+    );
+    assert!(app.top_overlay().is_none(), "{:?}", app.top_overlay());
+    assert!(matches!(app.focus(), Focus::Bundle(..)));
+}
+
+/// **After an import the reader lands on the received branch** (`FR-091`): focus moves and its
+/// History is asked for, because what arrived is a branch they have never seen.
+#[test]
+fn rfc050_a_landed_import_moves_focus_to_the_received_branch() {
+    let (mut app, rx) = bundle_app(53);
+    bundle_screen(&mut app, &rx, Some(TIP));
+    app.begin_import();
+    let req = next_request(&rx);
+    // The preview arms, the reader says yes, and the import lands.
+    let token = stikk_core::import_preview(
+        &stikk_prikk::NullBackend::supported()
+            .with_version(0, 53, 0)
+            .with_bundle_verify(vec![format!("tip block: {TIP}")])
+            .with_bundle_preview(stikk_prikk::BundlePreviewRead {
+                bundle_ref: "heads/main".to_string(),
+                local_ref: "heads/main".to_string(),
+                connectivity: stikk_prikk::Connectivity::FastForward,
+                conflict: Some(stikk_prikk::BundleConflict::AppliesCleanly),
+                conflict_detail: None,
+                sealed_by: Vec::new(),
+                sealed_by_note: "n".to_string(),
+                effects: Vec::new(),
+                rename_note: "r".to_string(),
+            })
+            .with_refs(Vec::new()),
+        std::path::Path::new("/repo"),
+        std::path::Path::new("/tmp/v1.bundle"),
+        200,
+    )
+    .expect("a preview");
+    let stikk_core::ImportPreview::Ready { token } = token else {
+        panic!("a first import arms");
+    };
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::ImportPreview(Ok(stikk_core::ImportPreview::Ready { token })),
+    });
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::Confirmation {
+            tier: Tier::Two,
+            ..
+        })
+    ));
+    app.select(); // the confirmation's yes
+    let req = next_request(&rx);
+    assert!(matches!(req.kind, RequestKind::ImportConfirmExecute { .. }));
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::ImportConfirmExecute(Ok(stikk_core::Outcome {
+            operation: stikk_core::IMPORT_OPERATION.to_string(),
+            result: stikk_prikk::BundleImport::Done(vec![
+                "received remotes/heads/main".to_string(),
+                "note: no local ref was created or advanced".to_string(),
+            ]),
+        })),
+    });
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::ImportResult { printed }) if printed.len() == 2),
+        "{:?}",
+        app.top_overlay()
+    );
+    assert_eq!(
+        app.focused_ref(),
+        Some("remotes/heads/main"),
+        "the reader lands on what arrived"
+    );
+    assert!(
+        matches!(app.focus(), Focus::Loading("history")),
+        "its History is on its way"
+    );
+    let kinds: Vec<String> = std::iter::from_fn(|| rx.try_recv().ok())
+        .map(|req| format!("{:?}", req.kind))
+        .collect();
+    assert!(kinds.iter().any(|k| k.starts_with("History")), "{kinds:?}");
 }

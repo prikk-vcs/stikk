@@ -1289,6 +1289,9 @@ fn coverage(overlay: &Overlay) -> Coverage {
         // RFC 047 decision 6: a content card carrying prikk's merge lines and stikk's one
         // sentence. The count is prikk's, so it can grow.
         Overlay::MergeResult { .. } => Coverage::NoSelection,
+        // RFC 050 decision 4: a content card carrying prikk's import lines and stikk's one
+        // sentence. Six lines today, but the count is prikk's, so it can grow.
+        Overlay::ImportResult { .. } => Coverage::NoSelection,
     }
 }
 
@@ -1644,6 +1647,21 @@ fn cases() -> Vec<Case> {
                     .collect(),
             }),
             last_row: "Enter · Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "ImportResult",
+            build: Box::new(|_| Overlay::ImportResult {
+                printed: vec![
+                    "received remotes/heads/main".to_string(),
+                    format!("RefState: {}", "9".repeat(64)),
+                    "note: no local ref was created or advanced, and no MAINTAINER key was \
+                     trusted; this repository now holds the received history at \
+                     remotes/heads/main"
+                        .to_string(),
+                ],
+            }),
+            last_row: "Esc to dismiss".to_string(),
             entry: None,
         },
         Case {
@@ -3772,6 +3790,110 @@ fn capture_the_merge_result_at_80x24() {
     assert!(flowed.contains("The worktree is unchanged."), "{text}");
     assert!(
         flowed.contains("(s in the ref picker) to have its files."),
+        "{text}"
+    );
+}
+
+// =============================================================================================
+// RFC 050 Handoff B — the import card and its result.
+//
+// **Built by `stikk_core::import_preview`, not written here**, for the reason the merge card's
+// fixture gives: a copy of the consequence in this file would drift from the one that ships,
+// which is how a capture stops being evidence.
+// =============================================================================================
+
+/// The card `I` raises for a bundle newer than anything received.
+fn import_summary() -> stikk_core::ConfirmationSummary {
+    const TIP: &str = "ff2b1bb2183deade7783dd25bdd37b101206e12280b16096731849be62901a99";
+    let backend = stikk_prikk::NullBackend::supported()
+        .with_version(0, 53, 0)
+        .with_bundle_verify(vec![
+            "bundle verifies: heads/main".to_string(),
+            format!("tip block: {TIP}"),
+            "author key material: 1 present (continuity only, not a trust decision)".to_string(),
+        ])
+        .with_bundle_preview(stikk_prikk::BundlePreviewRead {
+            bundle_ref: "heads/main".to_string(),
+            local_ref: "heads/main".to_string(),
+            connectivity: stikk_prikk::Connectivity::FastForward,
+            conflict: Some(stikk_prikk::BundleConflict::AppliesCleanly),
+            conflict_detail: None,
+            sealed_by: vec!["z-maint".to_string()],
+            sealed_by_note: "recorded signer identity, continuity only -- not a trust decision"
+                .to_string(),
+            effects: Vec::new(),
+            rename_note: "a moved path is not yet distinguishable".to_string(),
+        })
+        .with_refs(Vec::new());
+    let preview = stikk_core::import_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        std::path::Path::new("/home/someone/downloads/v2.bundle"),
+        stikk_core::BUNDLE_LINEAGE_LIMIT,
+    )
+    .expect("a preview");
+    let stikk_core::ImportPreview::Ready { token } = preview else {
+        panic!("a first import arms");
+    };
+    token.summary().clone()
+}
+
+/// **Capture: the import confirmation at 80×24.**
+#[test]
+fn capture_the_import_confirmation_at_80x24() {
+    let overlay = Overlay::Confirmation {
+        summary: Box::new(import_summary()),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("{text}");
+    assert!(text.contains("Import"), "{text}");
+    // **Every row with stikk's own word for it**: which value is the branch being written and
+    // which the block being brought in is not guessable from two bare strings.
+    assert!(text.contains("received as"), "{text}");
+    assert!(text.contains("remotes/heads/main"), "{text}");
+    assert!(text.contains("tip"), "{text}");
+    assert!(text.contains("/home/someone/downloads/v2.bundle"), "{text}");
+    // **No key is claimed, and the card says so rather than leaving the row out.** `capability:
+    // None` renders *"Consumes: no signing key"*, which is the answer a reader of a write card
+    // wants stated; an absent row would read as an omission.
+    assert!(text.contains("Consumes: no signing key"), "{text}");
+    assert!(!text.contains("MAINTAINER"), "{text}");
+    assert!(!text.contains("AUTHOR"), "{text}");
+    // An explicit yes, never a typed name: Tier Two.
+    assert!(text.contains("Enter to confirm"), "{text}");
+    assert!(!text.contains("to confirm:"), "{text}");
+    // prikk's caveat is on the card, in prikk's words.
+    assert!(flattened(&text).contains("not a trust decision"), "{text}");
+}
+
+/// **Capture: the import result at 80×24** — prikk's lines, and stikk's one line about what a
+/// received branch is.
+#[test]
+fn capture_the_import_result_at_80x24() {
+    let overlay = Overlay::ImportResult {
+        printed: vec![
+            "received remotes/heads/main".to_string(),
+            "objects: 9".to_string(),
+            "new objects: 3".to_string(),
+            "note: no local ref was created or advanced, and no MAINTAINER key was trusted"
+                .to_string(),
+        ],
+    };
+    let text = draw_at(&overlay, 80, 24);
+    println!("{text}");
+    assert!(text.contains("Imported"), "{text}");
+    assert!(text.contains("received remotes/heads/main"), "{text}");
+    // prikk's note is kept whole -- it is the sentence that says nothing of the reader's moved.
+    assert!(
+        flattened(&text).contains("no local ref was created or advanced"),
+        "{text}"
+    );
+    // **stikk's own line, because prikk does not say it**: how to take this work further.
+    assert!(
+        flattened(&text).contains("Taking its work into a branch of yours is a merge"),
         "{text}"
     );
 }

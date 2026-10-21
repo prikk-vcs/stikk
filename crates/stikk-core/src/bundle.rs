@@ -20,10 +20,13 @@
 
 use std::path::Path;
 
-use stikk_model::Result;
+use stikk_model::{RequestCategory, Result};
 use stikk_prikk::{
-    BundleConflict, BundlePreview, BundlePreviewRead, BundleVerify, Connectivity, Prikk,
+    BundleConflict, BundleImport, BundlePreview, BundlePreviewRead, BundleVerify, Connectivity,
+    Prikk, bundle_tip,
 };
+
+use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken};
 
 /// The first prikk minor that offers this, re-exported so a view says the number the seam gates
 /// on -- the one-constant rule every other band follows.
@@ -138,6 +141,17 @@ impl BundleView {
     pub fn conflict_detail(&self) -> Option<&str> {
         self.preview.conflict_detail.as_deref()
     }
+
+    /// Where importing this bundle would store it: `remotes/<bundle_ref>` (measured at 0.53).
+    ///
+    /// **`None` when the tip line could not be read** (RFC 050 Handoff B §3b). Without the tip
+    /// there is no older-bundle guard, and the view must not offer a key whose preview would
+    /// only block: the one answer, in one place, for both the key and what the view advertises.
+    #[must_use]
+    pub fn received_branch(&self) -> Option<String> {
+        bundle_tip(&self.verified).ok()?;
+        Some(format!("{RECEIVED_PREFIX}{}", self.preview.bundle_ref))
+    }
 }
 
 /// stikk's sentence for prikk's connectivity and conflict.
@@ -224,6 +238,280 @@ pub fn open_bundle(prikk: &impl Prikk, repo: &Path, path: &Path) -> Result<Bundl
         preview,
         sentence,
     })))
+}
+
+// -------------------------------------------------------------------------------------------
+// Import (RFC 050 decision 4; Handoff B)
+// -------------------------------------------------------------------------------------------
+
+/// stikk's own short name for the operation, used in stale and declined messages.
+pub const IMPORT_OPERATION: &str = "import";
+
+/// How many blocks of the received branch's lineage the older-bundle guard reads.
+///
+/// **The same number the merge baseline finder reads**, and the same number History lists: a
+/// bundle stikk declines for a truncated read is one whose tip the reader could not have found
+/// by scrolling either.
+pub const BUNDLE_LINEAGE_LIMIT: usize = 200;
+
+/// The prefix prikk stores a received ref under, measured at 0.53: `bundle import` of
+/// `heads/main` writes `remotes/heads/main`.
+pub const RECEIVED_PREFIX: &str = "remotes/";
+
+/// **Why stikk will not import a bundle the received branch already holds at its tip** (F2,
+/// guard 1).
+pub const ALREADY_RECEIVED: &str = "Already received: this repository's received branch is already at this bundle's tip, so \
+     importing it would change nothing.";
+
+/// **Why stikk will not import a bundle older than what was received** (F2, guard 2) — the
+/// measurement this whole guard exists for.
+///
+/// Measured at 0.53: importing `v1` after `v2` moved `remotes/heads/main` **back** to `v1`'s
+/// tip, exit 0, with the same message as a forward import. Nothing is lost — the objects stay —
+/// but the received branch stops showing the newer work and prikk says nothing about it. A
+/// stale file in a download folder is the ordinary way to do this.
+pub const WOULD_MOVE_THE_RECEIVED_BRANCH_BACK: &str = "This bundle is older than what this repository already received: its tip is a block the \
+     received branch has already moved past. Importing it would move that branch back to the \
+     older block and hide the newer work, and prikk would report it as an ordinary import.";
+
+/// **Why stikk will not import when it cannot see far enough to tell** (F2, guard 3).
+///
+/// The guard compares the bundle's tip with the received branch's lineage. Where that lineage
+/// came back full, the tip may be older than everything read and stikk cannot distinguish that
+/// from a tip that is not in the branch at all — so it declines and names the way out rather
+/// than guessing in the direction that writes.
+pub const LINEAGE_TOO_LONG_TO_TELL: &str = "This repository's received branch is longer than stikk reads, and this bundle's tip is not \
+     among the blocks it read — so stikk cannot tell whether the bundle is older than what you \
+     already have. `prikk bundle import --input <file>` imports it without this check.";
+
+/// The sentence under the import card, in stikk's own words — **with no name in it** (RFC 044
+/// C1): `consequence` is drawn unescaped, and every name is already restated in `target_ids`.
+const IMPORT_CONSEQUENCE: &str = "The bundle is stored as a received branch, which is read-only history beside your own. No \
+     branch of yours is created or moved, nothing is written to your worktree, and nobody's \
+     signing key is trusted by this: prikk records the bundle's author-key material for \
+     continuity and says so itself.";
+
+/// **stikk's one line after an import lands**: what arrived is read-only, and the reader is
+/// now looking at it.
+pub const RECEIVED_IS_READ_ONLY: &str = "This is received history: it is read beside your own branches and nothing of yours moved. \
+     Taking its work into a branch of yours is a merge, which stikk does not offer from a \
+     received ref yet -- `prikk merge --from` does.";
+
+/// What an import can say before it runs.
+#[derive(Debug)]
+pub enum ImportPreview {
+    /// stikk will not run it, and says why in its own voice — or prikk's, where prikk refused
+    /// to read the file at all.
+    Blocked(String),
+    /// Ready to confirm.
+    Ready {
+        /// The confirmation token.
+        token: Box<PreviewToken>,
+    },
+}
+
+/// The one path an import is run with, and what the card named.
+///
+/// **A value, not a bare `&Path`**: the received branch's name is derived from the bundle and
+/// restated on the card, and carrying the two together is what keeps the card and the call
+/// describing one operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportTarget {
+    /// The file, resolved — what the card showed and what prikk is given.
+    pub path: std::path::PathBuf,
+    /// Where prikk will store it: `remotes/<bundle_ref>`.
+    pub received: String,
+}
+
+/// Preview importing the bundle at `path`.
+///
+/// **Everything is read again here**, as a merge's preview re-reads its guards: the verification,
+/// the tip, prikk's preview and the received branch's lineage. A bundle imported in another
+/// terminal between the view opening and `I` is exactly the case guard 1 exists for.
+///
+/// **The two guards decline without spawning `import`** (§7 trap 3). They are prikk's gap, not
+/// prikk's rule — prikk imports an older bundle happily and reports it as an ordinary import —
+/// so stikk asks before, not after.
+///
+/// # Errors
+/// Propagates every [`stikk_model::StikkError`] the reads raise. prikk's **refusal of the file**
+/// is not an error but a block carrying prikk's own words (`ER-02`), as in [`open_bundle`].
+pub fn import_preview(
+    prikk: &impl Prikk,
+    repo: &Path,
+    path: &Path,
+    limit: usize,
+) -> Result<ImportPreview> {
+    let shown = path.display().to_string();
+    let path = path.to_path_buf();
+    let intent = Intent {
+        category: RequestCategory::Exchange,
+        operation: IMPORT_OPERATION,
+    };
+    let (view, token): (ReadView, _) = confirm::preview(prikk, repo, intent, || {
+        // 1. Verify. A file prikk will not read is prikk's refusal, and nothing follows it.
+        let verified = match prikk.bundle_verify(&path) {
+            Ok(BundleVerify::Verified(lines)) => lines,
+            Ok(BundleVerify::Unavailable) => {
+                let minor = prikk.handshake()?.version.minor;
+                return Ok(blocked(&bundle_unavailable(minor)));
+            }
+            Err(error) => return Ok(blocked(&error.to_string())),
+        };
+        // 2. The tip, from the one pinned line. A shape error blocks: without the tip there is
+        //    no guard, and an import with no guard is the one F2 measured.
+        let tip = match bundle_tip(&verified) {
+            Ok(tip) => tip,
+            Err(error) => return Ok(blocked(&error.to_string())),
+        };
+        // 3. prikk's preview, for the bundle's own ref name and the sentence the card restates.
+        let preview = match prikk.bundle_preview(repo, &path, None)? {
+            BundlePreview::Read(read) => *read,
+            BundlePreview::Unavailable => {
+                let minor = prikk.handshake()?.version.minor;
+                return Ok(blocked(&bundle_unavailable(minor)));
+            }
+        };
+        let sentence = sentence_for(preview.connectivity, preview.conflict)?;
+        let received = format!("{RECEIVED_PREFIX}{}", preview.bundle_ref);
+        // 4. The two guards, against the received branch's own lineage -- read only where that
+        //    branch exists, because there is nothing to move back otherwise.
+        if prikk
+            .refs(repo)?
+            .refs
+            .iter()
+            .any(|entry| entry.name == received)
+            && let Some(reason) = older_than_received(prikk, repo, &received, &tip, limit)?
+        {
+            return Ok(blocked(&reason));
+        }
+        Ok((
+            ReadView::Ready,
+            ConfirmationSummary {
+                operation: "Import".to_string(),
+                // **Labelled, because neither value speaks for itself** (RFC 047 C1's rule): a
+                // bare `remotes/heads/main` beside a bare short id leaves a reader unable to
+                // say which is the branch being written and which the block being brought in.
+                target_ids: vec![
+                    confirm::TargetId::named("received as", received.clone()),
+                    confirm::TargetId::named("tip", short(&tip)),
+                    confirm::TargetId::named("file", shown.clone()),
+                ],
+                counts: Vec::new(),
+                // **No key** (decision 2): `Exchange` asks for none, and the card must not
+                // claim one is consumed.
+                capability: None,
+                consequence: IMPORT_CONSEQUENCE.to_string(),
+                target_name: None,
+                signing_key_id: None,
+                signing_key_claim: confirm::KeyClaim::None,
+                signing_key_is_published_example: false,
+                // stikk's sentence for what this would do to the local branch of that name,
+                // and prikk's own caveat, carried as the card's two notices.
+                branch_notice: Some(sentence.to_string()),
+                freezes: None,
+                history_notice: Some(preview.sealed_by_note.clone()),
+                rename_note: None,
+                declaration_notices: Vec::new(),
+                message_note: None,
+                materializes: None,
+                merge_plan: None,
+            },
+        ))
+    })?;
+    Ok(match view {
+        ReadView::Blocked(reason) => ImportPreview::Blocked(reason),
+        ReadView::Ready => ImportPreview::Ready {
+            token: Box::new(token),
+        },
+    })
+}
+
+/// The two guards F2 and F3 wrote, against the received branch's lineage.
+///
+/// `Ok(None)` means the bundle is newer than everything received, which is the only shape that
+/// imports. **Nothing here spawns `import`.**
+fn older_than_received(
+    prikk: &impl Prikk,
+    repo: &Path,
+    received: &str,
+    tip: &str,
+    limit: usize,
+) -> Result<Option<String>> {
+    let lineage = prikk.history(repo, received, limit)?;
+    let Some(head) = lineage.blocks.first() else {
+        // A received ref with no blocks is not a ref this guard can say anything about, and an
+        // import that creates history where there was none is the ordinary forward case.
+        return Ok(None);
+    };
+    if head.block_id == tip {
+        return Ok(Some(ALREADY_RECEIVED.to_string()));
+    }
+    if lineage.blocks.iter().any(|block| block.block_id == tip) {
+        return Ok(Some(WOULD_MOVE_THE_RECEIVED_BRANCH_BACK.to_string()));
+    }
+    // **A full read may be a truncated one** -- the same reading `merge_baseline` gives a
+    // lineage that came back at the limit. The tip is not among what was read; whether it is
+    // older than what was not read is exactly what stikk cannot see.
+    if lineage.blocks.len() >= limit {
+        return Ok(Some(LINEAGE_TOO_LONG_TO_TELL.to_string()));
+    }
+    Ok(None)
+}
+
+/// Import the bundle this token was previewed for.
+///
+/// # Errors
+/// As [`import_preview`], plus every refusal prikk raises.
+pub fn import_confirm_and_execute(
+    prikk: &impl Prikk,
+    repo: &Path,
+    token: PreviewToken,
+    readiness: stikk_model::Readiness,
+    evidence: Evidence,
+    target: &ImportTarget,
+) -> Result<Outcome<BundleImport>> {
+    let confirmed = confirm::confirm(prikk, repo, token, readiness, evidence)?;
+    confirm::execute(prikk, repo, confirmed, || {
+        prikk.bundle_import(repo, &target.path)
+    })
+}
+
+/// An object id, shortened the way History, seal and every preview already shorten one.
+fn short(id: &str) -> String {
+    id.chars().take(crate::confirm::SHORT_ID_CHARS).collect()
+}
+
+/// What a preview decided, before it becomes a token or a sentence.
+enum ReadView {
+    Blocked(String),
+    Ready,
+}
+
+/// A blocked preview still needs a summary for the token; nothing shows it.
+fn blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
+    (
+        ReadView::Blocked(reason.to_string()),
+        ConfirmationSummary {
+            operation: "Import".to_string(),
+            target_ids: Vec::new(),
+            counts: Vec::new(),
+            capability: None,
+            consequence: String::new(),
+            target_name: None,
+            signing_key_id: None,
+            signing_key_claim: confirm::KeyClaim::None,
+            signing_key_is_published_example: false,
+            branch_notice: None,
+            freezes: None,
+            history_notice: None,
+            rename_note: None,
+            declaration_notices: Vec::new(),
+            message_note: None,
+            materializes: None,
+            merge_plan: None,
+        },
+    )
 }
 
 #[cfg(test)]

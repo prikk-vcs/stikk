@@ -293,3 +293,27 @@ fn repository_text_in_a_path_is_rendered_inert() {
     );
     assert!(text.contains("\\u202e"), "{text}");
 }
+
+/// **The view advertises `I` exactly where the key would act** (Handoff B §3b): with the tip
+/// line, it names the received branch; without it, it says why there is no key instead of
+/// leaving a silence.
+#[test]
+fn the_import_key_is_advertised_only_when_the_tip_was_read() {
+    let text = draw_at(&fast_forward(), 80, 60, 0);
+    assert!(
+        flattened(&text).contains("I imports this as remotes/heads/main"),
+        "{text}"
+    );
+
+    let BundleOpened::Read(mut view) = fast_forward() else {
+        panic!("a read bundle");
+    };
+    view.verified.retain(|line| !line.starts_with("tip block:"));
+    let without = BundleOpened::Read(view);
+    let text = draw_at(&without, 80, 60, 0);
+    assert!(!text.contains("I imports"), "{text}");
+    assert!(
+        flattened(&text).contains("could not read a tip block"),
+        "the absence is explained, not silent: {text}"
+    );
+}

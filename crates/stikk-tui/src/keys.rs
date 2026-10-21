@@ -67,6 +67,9 @@ pub enum Action {
     /// Open a bundle file: prikk's verification and what importing it would change (RFC 050
     /// decision 3). **Reads only**: nothing is imported and nothing is written.
     OpenBundle,
+    /// Import the open bundle as a received branch (the Bundle view; RFC 050 decision 4).
+    /// **Offered only where the view read prikk's verification and its tip line.**
+    Import,
     /// Toggle the seal consent acknowledgement (RFC 016 §8) — meaningful only while
     /// [`crate::overlay::Overlay::SealConsent`] is on top; a no-op everywhere else.
     ToggleSealConsent,
@@ -126,6 +129,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('s') => Action::SwitchBranch,
         KeyCode::Char('M') => Action::MergePlan,
         KeyCode::Char('i') => Action::OpenBundle,
+        KeyCode::Char('I') => Action::Import,
         KeyCode::Char(' ') => Action::ToggleSealConsent,
         KeyCode::Char('?') => Action::OpenGlossary,
         KeyCode::Char(':') => Action::OpenPalette,

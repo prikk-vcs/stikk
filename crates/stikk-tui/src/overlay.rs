@@ -244,6 +244,14 @@ pub enum Overlay {
         /// The message typed so far.
         typed: String,
     },
+    /// RFC 050 decision 4: prikk's own lines after an import, **verbatim and in order** —
+    /// including its note that no local ref was created or advanced and no MAINTAINER key was
+    /// trusted, which is the part a reader most needs. There is no `--format json` for the
+    /// command, so there is nothing to parse and nothing is parsed.
+    ImportResult {
+        /// prikk's printed lines, exactly as it printed them.
+        printed: Vec<String>,
+    },
     /// RFC 044 decision 8: prikk's own lines after a ref write, **verbatim and in order**. There is
     /// no `--format json` for these three commands (F1), so there is nothing to parse and nothing
     /// is parsed: the new state is read back from the ref lists, and this card only shows what
@@ -351,6 +359,7 @@ impl Overlay {
             Self::RefWriteResult { kind, .. } => kind.done_title(),
             Self::SwitchResult { .. } => " Switched ",
             Self::MergeResult { .. } => " Merged ",
+            Self::ImportResult { .. } => " Imported ",
         }
     }
 }
@@ -469,6 +478,7 @@ pub fn render(
             render_switch_result(printed, noted, palette, frame, area);
         }
         Overlay::MergeResult { printed } => render_merge_result(printed, palette, frame, area),
+        Overlay::ImportResult { printed } => render_import_result(printed, palette, frame, area),
     }
 }
 
@@ -597,6 +607,11 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
             palette,
             "i",
             "open a bundle file — what it is, and what it would change",
+        ),
+        key_line(
+            palette,
+            "I",
+            "import the open bundle as a received branch (in Bundle)",
         ),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
@@ -2544,6 +2559,62 @@ fn render_merge_result(printed: &[String], palette: &Palette, frame: &mut Frame,
 
     Panel {
         title: " Merged ",
+        width: SEAL_WIDTH,
+        prose,
+        actions: vec![Line::from(Span::styled(
+            "  Enter \u{b7} Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// The result of an import that landed (RFC 050 decision 4).
+///
+/// **prikk's lines verbatim, and one line of stikk's.** prikk names the received ref, the
+/// RefState, the object counts and -- in its own note -- that no local ref was created or
+/// advanced and no MAINTAINER key was trusted. stikk adds only what prikk does not say and the
+/// reader will otherwise go looking for: that taking this work into a branch of theirs is a
+/// merge stikk does not offer from a received ref yet.
+fn render_import_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            "  the bundle is stored as a received branch",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    if !printed.is_empty() {
+        prose.push(Line::from(Span::styled(
+            "  prikk reported \u{2014}",
+            Style::default().fg(palette.dim),
+        )));
+        for line in printed {
+            let inert_line = inert(line);
+            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
+                prose.push(Line::from(vec![
+                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
+                    Span::styled(
+                        row.get(QUOTE_INDENT.len()..)
+                            .unwrap_or_default()
+                            .to_string(),
+                        Style::default().fg(palette.fg),
+                    ),
+                ]));
+            }
+        }
+        prose.push(Line::from(""));
+    }
+    for row in wrap_indented(stikk_core::RECEIVED_IS_READ_ONLY, SEAL_TEXT_WIDTH, "  ") {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+
+    Panel {
+        title: " Imported ",
         width: SEAL_WIDTH,
         prose,
         actions: vec![Line::from(Span::styled(

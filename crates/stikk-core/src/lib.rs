@@ -36,10 +36,12 @@ pub mod switch;
 pub mod verify;
 
 pub use bundle::{
-    ALREADY_HELD, BUNDLE_EFFECTS_SHOWN, BUNDLE_FROM_MINOR, BundleOpened, BundleView,
-    DIVERGED_CLEAN, DIVERGED_CONFLICT, DIVERGED_UNDETERMINED, NEW_TO_THIS_REPOSITORY,
-    SHARES_NOTHING, WOULD_BRING_FORWARD, bundle_unavailable, open_bundle, sentence_for,
-    unshown_effects_line,
+    ALREADY_HELD, ALREADY_RECEIVED, BUNDLE_EFFECTS_SHOWN, BUNDLE_FROM_MINOR, BUNDLE_LINEAGE_LIMIT,
+    BundleOpened, BundleView, DIVERGED_CLEAN, DIVERGED_CONFLICT, DIVERGED_UNDETERMINED,
+    IMPORT_OPERATION, ImportPreview, ImportTarget, LINEAGE_TOO_LONG_TO_TELL,
+    NEW_TO_THIS_REPOSITORY, RECEIVED_IS_READ_ONLY, RECEIVED_PREFIX, SHARES_NOTHING,
+    WOULD_BRING_FORWARD, WOULD_MOVE_THE_RECEIVED_BRANCH_BACK, bundle_unavailable,
+    import_confirm_and_execute, import_preview, open_bundle, sentence_for, unshown_effects_line,
 };
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{

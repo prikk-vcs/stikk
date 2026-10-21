@@ -309,3 +309,276 @@ fn prikks_two_notes_reach_the_view() {
     assert_eq!(view.preview.rename_note, RENAME_NOTE);
     assert_eq!(view.preview.effects, created_two());
 }
+
+// =============================================================================================
+// RFC 050 Handoff B — the import preview and its two guards.
+//
+// prikk's own `bundle import` report at 0.53, from `measure050b-0.53.txt`, is what success
+// carries; the guards are F2's measurement turned into a refusal that never reaches prikk.
+// =============================================================================================
+
+use stikk_prikk::{BlockRow, History};
+
+/// prikk's import report, verbatim.
+fn import_lines() -> Vec<String> {
+    [
+        "received remotes/heads/main",
+        "RefState: 89ab4b25e0c3826a679db6d1754d01351665cfb8b3c8f7b2c7a2b4d880b96b0b",
+        "objects: 9",
+        "new objects: 3",
+        "author key material: 1 recorded (continuity only, not a trust decision)",
+        "note: no local ref was created or advanced, and no MAINTAINER key was trusted; this \
+         repository now holds the received history at remotes/heads/main, which `prikk log \
+         --ref remotes/heads/main` and `prikk show` read, and `prikk verify` checks once \
+         `trust maintainer add` trusts the sealing key",
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect()
+}
+
+/// A full 64-hex block id ending in `tag`, so a lineage can hold distinguishable ones.
+fn id(tag: &str) -> String {
+    format!("{tag}{}", "0".repeat(64 - tag.len()))
+}
+
+/// `bundle verify`'s lines with `tip` as the pinned `tip block:` value.
+fn verified_with_tip(tip: &str) -> Vec<String> {
+    verified_lines()
+        .into_iter()
+        .map(|line| {
+            if line.starts_with("tip block:") {
+                format!("tip block: {tip}")
+            } else {
+                line
+            }
+        })
+        .collect()
+}
+
+fn received_entry() -> stikk_prikk::RefEntry {
+    stikk_prikk::RefEntry {
+        name: "remotes/heads/main".to_string(),
+        id: id("aa"),
+        closed: false,
+        received: true,
+    }
+}
+
+fn block(block_id: &str, seq: u64) -> BlockRow {
+    BlockRow {
+        block_id: block_id.to_string(),
+        ref_state_id: format!("rs-{block_id}"),
+        update_seq: seq,
+        kind: "Normal".to_string(),
+        rollback_block: false,
+        parents: 1,
+        patches: 1,
+        rollback_patches: 0,
+        required_attestations: 0,
+        messages: Vec::new(),
+        previous_ref_state: None,
+    }
+}
+
+/// A backend at 0.53 whose received branch holds `lineage`, newest first, and whose bundle
+/// verifies with `tip`.
+fn importing(tip: &str, lineage: Vec<BlockRow>) -> NullBackend {
+    NullBackend::supported()
+        .with_version(0, 53, 0)
+        .with_bundle_verify(verified_with_tip(tip))
+        .with_bundle_preview(preview(
+            Connectivity::FastForward,
+            Some(BundleConflict::AppliesCleanly),
+            None,
+            edited_a(),
+        ))
+        .with_bundle_import(import_lines())
+        .with_refs(vec![received_entry()])
+        .with_history_of(
+            "remotes/heads/main",
+            History {
+                reff: "remotes/heads/main".to_string(),
+                blocks: lineage,
+            },
+        )
+}
+
+fn previewed(backend: &NullBackend, limit: usize) -> ImportPreview {
+    import_preview(
+        backend,
+        Path::new("/repo"),
+        Path::new("/tmp/v1.bundle"),
+        limit,
+    )
+    .expect("a preview")
+}
+
+fn blocked_for(backend: &NullBackend, limit: usize) -> String {
+    match previewed(backend, limit) {
+        ImportPreview::Blocked(reason) => reason,
+        ImportPreview::Ready { .. } => panic!("expected a block"),
+    }
+}
+
+/// **Guard 1: the bundle is already received.** The received branch's tip *is* the bundle's
+/// tip, so importing changes nothing — and `import` is never spawned.
+#[test]
+fn an_already_received_bundle_is_declined_without_importing() {
+    let backend = importing(&id("aa"), vec![block(&id("aa"), 2), block(&id("bb"), 1)]);
+    assert_eq!(blocked_for(&backend, 200), ALREADY_RECEIVED);
+    assert_eq!(
+        backend.bundle_import_calls(),
+        0,
+        "a guard that declined after the write would be no guard"
+    );
+}
+
+/// **Guard 2: the bundle is older than what was received** — F2's measurement, as a refusal.
+#[test]
+fn an_older_bundle_is_declined_without_importing() {
+    let backend = importing(&id("bb"), vec![block(&id("aa"), 2), block(&id("bb"), 1)]);
+    let reason = blocked_for(&backend, 200);
+    assert_eq!(reason, WOULD_MOVE_THE_RECEIVED_BRANCH_BACK);
+    assert!(
+        reason.contains("move that branch back"),
+        "the reason says what would happen, not that something is wrong: {reason}"
+    );
+    assert_eq!(backend.bundle_import_calls(), 0);
+}
+
+/// **Guard 3: the lineage came back full and the tip is not in it**, so stikk cannot tell.
+/// It names prikk's own command as the way out rather than guessing in the direction that
+/// writes.
+#[test]
+fn a_lineage_longer_than_the_bound_declines_and_names_the_way_out() {
+    let lineage: Vec<BlockRow> = (0..3u64)
+        .map(|n| block(&id(&format!("c{n}")), 3 - n))
+        .collect();
+    let backend = importing(&id("ff"), lineage);
+    // The bound is what makes this case: the same lineage read with room to spare imports.
+    let reason = blocked_for(&backend, 3);
+    assert_eq!(reason, LINEAGE_TOO_LONG_TO_TELL);
+    assert!(
+        reason.contains("prikk bundle import"),
+        "the way out is named: {reason}"
+    );
+    assert_eq!(backend.bundle_import_calls(), 0);
+    assert!(matches!(
+        previewed(&backend, 200),
+        ImportPreview::Ready { .. }
+    ));
+}
+
+/// A bundle newer than everything received **arms the card**, and the card is Tier Two with no
+/// key, labelled rows, stikk's sentence and prikk's caveat.
+#[test]
+fn a_newer_bundle_arms_a_tier_two_card_that_asks_for_no_key() {
+    let backend = importing(&id("ff"), vec![block(&id("aa"), 2), block(&id("bb"), 1)]);
+    let ImportPreview::Ready { token } = previewed(&backend, 200) else {
+        panic!("a newer bundle imports");
+    };
+    assert_eq!(token.tier(), stikk_model::Tier::Two);
+    let summary = token.summary();
+    assert_eq!(summary.operation, "Import");
+    assert_eq!(
+        summary.capability, None,
+        "an import signs nothing, so the card claims no key"
+    );
+    let rows: Vec<(Option<&str>, &str)> = summary
+        .target_ids
+        .iter()
+        .map(|row| (row.role, row.id.as_str()))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (Some("received as"), "remotes/heads/main"),
+            (Some("tip"), id("ff").get(..12).expect("a short id")),
+            (Some("file"), "/tmp/v1.bundle"),
+        ]
+    );
+    assert_eq!(summary.branch_notice.as_deref(), Some(WOULD_BRING_FORWARD));
+    assert_eq!(
+        summary.history_notice.as_deref(),
+        Some("recorded signer identity, continuity only -- not a trust decision"),
+        "prikk's caveat is on the card, verbatim"
+    );
+    // The consequence is stikk's, and names nothing (RFC 044 C1).
+    for name in ["remotes/heads/main", "heads/main", "/tmp/v1.bundle"] {
+        assert!(
+            !summary.consequence.contains(name),
+            "`{name}` is a target row, not prose: {}",
+            summary.consequence
+        );
+    }
+    assert!(summary.consequence.contains("read-only history"));
+    assert!(
+        summary
+            .consequence
+            .contains("nobody's signing key is trusted by this")
+    );
+}
+
+/// **Where the received branch does not exist yet, there is nothing to move back**: the guards
+/// read no lineage and the import arms.
+#[test]
+fn a_first_import_is_not_guarded_against_a_branch_that_is_not_there() {
+    let backend = NullBackend::supported()
+        .with_version(0, 53, 0)
+        .with_bundle_verify(verified_with_tip(&id("ff")))
+        .with_bundle_preview(preview(
+            Connectivity::NoLocalHistory,
+            Some(BundleConflict::AppliesCleanly),
+            None,
+            created_two(),
+        ))
+        .with_bundle_import(import_lines())
+        .with_refs(Vec::new());
+    assert!(matches!(
+        previewed(&backend, 200),
+        ImportPreview::Ready { .. }
+    ));
+}
+
+/// **A file prikk will not verify blocks with prikk's words, and is never previewed or
+/// imported** — the same rule `open_bundle` follows, inside the preview this time.
+#[test]
+fn a_refused_file_blocks_the_import_with_prikks_words() {
+    let backend = NullBackend::supported()
+        .with_version(0, 53, 0)
+        .with_bundle_verify_refusal("error: malformed persisted data: invalid bundle magic")
+        .with_bundle_import(import_lines());
+    let reason = blocked_for(&backend, 200);
+    assert!(reason.contains("invalid bundle magic"), "{reason}");
+    assert_eq!(backend.bundle_preview_calls(), 0);
+    assert_eq!(backend.bundle_import_calls(), 0);
+}
+
+/// **No tip line, no import.** Without the pinned line there is no guard, and an import with no
+/// guard is the one F2 measured.
+#[test]
+fn a_verification_with_no_tip_line_blocks_the_import() {
+    let without: Vec<String> = verified_lines()
+        .into_iter()
+        .filter(|line| !line.starts_with("tip block:"))
+        .collect();
+    let backend = NullBackend::supported()
+        .with_version(0, 53, 0)
+        .with_bundle_verify(without)
+        .with_bundle_import(import_lines());
+    let reason = blocked_for(&backend, 200);
+    assert!(reason.contains("no `tip block:` line"), "{reason}");
+    assert_eq!(backend.bundle_preview_calls(), 0);
+    assert_eq!(backend.bundle_import_calls(), 0);
+}
+
+/// Below the band the preview blocks in stikk's own voice, and nothing is spawned.
+#[test]
+fn below_the_band_the_import_preview_blocks() {
+    let backend = NullBackend::supported().with_version(0, 52, 0);
+    let reason = blocked_for(&backend, 200);
+    assert!(reason.contains("0.53"), "{reason}");
+    assert!(reason.contains("0.52"), "{reason}");
+    assert_eq!(backend.bundle_import_calls(), 0);
+}

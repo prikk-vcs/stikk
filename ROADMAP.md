@@ -434,8 +434,8 @@ a fabricated worktree entry was fixed.
    adopting received history and trusting its sealer stay out. **The first to move to 0.17.0** if the cycle runs long.
    *(Rollback was scoped here first and withdrawn the same day, re-authorized as exchange: measured, prikk 0.53's
    rollback inverts the whole chain to the empty state, not one change. It waits on prikk.)*
-4. **The prikk 0.54.0 re-baseline**, if prikk publishes it before the cut: prikk's own Windows installer line, and its
-   `cargo binstall` fix checked. The cut does not wait for it.
+4. **The prikk 0.54 re-baseline** ([RFC 052](rfcs/accepted/052-prikk-0-54-rebaseline.md), accepted 2026-10-24; prikk 0.54.1 published 2026-10-24): prikk's own Windows installer line, and its
+   `cargo binstall` fix checked; validated through 0.54.1.
 
 5. **Arch Linux packages on the AUR** ([RFC 051](rfcs/accepted/051-arch-linux-packages.md), accepted 2026-10-21,
    [Handoff A](rfcs/handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md)): `stikk` and `stikk-bin`, kept

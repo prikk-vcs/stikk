@@ -1,6 +1,6 @@
 # RFC 052 — The prikk 0.54 re-baseline, and prikk's own Windows installer
 
-**Status.** **Proposed 2026-10-24** by the architect, as 0.16.0's conditional increment 4
+**Status.** **Accepted by the project owner 2026-10-24**; [Handoff A](../handoffs/052-prikk-0-54-rebaseline/a-rebaseline-handoff-v1.md) issued. **Proposed 2026-10-24** by the architect, as 0.16.0's conditional increment 4
 (`.git-exclude/release/0-16-0-scope.md`: *"if prikk publishes it before the cut"*). prikk **0.54.1** published
 2026-10-24 (GitHub release *Latest*, crates.io; prikk's letter 027). **No open question.**
 Measured against real prikk **0.54.1**, **0.53.0** and **0.28.0** binaries. Evidence:
@@ -81,7 +81,7 @@ consecutive edits of one file — prikk's fix.)
 
 ## Delivery
 
-**One handoff, issued on acceptance**: the ceiling, the two
+**One handoff** ([Handoff A](../handoffs/052-prikk-0-54-rebaseline/a-rebaseline-handoff-v1.md)): the ceiling, the two
 Windows scripts and their `installers.yml` assertions, the page and READMEs, `ASM-2`. Measured before review: the suite
 at 0.28.0 + 0.54.1; `installers.yml`'s Windows leg on the push. The release prep sweeps `validated through`.
 

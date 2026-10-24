@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 052 | [The prikk 0.54 re-baseline, and prikk's own Windows installer](./proposed/052-prikk-0-54-rebaseline.md) | `ASM-2`, `NFR-R03`, RFC 048 decision 8: validated through prikk 0.54.1 (suite green with only the ceiling raised; `show`'s consecutive-edit fix reaches Block and Patch detail; `verify`'s new field reaches only the raw view); on Windows the installer prints prikk's own `install.ps1` line. **Proposed 2026-10-24**; 0.16.0 increment 4 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

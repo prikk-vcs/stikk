@@ -50,16 +50,16 @@ $PrikkTestedCeiling  = '@PRIKK_VERSION@'
 $Repo      = 'prikk-vcs/stikk'
 $PrikkRepo = 'prikk-vcs/prikk'
 
-# Where to send someone who needs prikk. **prikk publishes no Windows installer yet** -- measured
-# at submission: 0.53.0 is the latest release and `install.ps1` is 404 there. prikk ships one in
-# 0.54.0 (RFC 048 F5), and stikk's re-baseline to it replaces these two lines with prikk's own
-# `irm ... | iex`. Until then this links prikk's steps and never copies them: they are prikk's to
-# change, and a copy here would go stale without anyone noticing.
+# Where to send someone who needs prikk. **prikk's own command, printed and never run.** prikk
+# publishes a Windows installer from 0.54.1 (RFC 052 F3), so this says the one line prikk
+# publishes and links prikk's guide beside it -- the two lines `install.sh` already prints on
+# Linux and macOS. This script fetches nothing of prikk's and runs nothing of prikk's (RFC 048
+# decision 2): the reader runs that line themselves, in their own session.
 #
 # **prikk.org, not the GitHub Pages address** (review v1 C1): measured, the Pages URL answers 301
 # to *plain http* at prikk.org, and sending a newcomer from https to http is not something this
 # script should do on prikk's behalf.
-$PrikkReleasePage  = "https://github.com/$PrikkRepo/releases/latest"
+$PrikkInstallCmd   = "irm https://github.com/$PrikkRepo/releases/latest/download/install.ps1 | iex"
 $PrikkInstallGuide = 'https://prikk.org/docs/guide/install.html'
 $StikkReleases     = "https://github.com/$Repo/releases/latest"
 
@@ -193,15 +193,13 @@ if (-not $inSession) {
 $prikkNextStep = ''
 
 function Show-PrikkHowToGetIt {
-  # **prikk's steps are linked, never copied.** prikk publishes no Windows installer yet
-  # (measured at submission: 0.53.0 is the latest release and `install.ps1` is 404 there), and
-  # one is coming in prikk 0.54.0 -- at which point this becomes prikk's own one-line command.
-  # Writing prikk's manual steps out here would be a second copy of prikk's install design,
-  # going stale the day prikk changes it.
-  Say 'prikk installs itself. A Windows installer is coming from prikk; until then its guide has'
-  Say 'the steps:'
-  Say "  $PrikkInstallGuide"
-  Say "  downloads: $PrikkReleasePage"
+  # **prikk's command, never a copy of prikk's steps.** It serves a missing prikk and one that is
+  # too old alike, the shape `install.sh`'s `prikk_how_to_get_it` has. Writing prikk's manual
+  # steps out here would be a second copy of prikk's install design, going stale the day prikk
+  # changes it.
+  Say 'prikk installs itself. Run this:'
+  Say "  $PrikkInstallCmd"
+  Say "prikk's install guide: $PrikkInstallGuide"
 }
 
 $prikkCmd = Get-Command prikk -ErrorAction SilentlyContinue

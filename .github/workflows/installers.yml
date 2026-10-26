@@ -23,6 +23,7 @@ jobs:
     outputs:
       stikk: ${{ steps.v.outputs.stikk }}
       prikk: ${{ steps.v.outputs.prikk }}
+      inrange: ${{ steps.v.outputs.inrange }}
       floor: ${{ steps.v.outputs.floor }}
       below: ${{ steps.v.outputs.below }}
       above: ${{ steps.v.outputs.above }}
@@ -36,16 +37,25 @@ jobs:
         # **Neither end is a pin** since RFC 048 -- the installers install no prikk; the floor
         # and ceiling word the version report, and `below`/`above` are the two fake versions the
         # out-of-range legs put on PATH.
+        #
+        # **`prikk` and `inrange` are two values now** (RFC 052 decision 4). `prikk` is what the
+        # scripts print -- a **minor**, `0.<ceiling>`, filled exactly as `release.yml` fills it,
+        # because `VALIDATED_MAX_MINOR` bands on minors and `0.<n>.0` named a patch stikk never
+        # tested. `inrange` is what the in-range leg puts on PATH, and that has to stay a full
+        # `0.<n>.0`: the scripts read a version with `(\d+)\.(\d+)\.(\d+)`, so a fake prikk
+        # answering *prikk 0.54* would take the **unreadable** row and the leg would assert the
+        # in-range sentence against the wrong one.
         run: |
           set -euo pipefail
           stikk="$(gh release view --repo ${{ github.repository }} --json tagName --jq .tagName)"
           read -r floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
           echo "stikk=${stikk}"              >> "$GITHUB_OUTPUT"
-          echo "prikk=0.${ceiling}.0"        >> "$GITHUB_OUTPUT"
+          echo "prikk=0.${ceiling}"          >> "$GITHUB_OUTPUT"
+          echo "inrange=0.${ceiling}.0"      >> "$GITHUB_OUTPUT"
           echo "floor=${floor}"              >> "$GITHUB_OUTPUT"
           echo "below=0.$((floor - 1)).0"    >> "$GITHUB_OUTPUT"
           echo "above=0.$((ceiling + 1)).0"  >> "$GITHUB_OUTPUT"
-          echo "testing the installers against stikk ${stikk}, prikk 0.${floor} through 0.${ceiling}.0"
+          echo "testing the installers against stikk ${stikk}, prikk 0.${floor} through 0.${ceiling}"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -60,6 +70,7 @@ jobs:
     env:
       STIKK_VER: ${{ needs.derive.outputs.stikk }}
       PRIKK_VER: ${{ needs.derive.outputs.prikk }}
+      PRIKK_INRANGE: ${{ needs.derive.outputs.inrange }}
       PRIKK_FLOOR: ${{ needs.derive.outputs.floor }}
       PRIKK_BELOW: ${{ needs.derive.outputs.below }}
       PRIKK_ABOVE: ${{ needs.derive.outputs.above }}
@@ -251,10 +262,12 @@ jobs:
           ! grep -qi 'still runs' "$RUNNER_TEMP/report-unreadable.log" \
             || { echo "::error::it promised an unreadable prikk still runs"; exit 1; }
 
-          # Inside the range.
-          run_with "${PRIKK_VER}"
+          # **Inside the range.** The fake prikk answers a full `0.<n>.0` (`PRIKK_INRANGE`),
+          # because the script parses three numbers; the sentence it prints names the **minor**
+          # the scripts were filled with (`PRIKK_VER`). Two values, one row.
+          run_with "${PRIKK_INRANGE}"
           grep -qF "that is inside the range this stikk was tested against (0.${PRIKK_FLOOR} through ${PRIKK_VER})" \
-            "$RUNNER_TEMP/report-${PRIKK_VER}.log"
+            "$RUNNER_TEMP/report-${PRIKK_INRANGE}.log"
 
           # **Newer than tested: calm, and it still runs.** This is the normal state for a few
           # days after every prikk release.
@@ -283,6 +296,7 @@ jobs:
     env:
       STIKK_VER: ${{ needs.derive.outputs.stikk }}
       PRIKK_VER: ${{ needs.derive.outputs.prikk }}
+      PRIKK_INRANGE: ${{ needs.derive.outputs.inrange }}
       PRIKK_FLOOR: ${{ needs.derive.outputs.floor }}
       PRIKK_BELOW: ${{ needs.derive.outputs.below }}
       PRIKK_ABOVE: ${{ needs.derive.outputs.above }}
@@ -335,15 +349,26 @@ jobs:
           $v = & "$env:RUNNER_TEMP\bin\stikk.exe" --version
           if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
 
-      - name: The uninstaller removes what it added
+      - name: The uninstaller removes what it added, and prints prikk's own uninstaller
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & ./filled/uninstall.ps1 -Prefix "$env:RUNNER_TEMP\bin"
+          & ./filled/uninstall.ps1 -Prefix "$env:RUNNER_TEMP\bin" *>&1 |
+            Tee-Object -FilePath "$env:RUNNER_TEMP\uninstall.log"
           if (Test-Path "$env:RUNNER_TEMP\bin\stikk.exe") { Write-Error 'stikk.exe survived'; exit 1 }
           $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
           if ($userPath -and ($userPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ieq "$env:RUNNER_TEMP\bin") })) {
             Write-Error 'the PATH entry survived'; exit 1
+          }
+          # **prikk is removed by prikk's own uninstaller** (RFC 048 decision 2, RFC 052
+          # decision 2): this script says so and prints prikk's command, and removes nothing of
+          # prikk's itself.
+          $log = Get-Content "$env:RUNNER_TEMP\uninstall.log" -Raw
+          if ($log -notmatch [regex]::Escape('prikk was NOT removed -- it is a separate program, and prikk uninstalls itself:')) {
+            Write-Error 'it did not say prikk was left alone'; exit 1
+          }
+          if ($log -notmatch [regex]::Escape('irm https://github.com/prikk-vcs/prikk/releases/latest/download/uninstall.ps1 | iex')) {
+            Write-Error "prikk's uninstall command was not printed"; exit 1
           }
 
       - name: A wrong checksum installs nothing
@@ -389,9 +414,13 @@ jobs:
           if ($log -notmatch 'stikk reads prikk repositories, so you need prikk too\.') {
             Write-Error 'it did not say prikk is needed'; exit 1
           }
-          if ($log -notmatch 'prikk installs itself\.') { Write-Error 'it did not say prikk installs itself'; exit 1 }
-          # prikk publishes no Windows installer yet, so the guide is what is printed.
-          if ($log -notmatch [regex]::Escape('https://prikk.org/docs/guide/install.html')) {
+          if ($log -notmatch 'prikk installs itself\. Run this:') { Write-Error 'it did not say prikk installs itself'; exit 1 }
+          # **prikk's command, exactly as prikk publishes it** (RFC 052 decision 2), and prikk's
+          # guide beside it -- the same pair the Unix leg asserts.
+          if ($log -notmatch [regex]::Escape('irm https://github.com/prikk-vcs/prikk/releases/latest/download/install.ps1 | iex')) {
+            Write-Error "prikk's install command was not printed"; exit 1
+          }
+          if ($log -notmatch [regex]::Escape("prikk's install guide: https://prikk.org/docs/guide/install.html")) {
             Write-Error "prikk's guide was not printed"; exit 1
           }
           if ($log -notmatch '1\. install prikk \(see above\)') { Write-Error 'the Next list did not lead with prikk'; exit 1 }
@@ -428,6 +457,9 @@ jobs:
           if ($old -notmatch [regex]::Escape("that is too old for this stikk, which needs prikk 0.$env:PRIKK_FLOOR or newer.")) {
             Write-Error 'the too-old wording is missing'; exit 1
           }
+          if ($old -notmatch [regex]::Escape('irm https://github.com/prikk-vcs/prikk/releases/latest/download/install.ps1 | iex')) {
+            Write-Error "the too-old row did not print prikk's install command"; exit 1
+          }
           if ($old -notmatch '1\. install or update prikk') { Write-Error 'the Next step should say install or update'; exit 1 }
           if ($old -match 'still runs') { Write-Error 'it told someone an out-of-range prikk still runs'; exit 1 }
 
@@ -444,6 +476,9 @@ jobs:
           if ($major -match 'too old') { Write-Error 'a newer major was called too old'; exit 1 }
           # **Never prikk's own install route here**, the same negative the Unix leg asserts: it
           # would leave the reader on the prikk they already have.
+          if ($major -match [regex]::Escape('https://github.com/prikk-vcs/prikk/releases/latest/download/install.ps1')) {
+            Write-Error "it offered a prikk-1.x user prikk's installer"; exit 1
+          }
           if ($major -match [regex]::Escape('https://prikk.org/docs/guide/install.html')) {
             Write-Error 'it sent a prikk-1.x user to prikk'; exit 1
           }
@@ -457,8 +492,9 @@ jobs:
           if ($unreadable -notmatch '1\. install or update prikk') { Write-Error 'the Next step is missing'; exit 1 }
           if ($unreadable -match 'still runs') { Write-Error 'it promised an unreadable prikk still runs'; exit 1 }
 
-          # Inside the range.
-          $inside = Invoke-WithFakePrikk $env:PRIKK_VER
+          # **Inside the range.** A full `0.<n>.0` on PATH (the script parses three numbers),
+          # asserted against the **minor** the scripts print. See the Unix leg's note.
+          $inside = Invoke-WithFakePrikk $env:PRIKK_INRANGE
           Write-Host $inside
           if ($inside -notmatch [regex]::Escape("that is inside the range this stikk was tested against (0.$env:PRIKK_FLOOR through $env:PRIKK_VER)")) {
             Write-Error 'the inside-range wording is missing'; exit 1

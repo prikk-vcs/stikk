@@ -24,7 +24,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$Repo = 'prikk-vcs/stikk'
+$Repo      = 'prikk-vcs/stikk'
+$PrikkRepo = 'prikk-vcs/prikk'
 
 function Say { param([string] $Message) Write-Host "stikk-uninstall: $Message" }
 
@@ -67,13 +68,12 @@ Write-Host ''
 Say "done. stikk's config and state were not touched; 'stikk config path' showed where they live."
 Say 'Your repositories are untouched: stikk never wrote to them.'
 Write-Host ''
-# **prikk is removed by prikk's own uninstaller**, never by this one (RFC 048 decision 2).
-# prikk publishes no Windows uninstaller yet -- measured at submission: 0.53.0 is the latest
-# release and `uninstall.ps1` is 404 there, and prikk ships one in 0.54.0. So this links prikk's
-# guide rather than writing prikk's steps out: they are prikk's to change.
-Say 'prikk was NOT removed -- it is a separate program, and prikk uninstalls itself. Its guide'
-Say 'has the steps:'
-Say '  https://prikk.org/docs/guide/install.html'
+# **prikk is removed by prikk's own uninstaller**, never by this one: each program installs and
+# removes itself (RFC 048 decision 2). prikk publishes a Windows uninstaller from 0.54.1
+# (RFC 052 F3), so the command below is prikk's, printed for you to run -- this script runs
+# nothing of prikk's.
+Say 'prikk was NOT removed -- it is a separate program, and prikk uninstalls itself:'
+Say "  irm https://github.com/$PrikkRepo/releases/latest/download/uninstall.ps1 | iex"
 
 Say 'To install stikk again:'
 Say "  irm https://github.com/$Repo/releases/latest/download/install.ps1 | iex"

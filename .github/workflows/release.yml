@@ -296,11 +296,16 @@ jobs:
         # automatically. **Both ends, since RFC 048**: the floor used to be written `28` in two
         # scripts, which is a number in three places and a quiet lie the day it moves.
         # **Neither is a pin**: the installers install no prikk, and use these only for wording.
+        #
+        # **The ceiling is a minor, and is printed as one** (RFC 052 decision 4). This used to
+        # fill `0.<n>.0`, a patch version stikk never tested -- `VALIDATED_MAX_MINOR` bands on
+        # minors, so the report can only honestly say *through 0.54*. `validated_ceiling_display`
+        # inside stikk has always said the minor; this makes the installers agree with it.
         run: |
           set -euo pipefail
           read -r floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
-          echo "floor=${floor}"         >> "$GITHUB_OUTPUT"
-          echo "version=0.${ceiling}.0" >> "$GITHUB_OUTPUT"
+          echo "floor=${floor}"       >> "$GITHUB_OUTPUT"
+          echo "version=0.${ceiling}" >> "$GITHUB_OUTPUT"
       - name: Fill the placeholders and checksum each script
         env:
           PRIKK_FLOOR: ${{ steps.prikk.outputs.floor }}

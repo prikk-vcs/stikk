@@ -1,0 +1,199 @@
+name: AUR
+
+# RFC 051 decisions 4-6: stikk's two AUR packages, `stikk` (built from the crates.io crate) and
+# `stikk-bin` (the release's static musl archives), built and linted from the templates in
+# `packaging/aur/` and pushed only when the owner has set the key.
+#
+# **Three ways in, one job.** On a push touching `packaging/aur/**` it renders the templates
+# against the latest published release and **pushes nothing** — a template is never first
+# exercised by a release (decision 5). `workflow_dispatch` is how the owner publishes the current
+# release the day the secret is set, without waiting for the next tag (decision 6).
+# `workflow_call` is how `release.yml` runs it after the assets and the crates are published.
+#
+# **Key material never reaches a log, the workspace or an artifact.** The private half is read
+# from the secret straight into an `ssh-agent` in the push step and nowhere else.
+on:
+  push:
+    paths:
+      - 'packaging/aur/**'
+      - '.github/workflows/aur.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to render (default: the latest published release)'
+        required: false
+        type: string
+      push:
+        description: 'Push to the AUR (needs AUR_SSH_PRIVATE_KEY)'
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+      push:
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    name: build and lint the AUR packages
+    runs-on: ubuntu-latest
+    # `makepkg`, `namcap` and `.SRCINFO` all need an Arch environment (RFC 051 F4).
+    container: archlinux:base-devel
+    # The owner may add a required reviewer here; the job must not assume one, and GitHub creates
+    # the environment without one (RFC 051 O2).
+    environment: aur
+    steps:
+      - name: Install what makepkg, namcap and the push need
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm --needed cargo namcap git openssh jq
+
+      - uses: actions/checkout@v5
+
+      - name: Which release to render
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASKED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ASKED}" ]; then
+            version="${ASKED}"
+          else
+            # The latest published release, the same thing `installers.yml` renders against.
+            version="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" | jq -r .tag_name)"
+          fi
+          [ -n "${version}" ] && [ "${version}" != "null" ] \
+            || { echo "::error::no version to render"; exit 1; }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "rendering stikk ${version}"
+
+      # **`makepkg` refuses to run as root**, and this container is root.
+      - name: A builder user who owns the work
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          # Keep the checkout readable and let the builder write the rendered output beside it.
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          # `makepkg` installs no dependency here (see `-d` below), so it needs no sudo at all.
+
+      - name: Render both PKGBUILDs
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          su builder -c "cd '$GITHUB_WORKSPACE' && ./packaging/aur/render.sh '${VERSION}' rendered"
+          echo '== stikk'; cat rendered/stikk/PKGBUILD
+          echo '== stikk-bin'; cat rendered/stikk-bin/PKGBUILD
+
+      - name: Build, lint and describe each package
+        run: |
+          set -euo pipefail
+          # **`-d` skips only the *dependency check*, not the build.** prikk is not in the official
+          # Arch repositories and its own AUR package is still a placeholder, so `prikk>=0.28`
+          # cannot be installed in this container; `makepkg` would refuse before building anything.
+          # It does not weaken what is proven here: the sources are fetched and checksummed, the
+          # crate is compiled, its tests run, and the package is assembled and linted.
+          #
+          # **Every namcap line must be on the allow-list below.** A warning nobody has looked at
+          # is a warning nobody will look at, so an unexpected one fails the job.
+          allowed() {
+            case "$1" in
+              # The per-architecture source array *requires* the literal architecture in its name;
+              # `source_$CARCH` is not a thing namcap can see through.
+              *"Reference to x86_64 should be changed to \$CARCH"*) return 0 ;;
+              # Deliberate, and the point of the package: stripping would rewrite the binary and
+              # `gh attestation verify` on the release archive would stop speaking for it.
+              *"ELF file ('usr/bin/stikk') is unstripped."*) return 0 ;;
+              # stikk *runs* prikk as a program; namcap only sees linked libraries, so it cannot
+              # see the dependency it is questioning.
+              *"Dependency included, but may not be needed ('prikk')"*) return 0 ;;
+              # The dynamic loader itself, named by every dynamically linked binary and imported
+              # from by none. Seen on the maintainer's Arch-based machine; it may not appear here.
+              *"Unused shared library '/usr/lib64/ld-linux-x86-64.so.2'"*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+          fail=0
+          for pkg in stikk-bin stikk; do
+            echo "::group::${pkg}"
+            su builder -c "cd '$GITHUB_WORKSPACE/rendered/${pkg}' && makepkg -f -d"
+            : > "/tmp/${pkg}.namcap"
+            su builder -c "cd '$GITHUB_WORKSPACE/rendered/${pkg}' && namcap PKGBUILD" \
+              >> "/tmp/${pkg}.namcap"
+            su builder -c "cd '$GITHUB_WORKSPACE/rendered/${pkg}' && namcap ./*.pkg.tar.*" \
+              >> "/tmp/${pkg}.namcap"
+            cat "/tmp/${pkg}.namcap"
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              if ! allowed "$line"; then
+                echo "::error::${pkg}: namcap line not on the allow-list: ${line}"
+                fail=1
+              fi
+            done < "/tmp/${pkg}.namcap"
+            # The AUR needs this beside the PKGBUILD, and it is generated, never written.
+            su builder -c "cd '$GITHUB_WORKSPACE/rendered/${pkg}' && makepkg --printsrcinfo" \
+              > "/tmp/${pkg}.SRCINFO"
+            cp "/tmp/${pkg}.SRCINFO" "rendered/${pkg}/.SRCINFO"
+            echo "== ${pkg} .SRCINFO"; cat "rendered/${pkg}/.SRCINFO"
+            echo "::endgroup::"
+          done
+          [ "$fail" -eq 0 ] || exit 1
+
+      # **The one step that writes anything outside this runner.** It runs only when the caller
+      # asked for a push *and* the owner's key exists; a missing key is a notice and a green job,
+      # not a failure (RFC 051 decision 6).
+      - name: Push to the AUR
+        env:
+          WANT_PUSH: ${{ inputs.push }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${WANT_PUSH}" != "true" ]; then
+            echo "::notice::not pushing: this run did not ask for a push (inputs.push is false)"
+            exit 0
+          fi
+          if [ -z "${AUR_SSH_PRIVATE_KEY}" ]; then
+            echo "::notice::not pushing: the AUR_SSH_PRIVATE_KEY secret is not set"
+            exit 0
+          fi
+          # **The key lives in the agent and nowhere else** — never a file in the workspace, never
+          # an artifact, never echoed. `ssh-add -` reads it from stdin.
+          eval "$(ssh-agent -s)" >/dev/null
+          trap 'ssh-agent -k >/dev/null 2>&1 || true' EXIT
+          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" | ssh-add - >/dev/null 2>&1 \
+            || { echo "::error::the AUR key was not accepted by ssh-agent"; exit 1; }
+          # **Pinned host keys, and nothing else** (RFC 051 decision 4): `yes`, with our own file,
+          # so an unknown key is a refusal rather than trust-on-first-use.
+          export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/packaging/aur/known_hosts"
+          git config --global user.name 'stikk release'
+          git config --global user.email 'noreply@github.com'
+          git config --global --add safe.directory '*'
+          for pkg in stikk stikk-bin; do
+            echo "::group::push ${pkg}"
+            git clone "ssh://aur@aur.archlinux.org/${pkg}.git" "/tmp/aur-${pkg}"
+            cp "rendered/${pkg}/PKGBUILD" "rendered/${pkg}/.SRCINFO" "/tmp/aur-${pkg}/"
+            cd "/tmp/aur-${pkg}"
+            git add PKGBUILD .SRCINFO
+            # **A re-run is a no-op**: nothing to commit means nothing to push.
+            if git diff --cached --quiet; then
+              echo "::notice::${pkg} is already at ${VERSION} on the AUR — nothing to push"
+            else
+              git commit -m "stikk ${VERSION}"
+              git push origin HEAD:master
+            fi
+            cd "$GITHUB_WORKSPACE"
+            echo "::endgroup::"
+          done

@@ -1,6 +1,6 @@
 # RFC 052 — The prikk 0.54 re-baseline, and prikk's own Windows installer
 
-**Status.** **Accepted by the project owner 2026-10-24**; [Handoff A](../handoffs/052-prikk-0-54-rebaseline/a-rebaseline-handoff-v1.md) issued. **Proposed 2026-10-24** by the architect, as 0.16.0's conditional increment 4
+**Status.** **Done 2026-10-27**: Handoff A delivered on `main` (`2451795`, `6c0247b`, `c978f8b`, `13c96df`); 0.16.0 candidate. **Accepted by the project owner 2026-10-24**; [Handoff A](../handoffs/052-prikk-0-54-rebaseline/a-rebaseline-handoff-v1.md) issued. **Proposed 2026-10-24** by the architect, as 0.16.0's conditional increment 4
 (`.git-exclude/release/0-16-0-scope.md`: *"if prikk publishes it before the cut"*). prikk **0.54.1** published
 2026-10-24 (GitHub release *Latest*, crates.io; prikk's letter 027). **No open question.**
 Measured against real prikk **0.54.1**, **0.53.0** and **0.28.0** binaries. Evidence:
@@ -90,3 +90,19 @@ at 0.28.0 + 0.54.1; `installers.yml`'s Windows leg on the push. The release prep
 - **Show prikk's verify warnings** (`FR-100`; unchanged by this RFC).
 - **Use `extract`.**
 - **Pin any prikk version** in stikk's installers.
+
+## Delivered
+
+**One handoff, four commits, green on `main` at `13c96df`**: CI, Docs, the real-binary suite (69 cases at 0.28.0 and
+0.54.1), supply chain, and `installers.yml` on Linux, macOS, Windows and `ubuntu-22.04-arm`.
+
+- **The ceiling alone first** (`2451795`): `VALIDATED_MAX_MINOR = 54`, the suite at that commit 69 of 69; its doc says
+  only 0.54.1 ran and that 0.54.0's Windows installer is withdrawn.
+- **Windows prints prikk's own installer** (`6c0247b`, `13c96df`): `install.ps1` gives prikk's `irm … install.ps1 | iex`
+  for missing and too old, `uninstall.ps1` prikk's `uninstall.ps1` line; the *Next* step says *"the command is above"*,
+  as on Unix. Nothing of prikk's is run or fetched. **The version report names the minor** (*"0.28 through 0.54"*),
+  agreeing with stikk's own `validated_ceiling_display`; `installers.yml`'s `derive` keeps a separate full version for
+  the fake in-range binary, which would otherwise have read as unreadable. All 23 Windows assertions were checked
+  mechanically against the filled scripts, and the Windows runner printed the new lines.
+- **Text** (`c978f8b`): validated through 0.54.1 in every live statement; Windows step 1 is prikk's one line; the
+  release guide's seam count corrected to twenty-five (RFC 050's four methods).

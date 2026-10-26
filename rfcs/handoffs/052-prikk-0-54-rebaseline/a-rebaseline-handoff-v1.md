@@ -1,6 +1,6 @@
 # Handoff A — RFC 052: the prikk 0.54 re-baseline (v1)
 
-**Companion to:** [RFC 052](../../accepted/052-prikk-0-54-rebaseline.md). **Read the RFC first**, F1–F3 and decisions
+**Companion to:** [RFC 052](../../done/052-prikk-0-54-rebaseline.md). **Read the RFC first**, F1–F3 and decisions
 1–4. **Covers:** all four decisions. 0.16.0's increment 4.
 **Not a release.**
 

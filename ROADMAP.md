@@ -434,7 +434,7 @@ a fabricated worktree entry was fixed.
    adopting received history and trusting its sealer stay out. **The first to move to 0.17.0** if the cycle runs long.
    *(Rollback was scoped here first and withdrawn the same day, re-authorized as exchange: measured, prikk 0.53's
    rollback inverts the whole chain to the empty state, not one change. It waits on prikk.)*
-4. **The prikk 0.54 re-baseline** ([RFC 052](rfcs/accepted/052-prikk-0-54-rebaseline.md), accepted 2026-10-24; prikk 0.54.1 published 2026-10-24): prikk's own Windows installer line, and its
+4. **The prikk 0.54 re-baseline — landed on `main`** ([RFC 052](rfcs/done/052-prikk-0-54-rebaseline.md), `13c96df`; prikk 0.54.1 published 2026-10-24): prikk's own Windows installer line, and its
    `cargo binstall` fix checked; validated through 0.54.1.
 
 5. **Arch Linux packages on the AUR** ([RFC 051](rfcs/accepted/051-arch-linux-packages.md), accepted 2026-10-21,
@@ -509,7 +509,7 @@ issues for the prikk project (requirement `UD-01…UD-05`):
 ## Releases and versioning
 
 stikk versions independently of prikk and declares, per release, the prikk range it was validated
-against — currently **`>= 0.28`, validated through `0.53.0`** (`NFR-R03`; 0.27.x dropped by owner
+against — currently **`>= 0.28`, validated through `0.54.1`** (`NFR-R03`; 0.27.x dropped by owner
 ruling 2026-09-04, RFC 009). A prikk newer than the validated ceiling still runs, and stikk says the
 range is unvalidated rather than pretending to know it. Before a 1.0, the repository format and command surface of
 prikk are still moving, so stikk stays pre-1.0 too and treats its own APIs as unstable. Changes are

@@ -3758,6 +3758,93 @@ fn capture_the_merge_confirmation_at_80x24() {
     assert!(!tall.contains("not shown"), "{tall}");
 }
 
+/// Every bordered row of a panel, as the text between its two `│` columns.
+///
+/// Rows that are not part of a panel — the blank screen around it, and the `┌`/`└` edges — are
+/// skipped, so what comes back is exactly the columns a renderer may write into.
+fn panel_rows(screen: &str) -> Vec<String> {
+    screen
+        .lines()
+        .filter_map(|line| {
+            let first = line.find('│')?;
+            let last = line.rfind('│')?;
+            (last > first).then(|| line[first + '│'.len_utf8()..last].to_string())
+        })
+        .collect()
+}
+
+/// **The prose gutter** (RFC 013 Handoff B): stikk's own prose keeps one column clear of the right
+/// border, so no word of stikk's reads as cut off.
+///
+/// The merge card at 80×24 is the measured case. Before the rule its consequence drew
+/// *"…from this baseline. A│"* — a bare `A` against the border, which reads as a word truncated
+/// rather than a word that happened to fit.
+///
+/// **Every row on this card is one the rule covers**: its targets, prikk's plan lines and the
+/// consequence all fall short of the border here, so the assertion is over all of them. What
+/// stops this from narrowing identifiers too is
+/// [`an_identifier_row_still_uses_the_last_inner_column`], which fails if the full width shrinks.
+#[test]
+fn the_prose_gutter_keeps_stikks_words_off_the_right_border() {
+    let text = draw_at(
+        &Overlay::Confirmation {
+            summary: Box::new(merge_summary(measured_plan())),
+            tier: Tier::Three,
+            typed: String::new(),
+            error: None,
+        },
+        80,
+        24,
+    );
+    for row in panel_rows(&text) {
+        assert!(
+            row.ends_with(' '),
+            "a row reaches the right border: {row:?}\n{text}"
+        );
+    }
+    // The card still says everything it said: the targets on one row each, the baseline id whole.
+    let flat = flattened(&text);
+    for row in [
+        "from heads/feature",
+        "into heads/main",
+        "baseline 88f34150e099",
+        "from's tip d967f47871e7",
+    ] {
+        assert!(flat.contains(row), "missing {row:?}: {text}");
+    }
+    // And the consequence is whole, which is what the gutter must not cost.
+    assert!(
+        flat.contains("prikk's plan reports the two sides confluent from this baseline."),
+        "{text}"
+    );
+    assert!(flat.contains("a refusal writes nothing."), "{text}");
+}
+
+/// **An identifier keeps the full inner width**, which is why the gutter is prose-only.
+///
+/// `block id: ` plus 64 hex is **exactly** the inner width of a 78-wide card once its two-column
+/// indent is counted (2 + 10 + 64 = 76), so one column of gutter would fold a block id onto a
+/// second row. This fails the day someone gives `SEAL_TEXT_WIDTH` a gutter: the id stops being
+/// contiguous, and its row stops ending in the last inner column.
+#[test]
+fn an_identifier_row_still_uses_the_last_inner_column() {
+    let id = "b".repeat(64);
+    let text = draw(&Overlay::SealResult {
+        result: seal_result(vec![]),
+    });
+    // Contiguous: a fold would put a newline and a border through it.
+    assert!(text.contains(&id), "the block id folded:\n{text}");
+    let row = panel_rows(&text)
+        .into_iter()
+        .find(|row| row.contains(&id))
+        .unwrap_or_else(|| panic!("no row holds the block id:\n{text}"));
+    assert!(
+        row.ends_with('b'),
+        "the block id no longer reaches the last inner column, so the full width has shrunk: \
+         {row:?}\n{text}"
+    );
+}
+
 /// **Capture: a plan too tall for the card** — whole lines are dropped and the card says how
 /// many, rather than stopping mid-plan (RFC 047 decision 6; RFC 034 Handoff C's rule).
 #[test]

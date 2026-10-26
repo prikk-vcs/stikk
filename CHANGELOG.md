@@ -82,6 +82,9 @@ operation names and its sentences; `stikk_core::confirm::Aside`; `stikk_tui::App
 - **Validated through prikk 0.54.1**, and on Windows the installer prints prikk's own install
   command, so both programs install in two plain steps there too. (With 0.54.1, Block and Patch
   detail open where prikk 0.53 refused after consecutive edits of one file — prikk's fix.)
+- **Confirmation, seal and refusal cards keep a one-column margin after their prose**, so no word
+  of stikk's sits against the card's border and reads as cut off. Identifiers and prikk's own
+  lines still use the full width, so a block id stays on one row.
 
 ## 0.15.0 — 2026-10-21
 

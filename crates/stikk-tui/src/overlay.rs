@@ -891,7 +891,7 @@ fn render_refusal(
 
     // ② the gloss — stikk's own voice, separate and below (ER-02). Absent ⇒ verbatim-only (RR-5).
     if let Some(gloss) = &card.gloss {
-        for row in wrap_indented(gloss, REFUSAL_TEXT_WIDTH, "  ") {
+        for row in wrap_indented(gloss, REFUSAL_PROSE_WIDTH, "  ") {
             prose.push(Line::from(Span::styled(
                 row,
                 Style::default().fg(palette.dim),
@@ -904,7 +904,7 @@ fn render_refusal(
     if !card.glossary_codes.is_empty() {
         for row in wrap_indented(
             &format!("glossary: {}", card.glossary_codes.join(", ")),
-            REFUSAL_TEXT_WIDTH,
+            REFUSAL_PROSE_WIDTH,
             "  ",
         ) {
             prose.push(Line::from(Span::styled(
@@ -975,7 +975,7 @@ fn render_stale(
     ];
 
     // ② the gloss, in stikk's own voice — never quoted as if it were prikk's. Wrapped here (RFC 024).
-    for row in wrap_indented(gloss, REFUSAL_TEXT_WIDTH, "  ") {
+    for row in wrap_indented(gloss, REFUSAL_PROSE_WIDTH, "  ") {
         prose.push(Line::from(Span::styled(
             row,
             Style::default().fg(palette.dim),
@@ -1018,7 +1018,7 @@ fn render_commit_would_refuse_declarations(
     for row in wrap_indented(
         "Commit is unavailable: prikk reports that it would refuse the declared rename below, and a \
          refused declaration refuses the whole commit. Nothing was armed.",
-        REFUSAL_TEXT_WIDTH,
+        REFUSAL_PROSE_WIDTH,
         "  ",
     ) {
         prose.push(Line::from(Span::styled(
@@ -1116,7 +1116,7 @@ fn declaration_lines(
     let remainder = |unshown: usize| -> Vec<Line<'static>> {
         wrap_cells(
             &stikk_core::unshown_declarations_line(unshown),
-            REFUSAL_TEXT_WIDTH,
+            REFUSAL_PROSE_WIDTH,
             "  ",
         )
         .into_iter()
@@ -1166,7 +1166,7 @@ fn render_commit_would_refuse(
     for row in wrap_indented(
         "Commit is unavailable: prikk reports that it would refuse the paths below, and one refused \
          path refuses the whole commit. Nothing was armed.",
-        REFUSAL_TEXT_WIDTH,
+        REFUSAL_PROSE_WIDTH,
         "  ",
     ) {
         prose.push(Line::from(Span::styled(
@@ -1212,7 +1212,7 @@ fn render_commit_would_refuse(
         Style::default().fg(palette.dim),
     ))];
     for step in stikk_core::would_refuse_next_steps(paths) {
-        for (i, row) in wrap_indented(&step, REFUSAL_TEXT_WIDTH, "    ")
+        for (i, row) in wrap_indented(&step, REFUSAL_PROSE_WIDTH, "    ")
             .into_iter()
             .enumerate()
         {
@@ -1506,7 +1506,7 @@ fn render_confirmation(
         // terminal (`NFR-A03`); the colour only adds. Inert, since it names refs and may carry prikk's
         // own text (`C-T2a`).
         if let Some(notice) = &summary.branch_notice {
-            for row in wrap_indented(&inert(notice), PANEL_TEXT_WIDTH, "    ") {
+            for row in wrap_indented(&inert(notice), PANEL_PROSE_WIDTH, "    ") {
                 lines.push(Line::from(Span::styled(
                     row,
                     Style::default().fg(palette.warn),
@@ -1515,7 +1515,7 @@ fn render_confirmation(
         }
         // RFC 032 decision 5, A2: beside the branch notice, in warn — also about where the change goes.
         if let Some(notice) = &summary.history_notice {
-            for row in wrap_indented(&inert(notice), PANEL_TEXT_WIDTH, "    ") {
+            for row in wrap_indented(&inert(notice), PANEL_PROSE_WIDTH, "    ") {
                 lines.push(Line::from(Span::styled(
                     row,
                     Style::default().fg(palette.warn),
@@ -1548,7 +1548,7 @@ fn render_confirmation(
         ));
         lines.push(Line::from(heading));
         for sentence in &aside.body {
-            for row in wrap_indented(&inert(sentence), PANEL_TEXT_WIDTH, "    ") {
+            for row in wrap_indented(&inert(sentence), PANEL_PROSE_WIDTH, "    ") {
                 lines.push(Line::from(Span::styled(
                     row,
                     Style::default().fg(palette.fg),
@@ -1572,7 +1572,7 @@ fn render_confirmation(
         // RFC 032 decision 4: what the `renames` count means, then each declaration prikk will not author
         // as a rename, in warn. Prose rows like the rest, so they never displace the consequence or footer.
         if let Some(note) = &summary.rename_note {
-            for row in wrap_indented(note, PANEL_TEXT_WIDTH, "  ") {
+            for row in wrap_indented(note, PANEL_PROSE_WIDTH, "  ") {
                 lines.push(Line::from(Span::styled(
                     row,
                     Style::default().fg(palette.dim),
@@ -1580,7 +1580,7 @@ fn render_confirmation(
             }
         }
         for notice in &summary.declaration_notices {
-            for row in wrap_indented(&inert(notice), PANEL_TEXT_WIDTH, "  ") {
+            for row in wrap_indented(&inert(notice), PANEL_PROSE_WIDTH, "  ") {
                 lines.push(Line::from(Span::styled(
                     row,
                     Style::default().fg(palette.warn),
@@ -1635,7 +1635,7 @@ fn render_confirmation(
                 "This key is published in prikk's own documentation as an example. It is public, so \
                  anyone can forge this signature — generate your own key before signing anything you \
                  intend to be trusted.",
-                PANEL_TEXT_WIDTH,
+                PANEL_PROSE_WIDTH,
                 "    ",
             ) {
                 lines.push(Line::from(Span::styled(
@@ -1656,7 +1656,7 @@ fn render_confirmation(
     // is one *logical* line that draws as four rows, the old `lines.len() + 4` headroom was spent on
     // it, and the footer fell outside the box at every terminal height. Wrapping it makes the count a
     // fact — and the footer is in `actions` below, so even a future mis-measurement costs prose.
-    for line in wrap_indented(&summary.consequence, PANEL_TEXT_WIDTH, "  ") {
+    for line in wrap_indented(&summary.consequence, PANEL_PROSE_WIDTH, "  ") {
         lines.push(Line::from(Span::styled(
             line,
             Style::default().fg(palette.fg),
@@ -1671,7 +1671,7 @@ fn render_confirmation(
             "  Message:",
             Style::default().fg(palette.dim),
         )));
-        for row in wrap_indented(&inert(message), PANEL_TEXT_WIDTH, "    ") {
+        for row in wrap_indented(&inert(message), PANEL_PROSE_WIDTH, "    ") {
             lines.push(Line::from(Span::styled(
                 row,
                 Style::default().fg(palette.fg),
@@ -1707,7 +1707,7 @@ fn render_confirmation(
     // An inline error belongs with the affordances, not above them: it is the reason the user is being
     // asked again, and it is useless if it is the row that falls off.
     if let Some(error) = error {
-        for line in wrap_indented(error, PANEL_TEXT_WIDTH, "  ") {
+        for line in wrap_indented(error, PANEL_PROSE_WIDTH, "  ") {
             actions.push(Line::from(Span::styled(
                 line,
                 Style::default().fg(palette.warn),
@@ -1799,7 +1799,7 @@ fn plan_lines(
     let remainder = |unshown: usize| -> Vec<Line<'static>> {
         wrap_indented(
             &stikk_core::unshown_paths_line(unshown, rows.len()),
-            PANEL_TEXT_WIDTH,
+            PANEL_PROSE_WIDTH,
             "    ",
         )
         .into_iter()
@@ -1850,7 +1850,7 @@ fn merge_plan_lines(plan: &[String], available: usize, palette: &Palette) -> Vec
     let remainder = |unshown: usize| -> Vec<Line<'static>> {
         wrap_indented(
             &stikk_core::unshown_plan_lines_line(unshown, plan.len()),
-            PANEL_TEXT_WIDTH,
+            PANEL_PROSE_WIDTH,
             "    ",
         )
         .into_iter()
@@ -1899,10 +1899,10 @@ fn frozen_lines(
     // row fitting that draws past the card, so the rows drawn would stop matching the rows counted.
     let wrap = |text: &str| {
         let text = inert(text);
-        if Span::raw(text.as_str()).width() + 4 <= PANEL_TEXT_WIDTH {
+        if Span::raw(text.as_str()).width() + 4 <= PANEL_PROSE_WIDTH {
             vec![format!("    {text}")]
         } else {
-            wrap_cells(&text, PANEL_TEXT_WIDTH, "    ")
+            wrap_cells(&text, PANEL_PROSE_WIDTH, "    ")
         }
     };
     let styled = |rows: Vec<String>, style: Style| -> Vec<Line<'static>> {
@@ -2034,7 +2034,7 @@ fn render_commit_message(
         )),
         Line::from(""),
     ];
-    for line in wrap_indented(notice.trim_start(), PANEL_TEXT_WIDTH, "  ") {
+    for line in wrap_indented(notice.trim_start(), PANEL_PROSE_WIDTH, "  ") {
         prose.push(Line::from(Span::styled(
             line,
             Style::default().fg(palette.dim),
@@ -2169,7 +2169,7 @@ fn render_seal_consent(
     // RFC 024: `SEAL_CONSENT_COPY` is one logical line that wraps to several rows, which is why this
     // renderer carried a hand-tuned `+ 6` — added after its own render tests caught the mark and the
     // Enter hint being clipped. Wrapping it makes the count exact and the tuning unnecessary.
-    for row in wrap_indented(stikk_core::SEAL_CONSENT_COPY, SEAL_TEXT_WIDTH, "  ") {
+    for row in wrap_indented(stikk_core::SEAL_CONSENT_COPY, SEAL_PROSE_WIDTH, "  ") {
         lines.push(Line::from(Span::styled(
             row,
             Style::default().fg(palette.fg),
@@ -2306,7 +2306,7 @@ fn render_ref_name(
         Style::default().fg(palette.accent),
     );
     prose.push(Line::from(""));
-    for row in wrap_indented(notice, PANEL_TEXT_WIDTH, "  ") {
+    for row in wrap_indented(notice, PANEL_PROSE_WIDTH, "  ") {
         prose.push(Line::from(Span::styled(
             row,
             Style::default().fg(palette.dim),
@@ -2359,7 +2359,7 @@ fn render_bundle_path(typed: &str, palette: &Palette, frame: &mut Frame, area: R
         "A path is required. stikk asks prikk what the file is and what importing it would \
          change, and writes nothing. A relative path is taken from the directory stikk was \
          started in, and the view shows the path it used.",
-        PANEL_TEXT_WIDTH,
+        PANEL_PROSE_WIDTH,
         "  ",
     ) {
         prose.push(Line::from(Span::styled(
@@ -2409,7 +2409,7 @@ fn render_export_path(reff: &str, typed: &str, palette: &Palette, frame: &mut Fr
         "A path is required. stikk writes nowhere inside the repository -- the bundle would sit \
          in your worktree as an untracked file -- and never over a file that is already there. \
          A relative path is taken from the directory stikk was started in.",
-        PANEL_TEXT_WIDTH,
+        PANEL_PROSE_WIDTH,
         "  ",
     ) {
         prose.push(Line::from(Span::styled(
@@ -2470,7 +2470,7 @@ fn render_tag_message(
     prose.push(Line::from(""));
     for row in wrap_indented(
         "A message is optional. Leave it empty and the tag carries none.",
-        PANEL_TEXT_WIDTH,
+        PANEL_PROSE_WIDTH,
         "  ",
     ) {
         prose.push(Line::from(Span::styled(
@@ -2663,7 +2663,7 @@ fn render_merge_result(printed: &[String], palette: &Palette, frame: &mut Frame,
     }
     // **stikk's own sentence, and it is not optional.** prikk writes no file here, and a reader
     // who looks for the merged files in the worktree will not find them (F3's neighbour).
-    for row in wrap_indented(stikk_core::SWITCH_TO_SEE_THE_FILES, SEAL_TEXT_WIDTH, "  ") {
+    for row in wrap_indented(stikk_core::SWITCH_TO_SEE_THE_FILES, SEAL_PROSE_WIDTH, "  ") {
         prose.push(Line::from(Span::styled(
             row,
             Style::default().fg(palette.dim),
@@ -2719,7 +2719,7 @@ fn render_import_result(printed: &[String], palette: &Palette, frame: &mut Frame
         }
         prose.push(Line::from(""));
     }
-    for row in wrap_indented(stikk_core::RECEIVED_IS_READ_ONLY, SEAL_TEXT_WIDTH, "  ") {
+    for row in wrap_indented(stikk_core::RECEIVED_IS_READ_ONLY, SEAL_PROSE_WIDTH, "  ") {
         prose.push(Line::from(Span::styled(
             row,
             Style::default().fg(palette.dim),
@@ -2860,6 +2860,8 @@ const CONFIRM_WIDTH: u16 = 70;
 const SEAL_WIDTH: u16 = 78;
 /// Text columns inside a [`SEAL_WIDTH`] panel — see [`PANEL_TEXT_WIDTH`].
 const SEAL_TEXT_WIDTH: usize = SEAL_WIDTH as usize - 2;
+/// Prose columns inside a [`SEAL_WIDTH`] panel — see [`PANEL_PROSE_WIDTH`].
+const SEAL_PROSE_WIDTH: usize = SEAL_TEXT_WIDTH - 1;
 
 /// The quote bar prefixing every row of prikk's verbatim message, and the placeholder indent the
 /// wrap is computed against.
@@ -2874,15 +2876,32 @@ const QUOTE_INDENT: &str = "    ";
 const REFUSAL_WIDTH: u16 = 72;
 /// Text columns inside a [`REFUSAL_WIDTH`] panel — see [`PANEL_TEXT_WIDTH`].
 const REFUSAL_TEXT_WIDTH: usize = REFUSAL_WIDTH as usize - 2;
+/// Prose columns inside a [`REFUSAL_WIDTH`] panel — see [`PANEL_PROSE_WIDTH`].
+const REFUSAL_PROSE_WIDTH: usize = REFUSAL_TEXT_WIDTH - 1;
 
 /// Text columns available inside a [`CONFIRM_WIDTH`] panel — the outer width less its two border
 /// columns, which is exactly what [`Panel`] gives the prose region.
 ///
-/// **No right gutter, deliberately.** A one-column gutter reads slightly better for prose, and the
-/// Glossary keeps one for that reason. Here it would cost a 64-hex id its last character: `block id: `
-/// plus 64 hex is exactly the inner width of a 78-wide card, and a gutter would fold it onto a second
-/// row for one column. Fitting prikk's identifiers on one row wins.
+/// **Two widths, and what a call holds decides which it takes** (RFC 013 Handoff B). Every panel
+/// kind has both, and the pair is the same rule each time.
+///
+/// **This one is the full inner width, for identifiers and prikk's verbatim lines**: a target row,
+/// a `block id:` line, a repository path, anything drawn through `identifier` or `wrap_verbatim`.
+/// It must stay full, because a gutter would cost a 64-hex id its last character — `block id: `
+/// plus 64 hex is exactly the inner width of a 78-wide card — and fold it onto a second row for one
+/// column. Fitting prikk's identifiers on one row wins, and prikk's lines are prikk's to wrap.
+///
+/// **Prose stikk writes takes [`PANEL_PROSE_WIDTH`]**: a consequence, a note, a notice, an error
+/// sentence, anything stikk composed. Measured on the merge card at 80×24 before this existed, a
+/// word of stikk's could land in the last inner column and read as cut off — `…from this
+/// baseline. A│`. Nothing stikk writes needs that column, so prose gives it up and identifiers
+/// do not.
 const PANEL_TEXT_WIDTH: usize = CONFIRM_WIDTH as usize - 2;
+
+/// Prose columns inside a [`CONFIRM_WIDTH`] panel: [`PANEL_TEXT_WIDTH`] less a one-column right
+/// gutter, so no word stikk wrote sits against the border. See [`PANEL_TEXT_WIDTH`] for which
+/// calls take which, and `the_prose_gutter_*` tests for what holds it.
+const PANEL_PROSE_WIDTH: usize = PANEL_TEXT_WIDTH - 1;
 
 /// What to say under a signing key id, given how firmly it may be claimed (RFC 026 §5).
 ///
@@ -2901,7 +2920,7 @@ fn claim_rows<'a>(claim: KeyClaim, palette: &Palette) -> Vec<Line<'a>> {
              pass, not one prikk has confirmed."
         }
     };
-    wrap_indented(text, PANEL_TEXT_WIDTH, "    ")
+    wrap_indented(text, PANEL_PROSE_WIDTH, "    ")
         .into_iter()
         .map(|row| Line::from(Span::styled(row, Style::default().fg(palette.dim))))
         .collect()

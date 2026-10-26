@@ -25,7 +25,14 @@ license=('Apache-2.0')
 # implicitly satisfied*.
 depends=('prikk>=0.@PRIKK_FLOOR@' 'glibc' 'libgcc')
 makedepends=('cargo')
-options=('!lto')
+# **`!debug` as well as `!lto`.** Arch's own `makepkg.conf` enables `debug`, which splits a
+# `stikk-debug` package off this one -- and the crate's release profile carries no debug info to
+# put in it, so what comes out is an empty `usr/src/debug/stikk` and a `.build-id` symlink
+# pointing at a file that is not there (namcap `E:`, measured in `archlinux:base-devel` and
+# reproduced locally by turning `debug` on). stikk publishes no debug package, `stikk-bin` has
+# said `!debug` from the start, and `strip` still applies either way -- so `/usr/bin/stikk` is
+# byte-for-byte what it was, with nothing broken built beside it.
+options=('!lto' '!debug')
 source=("$pkgname-$pkgver.tar.gz::https://static.crates.io/crates/$pkgname/$pkgname-$pkgver.crate")
 # From the crates.io index's own `cksum` for this version, and the downloaded crate is checked
 # against it before this file is written.

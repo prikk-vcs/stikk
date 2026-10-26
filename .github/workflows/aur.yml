@@ -150,8 +150,9 @@ jobs:
               # see the dependency it is questioning.
               *"Dependency included, but may not be needed ('prikk')"*) return 0 ;;
               # The dynamic loader itself, named by every dynamically linked binary and imported
-              # from by none. Seen on the maintainer's Arch-based machine; it may not appear here,
-              # and if this first run does not show it, the entry goes (review v1).
+              # from by none. **It does appear in `archlinux:base-devel`** -- measured on the
+              # second run of this workflow, which is the first that got `stikk` as far as
+              # namcap -- so the entry stays (review v1, v3).
               *"Unused shared library '/usr/lib64/ld-linux-x86-64.so.2'"*) return 0 ;;
               *) return 1 ;;
             esac

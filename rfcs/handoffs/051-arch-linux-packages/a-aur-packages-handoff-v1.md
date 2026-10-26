@@ -1,6 +1,6 @@
 # Handoff A — RFC 051: stikk and stikk-bin on the AUR (v1)
 
-**Companion to:** [RFC 051](../../accepted/051-arch-linux-packages.md), **accepted 2026-10-21**, no open question. **Read
+**Companion to:** [RFC 051](../../done/051-arch-linux-packages.md), **accepted 2026-10-21**, no open question. **Read
 the RFC first**, F2–F4 and decisions 1–7. The measured PKGBUILDs are in `.git-exclude/reports/051-aur/`
 (`stikk.PKGBUILD`, `stikk-bin.PKGBUILD`, `measure051.txt`): start from them.
 **Covers:** decisions 1–7. 0.16.0's increment 5; it touches packaging and CI only, so it runs beside exchange.

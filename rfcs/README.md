@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 051 | [Arch Linux packages on the AUR](./accepted/051-arch-linux-packages.md) | RFC 048 decision 6 amended: `stikk` (from the crates.io crate) and `stikk-bin` (the static release build, byte-identical to the attested artifact), `prikk>=floor`, filled and pushed by `release.yml` when the owner's secret exists, tested by `aur.yml`. **Accepted 2026-10-21**; 0.16.0 increment 5 | [A: AUR packages](./handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) |
+_None: RFC 051 delivered and closed 2026-10-27._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 051 | [Arch Linux packages on the AUR](./done/051-arch-linux-packages.md) | 0.16.0 candidate (on `main`); first publication by 0.16.0's release run | the push path, proven at the first publication; `aarch64` lint-only | [A: AUR packages](./handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) |
 | 052 | [The prikk 0.54 re-baseline, and prikk's own Windows installer](./done/052-prikk-0-54-rebaseline.md) | 0.16.0 candidate (on `main`) | none | [A: the re-baseline](./handoffs/052-prikk-0-54-rebaseline/a-rebaseline-handoff-v1.md) |
 | 050 | [Exchange: sharing work as a bundle file](./done/050-exchange-bundles.md) | 0.16.0 candidate (on `main`) | adopting a received branch (a merge), trusting its sealer, sync, opening a bundle with no repository, and choosing another branch to compare with; three prikk items held for a letter | [A: open a bundle](./handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) · [B: import and export](./handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) |
 | 048 | [Delivery for users new to all of this](./done/048-delivery-for-new-users.md) | **0.15.0** | the Homebrew tap (Handoff C, the owner's), SignPath signing (O5) and prikk's Windows installer line (prikk 0.54.0): decision points for 0.16.0 | [A: installers and install page](./handoffs/048-delivery-for-new-users/a-installers-and-install-page-handoff-v1.md) · [B: aarch64 static build](./handoffs/048-delivery-for-new-users/b-aarch64-static-build-handoff-v1.md) |

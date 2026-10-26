@@ -1,6 +1,6 @@
 # RFC 051 — Arch Linux packages on the AUR
 
-**Status.** **Accepted by the project owner 2026-10-21**, with O1–O4 answered (§ *For the owner*); [Handoff A](../handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) issued, as 0.16.0's increment 5. **Proposed 2026-10-21** by the architect, on the project owner's direction of the same day: *"As extension on
+**Status.** **Done 2026-10-27**: Handoff A delivered on `main` (`b5dbd0f`..`d66f336`); 0.16.0 candidate. **The push path is proven by the first publication**, which 0.16.0's release run performs: the owner set the key on 2026-10-27; the placeholder AUR repositories had been deleted by then, and a restore was requested. **Accepted by the project owner 2026-10-21**, with O1–O4 answered (§ *For the owner*); [Handoff A](../handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) issued, as 0.16.0's increment 5. **Proposed 2026-10-21** by the architect, on the project owner's direction of the same day: *"As extension on
 ArchLinux packaging, I registered the repositories which are expected to be integrated with GitHub Actions CI"* —
 `aur.archlinux.org/packages/stikk` and `…/stikk-bin`. **No open question.**
 Measured on CachyOS (Arch-based, x86_64) with `makepkg` and `namcap` against the published stikk 0.15.0, building
@@ -113,3 +113,22 @@ release build and pass `namcap` within the allow-list in `archlinux:base-devel` 
 - **No other package manager**; RFC 048 decision 6's reasons stand for them.
 - **No `aarch64` build test**: no Arch Linux ARM runner. The `aarch64` line uses the archive Handoff B of RFC 048
   proved on real ARM hardware; the PKGBUILD's `aarch64` branch is lint-checked only.
+
+## Delivered
+
+**One handoff, six commits, green on `main` at `d66f336`**: CI, the suite, supply chain, and **`aur.yml` building,
+testing and linting both packages in `archlinux:base-devel`**, uploading exactly the four files the AUR receives.
+
+- **Templates and one filler** (`b5dbd0f`): `stikk` from the crates.io crate, its checksum from the index and the
+  download checked against it; `stikk-bin` from the release's static musl archives, unstripped and byte-identical to the
+  attested artifact; `prikk>=0.28` from `print_version_matrix`; the AUR host keys pinned and matched to the AUR's
+  published fingerprints.
+- **`aur.yml` and the release job** (`aa0bd77`, `395c20a`, `4fcdb1f`): a `packages` job with no environment, linting
+  against a four-entry allow-list, and a `push` job under environment `aur` sending the linted bytes only when asked;
+  `release.yml` calls it after the crates and binaries, and a failed push never fails a release.
+- **Two defects the first CI runs found, each invisible on the Arch-*based* measuring machine** (`0312c39`, `d66f336`):
+  the crate extracted inside stikk's own Cargo workspace, and Arch's default `debug` option splitting off a broken
+  `stikk-debug` package. Both fixed and proven both ways.
+- **The install page's Arch section**, gated by one paragraph that comes out with the first publication.
+- **Unproven until the first publication**: the push itself, and the `push` job's download of the artifact. **`aarch64`
+  is lint-only.**

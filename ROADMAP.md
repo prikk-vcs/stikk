@@ -425,7 +425,7 @@ a fabricated worktree entry was fixed.
 
 **0.16.0: stikk shares work as a file.** Scope: `.git-exclude/release/0-16-0-scope.md`.
 
-1. **The panels' prose gets a right gutter** ([RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
+1. **The panels' prose gets a right gutter — landed on `main`** (`a6e4a7c`, [RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
    no word sits against a card's border; identifiers and prikk's lines keep the full width.
 2. **Exchange, read-only — landed on `main`** (`FR-090/091`, [RFC 050](rfcs/done/050-exchange-bundles.md), `0c2d52e`): open a bundle file and see prikk's verification and
    its preview against your branch — applies cleanly or conflicts, and what it would change — before anything is
@@ -437,10 +437,9 @@ a fabricated worktree entry was fixed.
 4. **The prikk 0.54 re-baseline — landed on `main`** ([RFC 052](rfcs/done/052-prikk-0-54-rebaseline.md), `13c96df`; prikk 0.54.1 published 2026-10-24): prikk's own Windows installer line, and its
    `cargo binstall` fix checked; validated through 0.54.1.
 
-5. **Arch Linux packages on the AUR** ([RFC 051](rfcs/accepted/051-arch-linux-packages.md), accepted 2026-10-21,
+5. **Arch Linux packages on the AUR — landed on `main`** ([RFC 051](rfcs/done/051-arch-linux-packages.md), `d66f336`,
    [Handoff A](rfcs/handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md)): `stikk` and `stikk-bin`, kept
-   current by each release, published as soon as the owner's AUR key is set. Packaging and CI only; it runs beside
-   exchange.
+   current by each release; first published by 0.16.0's release run (the owner's key is set).
 
 **Decision points, settled 2026-10-21:** **SignPath signing dropped from 0.16.0** — re-entered only together with prikk's
 own signing decision, since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the

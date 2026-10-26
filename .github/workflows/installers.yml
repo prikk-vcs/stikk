@@ -423,7 +423,7 @@ jobs:
           if ($log -notmatch [regex]::Escape("prikk's install guide: https://prikk.org/docs/guide/install.html")) {
             Write-Error "prikk's guide was not printed"; exit 1
           }
-          if ($log -notmatch '1\. install prikk \(see above\)') { Write-Error 'the Next list did not lead with prikk'; exit 1 }
+          if ($log -notmatch '1\. install prikk \(the command is above\)') { Write-Error 'the Next list did not lead with prikk'; exit 1 }
           $v = & "$prefix\stikk.exe" --version
           if ($v.Trim() -ne "stikk $env:STIKK_VER") { Write-Error "got '$v'"; exit 1 }
           # **Nothing of prikk's was written.** Windows has no curl wrapper here; what it can
@@ -460,7 +460,7 @@ jobs:
           if ($old -notmatch [regex]::Escape('irm https://github.com/prikk-vcs/prikk/releases/latest/download/install.ps1 | iex')) {
             Write-Error "the too-old row did not print prikk's install command"; exit 1
           }
-          if ($old -notmatch '1\. install or update prikk') { Write-Error 'the Next step should say install or update'; exit 1 }
+          if ($old -notmatch '1\. install or update prikk \(the command is above\)') { Write-Error 'the Next step should say install or update'; exit 1 }
           if ($old -match 'still runs') { Write-Error 'it told someone an out-of-range prikk still runs'; exit 1 }
 
           # **Another major is not "too old"** (review v1 C3): the answer is a newer stikk.
@@ -489,7 +489,7 @@ jobs:
           if ($unreadable -notmatch 'will refuse to start with this prikk') {
             Write-Error 'it did not say stikk will refuse to start'; exit 1
           }
-          if ($unreadable -notmatch '1\. install or update prikk') { Write-Error 'the Next step is missing'; exit 1 }
+          if ($unreadable -notmatch '1\. install or update prikk \(the command is above\)') { Write-Error 'the Next step is missing'; exit 1 }
           if ($unreadable -match 'still runs') { Write-Error 'it promised an unreadable prikk still runs'; exit 1 }
 
           # **Inside the range.** A full `0.<n>.0` on PATH (the script parses three numbers),

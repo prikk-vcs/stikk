@@ -226,7 +226,7 @@ if ($prikkCmd) {
     } elseif ($minor -lt $floorMinor) {
       # **Below the floor is the one 0.x row that is not "yours still runs".** Measured: stikk
       # opens read-only here too, so that is what it says rather than leaving it to be found.
-      $prikkNextStep = 'install or update prikk (see above)'
+      $prikkNextStep = 'install or update prikk (the command is above)'
       Say "that is too old for this stikk, which needs prikk 0.$floorMinor or newer. stikk will open your"
       Say 'repository read-only until you update prikk.'
       Show-PrikkHowToGetIt
@@ -242,12 +242,12 @@ if ($prikkCmd) {
     # **Measured** (review v1 C2): stikk's handshake parses this line, and a version it cannot
     # read makes stikk exit with *could not find a version in prikk output*. So this row says
     # what happens, and must not borrow the reassuring sentence the two in-range rows use.
-    $prikkNextStep = 'install or update prikk (see above)'
+    $prikkNextStep = 'install or update prikk (the command is above)'
     Say 'stikk could not read a version number from that, and will refuse to start with this prikk.'
     Show-PrikkHowToGetIt
   }
 } else {
-  $prikkNextStep = 'install prikk (see above)'
+  $prikkNextStep = 'install prikk (the command is above)'
   Say 'stikk reads prikk repositories, so you need prikk too.'
   Show-PrikkHowToGetIt
 }

@@ -364,7 +364,7 @@ jobs:
       version: ${{ needs.guard.outputs.version }}
       push: true
       # `continue-on-error` is not allowed on a `uses:` job, so the tolerance lives inside the
-      # called workflow: its two fallible steps carry it, and a last step annotates what was
-      # tolerated so the reason is not buried.
+      # called workflow: the one fallible step of each of its two jobs carries it, and each job
+      # ends by annotating what was tolerated so the reason is not buried.
       tolerate_failure: true
     secrets: inherit

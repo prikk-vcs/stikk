@@ -4,11 +4,16 @@ name: AUR
 # `stikk-bin` (the release's static musl archives), built and linted from the templates in
 # `packaging/aur/` and pushed only when the owner has set the key.
 #
-# **Three ways in, one job.** On a push touching `packaging/aur/**` it renders the templates
-# against the latest published release and **pushes nothing** — a template is never first
-# exercised by a release (decision 5). `workflow_dispatch` is how the owner publishes the current
-# release the day the secret is set, without waiting for the next tag (decision 6).
-# `workflow_call` is how `release.yml` runs it after the assets and the crates are published.
+# **Three ways in.** On a push touching `packaging/aur/**` it renders the templates against the
+# latest published release and **pushes nothing** — a template is never first exercised by a
+# release (decision 5). `workflow_dispatch` is how the owner publishes the current release the
+# day the secret is set, without waiting for the next tag (decision 6). `workflow_call` is how
+# `release.yml` runs it after the assets and the crates are published.
+#
+# **Two jobs, and the gate is on the second** (review v1 C1). `packages` builds and lints on
+# every change, unattended; `push` carries the `aur` environment and runs only when a caller
+# asked for a push. It sends the artifact `packages` linted, byte for byte, and never re-renders
+# — so what reaches the AUR is what was checked.
 #
 # **Key material never reaches a log, the workspace or an artifact.** The private half is read
 # from the secret straight into an `ssh-agent` in the push step and nowhere else.
@@ -50,19 +55,26 @@ permissions:
   contents: read
 
 jobs:
+  # ---------------------------------------------------------------- build and lint, always
+  #
+  # **No `environment:` here, deliberately** (review v1 C1). A required reviewer on `aur` is the
+  # owner's option (RFC 051 O2), and putting the gate on this job would make every lint run on a
+  # push to `packaging/aur/**` wait for a click — quietly undoing decision 5's *"builds the
+  # templates on every change"*, for a job that pushes nothing. The gate sits on `push` below,
+  # which is the only job that touches anything outside this runner.
   packages:
     name: build and lint the AUR packages
     runs-on: ubuntu-latest
     # `makepkg`, `namcap` and `.SRCINFO` all need an Arch environment (RFC 051 F4).
     container: archlinux:base-devel
-    # The owner may add a required reviewer here; the job must not assume one, and GitHub creates
-    # the environment without one (RFC 051 O2).
-    environment: aur
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      built: ${{ steps.build.outcome }}
     steps:
-      - name: Install what makepkg, namcap and the push need
+      - name: Install what makepkg and namcap need
         run: |
           set -euo pipefail
-          pacman -Syu --noconfirm --needed cargo namcap git openssh jq
+          pacman -Syu --noconfirm --needed cargo namcap git jq
 
       - uses: actions/checkout@v5
 
@@ -130,7 +142,8 @@ jobs:
               # see the dependency it is questioning.
               *"Dependency included, but may not be needed ('prikk')"*) return 0 ;;
               # The dynamic loader itself, named by every dynamically linked binary and imported
-              # from by none. Seen on the maintainer's Arch-based machine; it may not appear here.
+              # from by none. Seen on the maintainer's Arch-based machine; it may not appear here,
+              # and if this first run does not show it, the entry goes (review v1).
               *"Unused shared library '/usr/lib64/ld-linux-x86-64.so.2'"*) return 0 ;;
               *) return 1 ;;
             esac
@@ -161,25 +174,85 @@ jobs:
           done
           [ "$fail" -eq 0 ] || exit 1
 
-      # **The one step that writes anything outside this runner.** It runs only when the caller
-      # asked for a push *and* the owner's key exists; a missing key is a notice and a green job,
-      # not a failure (RFC 051 decision 6).
-      - name: Push to the AUR
-        id: push
-        # Nothing to push if the packages did not build; under `tolerate_failure` the job would
-        # otherwise carry on into a confusing second failure.
+      # **Exactly the two files per package that the AUR receives**, and nothing else: not the
+      # built package, not the sources, not the work tree. `push` sends these bytes as they are
+      # and never re-renders, so what goes to the AUR is what was linted here.
+      #
+      # `include-hidden-files` is not optional: `.SRCINFO` begins with a dot, and without it the
+      # upload would quietly drop half of what the push needs.
+      - name: Keep what the push will send
         if: steps.build.outcome == 'success'
-        continue-on-error: ${{ inputs.tolerate_failure == true }}
-        env:
-          WANT_PUSH: ${{ inputs.push }}
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          VERSION: ${{ steps.v.outputs.version }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aur-packages
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            rendered/stikk/PKGBUILD
+            rendered/stikk/.SRCINFO
+            rendered/stikk-bin/PKGBUILD
+            rendered/stikk-bin/.SRCINFO
+
+      # **A tolerated failure is still said out loud**, naming this job. Without it a release run
+      # would be green with the reason buried in a collapsed step.
+      - name: Say so if the build was tolerated
+        if: always()
         run: |
           set -euo pipefail
-          if [ "${WANT_PUSH}" != "true" ]; then
-            echo "::notice::not pushing: this run did not ask for a push (inputs.push is false)"
-            exit 0
+          outcome='${{ steps.build.outcome }}'
+          if [ "$outcome" != 'success' ]; then
+            echo "::error::AUR / packages: the packages did not build or lint (${outcome}), so nothing was pushed. The release itself is unaffected; re-run this workflow alone from Actions -> AUR -> Run workflow, with the tag as 'version' and 'push' checked."
+          else
+            echo "packages: ${outcome}"
           fi
+
+  # ---------------------------------------------------------------- push, only when asked
+  #
+  # **The only job that writes anything outside this runner**, and so the only one that carries
+  # the `aur` environment (review v1 C1). It is skipped entirely unless the caller asked for a
+  # push, so a lint run never waits on a reviewer.
+  #
+  # **Where the owner should store the key**: in this **environment**, not at repository level.
+  # The AUR scopes keys to the account, not the package (RFC 051 F4), so this one key can push
+  # prikk's two packages as well as stikk's — an environment secret reaches only this job, and
+  # adding a required reviewer to `aur` then gates every use of it. A repository secret works
+  # too, through `secrets: inherit`, but it is readable by every workflow in the repository.
+  push:
+    name: push to the AUR
+    needs: packages
+    if: ${{ inputs.push && needs.packages.outputs.built == 'success' }}
+    runs-on: ubuntu-latest
+    environment: aur
+    permissions:
+      contents: read
+    steps:
+      # For `packaging/aur/known_hosts` and nothing else.
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: aur-packages
+          path: rendered
+
+      - name: What the push is about to send
+        run: |
+          set -euo pipefail
+          for pkg in stikk stikk-bin; do
+            for f in PKGBUILD .SRCINFO; do
+              [ -s "rendered/${pkg}/${f}" ] || { echo "::error::rendered/${pkg}/${f} is missing or empty"; exit 1; }
+            done
+          done
+          sha256sum rendered/*/PKGBUILD rendered/*/.SRCINFO
+
+      - name: Push to the AUR
+        id: push
+        continue-on-error: ${{ inputs.tolerate_failure == true }}
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          VERSION: ${{ needs.packages.outputs.version }}
+        run: |
+          set -euo pipefail
           if [ -z "${AUR_SSH_PRIVATE_KEY}" ]; then
             echo "::notice::not pushing: the AUR_SSH_PRIVATE_KEY secret is not set"
             exit 0
@@ -195,7 +268,6 @@ jobs:
           export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/packaging/aur/known_hosts"
           git config --global user.name 'stikk release'
           git config --global user.email 'noreply@github.com'
-          git config --global --add safe.directory '*'
           for pkg in stikk stikk-bin; do
             echo "::group::push ${pkg}"
             git clone "ssh://aur@aur.archlinux.org/${pkg}.git" "/tmp/aur-${pkg}"
@@ -213,16 +285,13 @@ jobs:
             echo "::endgroup::"
           done
 
-      # **A tolerated failure is still said out loud.** Without this the release run would be
-      # green with the reason buried in a collapsed step.
-      - name: Say so if anything was tolerated
+      - name: Say so if the push was tolerated
         if: always()
         run: |
           set -euo pipefail
-          build='${{ steps.build.outcome }}'
-          push='${{ steps.push.outcome }}'
-          if [ "$build" != 'success' ] || { [ -n "$push" ] && [ "$push" != 'success' ] && [ "$push" != 'skipped' ]; }; then
-            echo "::error::the AUR job did not complete (build: ${build}, push: ${push:-skipped}). The release itself is unaffected; re-run this workflow alone from Actions -> AUR -> Run workflow, with the tag as 'version' and 'push' checked."
+          outcome='${{ steps.push.outcome }}'
+          if [ "$outcome" != 'success' ]; then
+            echo "::error::AUR / push: the push did not complete (${outcome}). The release itself is unaffected; re-run this workflow alone from Actions -> AUR -> Run workflow, with the tag as 'version' and 'push' checked."
           else
-            echo "build: ${build}, push: ${push:-skipped}"
+            echo "push: ${outcome}"
           fi

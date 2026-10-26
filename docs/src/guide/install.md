@@ -29,9 +29,11 @@ is the authority on it.
 curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh
 ```
 
-**Windows**: prikk does not publish a Windows installer yet — one is coming. Until it does, follow
-[prikk's install guide](https://prikk.org/docs/guide/install.html), which has the
-steps for Windows; the files are on [prikk's latest release](https://github.com/prikk-vcs/prikk/releases/latest).
+**Windows**, in PowerShell:
+
+```powershell
+irm https://github.com/prikk-vcs/prikk/releases/latest/download/install.ps1 | iex
+```
 
 Check it worked:
 
@@ -71,8 +73,8 @@ stikk-install: extracting
 stikk-install: installed to ~/.local/bin/stikk
 stikk-install: added ~/.local/bin to PATH in ~/.bashrc
 stikk-install: open a new terminal, or run: . ~/.bashrc
-stikk-install: prikk is already installed: prikk 0.53.0
-stikk-install: that is inside the range this stikk was tested against (0.28 through 0.53.0)
+stikk-install: prikk is already installed: prikk 0.54.1
+stikk-install: that is inside the range this stikk was tested against (0.28 through 0.54)
 
 stikk-install: done. Next:
 stikk-install:   1. open a new terminal (PATH changed)

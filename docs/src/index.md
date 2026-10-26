@@ -21,7 +21,7 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 ## Status
 
 **0.15.x merges one branch into another, and installs in two plain steps — prikk's, then
-stikk's — against prikk 0.53.0.** Each program installs itself: one line installs stikk, and it
+stikk's — against prikk 0.54.1.** Each program installs itself: one line installs stikk, and it
 prints prikk's own install command rather than installing prikk; **Merge** brings one branch into
 another where prikk's own plan proves the two sides confluent; **Verify** (`V`) shows prikk's
 verdict on whether the repository is sound; and **Compare** reaches any two points, including any
@@ -47,7 +47,7 @@ than shown against a baseline it does not have (RFC 032). **A declaration's fate
 verdict at prikk ≥ 0.44** rather than stikk's inference, one prikk would refuse makes commit
 unavailable, a checkout that stopped part-way is shown, and a ref with no published history reads
 again on prikk 0.45 and 0.46, where prikk refused it by name (RFC 034). Piped/CI invocation keeps the
-one-shot orientation. stikk targets prikk **≥ 0.28**, validated through **0.53.0**, and on prikk 0.42
+one-shot orientation. stikk targets prikk **≥ 0.28**, validated through **0.54.1**, and on prikk 0.42
 opens on prikk's current branch (RFC 029). **Patch detail** (`FR-030`) is built at prikk ≥ 0.39
 (RFC 035): Block detail lists a block's patches and the Queue lists the queued ones, and either opens
 one patch's operations — a text edit's spans, a create's content and mode, a delete's preimage, a

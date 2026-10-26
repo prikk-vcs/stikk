@@ -77,6 +77,12 @@ operation names and its sentences; `stikk_core::confirm::Aside`; `stikk_tui::App
   and a branch with nothing published are each declined with the reason, before anything runs.
   Nothing in the repository changes, and no signing key is used.
 
+### Changed
+
+- **Validated through prikk 0.54.1**, and on Windows the installer prints prikk's own install
+  command, so both programs install in two plain steps there too. (With 0.54.1, Block and Patch
+  detail open where prikk 0.53 refused after consecutive edits of one file — prikk's fix.)
+
 ## 0.15.0 — 2026-10-21
 
 **stikk now merges one branch into another when prikk proves it safe, and installs in two plain

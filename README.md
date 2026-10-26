@@ -50,8 +50,13 @@ installs itself**. Two commands, in order.
 curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh
 ```
 
-On Windows, follow [prikk's install guide](https://prikk.org/docs/guide/install.html);
-prikk's own Windows installer is on its way.
+Windows, in PowerShell:
+
+```powershell
+irm https://github.com/prikk-vcs/prikk/releases/latest/download/install.ps1 | iex
+```
+
+[prikk's install guide](https://prikk.org/docs/guide/install.html) is the authority on that line.
 
 **2. stikk** — Linux and macOS:
 
@@ -106,7 +111,7 @@ If prikk is installed somewhere your terminal does not look, point stikk at it:
 export STIKK_PRIKK_BIN=/path/to/prikk
 ```
 
-stikk requires prikk **≥ 0.28** and is validated through **0.53.0**; a newer prikk still runs, but
+stikk requires prikk **≥ 0.28** and is validated through **0.54.1**; a newer prikk still runs, but
 stikk says its output shapes have not been checked against it, rather than assuming they have.
 
 Opening a repository on a terminal launches the interactive **TUI** — an Orientation view showing

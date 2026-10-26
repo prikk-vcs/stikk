@@ -39,12 +39,13 @@ ships ready-to-run binaries for Linux, macOS and Windows, with checksums — see
 **stikk drives the external `prikk` binary at runtime** (it is not a Cargo dependency): install a
 compatible `prikk` on your `PATH` as well. **prikk installs itself** — on Linux and macOS in one
 line (`curl -fsSL https://github.com/prikk-vcs/prikk/releases/latest/download/install.sh | sh`),
-and on Windows through
-[prikk's install guide](https://prikk.org/docs/guide/install.html), which is the
-authority on all of it. stikk's own installers install stikk and nothing else; they check for
+and on Windows in one line too
+(`irm https://github.com/prikk-vcs/prikk/releases/latest/download/install.ps1 | iex`), with
+[prikk's install guide](https://prikk.org/docs/guide/install.html) the authority on all of it.
+stikk's own installers install stikk and nothing else; they check for
 prikk and print prikk's command when it is missing.
 This release requires prikk **≥ 0.28** and is validated
-through **0.53.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
+through **0.54.1**; a newer prikk still runs, but stikk says its output shapes have not been checked
 against it rather than silently assuming they have. If `prikk` is missing, stikk opens and then
 explains that — by design.
 
@@ -61,7 +62,7 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 ## Status
 
 **v0.15.x merges one branch into another, and installs in two plain steps — prikk's, then
-stikk's — against prikk 0.53.0.** **Each program installs itself**: one line installs stikk —
+stikk's — against prikk 0.54.1.** **Each program installs itself**: one line installs stikk —
 `curl … install.sh | sh`, or `irm … install.ps1 | iex` on Windows — checking the download against
 the checksum published beside it, installing where you own it, and printing **prikk's own install
 command** when prikk is missing or too old, rather than installing prikk itself; `cargo binstall

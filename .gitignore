@@ -25,3 +25,6 @@ docs/book
 
 # GitHub Pages assembly (CI)
 /_site
+
+# AUR packages assembled by aur.yml (and by a local rehearsal of it)
+/aur-dist

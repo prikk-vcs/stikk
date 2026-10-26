@@ -67,6 +67,9 @@ jobs:
     runs-on: ubuntu-latest
     # `makepkg`, `namcap` and `.SRCINFO` all need an Arch environment (RFC 051 F4).
     container: archlinux:base-devel
+    env:
+      # Where `makepkg` works — **outside the checkout**; see the builder step for why.
+      AUR_WORK: /tmp/aur
     outputs:
       version: ${{ steps.v.outputs.version }}
       built: ${{ steps.build.outcome }}
@@ -104,8 +107,13 @@ jobs:
         run: |
           set -euo pipefail
           useradd -m builder
-          # Keep the checkout readable and let the builder write the rendered output beside it.
           chown -R builder:builder "$GITHUB_WORKSPACE"
+          # **Built outside the checkout, on purpose** (first CI run): `stikk`'s PKGBUILD extracts
+          # the crate into `src/stikk-<ver>/`, and anywhere under this repository that is a
+          # directory with its own `Cargo.toml` inside stikk's workspace -- so `cargo fetch`
+          # refuses with *"current package believes it's in a workspace when it's not"* before
+          # `prepare()` finishes. `/tmp` is outside it, and is where this was measured locally.
+          install -d -o builder -g builder "$AUR_WORK"
           # `makepkg` installs no dependency here (see `-d` below), so it needs no sudo at all.
 
       - name: Render both PKGBUILDs
@@ -113,9 +121,9 @@ jobs:
           VERSION: ${{ steps.v.outputs.version }}
         run: |
           set -euo pipefail
-          su builder -c "cd '$GITHUB_WORKSPACE' && ./packaging/aur/render.sh '${VERSION}' rendered"
-          echo '== stikk'; cat rendered/stikk/PKGBUILD
-          echo '== stikk-bin'; cat rendered/stikk-bin/PKGBUILD
+          su builder -c "cd '$GITHUB_WORKSPACE' && ./packaging/aur/render.sh '${VERSION}' '$AUR_WORK'"
+          echo '== stikk'; cat "$AUR_WORK/stikk/PKGBUILD"
+          echo '== stikk-bin'; cat "$AUR_WORK/stikk-bin/PKGBUILD"
 
       - name: Build, lint and describe each package
         id: build
@@ -149,13 +157,16 @@ jobs:
             esac
           }
           fail=0
+          # The two files per package the AUR receives, collected inside the workspace for the
+          # artifact. Only these: no `Cargo.toml` comes back in, so the workspace stays sound.
+          mkdir -p "$GITHUB_WORKSPACE/aur-dist"
           for pkg in stikk-bin stikk; do
             echo "::group::${pkg}"
-            su builder -c "cd '$GITHUB_WORKSPACE/rendered/${pkg}' && makepkg -f -d"
+            su builder -c "cd '$AUR_WORK/${pkg}' && makepkg -f -d"
             : > "/tmp/${pkg}.namcap"
-            su builder -c "cd '$GITHUB_WORKSPACE/rendered/${pkg}' && namcap PKGBUILD" \
+            su builder -c "cd '$AUR_WORK/${pkg}' && namcap PKGBUILD" \
               >> "/tmp/${pkg}.namcap"
-            su builder -c "cd '$GITHUB_WORKSPACE/rendered/${pkg}' && namcap ./*.pkg.tar.*" \
+            su builder -c "cd '$AUR_WORK/${pkg}' && namcap ./*.pkg.tar.*" \
               >> "/tmp/${pkg}.namcap"
             cat "/tmp/${pkg}.namcap"
             while IFS= read -r line; do
@@ -166,10 +177,11 @@ jobs:
               fi
             done < "/tmp/${pkg}.namcap"
             # The AUR needs this beside the PKGBUILD, and it is generated, never written.
-            su builder -c "cd '$GITHUB_WORKSPACE/rendered/${pkg}' && makepkg --printsrcinfo" \
-              > "/tmp/${pkg}.SRCINFO"
-            cp "/tmp/${pkg}.SRCINFO" "rendered/${pkg}/.SRCINFO"
-            echo "== ${pkg} .SRCINFO"; cat "rendered/${pkg}/.SRCINFO"
+            mkdir -p "$GITHUB_WORKSPACE/aur-dist/${pkg}"
+            cp "$AUR_WORK/${pkg}/PKGBUILD" "$GITHUB_WORKSPACE/aur-dist/${pkg}/PKGBUILD"
+            su builder -c "cd '$AUR_WORK/${pkg}' && makepkg --printsrcinfo" \
+              > "$GITHUB_WORKSPACE/aur-dist/${pkg}/.SRCINFO"
+            echo "== ${pkg} .SRCINFO"; cat "$GITHUB_WORKSPACE/aur-dist/${pkg}/.SRCINFO"
             echo "::endgroup::"
           done
           [ "$fail" -eq 0 ] || exit 1
@@ -189,10 +201,10 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           path: |
-            rendered/stikk/PKGBUILD
-            rendered/stikk/.SRCINFO
-            rendered/stikk-bin/PKGBUILD
-            rendered/stikk-bin/.SRCINFO
+            aur-dist/stikk/PKGBUILD
+            aur-dist/stikk/.SRCINFO
+            aur-dist/stikk-bin/PKGBUILD
+            aur-dist/stikk-bin/.SRCINFO
 
       # **A tolerated failure is still said out loud**, naming this job. Without it a release run
       # would be green with the reason buried in a collapsed step.
@@ -233,17 +245,17 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: aur-packages
-          path: rendered
+          path: aur-dist
 
       - name: What the push is about to send
         run: |
           set -euo pipefail
           for pkg in stikk stikk-bin; do
             for f in PKGBUILD .SRCINFO; do
-              [ -s "rendered/${pkg}/${f}" ] || { echo "::error::rendered/${pkg}/${f} is missing or empty"; exit 1; }
+              [ -s "aur-dist/${pkg}/${f}" ] || { echo "::error::aur-dist/${pkg}/${f} is missing or empty"; exit 1; }
             done
           done
-          sha256sum rendered/*/PKGBUILD rendered/*/.SRCINFO
+          sha256sum aur-dist/*/PKGBUILD aur-dist/*/.SRCINFO
 
       - name: Push to the AUR
         id: push
@@ -271,7 +283,7 @@ jobs:
           for pkg in stikk stikk-bin; do
             echo "::group::push ${pkg}"
             git clone "ssh://aur@aur.archlinux.org/${pkg}.git" "/tmp/aur-${pkg}"
-            cp "rendered/${pkg}/PKGBUILD" "rendered/${pkg}/.SRCINFO" "/tmp/aur-${pkg}/"
+            cp "aur-dist/${pkg}/PKGBUILD" "aur-dist/${pkg}/.SRCINFO" "/tmp/aur-${pkg}/"
             cd "/tmp/aur-${pkg}"
             git add PKGBUILD .SRCINFO
             # **A re-run is a no-op**: nothing to commit means nothing to push.

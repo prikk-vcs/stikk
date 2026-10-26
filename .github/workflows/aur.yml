@@ -37,6 +37,14 @@ on:
         required: false
         default: false
         type: boolean
+      # **For `release.yml` only** (RFC 051 decision 4): by the time the release calls this, the
+      # release is public, the crates are on crates.io and the binaries are attached. A push the
+      # AUR refused is a thing to fix, not a reason to redden a release that already happened. It
+      # defaults to false, so a push to `packaging/aur/**` and a manual dispatch stay strict.
+      tolerate_failure:
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -98,6 +106,8 @@ jobs:
           echo '== stikk-bin'; cat rendered/stikk-bin/PKGBUILD
 
       - name: Build, lint and describe each package
+        id: build
+        continue-on-error: ${{ inputs.tolerate_failure == true }}
         run: |
           set -euo pipefail
           # **`-d` skips only the *dependency check*, not the build.** prikk is not in the official
@@ -155,6 +165,11 @@ jobs:
       # asked for a push *and* the owner's key exists; a missing key is a notice and a green job,
       # not a failure (RFC 051 decision 6).
       - name: Push to the AUR
+        id: push
+        # Nothing to push if the packages did not build; under `tolerate_failure` the job would
+        # otherwise carry on into a confusing second failure.
+        if: steps.build.outcome == 'success'
+        continue-on-error: ${{ inputs.tolerate_failure == true }}
         env:
           WANT_PUSH: ${{ inputs.push }}
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
@@ -197,3 +212,17 @@ jobs:
             cd "$GITHUB_WORKSPACE"
             echo "::endgroup::"
           done
+
+      # **A tolerated failure is still said out loud.** Without this the release run would be
+      # green with the reason buried in a collapsed step.
+      - name: Say so if anything was tolerated
+        if: always()
+        run: |
+          set -euo pipefail
+          build='${{ steps.build.outcome }}'
+          push='${{ steps.push.outcome }}'
+          if [ "$build" != 'success' ] || { [ -n "$push" ] && [ "$push" != 'success' ] && [ "$push" != 'skipped' ]; }; then
+            echo "::error::the AUR job did not complete (build: ${build}, push: ${push:-skipped}). The release itself is unaffected; re-run this workflow alone from Actions -> AUR -> Run workflow, with the tag as 'version' and 'push' checked."
+          else
+            echo "build: ${build}, push: ${push:-skipped}"
+          fi

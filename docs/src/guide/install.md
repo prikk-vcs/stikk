@@ -98,6 +98,36 @@ stikk
 
 Press `?` inside stikk for help, and `q` to leave.
 
+## Arch Linux
+
+> **Not published yet.** stikk's two AUR packages are registered but still placeholders; this
+> section describes them so it is ready the day they go up. Until then, use Step 2 above. *(This
+> paragraph is removed by the release that first publishes them.)*
+
+On Arch Linux and its derivatives, stikk is on the AUR as two packages. Pick one:
+
+- **`stikk-bin`** — the prebuilt binary from the release, the same file Step 2 installs. Nothing
+  is compiled.
+- **`stikk`** — built from source on your machine, from the crate published on crates.io.
+
+They install the same program and cannot both be installed at once. Either one brings in
+**prikk's own AUR package** as a dependency, so you get both programs.
+
+With `makepkg`, which needs nothing else installed:
+
+```sh
+git clone https://aur.archlinux.org/stikk-bin.git
+cd stikk-bin
+makepkg -si
+```
+
+An AUR helper does the same in one line — stikk needs none in particular, and names none as
+required.
+
+**Updating** is the route you installed by: `makepkg -si` again in a fresh clone, or your
+helper's upgrade. **Removing** is `pacman -R stikk-bin` (or `stikk`), which leaves prikk and your
+repositories alone.
+
 ## Updating
 
 Run each program's install line again. Both installers overwrite what is there, so running them

@@ -77,6 +77,9 @@ operation names and its sentences; `stikk_core::confirm::Aside`; `stikk_tui::App
   and a branch with nothing published are each declined with the reason, before anything runs.
   Nothing in the repository changes, and no signing key is used.
 
+- **stikk on the AUR** — `stikk` (built from source) and `stikk-bin` (the prebuilt static build) —
+  updated by each release.
+
 ### Changed
 
 - **Validated through prikk 0.54.1**, and on Windows the installer prints prikk's own install

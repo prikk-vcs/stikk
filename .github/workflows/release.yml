@@ -341,3 +341,30 @@ jobs:
             dist/install.ps1.sha256
             dist/uninstall.ps1
             dist/uninstall.ps1.sha256
+
+  # stikk's two AUR packages (RFC 051 decision 4). **After the crates and the assets**, because
+  # `stikk` builds the crates.io crate and `stikk-bin` downloads the release's archives — both
+  # must exist before the PKGBUILDs can be checksummed against them.
+  #
+  # **It must not fail the release.** By the time this runs the release is public, the crates are
+  # on crates.io and the binaries are attached; a push the AUR refused is a thing to fix, not a
+  # reason to redden a release that already happened. `continue-on-error` reports it and leaves
+  # the run green.
+  #
+  # **To re-run it alone** after fixing whatever it was: Actions → *AUR* → *Run workflow*, with
+  # `version` set to the tag and `push` checked. That is the same path the owner uses to publish
+  # the current release the day the key is first set (decision 6).
+  aur:
+    name: AUR
+    needs: [guard, crates, binaries]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/aur.yml
+    with:
+      version: ${{ needs.guard.outputs.version }}
+      push: true
+      # `continue-on-error` is not allowed on a `uses:` job, so the tolerance lives inside the
+      # called workflow: its two fallible steps carry it, and a last step annotates what was
+      # tolerated so the reason is not buried.
+      tolerate_failure: true
+    secrets: inherit

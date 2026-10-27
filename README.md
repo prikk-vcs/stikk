@@ -129,6 +129,10 @@ exact files it will write and delete) — prikk ≥ 0.42, and ≥ 0.46 for a swi
 **merges one branch into another** — mark the branch to merge from (`m`), select the one it goes
 into, `M` for prikk's own plan, `Enter` to run it — only where prikk's plan proves the two sides
 confluent, previewed like every other write and never into the branch you are on (prikk ≥ 0.42).
+stikk **shares work as a bundle file** — `i` opens one and shows prikk's own verification of it
+and what prikk says importing it would change, `I` imports it as a received branch beside your
+own, and `E` writes a branch out to a file outside the repository — each previewed, and nothing
+written until you confirm (prikk ≥ 0.53).
 stikk **reopens each repository where you left it** — the focused ref, the view and the untracked filter,
 re-checked against prikk first and stored outside every repository; `STIKK_PRIVATE=1` remembers
 nothing.

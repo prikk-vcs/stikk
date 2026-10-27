@@ -2,7 +2,24 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.16.0 — 2026-10-29
+
+**stikk now shares work as a bundle file — previewed before anything is written — and installs on
+Arch Linux from the AUR.** Press `i` anywhere a repository is open and give it a path: stikk shows
+**prikk's own verification** of the file, word for word, and what prikk says importing it would
+change against your branch of that name — the files, their sizes, who sealed it, and prikk's
+reason where it conflicts. `I` imports it as `remotes/<name>`, read-only history beside your own,
+after a card naming where it goes, the tip it brings and the file it read; no branch of yours is
+created or moved, and stikk declines two imports prikk allows — one that changes nothing, and a
+stale file that would move the received branch **back** and hide newer work. `E` in the ref
+picker writes a branch out to a bundle file, prefilled beside the repository, never inside it and
+never over a file that is already there (RFC 050). **On Windows the installer now prints prikk's
+own install command**, so both programs install in two plain steps on every platform, and the
+range is validated through prikk 0.54.1 — with which Block and Patch detail open where prikk 0.53
+refused after consecutive edits of one file (RFC 052). **stikk is on the AUR**, as `stikk-bin`
+(prebuilt) or `stikk` (built from the published crate), each pulling in prikk's own package
+(RFC 051). The real-binary suite drives **69 cases** against real prikk binaries at 0.28.0 and
+0.54.1, on Linux, macOS and Windows.
 
 ### Breaking
 
@@ -77,8 +94,12 @@ operation names and its sentences; `stikk_core::confirm::Aside`; `stikk_tui::App
   and a branch with nothing published are each declined with the reason, before anything runs.
   Nothing in the repository changes, and no signing key is used.
 
-- **stikk on the AUR** — `stikk` (built from source) and `stikk-bin` (the prebuilt static build) —
-  updated by each release.
+- **stikk on the AUR.** Two packages: `stikk-bin`, the prebuilt static build this release
+  publishes, and `stikk`, built on your machine from the crate on crates.io. They install the
+  same program and cannot both be installed at once, and either brings in **prikk's own AUR
+  package**, so `makepkg -si` in a clone — or any AUR helper, none of them required — leaves you
+  with both programs. Each release updates them, and the binary `stikk-bin` installs is left
+  unstripped so it stays byte-identical to the archive the release attested.
 
 ### Changed
 

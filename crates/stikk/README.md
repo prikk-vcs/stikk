@@ -61,8 +61,10 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.15.x merges one branch into another, and installs in two plain steps — prikk's, then
-stikk's — against prikk 0.54.1.** **Each program installs itself**: one line installs stikk —
+**v0.16.x shares work as a bundle file, installs in two plain steps on every platform — prikk's,
+then stikk's — against prikk 0.54.1, and is on the AUR.** `i` opens a bundle and shows prikk's
+verification and what importing would change, `I` imports it as a received branch, and `E` writes
+a branch out to a file outside the repository. **Each program installs itself**: one line installs stikk —
 `curl … install.sh | sh`, or `irm … install.ps1 | iex` on Windows — checking the download against
 the checksum published beside it, installing where you own it, and printing **prikk's own install
 command** when prikk is missing or too old, rather than installing prikk itself; `cargo binstall
@@ -83,14 +85,18 @@ Block detail, which lists every block's patches **and the files present at that 
 modes** (prikk ≥ 0.46), or from the Queue. `v` shows prikk's own fields instead. Around that it
 reads orientation, ref history, worktree changes and the **Queue view**, with refusal explanations
 and a glossary; the **ref picker offers the branch you are on before its first seal** (prikk ≥
-0.47). It performs seven mutations: **commit** (author a worktree capture into the active queue),
+0.47). It performs nine mutations: **commit** (author a worktree capture into the active queue),
 **seal** (freeze that queue into permanent, MAINTAINER-signed history, naming the patches it
 freezes), and — from the ref picker — **create a branch** (`n`), **create a tag** (`t`, or at any
 block from History), **close a branch** (`x`), **switch to a branch** (`s`, previewed as the
 exact files it will write and delete) and **merge one branch into another** (`m` to mark the
 branch to merge from, `M` for prikk's own plan, `Enter` to run it), at prikk ≥ 0.42 and ≥ 0.46 for
-a switch — every one of them always preview-first, with tiered confirmation a compile error can't
-let you skip.
+a switch — plus **import a bundle** as a received branch (`I`) and **export a branch** to a bundle
+file (`E`), at prikk ≥ 0.53 — every one of them always preview-first, with tiered confirmation a
+compile error can't let you skip.
+**stikk shares work as a bundle file**: `i` opens one and shows prikk's own verification and what
+prikk says importing it would change, an import creates and moves no branch of yours, and an
+export writes outside the repository and never over a file that is there.
 **A confirmed commit authors only the worktree its preview showed.** **stikk notices a commit, seal
 or branch switch made in another terminal** and refreshes what is on screen. **A `prikk mv` is shown
 as the rename prikk says it will author**, from prikk's own verdict at prikk ≥ 0.44, and a

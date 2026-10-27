@@ -84,23 +84,27 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.15.x release is (and is not)
+## What a v0.16.x release is (and is not)
 
-v0.15.x reads orientation, history, block detail — including the files at **any** block, with their
+v0.16.x reads orientation, history, block detail — including the files at **any** block, with their
 modes, at prikk ≥ 0.46 — worktree changes, the Queue view, **Patch detail** (what one patch changed,
 from prikk's own `show` report, with content shown byte for byte), **Compare** (what changed between
 two points, from prikk's own `diff` hunks, at prikk ≥ 0.46 — two blocks, a block and the one before
 it, any two refs, or the worktree), **Verify** (prikk's verdict on whether the repository is sound,
-with its failing conditions and every stage it ran, at prikk ≥ 0.39) and the
-refusal/glossary surfaces, and performs seven mutations — **commit** (author a worktree capture),
+with its failing conditions and every stage it ran, at prikk ≥ 0.39), **a bundle file** (prikk's
+own verification of it and what prikk says importing it would change, at prikk ≥ 0.53) and the
+refusal/glossary surfaces, and performs nine mutations — **commit** (author a worktree capture),
 **seal** (freeze the queue into signed history), **create a branch**, **create a tag**, **close
-a branch** and **merge one branch into another** (at prikk ≥ 0.42), and **switch branch** (at
-prikk ≥ 0.46) — every one of them
+a branch** and **merge one branch into another** (at prikk ≥ 0.42), **switch branch** (at
+prikk ≥ 0.46), and **import a bundle** as a received branch and **export a branch** to a bundle
+file (at prikk ≥ 0.53) — every one of them
 preview-first with tiered confirmation, naming the key that will sign where one signs at all. A
 confirmed commit authors only the worktree its preview showed, the seal confirmation names the
 patches it freezes, a switch's confirmation names the exact files it will write and delete, and a
 merge runs only where prikk's own plan proves the two sides confluent — never into the branch you
-are on, and writing nothing to your worktree. It also notices a change made outside it and refreshes what is on screen,
+are on, and writing nothing to your worktree. An import creates and moves no branch of yours and
+is declined where it would change nothing or move the received branch back; an export writes
+**outside** the repository, never over an existing file, and changes nothing inside it. It also notices a change made outside it and refreshes what is on screen,
 and its commit preview shows a declared rename as prikk's own verdict resolves it, makes commit
 unavailable where prikk would refuse a declaration, and names a ref with no published history.
 Every string it did not write is rendered so that what you read is what prikk reported.

@@ -20,10 +20,12 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.15.x merges one branch into another, and installs in two plain steps — prikk's, then
-stikk's — against prikk 0.54.1.** Each program installs itself: one line installs stikk, and it
-prints prikk's own install command rather than installing prikk; **Merge** brings one branch into
-another where prikk's own plan proves the two sides confluent; **Verify** (`V`) shows prikk's
+**0.16.x shares work as a bundle file, installs in two plain steps on every platform — prikk's,
+then stikk's — against prikk 0.54.1, and is on the AUR.** Each program installs itself: one line
+installs stikk, and it prints prikk's own install command rather than installing prikk;
+**Exchange** opens a bundle file and shows prikk's verification and what importing would change
+(`i`), imports it as a received branch (`I`) and writes a branch out to a file (`E`); **Merge**
+brings one branch into another where prikk's own plan proves the two sides confluent; **Verify** (`V`) shows prikk's
 verdict on whether the repository is sound; and **Compare** reaches any two points, including any
 two refs. Every repository string is still shown as it is.
 The security-critical
@@ -77,5 +79,10 @@ into another** (RFC 047, prikk ≥ 0.42): mark the branch to merge from in the r
 the one it goes into, `M` shows prikk's own plan for the pair against a baseline stikk names only
 where it can prove it, and `Enter` runs the merge where that plan proves the two sides confluent
 — previewed with every guard re-read at the moment you confirm, never into the branch you are on,
-and writing nothing to your worktree. Sync, and checkout of a block or a path, remain unbuilt; a
+and writing nothing to your worktree. **stikk shares work as a bundle file** (RFC 050,
+prikk ≥ 0.53): `i` opens one and shows prikk's own verification and what prikk says importing it
+would change against your branch of that name, `I` imports it as `remotes/<name>` — read-only
+history beside your own, declined where it would change nothing or move that branch back — and
+`E` writes a branch out to a file outside the repository, never over one that is already there.
+Sync, and checkout of a block or a path, remain unbuilt; a
 **Trust & Keys** view and a **doctor**/lock-inspector view are named gaps too.

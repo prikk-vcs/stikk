@@ -1,6 +1,6 @@
 # RFC 013 — The preview and tiered-confirmation machinery
 
-**Status.** Implemented (0.4.0 candidate; on `main` 2026-09-05, reviewed and approved) — handoff:
+**Status.** Implemented and **shipped in 0.4.0**, with **Handoff B** (the panels' prose gutter) **shipped in 0.16.0** — on `main` 2026-09-05, reviewed and approved. Handoff:
 [`../handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md`](../handoffs/013-preview-and-confirmation-machinery/preview-confirm-handoff-v1.md).
 Originally proposed 2026-09-05 — build the gate every mutation in 0.4.0 sits behind: preview-first
 made **structural rather than disciplined**, confirmation tiers derived from the request category, and

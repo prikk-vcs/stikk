@@ -273,6 +273,33 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk shares work as a bundle file, and installs from the AUR (0.16.0, breaking)
+
+- **The panels' prose gets a right gutter** ([RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
+  no word stikk wrote sits against a card's border and reads as cut off, on the confirmation, seal and refusal
+  cards alike. Identifiers and prikk's own lines keep the full inner width, so a 64-hex block id stays on one row.
+- **Exchange, read-only** (`FR-090/091`, [RFC 050](rfcs/done/050-exchange-bundles.md)): `i` opens a bundle file and
+  shows **prikk's own verification** of it, word for word, beside what prikk says importing it would change against
+  your branch of the bundle's own name — the files and their sizes, who sealed it with prikk's continuity note, and
+  prikk's own reason where it conflicts. **Nothing is written** by opening one.
+- **Exchange, the writes** (RFC 050): `I` imports a bundle as `remotes/<name>`, read-only history beside your own,
+  and `E` writes a branch out to a bundle file. **stikk declines two imports prikk allows** — one that changes
+  nothing, and a stale file that would move the received branch *back* and hide newer work — each without asking
+  prikk at all. An export never writes inside the repository and never over a file that is there. Adopting received
+  history into a branch of your own is a merge and stays out.
+  *(Rollback was scoped here first and withdrawn the same day, re-authorized as exchange: measured, prikk 0.53's
+  rollback inverts the whole chain to the empty state, not one change. It waits on prikk.)*
+- **The prikk 0.54 re-baseline** ([RFC 052](rfcs/done/052-prikk-0-54-rebaseline.md)): **on Windows the installer
+  prints prikk's own install command**, so both programs install in two plain steps on every platform; the version
+  report names the minor it validated. prikk 0.54 also fixes a read stikk shows — Block and Patch detail open where
+  0.53 refused after consecutive edits of one file.
+- **Arch Linux packages on the AUR** ([RFC 051](rfcs/done/051-arch-linux-packages.md)): `stikk`, built from the
+  published crate, and `stikk-bin`, the prebuilt static build left unstripped so it stays byte-identical to the
+  attested archive. Both are built and linted in Arch's own container on every change, and published by this
+  release's run.
+- **The validated prikk range is `>= 0.28`, through `0.54.1`** (was `0.53.0`); the real-binary suite drives 69 cases
+  at 0.28.0 and 0.54.1 on Linux, macOS and Windows.
+
 ## Shipped — stikk merges one branch into another, and installs in two plain steps (0.15.0, breaking)
 
 - **The declarations card fits** ([RFC 034 Handoff C](rfcs/handoffs/034-prikk-0-46-rebaseline/c-declarations-card-fits-handoff-v1.md)):
@@ -421,29 +448,11 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.16.0, scoped 2026-10-21 (authorized), in delivery order
+## Next — 0.17.0, not yet scoped
 
-**0.16.0: stikk shares work as a file.** Scope: `.git-exclude/release/0-16-0-scope.md`.
-
-1. **The panels' prose gets a right gutter — landed on `main`** (`a6e4a7c`, [RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
-   no word sits against a card's border; identifiers and prikk's lines keep the full width.
-2. **Exchange, read-only — landed on `main`** (`FR-090/091`, [RFC 050](rfcs/done/050-exchange-bundles.md), `0c2d52e`): open a bundle file and see prikk's verification and
-   its preview against your branch — applies cleanly or conflicts, and what it would change — before anything is
-   written.
-3. **Exchange, the writes — landed on `main`** (RFC 050, `eafff77`): export a branch to a file, and import a bundle as a received ref, previewed;
-   adopting received history and trusting its sealer stay out. **The first to move to 0.17.0** if the cycle runs long.
-   *(Rollback was scoped here first and withdrawn the same day, re-authorized as exchange: measured, prikk 0.53's
-   rollback inverts the whole chain to the empty state, not one change. It waits on prikk.)*
-4. **The prikk 0.54 re-baseline — landed on `main`** ([RFC 052](rfcs/done/052-prikk-0-54-rebaseline.md), `13c96df`; prikk 0.54.1 published 2026-10-24): prikk's own Windows installer line, and its
-   `cargo binstall` fix checked; validated through 0.54.1.
-
-5. **Arch Linux packages on the AUR — landed on `main`** ([RFC 051](rfcs/done/051-arch-linux-packages.md), `d66f336`,
-   [Handoff A](rfcs/handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md)): `stikk` and `stikk-bin`, kept
-   current by each release; first published by 0.16.0's release run (the owner's key is set).
-
-**Decision points, settled 2026-10-21:** **SignPath signing dropped from 0.16.0** — re-entered only together with prikk's
-own signing decision, since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the
-owner's repository and token (RFC 048 Handoff C), and can join any release when they exist.
+**Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
+since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and
+token (RFC 048 Handoff C), and can join any release when they exist.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 

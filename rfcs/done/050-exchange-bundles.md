@@ -1,6 +1,6 @@
 # RFC 050 — Exchange: sharing work as a bundle file
 
-**Status.** **Done 2026-10-21**: Handoff A delivered on `main` (`f8b2ca8`..`0c2d52e`), Handoff B (`978173e`..`eafff77`); 0.16.0 candidate. **Accepted by the project owner 2026-10-21**; [Handoff A](../handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) and [Handoff B](../handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) issued. **Proposed 2026-10-21** by the architect, as 0.16.0's increments 2 and 3 (`.git-exclude/release/0-16-0-scope.md`,
+**Status.** **Shipped in 0.16.0.** **Done 2026-10-21**: Handoff A delivered on `main` (`f8b2ca8`..`0c2d52e`), Handoff B (`978173e`..`eafff77`). **Accepted by the project owner 2026-10-21**; [Handoff A](../handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) and [Handoff B](../handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) issued. **Proposed 2026-10-21** by the architect, as 0.16.0's increments 2 and 3 (`.git-exclude/release/0-16-0-scope.md`,
 authorized; re-authorized as exchange the same day after rollback was withdrawn). **No open question.**
 Measured against a real prikk **0.53.0**, one fresh repository per role: `.git-exclude/reports/050-exchange/`
 (`measure050.sh` → `measure050-0.53.txt`; `measure050b.sh` → `measure050b-0.53.txt`, a receiver that shares the sender's

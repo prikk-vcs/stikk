@@ -1,6 +1,6 @@
 # RFC 053 — Getting files back: an earlier version, saved outside the repository
 
-**Status.** **Proposed 2026-10-29** by the architect, as 0.17.0's increment 1 (`.git-exclude/release/0-17-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/053-get-files-back/a-get-files-back-handoff-v1.md) issued. **Proposed 2026-10-29** by the architect, as 0.17.0's increment 1 (`.git-exclude/release/0-17-0-scope.md`,
 authorized 2026-10-29). **No open question.**
 Measured against a real prikk **0.54.1**: `.git-exclude/reports/053-get-files-back/` (`measure053.sh` →
 `measure053-0.54.txt`, one fresh repository and a receiver). prikk's source read in the clone at the `0.54.1` tag
@@ -47,6 +47,11 @@ Measured, both write there; prikk's source says so (*"Nothing here refuses a des
 this repository's own tree"*). The copy then sits in the worktree as **untracked files** (`worktree-status`:
 `untracked inside-out/a.txt …`), and the next commit would capture it. **The same defect class RFC 050 decision 5
 closed for export.**
+
+**At prikk 0.55.0** (re-measured 2026-10-29, `measure053-0.55.txt`): **`extract` now refuses it**, as `refusal-v1`
+`destination-inside-repository` (*"refusing to extract into inside-out, inside this repository's own root … (nothing
+was written)"*), and the worktree stays clean. **`cat --output` still writes there.** Every other row of the
+measurement is unchanged. stikk's own check (decision 4) stays: it covers `cat`, and 0.54.
 
 ### F3 — `cat --output` drops the execute bit; `extract` keeps it
 

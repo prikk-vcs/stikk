@@ -1,9 +1,9 @@
 # RFC 054 — Trust, read-only: which keys this repository trusts
 
-**Status.** **Proposed 2026-10-29** by the architect, as 0.17.0's increment 2 (`.git-exclude/release/0-17-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md) issued; **start it when RFC 053's handoff is pushed.** **Proposed 2026-10-29** by the architect, as 0.17.0's increment 2 (`.git-exclude/release/0-17-0-scope.md`,
 authorized 2026-10-29). **No open question.**
 Measured against a real prikk **0.54.1**: `.git-exclude/reports/054-trust-read/` (`measure054.sh` →
-`measure054-0.54.txt`: a bare repository, one after `setup`, a second adopted key, and a receiver that adopted
+`measure054-0.54.txt`, and `measure054-0.55.txt` at 0.55.0, identical but for the version: a bare repository, one after `setup`, a second adopted key, and a receiver that adopted
 nothing). Key material: seeds generated with `--out` into the scratch directory; only `public key:` lines were read.
 **Tracks.** `FR-103` (its read half), `FR-104`, `UC-15`, `NFR-S03`, `C-T2a`, `UD-02`; RFC 026 (`key status`), RFC 050
 (the bundle cards' *sealed by*).

@@ -21,7 +21,8 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 ## Status
 
 **0.16.x shares work as a bundle file, installs in two plain steps on every platform — prikk's,
-then stikk's — against prikk 0.54.1, and is on the AUR.** Each program installs itself: one line
+then stikk's — against prikk 0.54.1.** Its AUR packages are on the way: [Install](./guide/install.md#arch-linux)
+says when they are published. Each program installs itself: one line
 installs stikk, and it prints prikk's own install command rather than installing prikk;
 **Exchange** opens a bundle file and shows prikk's verification and what importing would change
 (`i`), imports it as a received branch (`I`) and writes a branch out to a file (`E`); **Merge**

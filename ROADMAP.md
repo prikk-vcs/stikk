@@ -448,11 +448,21 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.17.0, not yet scoped
+## Next — 0.17.0: stikk gets an earlier version of your files back, and tells you whose work you trust
+
+Scoped and authorized 2026-10-29, in delivery order:
+
+1. **Getting files back** ([RFC 053](rfcs/proposed/053-get-files-back.md), `FR-053`'s non-destructive half): from
+   Block detail, save one file as it was at that block, or all of its files into a new folder — outside the
+   repository, never over an existing path, previewed by prikk's own plan.
+2. **Trust, read-only** ([RFC 054](rfcs/proposed/054-trust-read-only.md), `FR-103`'s read half): a Trust view of the
+   keys this repository trusts, yours marked, and on the bundle cards whether each sealer is trusted.
+3. **A prikk re-baseline**, only if prikk publishes a new minor before the cut; the cut does not wait for it.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and
-token (RFC 048 Handoff C), and can join any release when they exist.
+token (RFC 048 Handoff C), and can join any release when they exist. **The AUR packages** publish by a dispatch of
+`aur.yml` the day the AUR grants the adoption of the restored `stikk` and `stikk-bin`; no release waits for it.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 

@@ -516,6 +516,12 @@ pub fn import_confirm_and_execute(
 
 /// An object id, shortened the way History, seal and every preview already shorten one.
 fn short(id: &str) -> String {
+    short_id(id)
+}
+
+/// [`short`], for the other modules that shorten the same ids the same way — RFC 053's saves
+/// among them. **One function, so two previews cannot disagree about what a short id is.**
+pub(crate) fn short_id(id: &str) -> String {
     id.chars().take(crate::confirm::SHORT_ID_CHARS).collect()
 }
 

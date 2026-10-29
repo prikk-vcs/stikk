@@ -19,6 +19,7 @@ pub mod changes;
 pub mod commit;
 pub mod compare;
 pub mod confirm;
+pub mod files;
 pub mod glossary;
 pub mod history;
 pub mod merge;
@@ -67,6 +68,14 @@ pub use confirm::{
     KeyClaim, Outcome, PreviewToken, SHORT_ID_CHARS, TargetId, branch_notice, capability_gate,
     confirm, execute, preview, signing_key_claim, unshown_declarations_line, unshown_patches_line,
     unshown_paths_line, unshown_plan_lines_line,
+};
+pub use files::{
+    COPY_CONSEQUENCE, DESTINATION_EXISTS as FILES_DESTINATION_EXISTS, FILES_FROM_MINOR,
+    INSIDE_THE_REPOSITORY as FILES_INSIDE_THE_REPOSITORY, LOSES_THE_EXECUTE_BIT,
+    PROVISIONAL_REPLAY, SAVE_ALL_OPERATION, SAVE_FILE_OPERATION, SaveAllPreview, SaveAllTarget,
+    SaveFilePreview, SaveFileTarget, files_unavailable, save_all_confirm_and_execute,
+    save_all_preview, save_file_confirm_and_execute, save_file_preview, saved_all_lines,
+    saved_file_line, suggested_all_destination, suggested_file_destination,
 };
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{

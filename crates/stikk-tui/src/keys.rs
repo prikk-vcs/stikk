@@ -72,6 +72,9 @@ pub enum Action {
     Import,
     /// Export the selected branch to a bundle file (the ref picker; RFC 050 decision 5).
     Export,
+    /// Open the Trust view: the maintainer keys this repository trusts (RFC 054 decision 2).
+    /// **Read-only** — nothing is added, removed or confirmed.
+    OpenTrust,
     /// Save the file the cursor is on, as it was at this block (Block detail; RFC 053
     /// decision 3). **Outside the repository, and never over an existing path.**
     SaveFile,
@@ -138,6 +141,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('i') => Action::OpenBundle,
         KeyCode::Char('I') => Action::Import,
         KeyCode::Char('E') => Action::Export,
+        KeyCode::Char('T') => Action::OpenTrust,
         KeyCode::Char('F') => Action::SaveFile,
         KeyCode::Char('A') => Action::SaveAll,
         KeyCode::Char(' ') => Action::ToggleSealConsent,

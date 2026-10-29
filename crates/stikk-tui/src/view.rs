@@ -16,6 +16,7 @@ pub mod merge;
 pub mod orientation;
 pub mod patch;
 pub mod queue;
+pub mod trust;
 pub mod verify;
 
 /// Word-wrap `text` to `width`, opening at `indent` and hanging the rest at `hang`, and return

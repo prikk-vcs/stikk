@@ -216,6 +216,8 @@ pub(crate) enum RequestKind {
         /// The branch and the resolved destination.
         target: stikk_core::ExportTarget,
     },
+    /// Read the maintainer keys this repository trusts (RFC 054).
+    TrustRead,
     /// Preview saving one file as it was at a block (RFC 053).
     SaveFilePreview {
         /// The block, the repository path and the resolved destination.
@@ -331,6 +333,8 @@ pub(crate) enum ResponseKind {
     ImportPreview(Result<stikk_core::ImportPreview>),
     /// Answers [`RequestKind::ImportConfirmExecute`].
     ImportConfirmExecute(Result<stikk_core::Outcome<stikk_prikk::BundleImport>>),
+    /// Answers [`RequestKind::TrustRead`].
+    TrustRead(Result<stikk_core::TrustView>),
     /// Answers [`RequestKind::SaveFilePreview`].
     SaveFilePreview(Result<stikk_core::SaveFilePreview>),
     /// Answers [`RequestKind::SaveFileConfirmExecute`].
@@ -413,6 +417,7 @@ impl RequestKind {
             Self::OpenBundle { .. } => "bundle",
             Self::ImportPreview { .. } => "import preview",
             Self::ImportConfirmExecute { .. } => "import",
+            Self::TrustRead => "trust",
             Self::SaveFilePreview { .. } => "save preview",
             Self::SaveFileConfirmExecute { .. } => "save",
             Self::SaveAllPreview { .. } => "save preview",
@@ -591,6 +596,7 @@ pub(crate) fn run(
                     stikk_core::BUNDLE_LINEAGE_LIMIT,
                 ))
             }
+            RequestKind::TrustRead => ResponseKind::TrustRead(stikk_core::trust::read(prikk, repo)),
             RequestKind::SaveFilePreview { target } => {
                 ResponseKind::SaveFilePreview(stikk_core::save_file_preview(
                     prikk,

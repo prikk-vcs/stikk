@@ -696,6 +696,11 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
         ),
         key_line(
             palette,
+            "T",
+            "the maintainer keys this repository trusts (read only)",
+        ),
+        key_line(
+            palette,
             "F",
             "save the selected file as it was at this block (in Block)",
         ),

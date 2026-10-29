@@ -190,6 +190,15 @@ pub enum Screen {
         /// and a long effect list run past a short terminal.
         offset: std::cell::Cell<u16>,
     },
+    /// The maintainer keys this repository trusts (RFC 054 decision 2). **Read-only**: there is
+    /// nothing on this screen to confirm, and no key to press but `Esc`.
+    Trust {
+        /// The list, or why there is none.
+        view: stikk_core::TrustView,
+        /// First content row drawn, clamped and written back by the renderer — Verify's idiom:
+        /// a repository can adopt more keys than a terminal has rows.
+        offset: std::cell::Cell<u16>,
+    },
     /// prikk's verdict on whether the repository is sound (`FR-100`; RFC 040).
     Verify {
         /// The report, or the band's reason there is none.
@@ -307,6 +316,9 @@ pub enum Focus<'a> {
     History(&'a HistoryView, usize),
     /// A Block-detail screen and its selected patch.
     BlockDetail(&'a BlockDetailView, usize),
+    /// The Trust view (RFC 054 decision 2): the keys this repository trusts, and the scroll
+    /// offset the renderer clamps and writes back.
+    Trust(&'a stikk_core::TrustView, &'a std::cell::Cell<u16>),
     /// The Changes view, whether untracked entries are hidden, and whether the ref has published history.
     Changes(&'a ChangesView, bool, &'a RefHistory),
     /// The Queue view, its scroll offset and its selected patch.
@@ -941,6 +953,9 @@ impl App {
             // moment it was taken and is never cached across runs, so this is the only way to a
             // newer one — and it only ever happens because the reader asked.
             Some(Screen::Verify { .. }) => Some(RequestKind::Verify),
+            // RFC 054: `r` re-reads the list. Adopting a key happens in prikk, in another
+            // terminal, so this is the only way to a newer answer.
+            Some(Screen::Trust { .. }) => Some(RequestKind::TrustRead),
             // RFC 031 §7: Changes re-reads the ref it shows.
             Some(Screen::Changes { view, .. }) => Some(RequestKind::Changes {
                 reff: view.reff.clone(),
@@ -1140,6 +1155,40 @@ impl App {
             what: "verify",
             seq,
         });
+    }
+
+    /// `T` anywhere a repository is open (RFC 054 decision 2): the keys this repository trusts.
+    pub fn open_trust(&mut self) {
+        self.banner = None;
+        let seq = self.dispatch(RequestKind::TrustRead);
+        self.screens.push(Screen::Loading { what: "trust", seq });
+    }
+
+    /// Answers [`RequestKind::TrustRead`]. **Nothing here can fail into a banner**: below the
+    /// band and a refused list are both things the view itself says, so the screen opens either
+    /// way and says what it knows.
+    fn apply_trust_read(&mut self, seq: u64, result: stikk_model::Result<stikk_core::TrustView>) {
+        let Some(index) = self
+            .screens
+            .iter()
+            .position(|s| matches!(s, Screen::Loading { seq: t, .. } if *t == seq))
+        else {
+            return; // stale
+        };
+        match result {
+            Ok(view) => {
+                if let Some(slot) = self.screens.get_mut(index) {
+                    *slot = Screen::Trust {
+                        view,
+                        offset: std::cell::Cell::new(0),
+                    };
+                }
+            }
+            Err(error) => {
+                self.screens.remove(index);
+                self.surface(&error, OperationContext::Other);
+            }
+        }
     }
 
     /// Toggle the display-only untracked filter on a focused Changes screen (the `u` key; UD-08).
@@ -2825,6 +2874,9 @@ impl App {
             // below a verdict to open — and **nothing here acts on it** (RFC 040 decision 4):
             // Verify repairs nothing, clears no lock, and changes nothing at all.
             Some(Screen::Verify { .. }) => {}
+            // **The Trust view is a leaf, and read-only** (RFC 054 decision 2): there is
+            // nothing on it to open and nothing to confirm.
+            Some(Screen::Trust { .. }) => {}
             // **`Enter` is the merge** (RFC 047 decision 6) — offered only from a plan prikk
             // judged `Confluent`, because that is the only outcome prikk will merge from.
             Some(Screen::MergePlan { .. }) => self.begin_merge(),
@@ -3261,7 +3313,8 @@ impl App {
                     Screen::PatchDetail { offset, .. }
                     | Screen::MergePlan { offset, .. }
                     | Screen::Bundle { offset, .. }
-                    | Screen::Verify { offset, .. },
+                    | Screen::Verify { offset, .. }
+                    | Screen::Trust { offset, .. },
                 ) => {
                     offset.set(offset.get().saturating_sub(1));
                 }
@@ -3338,7 +3391,8 @@ impl App {
                     Screen::PatchDetail { offset, .. }
                     | Screen::MergePlan { offset, .. }
                     | Screen::Bundle { offset, .. }
-                    | Screen::Verify { offset, .. },
+                    | Screen::Verify { offset, .. }
+                    | Screen::Trust { offset, .. },
                 ) => {
                     offset.set(offset.get().saturating_add(1));
                 }
@@ -3450,6 +3504,7 @@ impl App {
             ResponseKind::ImportConfirmExecute(r) => r.is_ok(),
             ResponseKind::ExportPreview(r) => r.is_ok(),
             ResponseKind::ExportConfirmExecute(r) => r.is_ok(),
+            ResponseKind::TrustRead(r) => r.is_ok(),
             ResponseKind::SaveFilePreview(r) => r.is_ok(),
             ResponseKind::SaveFileConfirmExecute(r) => r.is_ok(),
             ResponseKind::SaveAllPreview(r) => r.is_ok(),
@@ -3480,6 +3535,7 @@ impl App {
             ResponseKind::RefWriteConfirmExecute { kind, result } => {
                 self.apply_ref_write_confirm_execute(seq, kind, result);
             }
+            ResponseKind::TrustRead(result) => self.apply_trust_read(seq, result),
             ResponseKind::SaveFilePreview(result) => match result {
                 Ok(stikk_core::SaveFilePreview::Blocked(reason)) => {
                     self.apply_save_preview(seq, Some(reason), None, None);
@@ -3582,6 +3638,7 @@ impl App {
                 | Screen::MergePlan { .. }
                 | Screen::Bundle { .. }
                 | Screen::Verify { .. }
+                | Screen::Trust { .. }
                 | Screen::Loading { .. } => {}
             }
         }
@@ -4896,6 +4953,7 @@ impl App {
                 refreshing,
                 offset,
             }) => Focus::Verify(view, *raw, refreshing.is_some(), offset),
+            Some(Screen::Trust { view, offset }) => Focus::Trust(view, offset),
             Some(Screen::Compare {
                 view,
                 opened,

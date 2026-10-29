@@ -45,6 +45,11 @@ pub enum OperationContext {
     /// repository is not a refusal** and never reaches here (RFC 040 decision 1); what does is an
     /// exit 1 that carried no report at all.
     Verify,
+    /// Adopting or removing a maintainer key (RFC 056 decision 5). **stikk parses none of
+    /// prikk's prose** — the one refusal it cannot see coming is a removed id re-adopted under
+    /// another key (F2), and prikk's own words already say exactly that, so stikk gives them a
+    /// heading and shows them.
+    Trust,
     /// Committing worktree changes (RFC 014). Prevention handles the common cases (F2/F6)
     /// client-side; a refusal reaching here is the race, or something neither prevention check saw.
     Commit,
@@ -585,6 +590,11 @@ fn refusal_gloss(op: OperationContext) -> Option<String> {
             "stikk could not read this bundle. **Nothing was imported and nothing was written** — \
              opening a bundle only reads it. stikk shows prikk's reason above."
         }
+        // **Decision 5's heading.** prikk's own refusal is shown above it, verbatim.
+        OperationContext::Trust => {
+            "prikk refused to adopt this key. **Nothing was adopted and nothing was removed**; \
+             stikk shows prikk's reason above, and matches on none of it."
+        }
         OperationContext::Verify => {
             "prikk declined to verify this repository. **This is not a verdict on the repository** \
              — prikk reports damage with a complete report, not a refusal; something stopped it \
@@ -648,6 +658,7 @@ fn refusal_next_steps(op: OperationContext) -> Vec<NextStep> {
         | OperationContext::Compare
         | OperationContext::MergePlan
         | OperationContext::Bundle
+        | OperationContext::Trust
         | OperationContext::Verify
         | OperationContext::Orient => {
             vec![NextStep {

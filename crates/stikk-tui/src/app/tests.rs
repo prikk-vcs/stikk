@@ -5327,3 +5327,386 @@ fn unreported_or_failed_files_answer_without_spawning() {
         assert!(rx.try_recv().is_err(), "nothing spawned");
     }
 }
+
+// ============================================================ RFC 056: adopt and remove
+
+/// An Orientation in the trust band, with an operator who may write.
+fn trust_band_orientation() -> stikk_core::OrientationView {
+    let readiness = Readiness {
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::Unknown,
+        read_only: false,
+    };
+    stikk_core::OrientationView {
+        prikk_version: "prikk 0.55.0".to_string(),
+        prikk_minor: 55,
+        capability: Capability::derive(readiness),
+        readiness,
+        ..orientation_view(0, None, None)
+    }
+}
+
+const RFC056_MINE: &str = "ed25519-31f369d3abb7f64c";
+const RFC056_MINE_KEY: &str = "31f369d3abb7f64cd2cf70be31158181e361f25444d8de122cdff59389e7e946";
+const RFC056_THEIRS: &str = "ed25519-9c0a44b1d2e3f501";
+const RFC056_THEIRS_KEY: &str = "9c0a44b1d2e3f5012b7c0a4e55d2117ab3340ef6627c118e2b4a9d0cf3e21847";
+const RFC056_NEW_KEY: &str = "6762b6359a650c0a5acaa723a5fc2ad78b354fcac296495b9cbf46c0d32a3f7f";
+const RFC056_NEW_ID: &str = "ed25519-6762b6359a650c0a";
+
+/// A rendered panel with its borders dropped and its whitespace collapsed, so an assertion can
+/// name a sentence the card wrapped across rows.
+fn flattened(screen: &str) -> String {
+    screen
+        .chars()
+        .filter(|c| {
+            !matches!(
+                c,
+                '\u{2502}' | '\u{250c}' | '\u{2510}' | '\u{2514}' | '\u{2518}' | '\u{2500}'
+            )
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn trust_row(id: &str, public: &str, yours: bool) -> stikk_core::TrustRow {
+    stikk_core::TrustRow {
+        key_id: id.to_string(),
+        public_key: public.to_string(),
+        yours,
+    }
+}
+
+/// An app on the Trust view, with two adopted keys.
+fn on_trust() -> (App, mpsc::Receiver<Request>) {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(trust_band_orientation()),
+        Palette::default(),
+    );
+    app.open_trust();
+    let Request { seq, kind, .. } = next_request(&rx);
+    assert!(matches!(kind, RequestKind::TrustRead), "{kind:?}");
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::TrustRead(Ok(stikk_core::TrustView::Listed {
+            rows: vec![
+                trust_row(RFC056_MINE, RFC056_MINE_KEY, true),
+                trust_row(RFC056_THEIRS, RFC056_THEIRS_KEY, false),
+            ],
+            own_key_unknown: None,
+        })),
+    });
+    (app, rx)
+}
+
+/// **`a` asks for the public key first** (RFC 056 decision 2), and **nothing is spawned** by
+/// opening a prompt.
+#[test]
+fn a_opens_the_public_key_prompt_and_spawns_nothing() {
+    let (mut app, rx) = on_trust();
+    app.begin_adopt_key();
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::TrustPublicKey { .. })
+    ));
+    assert!(rx.try_recv().is_err(), "a prompt asks prikk nothing");
+    // And Esc closes it, still having asked nothing.
+    app.back();
+    assert!(app.top_overlay().is_none());
+    assert!(rx.try_recv().is_err());
+}
+
+/// **A key of the wrong shape keeps the prompt open and says why** (decision 2) — prikk is never
+/// asked, so the reader does not lose what they typed to a refusal stikk could see coming.
+#[test]
+fn a_malformed_public_key_keeps_the_prompt_open_with_stikks_sentence() {
+    let (mut app, rx) = on_trust();
+    app.begin_adopt_key();
+    for ch in "not-a-key".chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    match app.top_overlay() {
+        Some(Overlay::TrustPublicKey { typed, error }) => {
+            assert_eq!(typed, "not-a-key", "what was typed is still there");
+            assert_eq!(error.as_deref(), Some(stikk_core::PUBLIC_KEY_SHAPE));
+        }
+        other => panic!("expected the prompt to stay open, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "nothing was spawned");
+}
+
+/// **A pasted 64-character key works**, both as one event per character and as a single pasted
+/// string — and the id prompt is then **prefilled with the key's own default id** (F3).
+#[test]
+fn a_pasted_key_opens_the_id_prompt_prefilled_with_the_default_id() {
+    for (what, paste) in [("one event per character", false), ("one paste", true)] {
+        let (mut app, rx) = on_trust();
+        app.begin_adopt_key();
+        // **A paste reaches the overlay as one event per character**, through the same
+        // `input_char` the key layer calls -- stikk reads no bracketed-paste event, so there is
+        // one path and this drives it. The case is here because a 64-character value is the
+        // first thing in stikk a reader will certainly paste rather than type, and `chunk`
+        // sends it in one go rather than key by key.
+        let chunk: Vec<String> = if paste {
+            vec![RFC056_NEW_KEY.to_string()]
+        } else {
+            RFC056_NEW_KEY.chars().map(String::from).collect()
+        };
+        for part in chunk {
+            for ch in part.chars() {
+                app.input_char(ch);
+            }
+        }
+        app.select();
+        match app.top_overlay() {
+            Some(Overlay::TrustKeyId {
+                public_key,
+                typed,
+                error,
+            }) => {
+                assert_eq!(public_key, RFC056_NEW_KEY, "{what}");
+                assert_eq!(
+                    typed, RFC056_NEW_ID,
+                    "{what}: prefilled with the default id"
+                );
+                assert!(error.is_none(), "{what}");
+            }
+            other => panic!("{what}: expected the id prompt, got {other:?}"),
+        }
+        assert!(rx.try_recv().is_err(), "{what}: still nothing spawned");
+    }
+}
+
+/// **The id prompt is editable**, and its `Enter` sends the preview with both halves.
+#[test]
+fn the_id_prompt_sends_the_preview_with_what_was_typed() {
+    let (mut app, rx) = on_trust();
+    app.begin_adopt_key();
+    for ch in RFC056_NEW_KEY.chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    // Clear the prefill and type an id of the owner's own choosing.
+    for _ in 0..RFC056_NEW_ID.chars().count() {
+        app.backspace();
+    }
+    for ch in "ed25519-2222222222222222".chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    match next_request(&rx).kind {
+        RequestKind::TrustAdoptPreview {
+            key_id,
+            public_key,
+            readiness,
+        } => {
+            assert_eq!(key_id, "ed25519-2222222222222222");
+            assert_eq!(public_key, RFC056_NEW_KEY);
+            assert!(readiness.may_operate());
+        }
+        other => panic!("expected an adopt preview, got {other:?}"),
+    }
+}
+
+/// **`x` acts on the selected row** (decision 3), which `↓` moved.
+#[test]
+fn x_sends_a_remove_preview_for_the_selected_key() {
+    let (mut app, rx) = on_trust();
+    app.nav_down();
+    app.begin_close_branch(); // `x`, which the Trust view takes
+    match next_request(&rx).kind {
+        RequestKind::TrustRemovePreview { key_id, .. } => assert_eq!(key_id, RFC056_THEIRS),
+        other => panic!("expected a remove preview, got {other:?}"),
+    }
+}
+
+/// **The security event is its own overlay, with no confirmation** (decision 4) — and `Enter`
+/// on it sends nothing at all.
+#[test]
+fn the_security_event_has_no_confirmation_and_sends_nothing() {
+    let (mut app, rx) = on_trust();
+    app.begin_adopt_key();
+    for ch in RFC056_NEW_KEY.chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    app.select();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::TrustAdoptPreview(Ok(stikk_core::AdoptPreview::TwoKeys(Box::new(
+            stikk_core::TwoKeysOneId {
+                key_id: RFC056_NEW_ID.to_string(),
+                adopted: RFC056_THEIRS_KEY.to_string(),
+                given: RFC056_NEW_KEY.to_string(),
+            },
+        )))),
+    });
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::TrustConflict { .. })
+    ));
+    let text = flattened(&top_overlay_text(&app));
+    assert!(text.contains("Two keys cannot share an id"), "{text}");
+    assert!(!text.contains("to confirm"), "nothing to approve: {text}");
+    app.select();
+    assert!(rx.try_recv().is_err(), "Enter does nothing here");
+    app.back();
+    assert!(app.top_overlay().is_none());
+}
+
+/// **The armed card is Tier Three Typed, and the typed id confirms it** (§7 trap 1) — then the
+/// result carries prikk's lines and, for a removal, the pointer at Verify.
+#[test]
+fn a_removal_is_confirmed_by_typing_the_id_and_points_at_verify() {
+    let (mut app, rx) = on_trust();
+    app.nav_down();
+    app.begin_close_branch();
+    let seq = next_request(&rx).seq;
+    let backend = NullBackend::supported()
+        .with_version(0, 55, 0)
+        .with_trusted_keys(vec![
+            stikk_prikk::TrustedKey {
+                key_id: RFC056_MINE.to_string(),
+                public_key: RFC056_MINE_KEY.to_string(),
+            },
+            stikk_prikk::TrustedKey {
+                key_id: RFC056_THEIRS.to_string(),
+                public_key: RFC056_THEIRS_KEY.to_string(),
+            },
+        ])
+        .with_trust_write(vec![
+            "revoked maintainer key: ed25519-9c0a44b1d2e3f501".to_string(),
+        ]);
+    let preview = stikk_core::remove_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        Readiness {
+            read_only: false,
+            ..Readiness::none()
+        },
+        RFC056_THEIRS,
+    )
+    .expect("the preview answers");
+    let stikk_core::RemovePreview::Ready { token } = preview else {
+        panic!("expected an armed removal");
+    };
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::TrustRemovePreview(Ok(stikk_core::RemovePreview::Ready { token })),
+    });
+    match app.top_overlay() {
+        Some(Overlay::Confirmation { tier, summary, .. }) => {
+            assert_eq!(*tier, Tier::ThreeTyped, "RFC 056's first typed card");
+            assert_eq!(summary.target_name.as_deref(), Some(RFC056_THEIRS));
+        }
+        other => panic!("expected a confirmation, got {other:?}"),
+    }
+    let card = flattened(&top_overlay_text(&app));
+    assert!(card.contains("Verify will fail them"), "{card}");
+    assert!(
+        card.contains(&format!("Type \"{RFC056_THEIRS}\"")),
+        "the typed evidence is the key id: {card}"
+    );
+
+    for ch in RFC056_THEIRS.chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    let Request { seq, kind, .. } = next_request(&rx);
+    match kind {
+        RequestKind::TrustRemoveConfirmExecute {
+            evidence, key_id, ..
+        } => {
+            assert_eq!(key_id, RFC056_THEIRS);
+            assert!(
+                matches!(evidence, stikk_core::Evidence::TypedName(ref typed) if typed == RFC056_THEIRS)
+            );
+        }
+        other => panic!("expected the removal, got {other:?}"),
+    }
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::TrustWrite(Ok(Outcome {
+            operation: stikk_core::REMOVE_OPERATION.to_string(),
+            result: stikk_core::TrustWriteResult {
+                printed: vec!["revoked maintainer key: ed25519-9c0a44b1d2e3f501".to_string()],
+                view: stikk_core::TrustView::Listed {
+                    rows: vec![trust_row(RFC056_MINE, RFC056_MINE_KEY, true)],
+                    own_key_unknown: None,
+                },
+                see_verify: Some(stikk_core::REMOVED_SEE_VERIFY),
+            },
+        })),
+    });
+    let text = flattened(&top_overlay_text(&app));
+    assert!(
+        text.contains("revoked maintainer key"),
+        "prikk's line: {text}"
+    );
+    assert!(text.contains("Press `V`"), "{text}");
+    // **The list beneath is the one that was re-read**, so the screen is not stale.
+    match app.screens.last() {
+        Some(Screen::Trust { view, cursor, .. }) => {
+            let stikk_core::TrustView::Listed { rows, .. } = view else {
+                panic!("expected a list");
+            };
+            assert_eq!(rows.len(), 1, "the removed key is gone");
+            assert_eq!(*cursor, 0);
+        }
+        other => panic!("expected the Trust screen, got {other:?}"),
+    }
+}
+
+/// **Below the band neither key offers anything**, and nothing is spawned (decision 1).
+#[test]
+fn below_the_band_neither_key_spawns_anything() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(stikk_core::OrientationView {
+            prikk_minor: 53,
+            ..trust_band_orientation()
+        }),
+        Palette::default(),
+    );
+    app.open_trust();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::TrustRead(Ok(stikk_core::TrustView::Unavailable(
+            stikk_core::trust_unavailable(53),
+        ))),
+    });
+    app.begin_adopt_key();
+    assert!(app.top_overlay().is_none(), "no prompt below the band");
+    assert!(
+        app.banner().is_some_and(|b| b.contains("0.54")),
+        "{:?}",
+        app.banner()
+    );
+    app.begin_close_branch();
+    assert!(rx.try_recv().is_err(), "nothing was spawned");
+}
+
+/// **No key material anywhere these surfaces draw** (`NFR-S03`, §7 trap 4) — asserted against the
+/// rendered buffer, not the model.
+#[test]
+fn no_trust_surface_draws_key_material() {
+    let (mut app, _rx) = on_trust();
+    let mut drawn = Vec::new();
+    app.begin_adopt_key();
+    drawn.push(top_overlay_text(&app));
+    for ch in RFC056_NEW_KEY.chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    drawn.push(top_overlay_text(&app));
+    for text in drawn {
+        for forbidden in ["seed", "SEED", "PRIKK_", "/.local/share", "private key"] {
+            assert!(!text.contains(forbidden), "{forbidden} in {text}");
+        }
+    }
+}

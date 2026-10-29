@@ -186,8 +186,8 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         Focus::Bundle(opened, offset) => {
             view::bundle::render(opened, offset, palette, frame, area);
         }
-        Focus::Trust(trust, offset) => {
-            view::trust::render(trust, offset, palette, frame, area);
+        Focus::Trust(trust, cursor, offset) => {
+            view::trust::render(trust, cursor, offset, palette, frame, area);
         }
         Focus::Changes(v, hide_untracked, history) => {
             // RFC 032: the `renames` count is shown at prikk ≥ 0.38, where a rename can be declared.

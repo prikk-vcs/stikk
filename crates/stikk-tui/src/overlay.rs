@@ -276,6 +276,45 @@ pub enum Overlay {
         /// The sentence, and the provisional notice where the report carried one.
         lines: Vec<String>,
     },
+    /// RFC 056 decision 2: the **public key** of the maintainer key being adopted, asked first
+    /// because the id prompt is prefilled from it.
+    ///
+    /// **Opens empty.** There is nothing to suggest: the key comes from its owner, and the one
+    /// thing a newcomer gets wrong is taking it from the bundle they were sent.
+    TrustPublicKey {
+        /// What has been typed or pasted so far, checked on submission rather than per key.
+        typed: String,
+        /// stikk's own sentence from the last attempt, where the shape was wrong -- the prompt
+        /// stays open and says why (decision 2).
+        error: Option<String>,
+    },
+    /// RFC 056 decision 2: the **key id**, prefilled with the key's own default id and editable.
+    TrustKeyId {
+        /// The public key the previous prompt accepted, carried so the preview has both halves.
+        public_key: String,
+        /// The id typed so far, prefilled with `default_key_id`.
+        typed: String,
+        /// stikk's own sentence from the last attempt, as above.
+        error: Option<String>,
+    },
+    /// RFC 056 decision 4: **the security event**, where the id is adopted under a different
+    /// key.
+    ///
+    /// **Not a confirmation**, and it carries no confirm key: `Esc` is the only way out. Two
+    /// keys cannot share an id, so there is nothing here for the reader to approve -- what they
+    /// need is to see both public keys and go back to the key's owner.
+    TrustConflict {
+        /// The id, and the two keys that claim it.
+        conflict: Box<stikk_core::TwoKeysOneId>,
+    },
+    /// RFC 056 decision 1: what a trust write left -- prikk's own lines, then the pointer a
+    /// removal carries.
+    TrustResult {
+        /// prikk's printed lines, verbatim.
+        printed: Vec<String>,
+        /// After a removal, `REMOVED_SEE_VERIFY`; after an adopt, `None`.
+        see_verify: Option<&'static str>,
+    },
     /// RFC 050 decision 3: the path of a bundle file to open.
     ///
     /// **Its own overlay, not [`Self::RefName`]'s.** That prompt fixes a prefix (`heads/` or
@@ -413,6 +452,10 @@ impl Overlay {
                 kind: RefNameKind::Tag,
                 ..
             } => " New tag ",
+            Self::TrustPublicKey { .. } => " Adopt a key · public key ",
+            Self::TrustKeyId { .. } => " Adopt a key · key id ",
+            Self::TrustConflict { .. } => " Two keys, one id ",
+            Self::TrustResult { .. } => " Trust changed ",
             Self::BundlePath { .. } => " Open a bundle ",
             Self::SavePath { what, .. } => match what {
                 SavePathKind::File { .. } => " Save this file ",
@@ -467,6 +510,21 @@ pub fn render(
             area,
         ),
         Overlay::BundlePath { typed } => render_bundle_path(typed, palette, frame, area),
+        Overlay::TrustPublicKey { typed, error } => {
+            render_trust_public_key(typed, error.as_deref(), palette, frame, area);
+        }
+        Overlay::TrustKeyId {
+            public_key,
+            typed,
+            error,
+        } => render_trust_key_id(public_key, typed, error.as_deref(), palette, frame, area),
+        Overlay::TrustConflict { conflict } => {
+            render_trust_conflict(conflict, palette, frame, area)
+        }
+        Overlay::TrustResult {
+            printed,
+            see_verify,
+        } => render_trust_result(printed, *see_verify, palette, frame, area),
         Overlay::SavePath {
             what,
             heading,
@@ -694,10 +752,11 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
             "E",
             "export this branch to a bundle file (in the ref picker)",
         ),
+        key_line(palette, "T", "the maintainer keys this repository trusts"),
         key_line(
             palette,
-            "T",
-            "the maintainer keys this repository trusts (read only)",
+            "a",
+            "adopt a maintainer key \u{b7} x removes one (in Trust)",
         ),
         key_line(
             palette,
@@ -2586,6 +2645,261 @@ fn render_save_path(
         width: CONFIRM_WIDTH,
         prose,
         actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 056 decision 2: the public key, asked first.
+///
+/// **Nothing is prefilled.** The key comes from its owner, and the caution this prompt repeats
+/// is the one a newcomer gets wrong: not from the bundle they were sent.
+fn render_trust_public_key(
+    typed: &str,
+    error: Option<&str>,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            "  The public key of the key to adopt",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    for sentence in [
+        stikk_core::WHERE_TO_GET_THE_KEY,
+        stikk_core::PUBLIC_KEY_SHAPE,
+        stikk_core::WHAT_TRUST_MEANS,
+    ] {
+        for row in wrap_indented(sentence, PANEL_PROSE_WIDTH, "  ") {
+            prose.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.dim),
+            )));
+        }
+    }
+    prose.push(Line::from(""));
+    prose.extend(trust_prompt_error(error, palette));
+    // **Hard-split, as the Trust view splits a public key**: it is one value, and a word wrap
+    // would break it on nothing.
+    let mut actions: Vec<Line> = Vec::new();
+    let typed_rows = crate::text::wrap_verbatim(&inert(typed), PANEL_TEXT_WIDTH, "    ");
+    for (at, row) in typed_rows.iter().enumerate() {
+        let body = row.get(4..).unwrap_or_default().to_string();
+        actions.push(Line::from(vec![
+            Span::styled(
+                if at == 0 { "  \u{203a} " } else { "    " },
+                Style::default().fg(palette.accent),
+            ),
+            Span::styled(body, Style::default().fg(palette.fg)),
+        ]));
+    }
+    actions.push(Line::from(""));
+    actions.push(Line::from(Span::styled(
+        "  Enter to continue \u{b7} Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
+
+    Panel {
+        title: " Adopt a key \u{b7} public key ",
+        width: CONFIRM_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 056 decision 2: the key id, **prefilled with the key's own default** and editable.
+fn render_trust_key_id(
+    public_key: &str,
+    typed: &str,
+    error: Option<&str>,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            "  The id this key signs under",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    // The key itself, so the reader can see which key the id is for.
+    for row in crate::text::wrap_verbatim(&identifier(public_key), PANEL_TEXT_WIDTH, "  ") {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.accent),
+        )));
+    }
+    prose.push(Line::from(""));
+    let notice = if typed == stikk_core::default_key_id(public_key) {
+        "This is the id prikk gives this key. If its owner signs under a different one, type \
+         that instead."
+            .to_string()
+    } else {
+        stikk_core::not_the_default_id(public_key)
+    };
+    for row in wrap_indented(&notice, PANEL_PROSE_WIDTH, "  ") {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+    prose.push(Line::from(""));
+    prose.extend(trust_prompt_error(error, palette));
+
+    let actions = vec![
+        Line::from(vec![
+            Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
+            Span::styled(inert(typed), Style::default().fg(palette.fg)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Enter to continue \u{b7} Esc to cancel",
+            Style::default().fg(palette.accent),
+        )),
+    ];
+
+    Panel {
+        title: " Adopt a key \u{b7} key id ",
+        width: CONFIRM_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// stikk's sentence from the last attempt, where there was one.
+fn trust_prompt_error<'a>(error: Option<&str>, palette: &Palette) -> Vec<Line<'a>> {
+    let mut lines = Vec::new();
+    if let Some(error) = error {
+        for row in wrap_indented(error, PANEL_PROSE_WIDTH, "  ") {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.warn),
+            )));
+        }
+        lines.push(Line::from(""));
+    }
+    lines
+}
+
+/// RFC 056 decision 4: **the security event**, and it offers nothing to confirm.
+///
+/// Both public keys are drawn, hard-split, so a reader can see that they differ — which is the
+/// whole of what this card is for. The id is repository text and is drawn as its own row, so
+/// stikk's sentence stays stikk's (`C-T2a`, RFC 044 C1).
+fn render_trust_conflict(
+    conflict: &stikk_core::TwoKeysOneId,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            "  This repository already trusts a different key under that id",
+            Style::default()
+                .fg(palette.warn)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  key id          ", Style::default().fg(palette.dim)),
+            Span::styled(
+                identifier(&conflict.key_id),
+                Style::default().fg(palette.accent),
+            ),
+        ]),
+    ];
+    for (label, key) in [
+        ("already trusted", &conflict.adopted),
+        ("offered now", &conflict.given),
+    ] {
+        prose.push(Line::from(Span::styled(
+            format!("  {label}"),
+            Style::default().fg(palette.dim),
+        )));
+        for row in crate::text::wrap_verbatim(&identifier(key), PANEL_TEXT_WIDTH, "    ") {
+            prose.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.accent),
+            )));
+        }
+    }
+    prose.push(Line::from(""));
+    for row in wrap_indented(stikk_core::TWO_KEYS_ONE_ID, PANEL_PROSE_WIDTH, "  ") {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.warn),
+        )));
+    }
+
+    Panel {
+        title: " Two keys, one id ",
+        width: CONFIRM_WIDTH,
+        prose,
+        // **No confirm key.** There is nothing here to approve.
+        actions: vec![Line::from(Span::styled(
+            "  Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
+        style: Style::default().fg(palette.warn),
+    }
+    .render(frame, area);
+}
+
+/// RFC 056 decision 1: prikk's own lines, then the pointer a removal carries.
+fn render_trust_result(
+    printed: &[String],
+    see_verify: Option<&'static str>,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose: Vec<Line> = Vec::new();
+    if !printed.is_empty() {
+        prose.push(Line::from(Span::styled(
+            "  prikk reported \u{2014}",
+            Style::default().fg(palette.dim),
+        )));
+        for line in printed {
+            let inert_line = inert(line);
+            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
+                prose.push(Line::from(vec![
+                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
+                    Span::styled(
+                        row.get(QUOTE_INDENT.len()..)
+                            .unwrap_or_default()
+                            .to_string(),
+                        Style::default().fg(palette.fg),
+                    ),
+                ]));
+            }
+        }
+        prose.push(Line::from(""));
+    }
+    if let Some(pointer) = see_verify {
+        for row in wrap_indented(pointer, SEAL_PROSE_WIDTH, "  ") {
+            prose.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.warn),
+            )));
+        }
+    }
+
+    Panel {
+        title: " Trust changed ",
+        width: SEAL_WIDTH,
+        prose,
+        actions: vec![Line::from(Span::styled(
+            "  Enter \u{b7} Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);

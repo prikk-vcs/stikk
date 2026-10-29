@@ -32,22 +32,39 @@ const UNDER: &str = "    ";
 /// Render `view` into `area`, scrolled to `offset` (clamped here and written back).
 pub fn render(
     view: &TrustView,
+    cursor: usize,
     offset: &std::cell::Cell<u16>,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
 ) {
     let width = usize::from(area.width.saturating_sub(3));
-    let lines = lines(view, palette, width);
+    let (lines, cursor_row) = lines(view, cursor, palette, width);
 
     let viewport = area.height.saturating_sub(2);
     let max_offset = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_sub(viewport);
-    let scroll = offset.get().min(max_offset);
+    let mut scroll = offset.get().min(max_offset);
+    // **The selected row is always drawn** (RFC 056 decision 3). `x` acts on it, so a cursor
+    // scrolled out of sight would leave a reader confirming a key they cannot see -- and the
+    // typed id is the only thing that would have told them which one it was.
+    if let Some(row) = cursor_row {
+        let row = u16::try_from(row).unwrap_or(u16::MAX);
+        if row < scroll {
+            scroll = row;
+        } else if viewport > 0 && row >= scroll.saturating_add(viewport) {
+            scroll = row.saturating_sub(viewport.saturating_sub(1));
+        }
+        scroll = scroll.min(max_offset);
+    }
     offset.set(scroll);
 
-    let mut title = " Trust \u{00b7} read only ".to_string();
+    let mut title = if adoptable(view) {
+        " Trust \u{00b7} a adopts \u{00b7} x removes ".to_string()
+    } else {
+        " Trust \u{00b7} read only ".to_string()
+    };
     if max_offset > 0 {
         let first = usize::from(scroll) + 1;
         let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
@@ -64,10 +81,21 @@ pub fn render(
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 
-fn lines<'a>(view: &TrustView, palette: &Palette, width: usize) -> Vec<Line<'a>> {
+/// Whether this view has keys to act on -- the title says `a`/`x` only where it does.
+fn adoptable(view: &TrustView) -> bool {
+    matches!(view, TrustView::Listed { .. })
+}
+
+/// The rows, and the index of the one the cursor is on -- `None` where nothing is selectable.
+fn lines<'a>(
+    view: &TrustView,
+    cursor: usize,
+    palette: &Palette,
+    width: usize,
+) -> (Vec<Line<'a>>, Option<usize>) {
     match view {
         TrustView::Unavailable(message) | TrustView::Failed(message) => {
-            said(message, width, palette.warn)
+            (said(message, width, palette.warn), None)
         }
         TrustView::Listed {
             rows,
@@ -99,12 +127,22 @@ fn lines<'a>(view: &TrustView, palette: &Palette, width: usize) -> Vec<Line<'a>>
 
             if rows.is_empty() {
                 lines.extend(empty_state(palette, width));
-                return lines;
+                return (lines, None);
             }
-            for key in rows {
-                // The id, with **yours** marked. prikk's id is repository text.
+            let mut cursor_row = None;
+            for (at, key) in rows.iter().enumerate() {
+                // **The marker History and the patch list already use**, so a selection looks
+                // the same wherever stikk offers one.
+                let selected = at == cursor.min(rows.len().saturating_sub(1));
+                if selected {
+                    cursor_row = Some(lines.len());
+                }
                 let mut spans = vec![
-                    Span::styled(TOP, Style::default()),
+                    Span::styled(
+                        if selected { "\u{25b8} " } else { TOP },
+                        Style::default().fg(palette.accent),
+                    ),
+                    // The id. prikk's id is repository text.
                     Span::styled(identifier(&key.key_id), Style::default().fg(palette.accent)),
                 ];
                 if key.yours {
@@ -123,7 +161,7 @@ fn lines<'a>(view: &TrustView, palette: &Palette, width: usize) -> Vec<Line<'a>>
                     )));
                 }
             }
-            lines
+            (lines, cursor_row)
         }
     }
 }

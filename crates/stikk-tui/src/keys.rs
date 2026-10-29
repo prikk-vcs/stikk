@@ -75,6 +75,8 @@ pub enum Action {
     /// Open the Trust view: the maintainer keys this repository trusts (RFC 054 decision 2).
     /// **Read-only** — nothing is added, removed or confirmed.
     OpenTrust,
+    /// Adopt a maintainer key, from the Trust view (RFC 056 decision 2).
+    AdoptKey,
     /// Save the file the cursor is on, as it was at this block (Block detail; RFC 053
     /// decision 3). **Outside the repository, and never over an existing path.**
     SaveFile,
@@ -142,6 +144,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('I') => Action::Import,
         KeyCode::Char('E') => Action::Export,
         KeyCode::Char('T') => Action::OpenTrust,
+        KeyCode::Char('a') => Action::AdoptKey,
         KeyCode::Char('F') => Action::SaveFile,
         KeyCode::Char('A') => Action::SaveAll,
         KeyCode::Char(' ') => Action::ToggleSealConsent,

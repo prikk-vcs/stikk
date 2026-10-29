@@ -218,6 +218,46 @@ pub(crate) enum RequestKind {
     },
     /// Read the maintainer keys this repository trusts (RFC 054).
     TrustRead,
+    /// Preview adopting a maintainer key (RFC 056 decision 2).
+    TrustAdoptPreview {
+        /// The session's signing readiness, read on the UI thread as every other write does.
+        readiness: stikk_model::Readiness,
+        /// The id typed, already checked for shape.
+        key_id: String,
+        /// The public key typed, already checked for shape.
+        public_key: String,
+    },
+    /// Confirm and run the adopt this token was previewed for.
+    TrustAdoptConfirmExecute {
+        /// The armed token.
+        token: Box<stikk_core::PreviewToken>,
+        /// The session's signing readiness.
+        readiness: stikk_model::Readiness,
+        /// The reader's answer -- the typed key id.
+        evidence: stikk_core::Evidence,
+        /// Must match the preview's.
+        key_id: String,
+        /// Must match the preview's.
+        public_key: String,
+    },
+    /// Preview removing a maintainer key (RFC 056 decision 3).
+    TrustRemovePreview {
+        /// The session's signing readiness.
+        readiness: stikk_model::Readiness,
+        /// The id of the selected row.
+        key_id: String,
+    },
+    /// Confirm and run the removal this token was previewed for.
+    TrustRemoveConfirmExecute {
+        /// The armed token.
+        token: Box<stikk_core::PreviewToken>,
+        /// The session's signing readiness.
+        readiness: stikk_model::Readiness,
+        /// The reader's answer -- the typed key id.
+        evidence: stikk_core::Evidence,
+        /// Must match the preview's.
+        key_id: String,
+    },
     /// Preview saving one file as it was at a block (RFC 053).
     SaveFilePreview {
         /// The block, the repository path and the resolved destination.
@@ -335,6 +375,12 @@ pub(crate) enum ResponseKind {
     ImportConfirmExecute(Result<stikk_core::Outcome<stikk_prikk::BundleImport>>),
     /// Answers [`RequestKind::TrustRead`].
     TrustRead(Result<stikk_core::TrustView>),
+    /// Answers [`RequestKind::TrustAdoptPreview`].
+    TrustAdoptPreview(Result<stikk_core::AdoptPreview>),
+    /// Answers [`RequestKind::TrustRemovePreview`].
+    TrustRemovePreview(Result<stikk_core::RemovePreview>),
+    /// Answers either trust write.
+    TrustWrite(Result<stikk_core::Outcome<stikk_core::TrustWriteResult>>),
     /// Answers [`RequestKind::SaveFilePreview`].
     SaveFilePreview(Result<stikk_core::SaveFilePreview>),
     /// Answers [`RequestKind::SaveFileConfirmExecute`].
@@ -418,6 +464,10 @@ impl RequestKind {
             Self::ImportPreview { .. } => "import preview",
             Self::ImportConfirmExecute { .. } => "import",
             Self::TrustRead => "trust",
+            Self::TrustAdoptPreview { .. } | Self::TrustRemovePreview { .. } => "trust preview",
+            Self::TrustAdoptConfirmExecute { .. } | Self::TrustRemoveConfirmExecute { .. } => {
+                "trust write"
+            }
             Self::SaveFilePreview { .. } => "save preview",
             Self::SaveFileConfirmExecute { .. } => "save",
             Self::SaveAllPreview { .. } => "save preview",
@@ -597,6 +647,45 @@ pub(crate) fn run(
                 ))
             }
             RequestKind::TrustRead => ResponseKind::TrustRead(stikk_core::trust::read(prikk, repo)),
+            RequestKind::TrustAdoptPreview {
+                readiness,
+                key_id,
+                public_key,
+            } => ResponseKind::TrustAdoptPreview(stikk_core::adopt_preview(
+                prikk,
+                repo,
+                readiness,
+                &key_id,
+                &public_key,
+            )),
+            RequestKind::TrustAdoptConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                key_id,
+                public_key,
+            } => ResponseKind::TrustWrite(stikk_core::adopt_confirm_and_execute(
+                prikk,
+                repo,
+                *token,
+                readiness,
+                evidence,
+                &key_id,
+                &public_key,
+            )),
+            RequestKind::TrustRemovePreview { readiness, key_id } => {
+                ResponseKind::TrustRemovePreview(stikk_core::remove_preview(
+                    prikk, repo, readiness, &key_id,
+                ))
+            }
+            RequestKind::TrustRemoveConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                key_id,
+            } => ResponseKind::TrustWrite(stikk_core::remove_confirm_and_execute(
+                prikk, repo, *token, readiness, evidence, &key_id,
+            )),
             RequestKind::SaveFilePreview { target } => {
                 ResponseKind::SaveFilePreview(stikk_core::save_file_preview(
                     prikk,

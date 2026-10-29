@@ -1286,6 +1286,12 @@ fn coverage(overlay: &Overlay) -> Coverage {
         Overlay::BundlePath { .. } | Overlay::ExportPath { .. } => Coverage::NoSelection,
         // RFC 053 decision 4: the same shape again, for a destination path.
         Overlay::SavePath { .. } => Coverage::NoSelection,
+        // RFC 056 decision 2: two prompts, each one typed value and prose. No cursor.
+        Overlay::TrustPublicKey { .. } | Overlay::TrustKeyId { .. } => Coverage::NoSelection,
+        // RFC 056 decision 4: a content card with no confirmation at all, and nothing to select.
+        Overlay::TrustConflict { .. } => Coverage::NoSelection,
+        // RFC 056 decision 1: prikk's lines and stikk's pointer -- content that can grow.
+        Overlay::TrustResult { .. } => Coverage::NoSelection,
         // RFC 053 decision 6: a content card of stikk's own two sentences at most. Treated as
         // content that can grow, like every other result card here.
         Overlay::SaveResult { .. } => Coverage::NoSelection,
@@ -1694,6 +1700,55 @@ fn cases() -> Vec<Case> {
                 typed: "/home/someone/".to_string() + &"a-long-folder-".repeat(4) + "repo-f687",
             }),
             last_row: "Esc to cancel".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "TrustPublicKey",
+            build: Box::new(|_| Overlay::TrustPublicKey {
+                typed: "6762b6359a650c0a5acaa723a5fc2ad78b354fcac296495b9cbf46c0d32a3f7f"
+                    .to_string(),
+                error: Some(stikk_core::PUBLIC_KEY_SHAPE.to_string()),
+            }),
+            last_row: "Esc to cancel".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "TrustKeyId",
+            build: Box::new(|_| Overlay::TrustKeyId {
+                public_key: "6762b6359a650c0a5acaa723a5fc2ad78b354fcac296495b9cbf46c0d32a3f7f"
+                    .to_string(),
+                typed: "ed25519-2222222222222222".to_string(),
+                error: Some(stikk_core::KEY_ID_SHAPE.to_string()),
+            }),
+            last_row: "Esc to cancel".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "TrustConflict",
+            build: Box::new(|_| Overlay::TrustConflict {
+                conflict: Box::new(stikk_core::TwoKeysOneId {
+                    key_id: "ed25519-6762b6359a650c0a".to_string(),
+                    adopted: "6762b6359a650c0a5acaa723a5fc2ad78b354fcac296495b9cbf46c0d32a3f7f"
+                        .to_string(),
+                    given: "4c46ed9cd17cb36cef3eb8e26cc23695ddab013a0ddc15d908ae68915521905d"
+                        .to_string(),
+                }),
+            }),
+            last_row: "Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "TrustResult",
+            // prikk prints two lines today; the card is fed many, because a result card's
+            // height is prikk's to decide and this gate exists to catch the day it grows.
+            build: Box::new(|_| Overlay::TrustResult {
+                printed: (0..12)
+                    .map(|i| format!("revoked maintainer key: ed25519-6762b6359a650c{i:02}"))
+                    .chain(std::iter::once("adopted maintainer keys: 1".to_string()))
+                    .collect(),
+                see_verify: Some(stikk_core::REMOVED_SEE_VERIFY),
+            }),
+            last_row: "Esc to dismiss".to_string(),
             entry: None,
         },
         Case {
@@ -4369,5 +4424,61 @@ fn capture_the_save_results_at_80x24() {
     assert!(
         flat.contains("No trusted checkpoint is in reach"),
         "the provisional notice is repeated from the report: {all}"
+    );
+}
+
+/// **A measurement, and a pinned finding** (RFC 056 §4 item 4): the Tier Three Typed card on its
+/// first real use.
+///
+/// With a real key id it reads correctly. **With a long one it clips**: the target row, the
+/// *"Type … to confirm:"* prompt and the echo of what was typed are each one unwrapped line, so
+/// at 80 columns a 120-character id loses its tail — and the id is exactly what the reader must
+/// type back. A remove card's id is read from prikk's own list, and prikk bounds it with
+/// nothing (`check` accepted `not-a-key-id`).
+///
+/// **This test does not assert that the behaviour is right.** It pins what it is, so the fix is
+/// decided with the case in front of it. Reported with RFC 056 Handoff A.
+#[test]
+fn capture_rfc056_typed_confirmation_at_80_columns() {
+    let id = "ed25519-6762b6359a650c0a";
+    let mut card = summary(vec![id], Some(id));
+    card.operation = "Adopt key".to_string();
+    card.capability = None;
+    card.counts = Vec::new();
+    card.consequence = stikk_core::ADOPT_CONSEQUENCE.to_string();
+    let overlay = Overlay::Confirmation {
+        summary: Box::new(card),
+        tier: Tier::ThreeTyped,
+        typed: "ed25519-6762b".to_string(),
+        error: None,
+    };
+    let text = draw_at(&overlay, 80, 30);
+    println!("--- RFC 056: the typed confirmation at 80 columns ---\n{text}");
+    assert!(text.contains("Type \"ed25519-6762b6359a650c0a\""), "{text}");
+
+    // And the same card for an id a repository could hold: the remove card's id is read from
+    // prikk's list, and prikk's `check` accepted `not-a-key-id`, so nothing bounds its length.
+    let long = "ed25519-".to_string() + &"a1b2c3d4".repeat(14);
+    let mut card = summary(vec![&long], Some(&long));
+    card.operation = "Remove key".to_string();
+    card.capability = None;
+    card.counts = Vec::new();
+    card.consequence = stikk_core::REMOVE_CONSEQUENCE.to_string();
+    let overlay = Overlay::Confirmation {
+        summary: Box::new(card),
+        tier: Tier::ThreeTyped,
+        typed: long.clone(),
+        error: None,
+    };
+    let text = draw_at(&overlay, 80, 30);
+    println!("--- RFC 056: the same card with a 120-character id ---\n{text}");
+    // **The finding**: neither the prompt nor the echo holds the whole id.
+    assert!(
+        !text.contains(&format!("Type \"{long}\" to confirm:")),
+        "the prompt is clipped, which is the finding: {text}"
+    );
+    assert!(
+        text.contains("Type \"ed25519-a1b2c3d4"),
+        "it is clipped, not absent: {text}"
     );
 }

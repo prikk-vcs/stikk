@@ -190,13 +190,17 @@ pub enum Screen {
         /// and a long effect list run past a short terminal.
         offset: std::cell::Cell<u16>,
     },
-    /// The maintainer keys this repository trusts (RFC 054 decision 2). **Read-only**: there is
-    /// nothing on this screen to confirm, and no key to press but `Esc`.
+    /// The maintainer keys this repository trusts (RFC 054 decision 2; RFC 056 decisions 2
+    /// and 3). `a` adopts a key and `x` removes the selected one, each previewed and confirmed
+    /// by typing the key id.
     Trust {
         /// The list, or why there is none.
         view: stikk_core::TrustView,
+        /// The highlighted key, which `x` acts on (RFC 056 decision 3).
+        cursor: usize,
         /// First content row drawn, clamped and written back by the renderer — Verify's idiom:
-        /// a repository can adopt more keys than a terminal has rows.
+        /// a repository can adopt more keys than a terminal has rows. The renderer keeps the
+        /// cursor's own row inside it.
         offset: std::cell::Cell<u16>,
     },
     /// prikk's verdict on whether the repository is sound (`FR-100`; RFC 040).
@@ -318,7 +322,7 @@ pub enum Focus<'a> {
     BlockDetail(&'a BlockDetailView, usize),
     /// The Trust view (RFC 054 decision 2): the keys this repository trusts, and the scroll
     /// offset the renderer clamps and writes back.
-    Trust(&'a stikk_core::TrustView, &'a std::cell::Cell<u16>),
+    Trust(&'a stikk_core::TrustView, usize, &'a std::cell::Cell<u16>),
     /// The Changes view, whether untracked entries are hidden, and whether the ref has published history.
     Changes(&'a ChangesView, bool, &'a RefHistory),
     /// The Queue view, its scroll offset and its selected patch.
@@ -485,6 +489,9 @@ pub struct App {
     pending_export: Option<PendingExport>,
     /// The file or whole-block save in flight, if any (RFC 053).
     pending_save: Option<PendingSave>,
+    /// The adopt or removal in flight (RFC 056), through the same three steps every other write
+    /// takes.
+    pending_trust: Option<PendingTrust>,
     /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
     /// check compares against it; `None` until the first stamp, and no check is sent before it.
     stamp: Option<ChangeToken>,
@@ -713,6 +720,38 @@ enum PendingSave {
     Executing(SaveTarget),
 }
 
+/// See [`App::pending_trust`] (RFC 056 decisions 2 and 3).
+enum PendingTrust {
+    /// `Overlay::Loading` is on the stack; a preview is in flight.
+    AwaitingPreview(TrustTarget),
+    /// The preview armed; `Overlay::Confirmation` awaits the typed key id.
+    Confirming {
+        /// Feed this into the matching `*_confirm_and_execute`.
+        token: Box<stikk_core::PreviewToken>,
+        /// Must match the preview's.
+        target: TrustTarget,
+    },
+    /// Confirm+execute is in flight.
+    Executing,
+}
+
+/// Which trust write is pending, with the values prikk will be given.
+#[derive(Clone)]
+enum TrustTarget {
+    /// `a`: adopt this public key under this id.
+    Adopt {
+        /// The id, which is also the typed evidence.
+        key_id: String,
+        /// The public key, already checked for shape.
+        public_key: String,
+    },
+    /// `x`: remove this id.
+    Remove {
+        /// The id, which is also the typed evidence.
+        key_id: String,
+    },
+}
+
 /// Which of the two saves is pending.
 #[derive(Clone)]
 enum SaveTarget {
@@ -851,6 +890,7 @@ impl App {
             pending_import: None,
             pending_export: None,
             pending_save: None,
+            pending_trust: None,
             ref_rows: Vec::new(),
             session: None,
             stored: None,
@@ -1180,6 +1220,7 @@ impl App {
                 if let Some(slot) = self.screens.get_mut(index) {
                     *slot = Screen::Trust {
                         view,
+                        cursor: 0,
                         offset: std::cell::Cell::new(0),
                     };
                 }
@@ -1189,6 +1230,277 @@ impl App {
                 self.surface(&error, OperationContext::Other);
             }
         }
+    }
+
+    /// `a` on the Trust view (RFC 056 decision 2): adopt a maintainer key.
+    ///
+    /// **The public key is asked for first**, because the id prompt is prefilled from it. Below
+    /// the band there is nothing to adopt into, and the banner says so rather than opening a
+    /// prompt whose answer prikk could not take.
+    pub fn begin_adopt_key(&mut self) {
+        self.banner = None;
+        if !matches!(self.screens.last(), Some(Screen::Trust { .. })) || !self.overlays.is_empty() {
+            return;
+        }
+        if let Some(reason) = self.trust_writes_unavailable() {
+            self.banner = Some(reason);
+            return;
+        }
+        self.overlays.push(Overlay::TrustPublicKey {
+            typed: String::new(),
+            error: None,
+        });
+    }
+
+    /// `x` on the Trust view (RFC 056 decision 3): remove the selected key.
+    ///
+    /// The guards are the preview's, not this key's: what this does is name the row and send
+    /// the preview, so every decline is taken again at confirmation.
+    pub fn begin_remove_key(&mut self) {
+        self.banner = None;
+        let Some(Screen::Trust { view, cursor, .. }) = self.screens.last() else {
+            return;
+        };
+        if let Some(reason) = self.trust_writes_unavailable() {
+            self.banner = Some(reason);
+            return;
+        }
+        let stikk_core::TrustView::Listed { rows, .. } = view else {
+            return; // there is no list, so there is no row to act on
+        };
+        let Some(row) = rows.get(*cursor) else {
+            return;
+        };
+        let key_id = row.key_id.clone();
+        self.start_trust_write(TrustTarget::Remove { key_id });
+    }
+
+    /// stikk's own sentence below the band, or `None` in it — read from the Orientation this
+    /// session already holds, so neither key handshakes (`C-T4d`).
+    fn trust_writes_unavailable(&self) -> Option<String> {
+        let minor = self.prikk_minor()?;
+        (minor < stikk_core::TRUST_FROM_MINOR).then(|| stikk_core::trust_unavailable(minor))
+    }
+
+    /// The public-key prompt's `Enter` (decision 2): check the shape, then ask for the id.
+    ///
+    /// **A bad shape keeps the prompt open** and says why in stikk's words — prikk would refuse
+    /// it, *"maintainer public key must be 64 lowercase hex characters"*, after a spawn and a
+    /// closed prompt the reader would have to reopen.
+    fn submit_trust_public_key(&mut self, typed: &str) {
+        match stikk_core::check_public_key(typed) {
+            Ok(public_key) => {
+                self.overlays.pop();
+                // **Prefilled with the key's own default id**, and editable: prikk does not tie
+                // an id to its key (RFC 056 F3), and the owner may sign under another.
+                let typed = stikk_core::default_key_id(&public_key);
+                self.overlays.push(Overlay::TrustKeyId {
+                    public_key,
+                    typed,
+                    error: None,
+                });
+            }
+            Err(said) => {
+                if let Some(Overlay::TrustPublicKey { error, .. }) = self.overlays.last_mut() {
+                    *error = Some(said);
+                }
+            }
+        }
+    }
+
+    /// The id prompt's `Enter` (decision 2): check the id, then send the preview.
+    fn submit_trust_key_id(&mut self, public_key: &str, typed: &str) {
+        match stikk_core::check_key_id(typed) {
+            Ok(key_id) => {
+                self.overlays.pop();
+                self.start_trust_write(TrustTarget::Adopt {
+                    key_id,
+                    public_key: public_key.to_string(),
+                });
+            }
+            Err(said) => {
+                if let Some(Overlay::TrustKeyId { error, .. }) = self.overlays.last_mut() {
+                    *error = Some(said);
+                }
+            }
+        }
+    }
+
+    /// Send either preview and wait for it, as every other write does.
+    fn start_trust_write(&mut self, target: TrustTarget) {
+        let kind = match target.clone() {
+            TrustTarget::Adopt { key_id, public_key } => RequestKind::TrustAdoptPreview {
+                readiness: self.readiness(),
+                key_id,
+                public_key,
+            },
+            TrustTarget::Remove { key_id } => RequestKind::TrustRemovePreview {
+                readiness: self.readiness(),
+                key_id,
+            },
+        };
+        let seq = self.dispatch(kind);
+        self.overlays.push(Overlay::Loading {
+            what: "trust preview",
+            seq,
+        });
+        self.pending_trust = Some(PendingTrust::AwaitingPreview(target));
+    }
+
+    /// Answers [`RequestKind::TrustAdoptPreview`]: the card, the security event, or stikk's own
+    /// reason.
+    fn apply_adopt_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::AdoptPreview>,
+    ) {
+        let Some(index) = self.loading_at(seq) else {
+            return; // stale
+        };
+        let pending = self.pending_trust.take();
+        match result {
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Other);
+            }
+            Ok(stikk_core::AdoptPreview::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            // **Its own overlay, and no confirmation** (decision 4).
+            Ok(stikk_core::AdoptPreview::TwoKeys(conflict)) => {
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::TrustConflict { conflict };
+                }
+            }
+            Ok(stikk_core::AdoptPreview::Ready { token }) => {
+                self.arm_trust_confirmation(index, token, pending);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::TrustRemovePreview`]: the card, or stikk's own reason.
+    fn apply_remove_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::RemovePreview>,
+    ) {
+        let Some(index) = self.loading_at(seq) else {
+            return; // stale
+        };
+        let pending = self.pending_trust.take();
+        match result {
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Other);
+            }
+            Ok(stikk_core::RemovePreview::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            Ok(stikk_core::RemovePreview::Ready { token }) => {
+                self.arm_trust_confirmation(index, token, pending);
+            }
+        }
+    }
+
+    /// Put the armed card on screen, in the Loading overlay's place.
+    fn arm_trust_confirmation(
+        &mut self,
+        index: usize,
+        token: Box<stikk_core::PreviewToken>,
+        pending: Option<PendingTrust>,
+    ) {
+        let Some(PendingTrust::AwaitingPreview(target)) = pending else {
+            self.overlays.remove(index);
+            return; // defensive
+        };
+        if let Some(slot) = self.overlays.get_mut(index) {
+            *slot = Overlay::Confirmation {
+                summary: Box::new(token.summary().clone()),
+                tier: token.tier(),
+                typed: String::new(),
+                error: None,
+            };
+        }
+        self.pending_trust = Some(PendingTrust::Confirming { token, target });
+    }
+
+    /// The confirmation step's `Enter` for a pending trust write: **Tier Three Typed**, and the
+    /// typed name is the key id (§7 trap 1).
+    fn submit_trust_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingTrust::Confirming { token, target }) = self.pending_trust.take() else {
+            return; // nothing is actually pending
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let kind = match target {
+            TrustTarget::Adopt { key_id, public_key } => RequestKind::TrustAdoptConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                key_id,
+                public_key,
+            },
+            TrustTarget::Remove { key_id } => RequestKind::TrustRemoveConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                key_id,
+            },
+        };
+        let seq = self.dispatch(kind);
+        self.overlays.push(Overlay::Loading {
+            what: "trust write",
+            seq,
+        });
+        self.pending_trust = Some(PendingTrust::Executing);
+    }
+
+    /// Answers either write: prikk's lines, and the list as it is now (decision 1).
+    fn apply_trust_write(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_core::TrustWriteResult>>,
+    ) {
+        let Some(index) = self.loading_at(seq) else {
+            return; // stale
+        };
+        self.pending_trust = None;
+        match result {
+            Err(error) => {
+                self.overlays.remove(index);
+                // **prikk's own words, under stikk's heading** (decision 5). The refusal path
+                // is the usual one; what RFC 056 adds is the heading, which `surface` draws
+                // from the context.
+                self.surface(&error, OperationContext::Trust);
+            }
+            Ok(outcome) => {
+                // **The list is re-read by the core**, so the screen beneath shows what is true
+                // now rather than what it read when it opened.
+                if let Some(Screen::Trust { view, cursor, .. }) = self.screens.last_mut() {
+                    *view = outcome.result.view.clone();
+                    *cursor = 0;
+                }
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::TrustResult {
+                        printed: outcome.result.printed.clone(),
+                        see_verify: outcome.result.see_verify,
+                    };
+                }
+            }
+        }
+    }
+
+    /// The index of the `Loading` overlay waiting on `seq`, or `None` where it has gone.
+    fn loading_at(&self, seq: u64) -> Option<usize> {
+        self.overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
     }
 
     /// Toggle the display-only untracked filter on a focused Changes screen (the `u` key; UD-08).
@@ -1444,6 +1756,13 @@ impl App {
     /// core's** ([`stikk_core::CLOSING_THE_CURRENT_BRANCH`]), because only the preview's own read
     /// knows which branch that is at the moment the key is pressed.
     pub fn begin_close_branch(&mut self) {
+        // **`x` on the Trust view removes a key** (RFC 056 decision 3). One key, two screens:
+        // the Trust view has no branch to close, and the ref picker has no key to remove, so
+        // neither can be reached from the other's screen.
+        if self.overlays.is_empty() && matches!(self.screens.last(), Some(Screen::Trust { .. })) {
+            self.begin_remove_key();
+            return;
+        }
         let Some(name) = self.ref_write_source() else {
             return;
         };
@@ -2744,6 +3063,18 @@ impl App {
                 let (what, typed) = (what.clone(), typed.clone());
                 self.submit_save_path(what, &typed);
             }
+            // **RFC 056's two prompts.** Each checks what was typed in stikk's own words and
+            // stays open where the shape is wrong, rather than sending it to prikk to refuse.
+            Some(Overlay::TrustPublicKey { typed, .. }) => {
+                let typed = typed.clone();
+                self.submit_trust_public_key(&typed);
+            }
+            Some(Overlay::TrustKeyId {
+                public_key, typed, ..
+            }) => {
+                let (public_key, typed) = (public_key.clone(), typed.clone());
+                self.submit_trust_key_id(&public_key, &typed);
+            }
             Some(Overlay::TagMessage {
                 name,
                 target,
@@ -2775,6 +3106,8 @@ impl App {
                     self.submit_export_confirmation(tier, &typed);
                 } else if self.pending_save.is_some() {
                     self.submit_save_confirmation(tier, &typed);
+                } else if self.pending_trust.is_some() {
+                    self.submit_trust_confirmation(tier, &typed);
                 }
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
@@ -2796,7 +3129,11 @@ impl App {
                 | Overlay::MergeResult { .. }
                 | Overlay::ImportResult { .. }
                 | Overlay::ExportResult { .. }
-                | Overlay::SaveResult { .. },
+                | Overlay::SaveResult { .. }
+                // **The security event takes no `Enter`** (decision 4): there is nothing on it
+                // to approve, and `Esc` is the only way out.
+                | Overlay::TrustConflict { .. }
+                | Overlay::TrustResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -3206,6 +3543,8 @@ impl App {
                 | Overlay::BundlePath { typed }
                 | Overlay::ExportPath { typed, .. }
                 | Overlay::SavePath { typed, .. }
+                | Overlay::TrustPublicKey { typed, .. }
+                | Overlay::TrustKeyId { typed, .. }
                 | Overlay::TagMessage { typed, .. },
             ) => typed.push(ch),
             _ => {}
@@ -3229,6 +3568,8 @@ impl App {
                 | Overlay::BundlePath { typed }
                 | Overlay::ExportPath { typed, .. }
                 | Overlay::SavePath { typed, .. }
+                | Overlay::TrustPublicKey { typed, .. }
+                | Overlay::TrustKeyId { typed, .. }
                 | Overlay::TagMessage { typed, .. },
             ) => {
                 typed.pop();
@@ -3252,6 +3593,8 @@ impl App {
                     | Overlay::ExportPath { .. }
                     | Overlay::SavePath { .. }
                     | Overlay::SaveResult { .. }
+                    | Overlay::TrustPublicKey { .. }
+                    | Overlay::TrustKeyId { .. }
                     | Overlay::TagMessage { .. }
             )
         ) || matches!(
@@ -3288,6 +3631,10 @@ impl App {
                 | Overlay::ExportPath { .. }
                 | Overlay::SavePath { .. }
                 | Overlay::SaveResult { .. }
+                | Overlay::TrustPublicKey { .. }
+                | Overlay::TrustKeyId { .. }
+                | Overlay::TrustConflict { .. }
+                | Overlay::TrustResult { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
@@ -3313,11 +3660,12 @@ impl App {
                     Screen::PatchDetail { offset, .. }
                     | Screen::MergePlan { offset, .. }
                     | Screen::Bundle { offset, .. }
-                    | Screen::Verify { offset, .. }
-                    | Screen::Trust { offset, .. },
+                    | Screen::Verify { offset, .. },
                 ) => {
                     offset.set(offset.get().saturating_sub(1));
                 }
+                // **A row, not a scroll** (RFC 056 decision 3): see `nav_down`.
+                Some(Screen::Trust { cursor, .. }) => *cursor = cursor.saturating_sub(1),
                 _ => {}
             },
         }
@@ -3366,6 +3714,10 @@ impl App {
                 | Overlay::ExportPath { .. }
                 | Overlay::SavePath { .. }
                 | Overlay::SaveResult { .. }
+                | Overlay::TrustPublicKey { .. }
+                | Overlay::TrustKeyId { .. }
+                | Overlay::TrustConflict { .. }
+                | Overlay::TrustResult { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
@@ -3391,10 +3743,14 @@ impl App {
                     Screen::PatchDetail { offset, .. }
                     | Screen::MergePlan { offset, .. }
                     | Screen::Bundle { offset, .. }
-                    | Screen::Verify { offset, .. }
-                    | Screen::Trust { offset, .. },
+                    | Screen::Verify { offset, .. },
                 ) => {
                     offset.set(offset.get().saturating_add(1));
+                }
+                // **The Trust view selects a row** (RFC 056 decision 3), because `x` acts on
+                // one. The renderer still scrolls, and keeps the selected row in view.
+                Some(Screen::Trust { view, cursor, .. }) => {
+                    *cursor = next_index(*cursor, trust_rows(view));
                 }
                 // **The cursor moves between entries, and the renderer follows it** — the Queue's
                 // idiom. `↑`/`↓` on a view whose sections are arbitrarily tall must select, not
@@ -3505,6 +3861,9 @@ impl App {
             ResponseKind::ExportPreview(r) => r.is_ok(),
             ResponseKind::ExportConfirmExecute(r) => r.is_ok(),
             ResponseKind::TrustRead(r) => r.is_ok(),
+            ResponseKind::TrustAdoptPreview(r) => r.is_ok(),
+            ResponseKind::TrustRemovePreview(r) => r.is_ok(),
+            ResponseKind::TrustWrite(r) => r.is_ok(),
             ResponseKind::SaveFilePreview(r) => r.is_ok(),
             ResponseKind::SaveFileConfirmExecute(r) => r.is_ok(),
             ResponseKind::SaveAllPreview(r) => r.is_ok(),
@@ -3536,6 +3895,9 @@ impl App {
                 self.apply_ref_write_confirm_execute(seq, kind, result);
             }
             ResponseKind::TrustRead(result) => self.apply_trust_read(seq, result),
+            ResponseKind::TrustAdoptPreview(result) => self.apply_adopt_preview(seq, result),
+            ResponseKind::TrustRemovePreview(result) => self.apply_remove_preview(seq, result),
+            ResponseKind::TrustWrite(result) => self.apply_trust_write(seq, result),
             ResponseKind::SaveFilePreview(result) => match result {
                 Ok(stikk_core::SaveFilePreview::Blocked(reason)) => {
                     self.apply_save_preview(seq, Some(reason), None, None);
@@ -4953,7 +5315,11 @@ impl App {
                 refreshing,
                 offset,
             }) => Focus::Verify(view, *raw, refreshing.is_some(), offset),
-            Some(Screen::Trust { view, offset }) => Focus::Trust(view, offset),
+            Some(Screen::Trust {
+                view,
+                cursor,
+                offset,
+            }) => Focus::Trust(view, *cursor, offset),
             Some(Screen::Compare {
                 view,
                 opened,
@@ -5026,6 +5392,14 @@ impl App {
 }
 
 /// The next cursor index, clamped so it never runs off the end of a `len`-item list.
+/// How many rows the Trust view offers a cursor — zero where there is no list at all.
+fn trust_rows(view: &stikk_core::TrustView) -> usize {
+    match view {
+        stikk_core::TrustView::Listed { rows, .. } => rows.len(),
+        stikk_core::TrustView::Unavailable(_) | stikk_core::TrustView::Failed(_) => 0,
+    }
+}
+
 fn next_index(cursor: usize, len: usize) -> usize {
     if len == 0 {
         0

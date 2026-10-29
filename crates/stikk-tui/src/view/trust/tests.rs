@@ -27,11 +27,16 @@ fn row(id: &str, public: &str, yours: bool) -> TrustRow {
 }
 
 fn drawn(view: &TrustView, width: u16, height: u16) -> String {
+    drawn_at(view, 0, width, height)
+}
+
+/// As [`drawn`], with the cursor on a chosen row (RFC 056 decision 3).
+fn drawn_at(view: &TrustView, cursor: usize, width: u16, height: u16) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
     let offset = std::cell::Cell::new(0);
     terminal
-        .draw(|f| render(view, &offset, &Palette::default(), f, f.area()))
+        .draw(|f| render(view, cursor, &offset, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }

@@ -49,8 +49,9 @@ items* and *Changed items* for every crate.
 ### Changed
 
 - **Validated through prikk 0.55.0.** Nothing stikk reads changed: `extract` now refuses a
-  destination inside the repository and stikk does not call `extract`, and a damaged bundle's
-  refusal is worded differently, which stikk shows in prikk's own words and parses none of.
+  destination inside the repository — which stikk refuses itself first, in its own words, before
+  prikk is asked — and a damaged bundle's refusal is worded differently, which stikk shows in
+  prikk's own words and parses none of.
 
 ## 0.16.0 — 2026-10-29
 

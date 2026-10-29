@@ -3,9 +3,9 @@
 //!
 //! stikk targets prikk `>= 0.28`, validated through `0.55.0` — **RFC 055**, the 0.55 re-baseline:
 //! the two things 0.55 changed that come near stikk cost nothing — `extract` refuses a
-//! destination inside the repository, which stikk does not call, and a damaged bundle's refusal
-//! is worded differently, which stikk shows verbatim and parses none of; the suite was green at
-//! 0.28.0 and 0.55.0 with only this constant moved and no leg changed.
+//! destination inside the repository, which stikk refuses itself first (RFC 053), and a damaged
+//! bundle's refusal is worded differently, which stikk shows verbatim and parses none of; the
+//! suite was green at 0.28.0 and 0.55.0 with only this constant moved and no leg changed.
 //!
 //! Before it **RFC 052**, the 0.54 re-baseline:
 //! prikk 0.54 fixes a read stikk shows (`show <block-id>` no longer refuses after consecutive
@@ -104,13 +104,13 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// constant named it.
 ///
 /// **55 means prikk 0.55.0.** Two of 0.55's changes come anywhere near stikk, and neither cost a
-/// leg (RFC 055 F2). `extract` now refuses a destination **inside** the repository: stikk does not
-/// call `extract` at all yet, and the increment that will refuses that destination in its own words
-/// before prikk is asked. A damaged bundle's refusal is worded differently — *"unexpected end of
-/// bundle: failed to fill whole buffer"* where 0.54 said *"unexpected end of record"* — which stikk
-/// shows verbatim and parses none of; the suite's truncated-bundle leg asserts only *"malformed
-/// persisted data"*, which both versions say. Everything else 0.55 changed is a command or a
-/// library surface stikk does not touch. **The suite was green at 0.28.0 and 0.55.0 with only this
+/// leg (RFC 055 F2). `extract` now refuses a destination **inside** the repository, and so does
+/// stikk — in its own words, before prikk is asked at all (RFC 053 decision 4), which is why
+/// prikk's refusal is a second line of defence here rather than the first. A damaged bundle's
+/// refusal is worded differently — *"unexpected end of bundle: failed to fill whole buffer"* where
+/// 0.54 said *"unexpected end of record"* — which stikk shows verbatim and parses none of; the
+/// suite's truncated-bundle leg asserts only *"malformed persisted data"*, which both versions
+/// say. Everything else 0.55 changed is a command or a library surface stikk does not touch. **The suite was green at 0.28.0 and 0.55.0 with only this
 /// constant moved and no leg changed.**
 ///
 /// The band before it, for the history the raises form: **54 meant prikk 0.54.1, and the patch was

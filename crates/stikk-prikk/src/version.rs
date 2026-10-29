@@ -1,13 +1,19 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.54.1` — **RFC 052**, the 0.54 re-baseline:
+//! stikk targets prikk `>= 0.28`, validated through `0.55.0` — **RFC 055**, the 0.55 re-baseline:
+//! the two things 0.55 changed that come near stikk cost nothing — `extract` refuses a
+//! destination inside the repository, which stikk does not call, and a damaged bundle's refusal
+//! is worded differently, which stikk shows verbatim and parses none of; the suite was green at
+//! 0.28.0 and 0.55.0 with only this constant moved and no leg changed.
+//!
+//! Before it **RFC 052**, the 0.54 re-baseline:
 //! prikk 0.54 fixes a read stikk shows (`show <block-id>` no longer refuses after consecutive
 //! text edits of one file, so Block and Patch detail open where 0.53 showed prikk's refusal
 //! verbatim) and adds a `verify` count line and an `extract` command stikk does not call; the
 //! suite was green at 0.28.0 and 0.54.1 with only this constant moved and no leg changed.
 //! **0.54.1, not 0.54.0**: prikk withdrew 0.54.0's Windows installer and asks people not to use
-//! it, so 0.54.1 is the binary measured and the version every live statement names.
+//! it, so 0.54.1 is the binary measured and the version it names.
 //!
 //! Before it **RFC 049**, the 0.53 re-baseline:
 //! prikk 0.53's one output change is to `checkout`'s refusing modes, and stikk calls `checkout`

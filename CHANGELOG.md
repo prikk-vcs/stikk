@@ -2,6 +2,14 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Changed
+
+- **Validated through prikk 0.55.0.** Nothing stikk reads changed: `extract` now refuses a
+  destination inside the repository and stikk does not call `extract`, and a damaged bundle's
+  refusal is worded differently, which stikk shows in prikk's own words and parses none of.
+
 ## 0.16.0 — 2026-10-29
 
 **stikk now shares work as a bundle file — previewed before anything is written — and installs on

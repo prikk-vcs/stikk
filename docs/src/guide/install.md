@@ -73,8 +73,8 @@ stikk-install: extracting
 stikk-install: installed to ~/.local/bin/stikk
 stikk-install: added ~/.local/bin to PATH in ~/.bashrc
 stikk-install: open a new terminal, or run: . ~/.bashrc
-stikk-install: prikk is already installed: prikk 0.54.1
-stikk-install: that is inside the range this stikk was tested against (0.28 through 0.54)
+stikk-install: prikk is already installed: prikk 0.55.0
+stikk-install: that is inside the range this stikk was tested against (0.28 through 0.55)
 
 stikk-install: done. Next:
 stikk-install:   1. open a new terminal (PATH changed)

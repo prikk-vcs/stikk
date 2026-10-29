@@ -45,7 +45,7 @@ and on Windows in one line too
 stikk's own installers install stikk and nothing else; they check for
 prikk and print prikk's command when it is missing.
 This release requires prikk **≥ 0.28** and is validated
-through **0.54.1**; a newer prikk still runs, but stikk says its output shapes have not been checked
+through **0.55.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
 against it rather than silently assuming they have. If `prikk` is missing, stikk opens and then
 explains that — by design.
 
@@ -62,7 +62,7 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 ## Status
 
 **v0.16.x shares work as a bundle file, installs in two plain steps on every platform — prikk's,
-then stikk's — against prikk 0.54.1, and is on the AUR.** `i` opens a bundle and shows prikk's
+then stikk's — against prikk 0.55.0, and is on the AUR.** `i` opens a bundle and shows prikk's
 verification and what importing would change, `I` imports it as a received branch, and `E` writes
 a branch out to a file outside the repository. **Each program installs itself**: one line installs stikk —
 `curl … install.sh | sh`, or `irm … install.ps1 | iex` on Windows — checking the download against

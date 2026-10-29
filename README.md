@@ -111,7 +111,7 @@ If prikk is installed somewhere your terminal does not look, point stikk at it:
 export STIKK_PRIKK_BIN=/path/to/prikk
 ```
 
-stikk requires prikk **≥ 0.28** and is validated through **0.54.1**; a newer prikk still runs, but
+stikk requires prikk **≥ 0.28** and is validated through **0.55.0**; a newer prikk still runs, but
 stikk says its output shapes have not been checked against it, rather than assuming they have.
 
 Opening a repository on a terminal launches the interactive **TUI** — an Orientation view showing

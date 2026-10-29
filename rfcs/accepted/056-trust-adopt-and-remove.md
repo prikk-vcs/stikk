@@ -1,6 +1,6 @@
 # RFC 056 — Trust, adopt and remove: choosing whose keys this repository trusts
 
-**Status.** **Proposed 2026-10-29** by the architect, as 0.18.0's increment 1 (`.git-exclude/release/0-18-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/056-trust-adopt-and-remove/a-adopt-and-remove-handoff-v1.md) issued. **Proposed 2026-10-29** by the architect, as 0.18.0's increment 1 (`.git-exclude/release/0-18-0-scope.md`,
 authorized 2026-10-29). **No open question**: the scope's one design point, how to present a refused adopt, is decided
 here (decision 5).
 **Measured** against a real prikk **0.55.0**: `.git-exclude/reports/056-trust-write/` (`measure056.sh` →

@@ -25,12 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 056 | [Trust, adopt and remove: choosing whose keys this repository trusts](./proposed/056-trust-adopt-and-remove.md) | `FR-103`'s write half: adopt (`a`) and remove (`x`) a maintainer key from the Trust view, Tier Three typed; the measured cost of removing a key that sealed your history; a changed key under a known id as a security event; prikk ≥ 0.54. 0.18.0 increment 1 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFCs 053, 054 and 055 delivered and closed 2026-10-29._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 056 | [Trust, adopt and remove: choosing whose keys this repository trusts](./accepted/056-trust-adopt-and-remove.md) | `FR-103`'s write half: adopt (`a`) and remove (`x`) a maintainer key from the Trust view, Tier Three typed; the measured cost of removing a key that sealed your history; a changed key under a known id as a security event; prikk ≥ 0.54. **Accepted 2026-10-29**; 0.18.0 increment 1 | [A: adopt and remove](./handoffs/056-trust-adopt-and-remove/a-adopt-and-remove-handoff-v1.md) |
 
 ## Done (implemented)
 

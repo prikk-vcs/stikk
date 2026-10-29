@@ -476,7 +476,7 @@ a fabricated worktree entry was fixed.
 
 Scoped and authorized 2026-10-29, in delivery order:
 
-1. **Trust, adopt and remove** ([RFC 056](rfcs/proposed/056-trust-adopt-and-remove.md), proposed; `FR-103`'s write
+1. **Trust, adopt and remove** ([RFC 056](rfcs/accepted/056-trust-adopt-and-remove.md), accepted 2026-10-29; `FR-103`'s write
    half): from the Trust view, adopt a maintainer key (`a`) or remove one (`x`), each previewed and confirmed by
    typing the key id. The remove card says that removing the key which sealed your history makes Verify fail it until
    the key is adopted again (measured); a different key under a known id is shown as the security event it is.

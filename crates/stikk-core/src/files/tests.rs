@@ -139,6 +139,57 @@ fn an_existing_destination_is_declined_without_spawning_prikk() {
     let _ = std::fs::remove_dir_all(&outside);
 }
 
+/// **A dangling symlink is something there** (RFC 053 Handoff B §1), and stikk's own sentence
+/// says so before prikk is asked.
+///
+/// `Path::exists` follows the link and reports nothing at the destination; prikk's
+/// `destination_exists` is `symlink_metadata(..).is_ok()` and refuses. Both programs decline, so
+/// nothing was ever written over -- but the words a reader got were prikk's, about a path stikk
+/// had already armed a card for.
+///
+/// **Unix only**: creating a symlink on Windows needs a privilege the CI runner may not hold, so
+/// this leg would fail for a reason that has nothing to do with the rule under test.
+#[cfg(unix)]
+#[test]
+fn a_dangling_symlink_at_the_destination_is_declined_without_spawning_prikk() {
+    let scratch = Scratch::new("dangling");
+    let outside = scratch.path().parent().expect("a parent").join(format!(
+        "stikk-files-dangling-out-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(&outside).expect("a place to put the link");
+    let link = outside.join("a-old.txt");
+    std::os::unix::fs::symlink(outside.join("nothing-is-here"), &link).expect("a dangling link");
+    assert!(!link.exists(), "the link's target is not there");
+    assert!(
+        std::fs::symlink_metadata(&link).is_ok(),
+        "but the link itself is"
+    );
+    let backend = saving(0o100644, false);
+    let repo = scratch.path();
+
+    match save_file_preview(&backend, repo, BLOCK, "a.txt", &link) {
+        Ok(SaveFilePreview::Blocked(reason)) => assert_eq!(reason, DESTINATION_EXISTS),
+        other => panic!("expected a block, got {other:?}"),
+    }
+    match save_all_preview(&backend, repo, BLOCK, &link) {
+        Ok(SaveAllPreview::Blocked(reason)) => assert_eq!(reason, DESTINATION_EXISTS),
+        other => panic!("expected a block, got {other:?}"),
+    }
+    assert_eq!(backend.save_file_calls(), 0);
+    assert_eq!(backend.extract_calls(), 0);
+    assert_eq!(backend.extract_plan_calls(), 0);
+    // The link is still a link, pointing where it did.
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .expect("still there")
+            .is_symlink()
+    );
+    let _ = std::fs::remove_dir_all(&outside);
+}
+
 // ---------------------------------------------------------------- the suggestions
 
 /// The four shapes decision 4 names, each outside the repository by construction.

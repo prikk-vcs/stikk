@@ -321,10 +321,23 @@ fn destination_refused(repo: &Path, destination: &Path) -> Option<String> {
         return Some(INSIDE_THE_REPOSITORY.to_string());
     }
     // **Existence, and nothing more.** Whether the *parent* is there is prikk's to say.
-    if destination.exists() {
+    if already_there(destination) {
         return Some(DESTINATION_EXISTS.to_string());
     }
     None
+}
+
+/// Whether something is already at `path` — **prikk's own rule, so stikk's sentence answers
+/// first.**
+///
+/// `Path::exists` follows a symlink, so a **dangling** one reads as nothing there; prikk's
+/// `destination_exists` is `symlink_metadata(..).is_ok()`, which sees the link itself. Asking
+/// the easier question let stikk arm a card that prikk then refused — nothing was written
+/// either way, but the refusal came from the wrong program, in the wrong words.
+///
+/// Used by the two saves and by the bundle export, so the three cannot drift.
+pub(crate) fn already_there(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
 }
 
 /// One file's card (decision 5).

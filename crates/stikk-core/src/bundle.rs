@@ -722,8 +722,9 @@ pub fn export_preview(
         if stikk_state::paths::ensure_outside_repository(&output, Some(repo)).is_err() {
             return Ok(export_blocked(INSIDE_THE_REPOSITORY));
         }
-        // **Existence, and nothing more.** Whether the *directory* is there is prikk's to say.
-        if output.exists() {
+        // **Existence, and nothing more.** Whether the *directory* is there is prikk's to say,
+        // and `already_there` asks it prikk's way -- a dangling symlink is something there.
+        if crate::files::already_there(&output) {
             return Ok(export_blocked(DESTINATION_EXISTS));
         }
         let tip = prikk

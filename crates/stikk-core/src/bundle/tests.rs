@@ -769,6 +769,36 @@ fn an_existing_destination_is_declined_without_exporting() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// **A dangling symlink is something there** (RFC 053 Handoff B §1): `Path::exists` follows the
+/// link and sees nothing, prikk's `destination_exists` sees the link and refuses. stikk now asks
+/// prikk's question, so its own sentence answers first and `export` is still never spawned.
+///
+/// **Unix only**: a symlink on Windows needs a privilege the runner may not hold.
+#[cfg(unix)]
+#[test]
+fn a_dangling_symlink_destination_is_declined_without_exporting() {
+    let dir = std::env::temp_dir().join(format!("stikk-export-dangling-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a scratch directory");
+    let out = dir.join("link.bundle");
+    std::os::unix::fs::symlink(dir.join("nothing-is-here"), &out).expect("a dangling link");
+    assert!(!out.exists(), "the link's target is not there");
+
+    let backend = exporting(vec![branch_entry("heads/main", false, false)]);
+    assert_eq!(
+        export_blocked_for(&backend, "heads/main", &out),
+        DESTINATION_EXISTS
+    );
+    assert_eq!(backend.bundle_export_calls(), 0);
+    assert!(
+        std::fs::symlink_metadata(&out)
+            .expect("still there")
+            .is_symlink(),
+        "the link is untouched"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// **The four rows stikk will not export**, each with its own reason, re-asked from freshly
 /// read refs — the preview's copy of what the picker already declined.
 #[test]

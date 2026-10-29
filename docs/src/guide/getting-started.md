@@ -256,11 +256,37 @@ not a refusal — received branches exist precisely so history you have not vouc
 beside your own, where `V` can check it.
 
 **`T`** shows the keys this repository trusts, anywhere a repository is open: each key's id and
-public key, with your own marked. It is read-only — stikk adopts and removes nothing. Adopting a
-key means prikk accepts that key's signatures on what it signed; it never lets the key move one
-of your branches. Where nothing is adopted, the view says so and gives prikk's own command —
-and the one caution worth repeating: **get the public key from its owner, not from a bundle they
-sent.**
+public key, with your own marked. Adopting a key means prikk accepts that key's signatures on
+what it signed; it never lets the key move one of your branches. Where nothing is adopted, the
+view says so and gives prikk's own command — and the one caution worth repeating: **get the
+public key from its owner, not from a bundle they sent.**
+
+### Adopting and removing keys
+
+From the Trust view, **`a`** adopts a key and **`x`** removes the one you have selected. Each is
+previewed and confirmed by **typing the key id**, which is stikk's most deliberate confirmation:
+nothing here happens by a stray `Enter`. Neither needs a signing key of your own. Needs prikk
+0.54 or newer.
+
+**Adopting** asks for the public key first, then for the id it signs under — prefilled with the
+id prikk would give that key, which you can change if its owner signs under another. **Get the
+public key from its owner**, not from a bundle they sent: a bundle names a sealer and proves
+nothing, which is the whole reason this page says so twice.
+
+**If the id you give is already trusted under a different key, stikk stops and shows you both.**
+Two keys cannot share an id, because an id travels in every signature. If its owner really has a
+new key, they must sign under a new id and you adopt it under that one. If they did not tell you
+they changed keys, treat the key you were given as someone else's.
+
+**Removing** is the one to read slowly. If the key you remove sealed blocks in this repository,
+**Verify will fail them** until the same key is adopted again under the same id — stikk cannot
+say how many blocks that is, because prikk does not report which key sealed each one, so the card
+says *if*. Nothing is lost: adopt the key again, under the same id, and Verify passes again. And
+removing **your own** key means you cannot seal here until it is adopted back. prikk keeps at
+least one trusted key, so the last one cannot be removed at all.
+
+After either, stikk shows prikk's own words and the list as it now stands. After a removal, press
+**`V`** to see what Verify says.
 
 ## Capability and signing
 

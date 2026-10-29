@@ -4,6 +4,44 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position.
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | **The `Prikk` trait gains two required methods**, `trust_add` and `trust_remove`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+| `stikk-tui` | **`Focus::Trust` carries a third value**, the selected row — the Trust view has a cursor now, because `x` acts on one. Outside code that destructures that variant must take it |
+
+**Additive:** `stikk_prikk::TrustWritten`, with `NullBackend`'s two new builders and two call
+counters; `stikk_core::trust`'s `AdoptPreview`, `RemovePreview`, `TwoKeysOneId`,
+`TrustWriteResult`, `adopt_preview`, `remove_preview`, `adopt_confirm_and_execute`,
+`remove_confirm_and_execute`, `default_key_id`, `not_the_default_id`, `check_public_key`,
+`check_key_id` and the new sentences; `stikk_core::OperationContext::Trust`, which is additive
+only because that enum is `#[non_exhaustive]`; `stikk_tui::Overlay`'s four new variants and
+`App::begin_adopt_key`.
+
+### Added
+
+- **Adopt a key from the Trust view, and remove one.** `a` adopts a maintainer key and `x`
+  removes the selected one, each previewed and confirmed by **typing the key id**. Neither needs
+  a signing key of your own. Needs prikk 0.54 or newer.
+
+  Adopting asks for the public key, then for the id it signs under — prefilled with the id prikk
+  would give that key, and editable, because its owner may sign under another. stikk checks both
+  before prikk is asked, so a mistyped key keeps the prompt open instead of becoming a refusal.
+  **Get the public key from its owner, not from a bundle they sent.**
+
+  **If that id is already trusted under a different key, stikk stops and shows you both.** Two
+  keys cannot share an id: an id travels in every signature. There is nothing to confirm on that
+  card — if its owner really has a new key, they must sign under a new id.
+
+  **Removing says what it can cost.** If the key sealed blocks here, Verify will fail them until
+  the same key is adopted again under the same id; adopt it back and Verify passes. Removing your
+  own key means you cannot seal until it is adopted again, and prikk keeps at least one trusted
+  key, so the last one cannot be removed. After either, stikk shows prikk's own words and the
+  list as it now stands, and a removal points you at `V`.
+
 ### Changed
 
 - **The two save keys in Block detail get a row of their own.** *"F saves the selected file, A

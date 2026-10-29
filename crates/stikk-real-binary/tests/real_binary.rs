@@ -8476,3 +8476,580 @@ fn rfc050_below_the_band_the_bundle_writes_are_unavailable() {
         bin.minor
     );
 }
+
+// =============================================================================================
+// RFC 053 — getting files back, against a real prikk.
+// =============================================================================================
+
+/// A fixture with four files at its first block, and that block's id.
+///
+/// `a.txt`, `bin.dat`, `dir/sub/d.txt` and an executable `run.sh` — the shape
+/// `measure053.sh` built, so the counts these legs assert are the measured ones.
+fn rfc053_fixture(bin: &PrikkBin, fixture: &Fixture, counting: &CountingWrites) -> String {
+    let repo = fixture.repo().to_path_buf();
+    std::fs::create_dir_all(repo.join("dir/sub"))
+        .unwrap_or_else(|e| panic!("0.{}: mkdir: {e}", bin.minor));
+    std::fs::write(repo.join("a.txt"), "one\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    std::fs::write(repo.join("dir/sub/d.txt"), "deep\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    std::fs::write(repo.join("bin.dat"), [0u8, 1, 2])
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    std::fs::write(repo.join("run.sh"), "#!/bin/sh\necho hi\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(repo.join("run.sh"), std::fs::Permissions::from_mode(0o755))
+            .unwrap_or_else(|e| panic!("0.{}: chmod: {e}", bin.minor));
+    }
+    fixture.set_author_env();
+    counting
+        .commit(&repo, "heads/main", "first")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    counting
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+    counting
+        .history(&repo, "heads/main", 1)
+        .unwrap_or_else(|e| panic!("0.{}: history: {e}", bin.minor))
+        .blocks
+        .first()
+        .unwrap_or_else(|| panic!("0.{}: the sealed block", bin.minor))
+        .block_id
+        .clone()
+}
+
+/// Whether this ceiling offers the saves at all.
+fn rfc053_in_band(bin: &PrikkBin) -> bool {
+    if bin.minor < stikk_core::FILES_FROM_MINOR {
+        eprintln!(
+            "RFC 053 SKIPPED at 0.{} — saving files is banded at 0.{}.",
+            bin.minor,
+            stikk_core::FILES_FROM_MINOR
+        );
+        return false;
+    }
+    true
+}
+
+/// **Leg 1: one file saved, and its bytes are `cat`'s own.**
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc053_one_file_is_saved_with_prikks_own_bytes_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc053_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let block = rfc053_fixture(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    let out = root.join("a-saved.txt");
+    let stikk_core::SaveFilePreview::Ready { token } =
+        stikk_core::save_file_preview(&counting, &repo, &block, "a.txt", &out)
+            .unwrap_or_else(|e| panic!("0.{}: save_file_preview: {e}", bin.minor))
+    else {
+        panic!("0.{}: a file outside the repository is offered", bin.minor);
+    };
+    stikk_core::save_file_confirm_and_execute(
+        &counting,
+        &repo,
+        *token,
+        counting
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness,
+        stikk_core::Evidence::ExplicitYes,
+        &stikk_core::SaveFileTarget {
+            block: block.clone(),
+            path: "a.txt".to_string(),
+            output: out.clone(),
+        },
+    )
+    .unwrap_or_else(|e| panic!("0.{}: save_file: {e}", bin.minor));
+
+    // **prikk's own answer for the same point**, written beside it and compared byte for byte.
+    let theirs = root.join("a-prikk.txt");
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "cat",
+            "--path",
+            "a.txt",
+            "--ref",
+            &block,
+            "--output",
+            &theirs.display().to_string(),
+        ],
+    );
+    assert_eq!(
+        std::fs::read(&out).unwrap_or_else(|e| panic!("0.{}: read ours: {e}", bin.minor)),
+        std::fs::read(&theirs).unwrap_or_else(|e| panic!("0.{}: read prikk's: {e}", bin.minor)),
+        "0.{}: stikk saved exactly what prikk saves",
+        bin.minor
+    );
+}
+
+/// **Leg 2: every file extracted, and the set matches `tree`'s.**
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc053_every_file_is_saved_and_matches_prikks_tree_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc053_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let block = rfc053_fixture(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    let dir = root.join("all-files");
+    let stikk_core::SaveAllPreview::Ready { token } =
+        stikk_core::save_all_preview(&counting, &repo, &block, &dir)
+            .unwrap_or_else(|e| panic!("0.{}: save_all_preview: {e}", bin.minor))
+    else {
+        panic!(
+            "0.{}: a folder outside the repository is offered",
+            bin.minor
+        );
+    };
+    stikk_core::save_all_confirm_and_execute(
+        &counting,
+        &repo,
+        *token,
+        counting
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness,
+        stikk_core::Evidence::ExplicitYes,
+        &stikk_core::SaveAllTarget {
+            block: block.clone(),
+            dir: dir.clone(),
+        },
+    )
+    .unwrap_or_else(|e| panic!("0.{}: extract: {e}", bin.minor));
+
+    // **The paths and sizes stikk wrote, against prikk's own `tree` at that block.** Read from
+    // prikk directly rather than through the seam: `StateFile` carries no size, and the point of
+    // this leg is to compare what landed on disk with what prikk says is there.
+    let tree = prikk_ok(&bin, &repo, &["tree", "--ref", &block, "--format", "json"]);
+    let tree = String::from_utf8_lossy(&tree.stdout).into_owned();
+    let mut wanted: Vec<(String, u64)> = Vec::new();
+    for entry in tree.split("\"path\"").skip(1) {
+        let path = entry
+            .split('"')
+            .nth(1)
+            .unwrap_or_else(|| panic!("0.{}: a path in prikk's tree: {entry}", bin.minor))
+            .to_string();
+        let size = entry
+            .split("\"size\"")
+            .nth(1)
+            .and_then(|rest| {
+                rest.trim_start_matches([':', ' '])
+                    .split(|c: char| !c.is_ascii_digit())
+                    .next()
+            })
+            .and_then(|digits| digits.parse::<u64>().ok())
+            .unwrap_or_else(|| panic!("0.{}: a size in prikk's tree: {entry}", bin.minor));
+        wanted.push((path, size));
+    }
+    // **However many prikk lists** -- the fixture builder adds files of its own, and pinning a
+    // count here would be asserting the harness rather than the comparison this leg is for.
+    assert!(
+        wanted.len() >= 4,
+        "0.{}: prikk lists at least this leg's four files: {wanted:?}",
+        bin.minor
+    );
+    wanted.sort();
+
+    let mut written: Vec<(String, u64)> = Vec::new();
+    let mut stack = vec![dir.clone()];
+    while let Some(at) = stack.pop() {
+        for entry in std::fs::read_dir(&at)
+            .unwrap_or_else(|e| panic!("0.{}: read_dir: {e}", bin.minor))
+            .flatten()
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                let relative = path
+                    .strip_prefix(&dir)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string();
+                let size = std::fs::metadata(&path)
+                    .unwrap_or_else(|e| panic!("0.{}: stat: {e}", bin.minor))
+                    .len();
+                written.push((relative, size));
+            }
+        }
+    }
+    written.sort();
+    assert_eq!(
+        written, wanted,
+        "0.{}: what stikk wrote is what prikk lists at that block",
+        bin.minor
+    );
+}
+
+/// **Leg 3: a destination inside the repository is declined, nothing is spawned, and the
+/// worktree is unchanged** — for `F` and for `A` (RFC 053 §7 trap 5).
+///
+/// prikk 0.54 would have written both there; 0.55 refuses only the `extract`. stikk's own rule
+/// covers both, and this proves it never reached prikk at all.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc053_a_destination_inside_the_repository_is_declined_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc053_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let block = rfc053_fixture(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+
+    let before = counting
+        .worktree_status(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: worktree-status: {e}", bin.minor));
+    let saves_before = counting.saves.load(std::sync::atomic::Ordering::SeqCst);
+    let extracts_before = counting.extracts.load(std::sync::atomic::Ordering::SeqCst);
+
+    for inside in [repo.join("a-copy.txt"), repo.join("dir/a-copy.txt")] {
+        match stikk_core::save_file_preview(&counting, &repo, &block, "a.txt", &inside)
+            .unwrap_or_else(|e| panic!("0.{}: save_file_preview: {e}", bin.minor))
+        {
+            stikk_core::SaveFilePreview::Blocked(reason) => assert_eq!(
+                reason,
+                stikk_core::FILES_INSIDE_THE_REPOSITORY,
+                "0.{}",
+                bin.minor
+            ),
+            other => panic!("0.{}: inside is declined, got {other:?}", bin.minor),
+        }
+        match stikk_core::save_all_preview(&counting, &repo, &block, &inside)
+            .unwrap_or_else(|e| panic!("0.{}: save_all_preview: {e}", bin.minor))
+        {
+            stikk_core::SaveAllPreview::Blocked(reason) => assert_eq!(
+                reason,
+                stikk_core::FILES_INSIDE_THE_REPOSITORY,
+                "0.{}",
+                bin.minor
+            ),
+            other => panic!("0.{}: inside is declined, got {other:?}", bin.minor),
+        }
+        assert!(
+            !inside.exists(),
+            "0.{}: nothing was written at {}",
+            bin.minor,
+            inside.display()
+        );
+    }
+
+    assert_eq!(
+        counting.saves.load(std::sync::atomic::Ordering::SeqCst),
+        saves_before,
+        "0.{}: `cat --output` was never spawned",
+        bin.minor
+    );
+    assert_eq!(
+        counting.extracts.load(std::sync::atomic::Ordering::SeqCst),
+        extracts_before,
+        "0.{}: `extract` was never spawned",
+        bin.minor
+    );
+    // **The worktree is what it was** — not merely "no copy": an untracked file anywhere would
+    // show here, and the next commit would have captured it.
+    let after = counting
+        .worktree_status(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: worktree-status: {e}", bin.minor));
+    assert_eq!(
+        after.entries.len(),
+        before.entries.len(),
+        "0.{}: the worktree is unchanged",
+        bin.minor
+    );
+    assert_eq!(after.untracked, before.untracked, "0.{}", bin.minor);
+}
+
+/// **Leg 4: an existing destination is declined, and its bytes are untouched.**
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc053_an_existing_destination_is_declined_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc053_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let block = rfc053_fixture(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    let taken = root.join("already-here.txt");
+    std::fs::write(&taken, b"not mine to overwrite")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    let taken_dir = root.join("already-a-folder");
+    std::fs::create_dir_all(&taken_dir).unwrap_or_else(|e| panic!("0.{}: mkdir: {e}", bin.minor));
+
+    let saves_before = counting.saves.load(std::sync::atomic::Ordering::SeqCst);
+    let extracts_before = counting.extracts.load(std::sync::atomic::Ordering::SeqCst);
+
+    match stikk_core::save_file_preview(&counting, &repo, &block, "a.txt", &taken)
+        .unwrap_or_else(|e| panic!("0.{}: save_file_preview: {e}", bin.minor))
+    {
+        stikk_core::SaveFilePreview::Blocked(reason) => {
+            assert_eq!(
+                reason,
+                stikk_core::FILES_DESTINATION_EXISTS,
+                "0.{}",
+                bin.minor
+            );
+        }
+        other => panic!(
+            "0.{}: an existing file is declined, got {other:?}",
+            bin.minor
+        ),
+    }
+    match stikk_core::save_all_preview(&counting, &repo, &block, &taken_dir)
+        .unwrap_or_else(|e| panic!("0.{}: save_all_preview: {e}", bin.minor))
+    {
+        stikk_core::SaveAllPreview::Blocked(reason) => {
+            assert_eq!(
+                reason,
+                stikk_core::FILES_DESTINATION_EXISTS,
+                "0.{}",
+                bin.minor
+            );
+        }
+        other => panic!(
+            "0.{}: an existing directory is declined, got {other:?}",
+            bin.minor
+        ),
+    }
+    assert_eq!(
+        std::fs::read(&taken).unwrap_or_else(|e| panic!("0.{}: read: {e}", bin.minor)),
+        b"not mine to overwrite",
+        "0.{}: the file in the way is untouched",
+        bin.minor
+    );
+    assert_eq!(
+        counting.saves.load(std::sync::atomic::Ordering::SeqCst),
+        saves_before,
+        "0.{}: nothing spawned",
+        bin.minor
+    );
+    assert_eq!(
+        counting.extracts.load(std::sync::atomic::Ordering::SeqCst),
+        extracts_before,
+        "0.{}: nothing spawned",
+        bin.minor
+    );
+}
+
+/// **Leg 5: an executable file's card carries the notice** — from prikk's own `mode`, which
+/// `cat --output` does not carry to the copy (RFC 053 F3).
+#[cfg(unix)]
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc053_an_executable_files_card_warns_about_the_mode_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc053_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let block = rfc053_fixture(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    for (path, wanted) in [("run.sh", true), ("a.txt", false)] {
+        let out = root.join(format!("{path}-saved"));
+        let stikk_core::SaveFilePreview::Ready { token } =
+            stikk_core::save_file_preview(&counting, &repo, &block, path, &out)
+                .unwrap_or_else(|e| panic!("0.{}: {path}: {e}", bin.minor))
+        else {
+            panic!("0.{}: {path} is offered", bin.minor);
+        };
+        let notices = &token.summary().notices;
+        assert_eq!(
+            notices.contains(&stikk_core::LOSES_THE_EXECUTE_BIT.to_string()),
+            wanted,
+            "0.{}: {path}'s card: {notices:?}",
+            bin.minor
+        );
+    }
+}
+
+/// **Leg 6: a received branch's plan carries the provisional notice** (RFC 053 F4).
+///
+/// Built the way RFC 050's legs build one: a second repository imports a bundle this one
+/// exported, so its received history has a sealer the receiver has not adopted.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc053_a_received_branchs_plan_is_provisional_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc053_in_band(&bin) || bin.minor < stikk_core::BUNDLE_FROM_MINOR {
+        eprintln!(
+            "RFC 053 leg 6 SKIPPED at 0.{} — needs bundles too.",
+            bin.minor
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let block = rfc053_fixture(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+    let _ = &block;
+
+    let bundle = root.join("shared.bundle");
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "bundle",
+            "export",
+            "--ref",
+            "heads/main",
+            "--output",
+            &bundle.display().to_string(),
+        ],
+    );
+    let receiver = Fixture::build(&bin);
+    prikk_ok(
+        &bin,
+        receiver.repo(),
+        &["bundle", "import", "--input", &bundle.display().to_string()],
+    );
+
+    // The received branch's own tip, which is the point this plan is for.
+    let received = counting
+        .history(receiver.repo(), "remotes/heads/main", 1)
+        .unwrap_or_else(|e| panic!("0.{}: history: {e}", bin.minor))
+        .blocks
+        .first()
+        .unwrap_or_else(|| panic!("0.{}: the received tip", bin.minor))
+        .block_id
+        .clone();
+
+    let dir = receiver
+        .repo()
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the receiver's root", bin.minor))
+        .join("received-files");
+    let stikk_core::SaveAllPreview::Ready { token } =
+        stikk_core::save_all_preview(&counting, receiver.repo(), &received, &dir)
+            .unwrap_or_else(|e| panic!("0.{}: save_all_preview: {e}", bin.minor))
+    else {
+        panic!("0.{}: a received branch's files are offered", bin.minor);
+    };
+    assert!(
+        token
+            .summary()
+            .notices
+            .contains(&stikk_core::PROVISIONAL_REPLAY.to_string()),
+        "0.{}: prikk replayed from the start and the card says so: {:?}",
+        bin.minor,
+        token.summary().notices
+    );
+}
+
+/// **At the floor both keys are unavailable, and nothing is spawned.**
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc053_below_the_band_both_saves_are_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+    let block = "f".repeat(64);
+
+    match stikk_core::save_file_preview(&counting, &repo, &block, "a.txt", &root.join("a-out.txt"))
+        .unwrap_or_else(|e| panic!("0.{}: save_file_preview: {e}", bin.minor))
+    {
+        stikk_core::SaveFilePreview::Blocked(reason) => assert!(
+            reason.contains(&format!("0.{}", stikk_core::FILES_FROM_MINOR)),
+            "0.{}: the band is named: {reason}",
+            bin.minor
+        ),
+        other => panic!("0.{}: below the band is declined, got {other:?}", bin.minor),
+    }
+    match stikk_core::save_all_preview(&counting, &repo, &block, &root.join("all-out"))
+        .unwrap_or_else(|e| panic!("0.{}: save_all_preview: {e}", bin.minor))
+    {
+        stikk_core::SaveAllPreview::Blocked(reason) => assert!(
+            reason.contains(&format!("0.{}", stikk_core::FILES_FROM_MINOR)),
+            "0.{}: {reason}",
+            bin.minor
+        ),
+        other => panic!("0.{}: below the band is declined, got {other:?}", bin.minor),
+    }
+    assert_eq!(
+        counting.saves.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "0.{}: nothing spawned below the band",
+        bin.minor
+    );
+    assert_eq!(
+        counting.extracts.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "0.{}: nothing spawned below the band",
+        bin.minor
+    );
+}

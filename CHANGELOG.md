@@ -10,9 +10,9 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position.
 
 | Crate | Change |
 |---|---|
-| `stikk-prikk` | **The `Prikk` trait gains four required methods**, `file_meta`, `save_file`, `extract_plan` and `extract`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+| `stikk-prikk` | **The `Prikk` trait gains five required methods**, `file_meta`, `save_file`, `extract_plan`, `extract` and `trusted_keys`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
 | `stikk-core` | **`ConfirmationSummary` gained a public field**, `notices: Vec<String>` — cautions about what confirming will produce, drawn above the consequence. The struct is not `#[non_exhaustive]`, so outside code that builds one as a literal, or destructures one exhaustively, must account for it, exactly as it did for `asides` in 0.16.0 and `merge_plan` in 0.15.0 |
-| `stikk-tui` | **`Overlay` gained `SavePath` and `SaveResult`.** The enum is not `#[non_exhaustive]`, so any outside exhaustive `match` must cover them |
+| `stikk-tui` | **`Overlay` gained `SavePath` and `SaveResult`, and `Screen` and `Focus` gained `Trust`.** None of the three enums is `#[non_exhaustive]`, so any outside exhaustive `match` must cover them |
 
 **Additive:** `stikk_prikk::FileMeta`, `FileMetaRead`, `FileSaved`, `ExtractReport`, `Extracted`
 and `FILES_FROM_MINOR`, with `NullBackend`'s six new builders and three call counters;
@@ -21,8 +21,11 @@ and `FILES_FROM_MINOR`, with `NullBackend`'s six new builders and three call cou
 `save_all_confirm_and_execute`, `suggested_file_destination`, `suggested_all_destination`,
 `saved_file_line`, `saved_all_lines`, `files_unavailable`, `block_cursor_len`,
 `block_cursor_row`, `block_cursor_file`, `block_short`, `no_files_to_save` and its sentences;
-`stikk_tui::overlay::SavePathKind`; `stikk_tui::App::begin_save_file` and `begin_save_all`. **No
-public item was removed**: `cargo public-api diff 0.16.0` reports *(none)* under both *Removed
+`stikk_tui::overlay::SavePathKind`; `stikk_tui::App::begin_save_file` and `begin_save_all`;
+`stikk_prikk::TrustedKey`, `TrustedKeys` and `NullBackend`'s three new builders;
+`stikk_core::trust` with `TrustView`, `TrustRow`, `Sealer`, `SealerTrust`, `SealerTrustRead`,
+`read`, `sealers`, `trust_unavailable`, `TRUST_FROM_MINOR` and its sentences, plus
+`BundleView::sealers`; `stikk_tui::App::open_trust`. **No public item was removed**: `cargo public-api diff 0.16.0` reports *(none)* under both *Removed
 items* and *Changed items* for every crate.
 
 ### Added
@@ -45,6 +48,18 @@ items* and *Changed items* for every crate.
 
   **Nothing in the repository or your worktree changes.** To use what came back, copy what you
   want into your worktree yourself.
+
+- **See which keys this repository trusts, and whether a bundle's sealer is one of them.** `T`
+  anywhere a repository is open lists the adopted maintainer keys, in prikk's order, with your
+  own marked — and each bundle card now says beside every recorded sealer whether this
+  repository trusts it, with prikk's own note that recording a key is not trusting one still
+  beneath. Needs prikk 0.54 or newer; below that the sealer row is what it was.
+
+  **Read-only.** stikk adopts and removes nothing, and an untrusted sealer declines no import:
+  received branches exist so that history you have not vouched for can sit beside your own.
+  Where nothing is adopted, the view says so and gives prikk's own command as text, with the
+  caution that the public key should come from its owner and not from a bundle they sent. No
+  seed, no seed path, and no key material beyond ids and public keys is ever shown.
 
 ### Changed
 

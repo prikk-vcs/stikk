@@ -138,7 +138,7 @@ pub struct BundleView {
     ///
     /// **prikk's ids, in prikk's order**, and prikk's own continuity note still sits beneath
     /// them: what stikk adds is an answer prikk does not give, not a replacement for what it
-    /// does. Every entry is [`stikk_core::SealerTrust::Unknown`] where the list could not be
+    /// does. Every entry is [`crate::trust::SealerTrust::Unknown`] where the list could not be
     /// read, so a card says what it does not know rather than implying *not trusted*.
     pub sealers: crate::trust::SealerTrustRead,
 }

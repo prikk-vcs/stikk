@@ -9066,3 +9066,376 @@ fn rfc053_below_the_band_both_saves_are_unavailable() {
         bin.minor
     );
 }
+
+// =============================================================================================
+// RFC 054 — trust, read-only, against a real prikk.
+// =============================================================================================
+
+/// Whether this ceiling lists adopted keys at all.
+fn rfc054_in_band(bin: &PrikkBin) -> bool {
+    if bin.minor < stikk_core::TRUST_FROM_MINOR {
+        eprintln!(
+            "RFC 054 SKIPPED at 0.{} — the trust list is banded at 0.{}.",
+            bin.minor,
+            stikk_core::TRUST_FROM_MINOR
+        );
+        return false;
+    }
+    true
+}
+
+/// A well-formed public key and the `ed25519-<16 hex>` id prikk derives from it, from one hex
+/// digit — enough to adopt, and distinguishable from any other.
+fn rfc054_key(seed_digit: char) -> (String, String) {
+    let public: String = std::iter::repeat_n(seed_digit, 64).collect();
+    let id = format!("ed25519-{}", &public[..16]);
+    (id, public)
+}
+
+/// **Legs 1–3: a bare repository lists nothing; after `setup` one row is yours; a second
+/// adopted key is a second row, unmarked.**
+///
+/// One test for three states of one repository: splitting them would build three fixtures to
+/// assert what one progression shows.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc054_the_trust_list_grows_and_only_your_own_key_is_marked_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc054_in_band(&bin) {
+        return;
+    }
+    let backend = CliBackend::with_program(&bin.path);
+
+    // **Leg 1: `init` alone.** `Fixture::build` runs `setup`, so a bare repository is made here.
+    let bare = std::env::temp_dir().join(format!(
+        "stikk-rfc054-bare-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&bare);
+    std::fs::create_dir_all(&bare).unwrap_or_else(|e| panic!("0.{}: mkdir: {e}", bin.minor));
+    prikk_ok(&bin, &bare, &["init", "."]);
+    match stikk_core::trust::read(&backend, &bare)
+        .unwrap_or_else(|e| panic!("0.{}: trust read: {e}", bin.minor))
+    {
+        stikk_core::TrustView::Listed { rows, .. } => assert!(
+            rows.is_empty(),
+            "0.{}: a repository made with `init` alone has adopted nothing: {rows:?}",
+            bin.minor
+        ),
+        other => panic!("0.{}: expected a list, got {other:?}", bin.minor),
+    }
+    let _ = std::fs::remove_dir_all(&bare);
+
+    // **Leg 2: after `setup`.** One row, and it is yours — `setup` adopts the maintainer key it
+    // creates (RFC 054 F3), and `key status` names the same pair.
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    fixture.set_maintainer_env();
+    let view = stikk_core::trust::read(&backend, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: trust read: {e}", bin.minor));
+    let stikk_core::TrustView::Listed { rows, .. } = view else {
+        panic!("0.{}: expected a list", bin.minor);
+    };
+    assert_eq!(rows.len(), 1, "0.{}: setup adopted one key", bin.minor);
+    assert!(
+        rows[0].yours,
+        "0.{}: and it is the key `key status` names: {rows:?}",
+        bin.minor
+    );
+    let mine = rows[0].key_id.clone();
+
+    // **Leg 3: a second key, adopted in the harness.** Two rows, and the second is not yours.
+    let (theirs_id, theirs_key) = rfc054_key('7');
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "trust",
+            "maintainer",
+            "add",
+            "--key-id",
+            &theirs_id,
+            "--public-key",
+            &theirs_key,
+        ],
+    );
+    let view = stikk_core::trust::read(&backend, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: trust read: {e}", bin.minor));
+    let stikk_core::TrustView::Listed { rows, .. } = view else {
+        panic!("0.{}: expected a list", bin.minor);
+    };
+    assert_eq!(rows.len(), 2, "0.{}: {rows:?}", bin.minor);
+    assert_eq!(
+        rows.iter().filter(|r| r.yours).count(),
+        1,
+        "0.{}: exactly one row is yours: {rows:?}",
+        bin.minor
+    );
+    assert!(
+        rows.iter().any(|r| r.key_id == mine && r.yours),
+        "0.{}: and it is still the one `setup` made",
+        bin.minor
+    );
+    assert!(
+        rows.iter().any(|r| r.key_id == theirs_id && !r.yours),
+        "0.{}: the collaborator's is not: {rows:?}",
+        bin.minor
+    );
+    Fixture::clear_env();
+}
+
+/// **Leg 4: a bundle's sealer is *not trusted* in a receiver that has not adopted it, and
+/// *trusted* once the harness does.**
+///
+/// The sender seals under a key id of its own rather than prikk's default, so the two
+/// repositories' ids are distinct — which is the case RFC 054 decision 3 describes. The case
+/// where they are *not* is
+/// [`rfc054_a_shared_default_key_id_is_matched_by_id_alone`].
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc054_a_bundles_sealer_becomes_trusted_when_the_key_is_adopted_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc054_in_band(&bin) || bin.minor < stikk_core::BUNDLE_FROM_MINOR {
+        eprintln!(
+            "RFC 054 leg 4 SKIPPED at 0.{} — needs bundles too.",
+            bin.minor
+        );
+        return;
+    }
+    let backend = CliBackend::with_program(&bin.path);
+    let sender = Fixture::build(&bin);
+    let repo = sender.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    std::fs::write(repo.join("a.txt"), "a\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    sender.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    sender.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+
+    let bundle = root.join("sealed.bundle");
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "bundle",
+            "export",
+            "--ref",
+            "heads/main",
+            "--output",
+            &bundle.display().to_string(),
+        ],
+    );
+
+    // **A receiver made with `init` alone**, so it has adopted nothing at all — the honest
+    // shape of meeting a stranger's bundle. A `setup` receiver would hold its own key under
+    // prikk's default id and collide with the sender's, which is
+    // `rfc054_a_shared_default_key_id_is_matched_by_id_alone`'s subject rather than this one's.
+    let receiver_dir = root.join("receiver");
+    let _ = std::fs::remove_dir_all(&receiver_dir);
+    std::fs::create_dir_all(&receiver_dir)
+        .unwrap_or_else(|e| panic!("0.{}: mkdir: {e}", bin.minor));
+    prikk_ok(&bin, &receiver_dir, &["init", "."]);
+    let receiver = receiver_dir.as_path();
+    let opened = stikk_core::open_bundle(&backend, receiver, &bundle)
+        .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
+    let stikk_core::BundleOpened::Read(view) = opened else {
+        panic!("0.{}: the bundle verifies, got {opened:?}", bin.minor);
+    };
+    let judged = view.sealers.judged().to_vec();
+    assert!(
+        !judged.is_empty(),
+        "0.{}: the bundle records a sealer",
+        bin.minor
+    );
+    assert!(
+        judged
+            .iter()
+            .all(|s| s.trust == stikk_core::SealerTrust::NotTrusted),
+        "0.{}: the receiver adopted nothing of the sender's: {judged:?}",
+        bin.minor
+    );
+    let sealer = judged[0].key_id.clone();
+
+    // **The sender's public key, from the sender's own list** — not from the bundle, which is
+    // the caution stikk's own empty state gives.
+    let stikk_core::TrustView::Listed { rows, .. } = stikk_core::trust::read(&backend, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: the sender's list: {e}", bin.minor))
+    else {
+        panic!("0.{}: the sender lists its own key", bin.minor);
+    };
+    let sender_key = rows
+        .iter()
+        .find(|row| row.key_id == sealer)
+        .map(|row| row.public_key.clone())
+        .unwrap_or_else(|| {
+            panic!(
+                "0.{}: the sealer {sealer} is in the sender's own list: {rows:?}",
+                bin.minor
+            )
+        });
+
+    prikk_ok(
+        &bin,
+        receiver,
+        &[
+            "trust",
+            "maintainer",
+            "add",
+            "--key-id",
+            &sealer,
+            "--public-key",
+            &sender_key,
+        ],
+    );
+
+    let opened = stikk_core::open_bundle(&backend, receiver, &bundle)
+        .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
+    let stikk_core::BundleOpened::Read(view) = opened else {
+        panic!("0.{}: the bundle still verifies", bin.minor);
+    };
+    assert!(
+        view.sealers
+            .judged()
+            .iter()
+            .all(|s| s.trust == stikk_core::SealerTrust::Trusted),
+        "0.{}: adopted, and not yours: {:?}",
+        bin.minor,
+        view.sealers
+    );
+}
+
+/// **A finding, pinned: two repositories that never set `PRIKK_MAINTAINER_KEY_ID` seal under
+/// prikk's default id, and the sealer row matches on that id alone.**
+///
+/// `bundle-preview-v1`'s `sealed_by` carries ids and **no public keys** (RFC 054 F4), so there
+/// is no second half to compare — and prikk's default id is the role's own name, `maintainer`.
+/// Two people who have not chosen an id therefore collide, and this card says *trusted by this
+/// repository* about a key the repository has never seen.
+///
+/// **This test does not assert that the behaviour is right.** It pins what it is, so the
+/// wording decision 3 chose is reconsidered with the case in front of it rather than
+/// rediscovered by a user. Reported with RFC 054 Handoff A.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc054_a_shared_default_key_id_is_matched_by_id_alone() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc054_in_band(&bin) || bin.minor < stikk_core::BUNDLE_FROM_MINOR {
+        eprintln!("RFC 054's collision leg SKIPPED at 0.{}.", bin.minor);
+        return;
+    }
+    let backend = CliBackend::with_program(&bin.path);
+    let sender = Fixture::build(&bin);
+    let repo = sender.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+
+    std::fs::write(repo.join("a.txt"), "a\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    sender.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    // **Both fixtures use prikk's default id**, which is the whole point of this leg.
+    sender.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+
+    let bundle = root.join("default-id.bundle");
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "bundle",
+            "export",
+            "--ref",
+            "heads/main",
+            "--output",
+            &bundle.display().to_string(),
+        ],
+    );
+
+    // A receiver with its own `setup` key — a *different* key under the *same* default id.
+    let receiver = Fixture::build(&bin);
+    let opened = stikk_core::open_bundle(&backend, receiver.repo(), &bundle)
+        .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
+    let stikk_core::BundleOpened::Read(view) = opened else {
+        panic!("0.{}: the bundle verifies", bin.minor);
+    };
+    let judged = view.sealers.judged().to_vec();
+    assert_eq!(
+        judged.len(),
+        1,
+        "0.{}: one recorded sealer: {judged:?}",
+        bin.minor
+    );
+    assert_eq!(
+        judged[0].key_id, "maintainer",
+        "0.{}: prikk's default id is the role's own name",
+        bin.minor
+    );
+    assert_eq!(
+        judged[0].trust,
+        stikk_core::SealerTrust::Trusted,
+        "0.{}: **the finding** — the receiver has never seen this key, and the row says \
+         trusted, because an id is all a bundle records",
+        bin.minor
+    );
+}
+
+/// **At the floor the list is unavailable, and the sealer row is 0.16.0's** — nothing extra,
+/// not *could not be read* (RFC 054 decision 4).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc054_below_the_band_trust_is_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+
+    match stikk_core::trust::read(&backend, fixture.repo())
+        .unwrap_or_else(|e| panic!("0.{}: trust read: {e}", bin.minor))
+    {
+        stikk_core::TrustView::Unavailable(reason) => assert!(
+            reason.contains(&format!("0.{}", stikk_core::TRUST_FROM_MINOR)),
+            "0.{}: the band is named: {reason}",
+            bin.minor
+        ),
+        other => panic!("0.{}: expected unavailable, got {other:?}", bin.minor),
+    }
+    assert_eq!(
+        stikk_core::sealers(&backend, fixture.repo(), &["ed25519-0".to_string()]),
+        stikk_core::SealerTrustRead::Unavailable,
+        "0.{}: a card below the band says nothing extra",
+        bin.minor
+    );
+}

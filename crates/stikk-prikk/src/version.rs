@@ -62,21 +62,22 @@
 //! The previous ceiling, for the history the raises form: `0.33.0` (RFC 017, re-verified 2026-09-06
 //! against a real, **released** prikk 0.33.0 binary — every `cli_backend/parse/tests.rs` fixture shape
 //! re-run against the same probe repositories and confirmed byte-identical to 0.32.0, not merely assumed
-//! unchanged because RFC 017's stated scope did not name `parse.rs`). Unlike RFC 009/012/015's re-baselines, 0.33 changed no output
-//! *shape* `cli_backend/parse/tests.rs` parses — its two message rewordings (`lock conflict:` →
-//! `precondition not met:` on both messages our own letter reported) were already absorbed by design,
-//! because the classifier matches the stable semantic clause, never the class prefix (RFC 017 F1). What
-//! 0.33 actually cost was the classifier's own provenance: reading prikk's complete error taxonomy for
-//! the first time (RFC 017 F0) found five matching arms keyed on text prikk has never emitted at any
-//! validated version, dead since 0.1.0, plus one arm firing on a real precondition today and rendering
-//! a gloss that contradicted prikk's own verbatim words beside it (F4, fixed in `stikk-core::present`).
-//! The range has two ends that behave differently: below the floor stikk degrades to read-only, because
-//! prikk's `worktree-status` is the UD-03 defect there and stikk already refuses to run it. **Above the
-//! validated ceiling stikk still runs** — refusing every prikk newer than the last stikk release would
-//! break users the day prikk ships a minor — but it says the range is unvalidated rather than silently
-//! asserting knowledge it does not have. An unbounded upper range is exactly how RFC 009's F1–F4 defects
-//! went unnoticed for three releases, and how RFC 017's five dead classifier arms went unnoticed for
-//! four years: no version signal ever said "this has not actually been checked."
+//! unchanged because RFC 017's stated scope did not name `parse.rs`). Unlike RFC 009/012/015's
+//! re-baselines, 0.33 changed no output *shape* `cli_backend/parse/tests.rs` parses — its two message
+//! rewordings (`lock conflict:` → `precondition not met:` on both messages our own letter reported) were
+//! already absorbed by design, because the classifier matches the stable semantic clause, never the
+//! class prefix (RFC 017 F1). What 0.33 actually cost was the classifier's own provenance: reading
+//! prikk's complete error taxonomy for the first time (RFC 017 F0) found five matching arms keyed on
+//! text prikk has never emitted at any validated version, dead since 0.1.0, plus one arm firing on a
+//! real precondition today and rendering a gloss that contradicted prikk's own verbatim words beside it
+//! (F4, fixed in `stikk-core::present`). The range has two ends that behave differently: below the floor
+//! stikk degrades to read-only, because prikk's `worktree-status` is the UD-03 defect there and stikk
+//! already refuses to run it. **Above the validated ceiling stikk still runs** — refusing every prikk
+//! newer than the last stikk release would break users the day prikk ships a minor — but it says the
+//! range is unvalidated rather than silently asserting knowledge it does not have. An unbounded upper
+//! range is exactly how RFC 009's F1–F4 defects went unnoticed for three releases, and how RFC 017's
+//! five dead classifier arms went unnoticed for four years: no version signal ever said "this has not
+//! actually been checked."
 
 use stikk_model::{Result, StikkError};
 
@@ -110,8 +111,9 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// refusal is worded differently — *"unexpected end of bundle: failed to fill whole buffer"* where
 /// 0.54 said *"unexpected end of record"* — which stikk shows verbatim and parses none of; the
 /// suite's truncated-bundle leg asserts only *"malformed persisted data"*, which both versions
-/// say. Everything else 0.55 changed is a command or a library surface stikk does not touch. **The suite was green at 0.28.0 and 0.55.0 with only this
-/// constant moved and no leg changed.**
+/// say. Everything else 0.55 changed is a command or a library surface stikk does not touch.
+/// **The suite was green at 0.28.0 and 0.55.0 with only this constant moved and no leg
+/// changed.**
 ///
 /// The band before it, for the history the raises form: **54 meant prikk 0.54.1, and the patch was
 /// the measured one** — prikk withdrew 0.54.0's Windows installer, which refused some ordinary x64

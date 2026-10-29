@@ -358,11 +358,12 @@ fn the_comparison_says_importing_leaves_your_branch_alone() {
     assert!(flowed.contains("This bundle carries heads/main"), "{text}");
 }
 
-/// **Capture: the three sealer answers at 80 columns** (RFC 054 decision 3) — and prikk's own
-/// note still beneath them, because what stikk adds is an answer prikk does not give, not a
+/// **Capture: the three judged sealer answers at 80 columns** (RFC 054 decision 3, as
+/// amended) — stikk's sentence about what a name is worth beneath them, and prikk's own note
+/// still beneath that, because what stikk adds is an answer prikk does not give, not a
 /// replacement for what it does.
 #[test]
-fn capture_the_three_sealer_answers_at_80_columns() {
+fn capture_the_three_judged_sealer_answers_at_80_columns() {
     let mut view = match fast_forward() {
         BundleOpened::Read(view) => *view,
         other => panic!("expected a read view, got {other:?}"),
@@ -375,11 +376,11 @@ fn capture_the_three_sealer_answers_at_80_columns() {
     view.sealers = stikk_core::SealerTrustRead::Judged(vec![
         stikk_core::Sealer {
             key_id: "ed25519-31f369d3abb7f64c".to_string(),
-            trust: stikk_core::SealerTrust::Yours,
+            trust: stikk_core::SealerTrust::NamesYourKey,
         },
         stikk_core::Sealer {
             key_id: "ed25519-9c0a44b1d2e3f501".to_string(),
-            trust: stikk_core::SealerTrust::Trusted,
+            trust: stikk_core::SealerTrust::NamesATrustedKey,
         },
         stikk_core::Sealer {
             key_id: "ed25519-0000000000000000".to_string(),
@@ -389,19 +390,95 @@ fn capture_the_three_sealer_answers_at_80_columns() {
     let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
     println!("{text}");
     let flat = flattened(&text);
-    assert!(flat.contains("ed25519-31f369d3abb7f64c — yours"), "{text}");
     assert!(
-        flat.contains("ed25519-9c0a44b1d2e3f501 — trusted by this repository"),
+        flat.contains("ed25519-31f369d3abb7f64c — names your key"),
+        "{text}"
+    );
+    assert!(
+        flat.contains("ed25519-9c0a44b1d2e3f501 — names a key this repository trusts"),
         "{text}"
     );
     assert!(
         flat.contains("ed25519-0000000000000000 — not trusted by this repository"),
         "{text}"
     );
+    // The card never leaves a name reading as a signature: measured at 0.55.0, a sender can
+    // seal under an id the receiver trusts and both preview and import exit 0.
+    assert!(
+        flat.contains(&flattened(stikk_core::NAMES_BUT_DOES_NOT_PROVE)),
+        "what a name is worth: {text}"
+    );
     assert!(
         flat.contains("not a trust decision"),
         "prikk's note: {text}"
     );
+}
+
+/// **Capture: the fourth answer at 80 columns.** Where the list could not be read every row
+/// says so, and **stikk's sentence is absent**: nothing here named an adopted key, so there is
+/// no claim for it to qualify (RFC 035 A3 — a failed read costs only what it would have
+/// provided).
+#[test]
+fn capture_the_unreadable_sealer_answer_at_80_columns() {
+    let mut view = match fast_forward() {
+        BundleOpened::Read(view) => *view,
+        other => panic!("expected a read view, got {other:?}"),
+    };
+    view.preview.sealed_by = vec!["ed25519-31f369d3abb7f64c".to_string()];
+    view.sealers = stikk_core::SealerTrustRead::Judged(vec![stikk_core::Sealer {
+        key_id: "ed25519-31f369d3abb7f64c".to_string(),
+        trust: stikk_core::SealerTrust::Unknown,
+    }]);
+    let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
+    println!("{text}");
+    let flat = flattened(&text);
+    assert!(
+        flat.contains(
+            "ed25519-31f369d3abb7f64c — whether this repository trusts it could not be read"
+        ),
+        "{text}"
+    );
+    assert!(
+        !flat.contains("does not prove it"),
+        "no claim to qualify: {text}"
+    );
+    assert!(
+        flat.contains("not a trust decision"),
+        "prikk's note: {text}"
+    );
+}
+
+/// **A sealer id is chosen by whoever sealed the bundle**, so a long one must not be able to
+/// push stikk's answer off the card: `check` accepted `not-a-key-id`, and nothing bounds the
+/// length. At 80 columns with a 120-character id, the id is split and the answer still has a
+/// row of its own.
+#[test]
+fn a_very_long_sealer_id_still_shows_its_answer_at_80_columns() {
+    let long = "ed25519-".to_string() + &"a1b2c3d4".repeat(14);
+    assert_eq!(long.chars().count(), 120, "the id under test");
+    let mut view = match fast_forward() {
+        BundleOpened::Read(view) => *view,
+        other => panic!("expected a read view, got {other:?}"),
+    };
+    view.preview.sealed_by = vec![long.clone()];
+    view.sealers = stikk_core::SealerTrustRead::Judged(vec![stikk_core::Sealer {
+        key_id: long.clone(),
+        trust: stikk_core::SealerTrust::NotTrusted,
+    }]);
+    let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
+    println!("{text}");
+    assert!(
+        text.lines().all(|line| line.chars().count() <= 80),
+        "nothing overflows the card: {text}"
+    );
+    let flat = flattened(&text);
+    assert!(
+        flat.contains("not trusted by this repository"),
+        "the answer is drawn: {text}"
+    );
+    // The id itself is not lost either: it is split, so its halves are both on the card.
+    assert!(flat.contains("ed25519-a1b2c3d4"), "{text}");
+    assert!(flat.contains("a1b2c3d4a1b2c3d4"), "{text}");
 }
 
 /// **Below the band the row is 0.16.0's**: prikk's ids and note, and nothing stikk added

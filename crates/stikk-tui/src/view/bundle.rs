@@ -29,6 +29,8 @@ use crate::theme::Palette;
 /// Indents: the heading rows, and prikk's own lines and the lists under them.
 const TOP: &str = "  ";
 const QUOTED: &str = "    ";
+/// One step further in: what stikk says **about** a line drawn at [`QUOTED`].
+const BENEATH: &str = "      ";
 
 /// Render `opened` into `area`, scrolled to `offset` (clamped here and written back).
 pub fn render(
@@ -300,9 +302,16 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
             format!("{TOP}Sealed by"),
             Style::default().fg(palette.fg),
         )));
-        // **One row per sealer, each with what this repository says about it** (RFC 054
-        // decision 3). The id is repository text; the answer beside it is stikk's chrome, in
-        // its own span — the rule every other row here follows.
+        // **The id, then stikk's answer on the row beneath it** (RFC 054 decision 3, as
+        // amended). The id is repository text; the answer is stikk's chrome, and they stay in
+        // separate spans and now on separate rows.
+        //
+        // **Why beneath, and why the id is hard-split.** A sealer id is chosen by whoever
+        // sealed the bundle — prikk's `check` accepted `not-a-key-id` — so a long one drawn on
+        // one unwrapped row would push the answer past the border and leave a bare id reading
+        // as an assurance. The id is split the way the Trust view splits a public key, and the
+        // answer always gets a row of its own: there is no width at which an id is drawn
+        // without what this repository says about it.
         //
         // **Below the band there is no answer**, and the ids are drawn alone, exactly as
         // 0.16.0 drew them: `judged()` is empty there, so the fallback is the same loop over
@@ -310,29 +319,44 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
         let judged = view.sealers.judged();
         if judged.is_empty() {
             for id in &view.preview.sealed_by {
-                lines.push(Line::from(Span::styled(
-                    format!("{QUOTED}{}", identifier(id)),
-                    Style::default().fg(palette.accent),
-                )));
+                for row in wrap_verbatim(&identifier(id), width, QUOTED) {
+                    lines.push(Line::from(Span::styled(
+                        row,
+                        Style::default().fg(palette.accent),
+                    )));
+                }
             }
         } else {
             for sealer in judged {
-                lines.push(Line::from(vec![
-                    Span::styled(QUOTED, Style::default()),
-                    Span::styled(
-                        identifier(&sealer.key_id),
+                for row in wrap_verbatim(&identifier(&sealer.key_id), width, QUOTED) {
+                    lines.push(Line::from(Span::styled(
+                        row,
                         Style::default().fg(palette.accent),
-                    ),
-                    Span::styled(
-                        format!("  \u{2014} {}", sealer.trust.sentence()),
-                        Style::default().fg(match sealer.trust {
-                            stikk_core::SealerTrust::Trusted | stikk_core::SealerTrust::Yours => {
-                                palette.fg
-                            }
-                            _ => palette.warn,
-                        }),
-                    ),
-                ]));
+                    )));
+                }
+                let colour = match sealer.trust {
+                    stikk_core::SealerTrust::NamesATrustedKey
+                    | stikk_core::SealerTrust::NamesYourKey => palette.fg,
+                    _ => palette.warn,
+                };
+                for row in wrap_indented(
+                    &format!("\u{2014} {}", sealer.trust.sentence()),
+                    width,
+                    BENEATH,
+                ) {
+                    lines.push(Line::from(Span::styled(row, Style::default().fg(colour))));
+                }
+            }
+            // **What a name is worth, beneath the rows and above prikk's note.** A reader who
+            // stops at a row that names an adopted key has been told something the preview
+            // cannot know; this is the sentence that says where prikk checks it.
+            if view.sealers.names_an_adopted_key() {
+                for row in wrap_indented(stikk_core::NAMES_BUT_DOES_NOT_PROVE, width, QUOTED) {
+                    lines.push(Line::from(Span::styled(
+                        row,
+                        Style::default().fg(palette.warn),
+                    )));
+                }
             }
         }
         // **prikk's own words, and they are the point of the row.** The ids above read as an

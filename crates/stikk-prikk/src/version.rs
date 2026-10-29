@@ -81,11 +81,11 @@ const SUPPORTED_MAJOR: u32 = 0;
 const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
 /// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, to 38 by RFC 021, to 41 by RFC 026,
-/// to 42 by RFC 029, to 46 by RFC 034, to 51 by RFC 035, to 52 by RFC 043, to 53 by RFC 049, then to
-/// **54 by RFC 052** — each only after empirical re-verification against a real released binary,
-/// never a changelog). RFC 017's re-verification found no output-shape drift; it found the
-/// classifier's own provenance gap instead (`classify.rs`'s module doc). A prikk above this still
-/// runs; [`Version::is_validated`] tells the caller to say so.
+/// to 42 by RFC 029, to 46 by RFC 034, to 51 by RFC 035, to 52 by RFC 043, to 53 by RFC 049, to 54
+/// by RFC 052, then to **55 by RFC 055** — each only after empirical re-verification against a
+/// real released binary, never a changelog). RFC 017's re-verification found no output-shape
+/// drift; it found the classifier's own provenance gap instead (`classify.rs`'s module doc). A
+/// prikk above this still runs; [`Version::is_validated`] tells the caller to say so.
 ///
 /// **The raise comes early in a re-baseline, not last.** The real-binary suite (RFC 019, `TS-07`)
 /// refuses to run against a binary this constant does not name, so raising it is what lets the suite
@@ -97,15 +97,22 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// the order held for the same reason: the suite would not have run `show` at 0.51 at all until this
 /// constant named it.
 ///
-/// **54 means prikk 0.54.1, and the patch is the measured one.** 0.54.0 and 0.54.1 are one minor to
-/// this constant, which bands on minors alone — but only 0.54.1 was run: prikk withdrew 0.54.0's
-/// Windows installer, which refused some ordinary x64 machines, and asks people not to use it
-/// (RFC 052 F3). The suite's pinned ceiling binary is 0.54.1, every live statement of the range says
-/// `0.54.1`, and nothing of stikk's fetches a prikk version at all, so stikk cannot hand anyone the
-/// withdrawn one. What 0.54 changed that stikk shows is prikk's own fix: `show <block-id>` no longer
-/// refuses after consecutive text edits of one file, so Block and Patch detail open where 0.53
-/// showed prikk's refusal verbatim (RFC 052 F2). No leg of the suite moved.
-const VALIDATED_MAX_MINOR: u32 = 54;
+/// **55 means prikk 0.55.0.** Two of 0.55's changes come anywhere near stikk, and neither cost a
+/// leg (RFC 055 F2). `extract` now refuses a destination **inside** the repository: stikk does not
+/// call `extract` at all yet, and the increment that will refuses that destination in its own words
+/// before prikk is asked. A damaged bundle's refusal is worded differently — *"unexpected end of
+/// bundle: failed to fill whole buffer"* where 0.54 said *"unexpected end of record"* — which stikk
+/// shows verbatim and parses none of; the suite's truncated-bundle leg asserts only *"malformed
+/// persisted data"*, which both versions say. Everything else 0.55 changed is a command or a
+/// library surface stikk does not touch. **The suite was green at 0.28.0 and 0.55.0 with only this
+/// constant moved and no leg changed.**
+///
+/// The band before it, for the history the raises form: **54 meant prikk 0.54.1, and the patch was
+/// the measured one** — prikk withdrew 0.54.0's Windows installer, which refused some ordinary x64
+/// machines, so only 0.54.1 was ever run (RFC 052 F3). What 0.54 changed that stikk shows is prikk's
+/// own fix: `show <block-id>` no longer refuses after consecutive text edits of one file, so Block
+/// and Patch detail open where 0.53 showed prikk's refusal verbatim.
+const VALIDATED_MAX_MINOR: u32 = 55;
 
 /// The first prikk minor whose reports stikk reads as **JSON** (prikk 0.39, where `log`, `branch` and
 /// `tag` gained `--format json`; RFC 026 §6).

@@ -258,3 +258,469 @@ fn nothing_here_carries_a_seed_or_a_path() {
         );
     }
 }
+
+// ============================================================ RFC 056: adopt and remove
+
+/// A third key, neither yours nor the collaborator's — the one an adopt brings in.
+const NEW_ID: &str = "ed25519-6762b6359a650c0a";
+const NEW_KEY: &str = "6762b6359a650c0a5acaa723a5fc2ad78b354fcac296495b9cbf46c0d32a3f7f";
+
+/// A backend that lists `keys`, reports `MINE_*` as the maintainer role, and answers both
+/// writes with prikk's own lines.
+fn writing(keys: Vec<TrustedKey>) -> NullBackend {
+    trusting(keys).with_trust_write(vec![
+        "trusted maintainer key: ed25519-6762b6359a650c0a".to_string(),
+        "adopted maintainer keys: 2".to_string(),
+    ])
+}
+
+/// An operator who may write. Every guard below must decline on its own terms, not on this.
+fn operator() -> stikk_model::Readiness {
+    stikk_model::Readiness {
+        read_only: false,
+        ..stikk_model::Readiness::none()
+    }
+}
+
+fn adopt(backend: &NullBackend, id: &str, key: &str) -> AdoptPreview {
+    adopt_preview(backend, Path::new("/repo"), operator(), id, key).expect("the preview answers")
+}
+
+fn remove(backend: &NullBackend, id: &str) -> RemovePreview {
+    remove_preview(backend, Path::new("/repo"), operator(), id).expect("the preview answers")
+}
+
+fn armed_adopt(backend: &NullBackend, id: &str, key: &str) -> PreviewToken {
+    match adopt(backend, id, key) {
+        AdoptPreview::Ready { token } => *token,
+        other => panic!("expected an armed adopt, got {other:?}"),
+    }
+}
+
+fn armed_remove(backend: &NullBackend, id: &str) -> PreviewToken {
+    match remove(backend, id) {
+        RemovePreview::Ready { token } => *token,
+        other => panic!("expected an armed removal, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------- what stikk checks itself
+
+/// **The input checks are stikk's own sentences**, so a prompt can stay open (decision 2) — and
+/// **nothing is spawned** for any of them.
+#[test]
+fn a_malformed_key_or_id_is_declined_before_prikk_is_asked() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY)]);
+    for (what, id, public, want) in [
+        ("short", NEW_ID, &NEW_KEY[..63], PUBLIC_KEY_SHAPE),
+        ("long", NEW_ID, &format!("{NEW_KEY}a")[..], PUBLIC_KEY_SHAPE),
+        ("not hex", NEW_ID, &"z".repeat(64)[..], PUBLIC_KEY_SHAPE),
+        (
+            "upper case",
+            NEW_ID,
+            &NEW_KEY.to_uppercase()[..],
+            PUBLIC_KEY_SHAPE,
+        ),
+        ("empty id", "", NEW_KEY, KEY_ID_SHAPE),
+        ("a space in the id", "ed25519 6762", NEW_KEY, KEY_ID_SHAPE),
+        (
+            "a control character",
+            "ed25519-\u{7}x",
+            NEW_KEY,
+            KEY_ID_SHAPE,
+        ),
+    ] {
+        match adopt(&backend, id, public) {
+            AdoptPreview::Blocked(said) => assert_eq!(said, want, "{what}"),
+            other => panic!("{what}: expected a block, got {other:?}"),
+        }
+    }
+    assert_eq!(backend.trust_add_calls(), 0);
+    assert_eq!(backend.trust_remove_calls(), 0);
+}
+
+/// **A pasted key carries whatever the terminal put around it**, and that is not a malformed
+/// key: the check trims first (decision 2).
+#[test]
+fn a_pasted_key_is_trimmed_rather_than_refused() {
+    assert_eq!(
+        check_public_key(&format!("  {NEW_KEY}\n")).expect("trimmed"),
+        NEW_KEY
+    );
+    assert_eq!(
+        check_key_id("  ed25519-abc  ").expect("trimmed"),
+        "ed25519-abc"
+    );
+}
+
+/// **prikk's own default id, which stikk computes** (F3): `ed25519-` and the first 16 characters
+/// of the public key — checked against the measured pairs.
+#[test]
+fn the_default_id_is_prikks_own_rule() {
+    for (public, id) in [
+        (MINE_KEY, MINE_ID),
+        (THEIRS_KEY, THEIRS_ID),
+        (NEW_KEY, NEW_ID),
+    ] {
+        assert_eq!(default_key_id(public), id, "{public}");
+    }
+}
+
+// ---------------------------------------------------------------- the adopt guards
+
+/// **An id adopted with this very key** declines, and spawns no `add` (decision 2).
+#[test]
+fn adopting_a_key_this_repository_already_trusts_is_declined_without_writing() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    match adopt(&backend, THEIRS_ID, THEIRS_KEY) {
+        AdoptPreview::Blocked(said) => assert_eq!(said, ALREADY_TRUSTED),
+        other => panic!("expected a block, got {other:?}"),
+    }
+    assert_eq!(backend.trust_add_calls(), 0);
+}
+
+/// **An id adopted with a *different* key is the security event** (decision 4), carrying both
+/// public keys so a reader can see they differ — and it is **not a confirmation**: no token
+/// comes back, and no `add` was spawned.
+#[test]
+fn a_different_key_under_a_known_id_is_the_security_event_with_both_keys() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    match adopt(&backend, THEIRS_ID, NEW_KEY) {
+        AdoptPreview::TwoKeys(conflict) => {
+            assert_eq!(conflict.key_id, THEIRS_ID);
+            assert_eq!(conflict.adopted, THEIRS_KEY, "what this repository holds");
+            assert_eq!(conflict.given, NEW_KEY, "what was offered for the same id");
+            assert_ne!(
+                conflict.adopted, conflict.given,
+                "the whole point of the card"
+            );
+        }
+        other => panic!("expected the security event, got {other:?}"),
+    }
+    assert_eq!(backend.trust_add_calls(), 0);
+    // stikk's own words, and no id inside them: the card draws the id as its own row.
+    assert!(TWO_KEYS_ONE_ID.contains("Two keys cannot share an id"));
+    assert!(!TWO_KEYS_ONE_ID.contains("ed25519-"));
+}
+
+/// **Below the band, nothing is offered and nothing is spawned** (decision 1).
+#[test]
+fn below_the_band_both_previews_decline_and_spawn_nothing() {
+    let backend = NullBackend::supported().with_version(0, 53, 0);
+    let minor_said = trust_unavailable(53);
+    match adopt(&backend, NEW_ID, NEW_KEY) {
+        AdoptPreview::Blocked(said) => assert_eq!(said, minor_said),
+        other => panic!("expected a block, got {other:?}"),
+    }
+    match remove(&backend, MINE_ID) {
+        RemovePreview::Blocked(said) => assert_eq!(said, minor_said),
+        other => panic!("expected a block, got {other:?}"),
+    }
+    assert_eq!(backend.trust_add_calls(), 0);
+    assert_eq!(backend.trust_remove_calls(), 0);
+}
+
+/// **Read-only declines both**, in the gate's own words and before anything is read.
+#[test]
+fn read_only_declines_both_previews() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    let read_only = stikk_model::Readiness {
+        read_only: true,
+        ..stikk_model::Readiness::none()
+    };
+    let said = match adopt_preview(&backend, Path::new("/repo"), read_only, NEW_ID, NEW_KEY)
+        .expect("a decline is an answer")
+    {
+        AdoptPreview::Blocked(said) => said,
+        other => panic!("expected a block, got {other:?}"),
+    };
+    assert!(said.contains("read-only"), "{said}");
+    match remove_preview(&backend, Path::new("/repo"), read_only, THEIRS_ID)
+        .expect("a decline is an answer")
+    {
+        RemovePreview::Blocked(said) => assert!(said.contains("read-only"), "{said}"),
+        other => panic!("expected a block, got {other:?}"),
+    }
+    assert_eq!(backend.trust_add_calls(), 0);
+    assert_eq!(backend.trust_remove_calls(), 0);
+}
+
+// ---------------------------------------------------------------- the adopt card
+
+/// **The card says what adopting means, where the key came from, and what follows** — with the
+/// typed evidence being the key id (§7 trap 1).
+#[test]
+fn the_adopt_card_carries_both_values_the_two_sentences_and_the_consequence() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY)]);
+    let token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+    let summary = token.summary();
+    assert_eq!(summary.operation, ADOPT_OPERATION);
+    assert_eq!(summary.capability, None, "neither write consumes a key");
+    assert_eq!(summary.target_name.as_deref(), Some(NEW_ID));
+    let rows: Vec<(Option<&str>, &str)> = summary
+        .target_ids
+        .iter()
+        .map(|row| (row.role, row.id.as_str()))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![(Some("key id"), NEW_ID), (Some("public key"), NEW_KEY)]
+    );
+    assert_eq!(summary.consequence, ADOPT_CONSEQUENCE);
+    assert_eq!(
+        summary.asides[0].body,
+        vec![
+            WHAT_TRUST_MEANS.to_string(),
+            WHERE_TO_GET_THE_KEY.to_string()
+        ]
+    );
+    // The id is this key's own default, so no notice.
+    assert!(summary.notices.is_empty(), "{:?}", summary.notices);
+    // And the consequence names nothing (RFC 044 C1).
+    assert!(!summary.consequence.contains("ed25519-"));
+}
+
+/// **The notice appears exactly when the id is not the key's default** (F3).
+#[test]
+fn the_default_id_notice_appears_only_for_an_id_the_key_did_not_derive() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY)]);
+    let chosen = "ed25519-2222222222222222";
+    let token = armed_adopt(&backend, chosen, NEW_KEY);
+    let summary = token.summary();
+    assert_eq!(summary.notices.len(), 1, "{:?}", summary.notices);
+    assert!(summary.notices[0].contains(NEW_ID), "it names the default");
+    assert!(
+        summary.notices[0].contains("ask them"),
+        "{:?}",
+        summary.notices
+    );
+    // And the default-id case has none, which the test above also pins.
+    let plain_token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+    let plain = plain_token.summary();
+    assert!(plain.notices.is_empty());
+}
+
+// ---------------------------------------------------------------- the remove guards and card
+
+/// **An id that is not adopted** declines, and spawns no `remove` (decision 3).
+#[test]
+fn removing_a_key_that_is_not_adopted_is_declined_without_writing() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    match remove(&backend, NEW_ID) {
+        RemovePreview::Blocked(said) => assert_eq!(said, NO_LONGER_TRUSTED),
+        other => panic!("expected a block, got {other:?}"),
+    }
+    assert_eq!(backend.trust_remove_calls(), 0);
+}
+
+/// **A list of one** declines with what to do instead — prikk refuses it (F4), and stikk says so
+/// before asking.
+#[test]
+fn removing_the_only_key_is_declined_without_writing() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY)]);
+    match remove(&backend, MINE_ID) {
+        RemovePreview::Blocked(said) => assert_eq!(said, LAST_KEY),
+        other => panic!("expected a block, got {other:?}"),
+    }
+    assert_eq!(backend.trust_remove_calls(), 0);
+}
+
+/// **The Verify notice is always there, and the "yours" notice only for your own key** — which
+/// needs id **and** public key to match (RFC 054's rule).
+#[test]
+fn the_remove_card_warns_about_verify_and_marks_your_own_key() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    let theirs_token = armed_remove(&backend, THEIRS_ID);
+    let theirs = theirs_token.summary();
+    assert_eq!(theirs.notices, vec![REMOVE_MAY_FAIL_VERIFY.to_string()]);
+    assert_eq!(theirs.consequence, REMOVE_CONSEQUENCE);
+    assert_eq!(theirs.target_name.as_deref(), Some(THEIRS_ID));
+
+    let mine_token = armed_remove(&backend, MINE_ID);
+    let mine = mine_token.summary();
+    assert_eq!(
+        mine.notices,
+        vec![
+            REMOVE_MAY_FAIL_VERIFY.to_string(),
+            REMOVE_YOUR_OWN.to_string()
+        ]
+    );
+}
+
+/// **A failed `key status` costs only the "yours" notice** (RFC 035 A3's rule): the removal
+/// itself does not depend on knowing whose key this is.
+#[test]
+fn a_failed_key_status_costs_only_the_your_own_key_notice() {
+    let backend = trusting(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)])
+        .with_readiness_refusal("integrity error: the key directory is unreadable");
+    let token = armed_remove(&backend, MINE_ID);
+    let summary = token.summary();
+    assert_eq!(
+        summary.notices,
+        vec![REMOVE_MAY_FAIL_VERIFY.to_string()],
+        "the card still warns about Verify"
+    );
+}
+
+// ---------------------------------------------------------------- the typed evidence
+
+/// **Typed evidence is the key id, matched exactly** (§7 trap 1): an explicit yes, a near miss
+/// and empty input are all refused, and **no write is spawned** by any of them.
+#[test]
+fn only_the_typed_key_id_confirms_either_write() {
+    for near in [
+        Evidence::ExplicitYes,
+        Evidence::TypedName(String::new()),
+        Evidence::TypedName("ed25519-6762b6359a650c0".to_string()),
+        Evidence::TypedName(format!("{NEW_ID} ")),
+        Evidence::TypedName(MINE_ID.to_string()),
+    ] {
+        let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+        let token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+        let err = adopt_confirm_and_execute(
+            &backend,
+            Path::new("/repo"),
+            token,
+            operator(),
+            near.clone(),
+            NEW_ID,
+            NEW_KEY,
+        )
+        .expect_err("not the typed id");
+        assert_eq!(err.class(), "declined", "{near:?}: {err}");
+        assert_eq!(backend.trust_add_calls(), 0, "{near:?}");
+
+        let token = armed_remove(&backend, THEIRS_ID);
+        let err = remove_confirm_and_execute(
+            &backend,
+            Path::new("/repo"),
+            token,
+            operator(),
+            near.clone(),
+            THEIRS_ID,
+        )
+        .expect_err("not the typed id");
+        assert_eq!(err.class(), "declined", "{near:?}: {err}");
+        assert_eq!(backend.trust_remove_calls(), 0, "{near:?}");
+    }
+}
+
+/// **A stale change token refuses**, as every other confirmation does.
+#[test]
+fn a_stale_preview_refuses_and_writes_nothing() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    let token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+    let moved = backend
+        .clone()
+        .with_change_token(stikk_model::ChangeToken::compose(
+            [("heads/main", "1".repeat(64).as_str())],
+            0,
+            None,
+            &stikk_model::CurrentBranch::NotReported,
+        ));
+    let err = adopt_confirm_and_execute(
+        &moved,
+        Path::new("/repo"),
+        token,
+        operator(),
+        Evidence::TypedName(NEW_ID.to_string()),
+        NEW_ID,
+        NEW_KEY,
+    )
+    .expect_err("the repository moved under the preview");
+    assert_eq!(err.class(), "stale");
+    assert_eq!(moved.trust_add_calls(), 0);
+}
+
+// ---------------------------------------------------------------- what a write leaves
+
+/// **prikk's lines verbatim, then the list as it is now** (decision 1) — and a removal adds
+/// stikk's pointer at Verify, which an adopt does not.
+#[test]
+fn a_write_shows_prikks_lines_and_the_list_it_re_reads() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY)]);
+    let token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+    let outcome = adopt_confirm_and_execute(
+        &backend,
+        Path::new("/repo"),
+        token,
+        operator(),
+        Evidence::TypedName(NEW_ID.to_string()),
+        NEW_ID,
+        NEW_KEY,
+    )
+    .expect("the adopt runs");
+    assert_eq!(outcome.operation, ADOPT_OPERATION);
+    assert_eq!(
+        outcome.result.printed,
+        vec![
+            "trusted maintainer key: ed25519-6762b6359a650c0a".to_string(),
+            "adopted maintainer keys: 2".to_string(),
+        ],
+        "prikk's own words, parsed by nothing"
+    );
+    assert!(
+        matches!(outcome.result.view, TrustView::Listed { .. }),
+        "the list is re-read: {:?}",
+        outcome.result.view
+    );
+    assert_eq!(
+        outcome.result.see_verify, None,
+        "an adopt un-verifies nothing"
+    );
+    assert_eq!(backend.trust_add_calls(), 1);
+
+    // **A removal, on a list with something left after it.** The NullBackend's list does not
+    // change under the write, so the two halves need their own backends.
+    let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    let token = armed_remove(&backend, MINE_ID);
+    let outcome = remove_confirm_and_execute(
+        &backend,
+        Path::new("/repo"),
+        token,
+        operator(),
+        Evidence::TypedName(MINE_ID.to_string()),
+        MINE_ID,
+    )
+    .expect("the removal runs");
+    assert_eq!(outcome.result.see_verify, Some(REMOVED_SEE_VERIFY));
+    assert_eq!(backend.trust_remove_calls(), 1);
+}
+
+/// **A refused adopt is prikk's words, and stikk matches on none of them** (decision 5).
+#[test]
+fn a_refused_adopt_carries_prikks_own_sentence() {
+    let said = "precondition not met: maintainer key id ed25519-6762b6359a650c0a is already \
+                adopted with a different public key";
+    let backend = trusting(vec![key(MINE_ID, MINE_KEY)]).with_trust_write_refusal(said);
+    let token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+    let err = adopt_confirm_and_execute(
+        &backend,
+        Path::new("/repo"),
+        token,
+        operator(),
+        Evidence::TypedName(NEW_ID.to_string()),
+        NEW_ID,
+        NEW_KEY,
+    )
+    .expect_err("prikk refused");
+    assert!(
+        err.to_string()
+            .contains("already adopted with a different public key")
+    );
+    assert_eq!(PRIKK_REFUSED_ADOPT, "prikk refused to adopt this key");
+}
+
+/// **No key material in anything this module produces** — the cards included (`NFR-S03`).
+#[test]
+fn no_card_carries_a_seed_or_a_path() {
+    let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    let adopt_token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+    let remove_token = armed_remove(&backend, THEIRS_ID);
+    for card in [adopt_token.summary(), remove_token.summary()] {
+        let text = format!("{card:?}");
+        for forbidden in ["seed", "SEED", "/home/", ".local/share", "private"] {
+            assert!(!text.contains(forbidden), "{forbidden} in {text}");
+        }
+    }
+}

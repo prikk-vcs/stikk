@@ -123,9 +123,14 @@ pub use switch::{
     switch_unavailable,
 };
 pub use trust::{
-    HOW_TO_ADOPT, NAMES_BUT_DOES_NOT_PROVE, NONE_ADOPTED, OWN_KEY_UNKNOWN, Sealer, SealerTrust,
-    SealerTrustRead, TRUST_FROM_MINOR, TrustRow, TrustView, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY,
-    sealers, trust_unavailable,
+    ADOPT_CONSEQUENCE, ADOPT_OPERATION, ALREADY_TRUSTED, AdoptPreview, HOW_TO_ADOPT, KEY_ID_SHAPE,
+    LAST_KEY, NAMES_BUT_DOES_NOT_PROVE, NO_LONGER_TRUSTED, NONE_ADOPTED, OWN_KEY_UNKNOWN,
+    PRIKK_REFUSED_ADOPT, PUBLIC_KEY_SHAPE, REMOVE_CONSEQUENCE, REMOVE_MAY_FAIL_VERIFY,
+    REMOVE_OPERATION, REMOVE_YOUR_OWN, REMOVED_SEE_VERIFY, RemovePreview, Sealer, SealerTrust,
+    SealerTrustRead, TRUST_FROM_MINOR, TWO_KEYS_ONE_ID, TrustRow, TrustView, TrustWriteResult,
+    TwoKeysOneId, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY, adopt_confirm_and_execute, adopt_preview,
+    check_key_id, check_public_key, default_key_id, not_the_default_id, remove_confirm_and_execute,
+    remove_preview, sealers, trust_unavailable,
 };
 pub use verify::{
     Checked, ConditionRow, JSON_OMITS, StageRow, VERIFY_FROM_MINOR, VerifyView, checked, verify,

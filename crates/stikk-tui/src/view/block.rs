@@ -193,7 +193,7 @@ fn block_lines<'a>(
                 palette,
                 width,
                 &format!(
-                    "state {} — {} file(s), {} byte(s) · F saves the selected file, A saves all:",
+                    "state {} — {} file(s), {} byte(s):",
                     if detail.is_tip {
                         "at tip"
                     } else {
@@ -205,6 +205,10 @@ fn block_lines<'a>(
                 "  ",
                 "    ",
             );
+            // **The keys get a row of their own** (RFC 053 Handoff B §2). On one row with the
+            // state line they wrapped at 80 columns, splitting *"A saves / all"* across two
+            // rows and reading as a broken sentence rather than a hint.
+            said(&mut lines, palette, width, SAVE_KEYS, "  ", "    ");
             if files.is_empty() {
                 lines.push(Line::from(Span::styled(
                     "    (empty state)",
@@ -395,6 +399,9 @@ fn field_rows<'a>(
 /// same reasoning had been written twice more elsewhere -- which is how it came to be a shared
 /// helper (RFC 040) after the third copy. What is left here is the part that really is this
 /// view's: the style the rows are drawn in.
+/// The two keys this view's state list answers to, on their own row beneath it.
+const SAVE_KEYS: &str = "F saves the selected file, A saves all.";
+
 fn said<'a>(
     lines: &mut Vec<Line<'a>>,
     palette: &Palette,

@@ -543,6 +543,54 @@ fn a_failed_file_read_keeps_the_block_on_screen() {
     );
 }
 
+/// **The save keys get a row of their own, and it is whole at 80 columns** (RFC 053 Handoff B
+/// §2).
+///
+/// On one row with the state line, *"… byte(s) · F saves the selected file, A saves all:"* ran
+/// past the width and wrapped as *"A saves / all:"* — a hint cut mid-phrase, which reads as a
+/// defect rather than as help. The state line is now what it was before RFC 053, and the keys
+/// are a row beneath it.
+#[test]
+fn the_save_keys_are_one_whole_row_at_80_columns() {
+    let detail = BlockDetailView {
+        row: row(),
+        is_tip: true,
+        state: BlockState::Listed(StateFiles {
+            target_block: "bbbbbbbbbbbbbbbb".into(),
+            files: vec![
+                StateFile::file("a.txt", 0o100_644),
+                StateFile::file("src/bin/tool.rs", 0o100_755),
+            ],
+            total_bytes: 9,
+        }),
+        patches: BlockPatches::Unreported(30),
+    };
+    let text = draw(&detail);
+    println!("--- the save keys on their own row (80 columns) ---\n{text}");
+    // The state line is the one RFC 037 shipped: no keys on it.
+    let state_row = text
+        .lines()
+        .find(|line| line.contains("state at tip"))
+        .unwrap_or_else(|| panic!("the state line: {text}"));
+    assert!(
+        state_row.contains("2 file(s), 9 byte(s):"),
+        "{state_row:?} in {text}"
+    );
+    assert!(!state_row.contains("saves"), "{state_row:?} in {text}");
+    // And the hint is one row, whole, with nothing of it on any other row.
+    let hint_rows: Vec<&str> = text.lines().filter(|line| line.contains("saves")).collect();
+    assert_eq!(hint_rows.len(), 1, "one row: {hint_rows:?} in {text}");
+    assert!(
+        hint_rows[0].contains("F saves the selected file, A saves all."),
+        "whole: {:?} in {text}",
+        hint_rows[0]
+    );
+    assert!(
+        text.lines().all(|line| line.chars().count() <= 80),
+        "nothing overflows: {text}"
+    );
+}
+
 /// **RFC 037 Handoff A's captures, at exactly 80 columns** (§4). Asserts the three facts the review
 /// package shows, and prints each screen so the package's captures can be reproduced from the
 /// committed tree:

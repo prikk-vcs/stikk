@@ -123,9 +123,9 @@ pub use switch::{
     switch_unavailable,
 };
 pub use trust::{
-    HOW_TO_ADOPT, NONE_ADOPTED, OWN_KEY_UNKNOWN, Sealer, SealerTrust, SealerTrustRead,
-    TRUST_FROM_MINOR, TrustRow, TrustView, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY, sealers,
-    trust_unavailable,
+    HOW_TO_ADOPT, NAMES_BUT_DOES_NOT_PROVE, NONE_ADOPTED, OWN_KEY_UNKNOWN, Sealer, SealerTrust,
+    SealerTrustRead, TRUST_FROM_MINOR, TrustRow, TrustView, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY,
+    sealers, trust_unavailable,
 };
 pub use verify::{
     Checked, ConditionRow, JSON_OMITS, StageRow, VERIFY_FROM_MINOR, VerifyView, checked, verify,

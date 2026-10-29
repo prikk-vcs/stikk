@@ -541,6 +541,62 @@ fn a_newer_bundle_arms_a_tier_two_card_that_asks_for_no_key() {
     assert!(summary.history_notice.is_none(), "not a target row");
 }
 
+/// **The import card's sealer aside, in band**: the row, then what a name is worth, then
+/// prikk's own note — in that order (RFC 054 decision 3, as amended). The sentence is there
+/// because the row says the id **names** an adopted key, and preview cannot know more than
+/// that.
+#[test]
+fn a_sealer_naming_a_trusted_key_carries_the_sentence_above_prikks_note() {
+    let backend = importing(&id("ff"), vec![block(&id("aa"), 2), block(&id("bb"), 1)])
+        .with_version(0, 54, 0)
+        .with_trusted_keys(vec![stikk_prikk::TrustedKey {
+            key_id: "z-maint".to_string(),
+            public_key: "ab".repeat(32),
+        }]);
+    let ImportPreview::Ready { token } = previewed(&backend, 200) else {
+        panic!("a newer bundle imports");
+    };
+    let summary = token.summary();
+    let aside = summary
+        .asides
+        .iter()
+        .find(|aside| aside.before == SEALED_BY_BEFORE)
+        .expect("the sealer aside");
+    assert_eq!(
+        aside.body,
+        vec![
+            "z-maint — names a key this repository trusts".to_string(),
+            crate::trust::NAMES_BUT_DOES_NOT_PROVE.to_string(),
+            SEALED_NOTE.to_string(),
+        ]
+    );
+}
+
+/// **And it is absent where nothing names an adopted key.** Nobody has been told the id means
+/// anything, so a caution about it would be noise on a card that is already long.
+#[test]
+fn an_untrusted_sealer_gets_the_row_and_prikks_note_and_nothing_else() {
+    let backend = importing(&id("ff"), vec![block(&id("aa"), 2), block(&id("bb"), 1)])
+        .with_version(0, 54, 0)
+        .with_trusted_keys(Vec::new());
+    let ImportPreview::Ready { token } = previewed(&backend, 200) else {
+        panic!("a newer bundle imports");
+    };
+    let summary = token.summary();
+    let aside = summary
+        .asides
+        .iter()
+        .find(|aside| aside.before == SEALED_BY_BEFORE)
+        .expect("the sealer aside");
+    assert_eq!(
+        aside.body,
+        vec![
+            "z-maint — not trusted by this repository".to_string(),
+            SEALED_NOTE.to_string(),
+        ]
+    );
+}
+
 /// **Where the received branch does not exist yet, there is nothing to move back**: the guards
 /// read no lineage and the import arms.
 #[test]

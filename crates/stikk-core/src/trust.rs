@@ -136,14 +136,33 @@ fn is_yours(key: &TrustedKey, mine: Option<&(String, String)>) -> bool {
     mine.is_some_and(|(id, public)| key.key_id == *id && key.public_key == *public)
 }
 
-/// What a bundle card says beside one sealer (RFC 054 decision 3).
+/// **The sentence beneath the sealer rows**, wherever at least one of them names an adopted key
+/// (decision 3 as amended, 2026-10-29).
+///
+/// **Measured, and the reason the rows say *names*.** A sender can adopt its own public key
+/// under an id the receiver trusts and seal with it: `bundle preview` then reports that id with
+/// exit 0 and `bundle import` exits 0, and only `verify` finds it —
+/// `publication-trust`/`PRIKK-TRUST-PUBLICATION-INVALID-SIGNATURE`, *"carries a MAINTAINER
+/// signature by adopted key … that does not verify"*
+/// (`.git-exclude/reports/054-trust-read/spoof054-0.55.txt`, prikk 0.55.0).
+pub const NAMES_BUT_DOES_NOT_PROVE: &str = "A bundle names its sealer but does not prove it. Import it, then Verify (V) checks each \
+     signature against the key trusted here.";
+
+/// What a bundle card says beside one sealer (RFC 054 decision 3, as amended).
+///
+/// **Every name here says *names*, and that is the point.** `sealed_by` is the `key_id` string
+/// out of the signature envelope, checked against nothing at preview time; a variant called
+/// `Trusted` would be read as a verdict by the next person who matched on it, and it is not one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SealerTrust {
-    /// This repository has adopted that key, and it is not yours.
-    Trusted,
-    /// It is your own MAINTAINER key.
-    Yours,
-    /// This repository has not adopted it. **Not a refusal**: the import still runs.
+    /// The id names a key this repository has adopted, and it is not the reader's own.
+    /// **Not a verdict on the signature** — see [`NAMES_BUT_DOES_NOT_PROVE`].
+    NamesATrustedKey,
+    /// The id names the reader's own MAINTAINER key. Also not a verdict: anyone can seal under
+    /// a name.
+    NamesYourKey,
+    /// This repository has adopted no key of that name. **Still exact**, and not a refusal:
+    /// prikk accepts no seal by an id it has not adopted, and the import runs either way.
     NotTrusted,
     /// The list could not be read. Said plainly rather than guessed either way.
     Unknown,
@@ -154,11 +173,17 @@ impl SealerTrust {
     #[must_use]
     pub const fn sentence(self) -> &'static str {
         match self {
-            Self::Trusted => "trusted by this repository",
-            Self::Yours => "yours",
+            Self::NamesATrustedKey => "names a key this repository trusts",
+            Self::NamesYourKey => "names your key",
             Self::NotTrusted => "not trusted by this repository",
             Self::Unknown => "whether this repository trusts it could not be read",
         }
+    }
+
+    /// Whether this answer is one that [`NAMES_BUT_DOES_NOT_PROVE`] must accompany.
+    #[must_use]
+    pub const fn names_an_adopted_key(self) -> bool {
+        matches!(self, Self::NamesATrustedKey | Self::NamesYourKey)
     }
 }
 
@@ -191,10 +216,22 @@ impl SealerTrustRead {
             Self::Unavailable => &[],
         }
     }
+
+    /// Whether [`NAMES_BUT_DOES_NOT_PROVE`] belongs beneath these rows: at least one of them
+    /// names a key this repository has adopted.
+    ///
+    /// **Not shown where every row is `NotTrusted`**: nothing there invites the reader to take
+    /// a name for a signature, and a caution about a claim nobody made is noise.
+    #[must_use]
+    pub fn names_an_adopted_key(&self) -> bool {
+        self.judged()
+            .iter()
+            .any(|sealer| sealer.trust.names_an_adopted_key())
+    }
 }
 
 /// Judge each of `sealed_by` against this repository's adopted keys — **one read for all of
-/// them** (RFC 054 decision 3).
+/// them** (RFC 054 decision 3, as amended).
 ///
 /// Three outcomes, and they are not the same thing:
 /// - the list read → each id judged;
@@ -203,9 +240,14 @@ impl SealerTrustRead {
 /// - **below the band** → [`SealerTrustRead::Unavailable`], and the card says nothing extra at
 ///   all (decision 4).
 ///
-/// **Matched by id**, because that is all a bundle records: `bundle-preview-v1`'s `sealed_by`
-/// carries ids and no public keys (RFC 054 F4), so there is no second half to compare. *Yours*
-/// is then the row the Trust view itself marked, where both halves did match.
+/// **A bundle records a name, so a name is what is matched.** `bundle-preview-v1`'s `sealed_by`
+/// is the `key_id` string out of the signature envelope — ids, no public keys, and nothing
+/// checked against anything at preview time. The id is therefore compared with the adopted
+/// keys' ids and the sentence says what it found: this id **names** a key this repository
+/// trusts. It does not say the signature is that key's, because preview cannot know that, and a
+/// sender who adopts its own key under a name the receiver trusts gets a clean preview and a
+/// clean import (measured — see [`NAMES_BUT_DOES_NOT_PROVE`]). **Verify after import is where
+/// prikk checks it.**
 #[must_use]
 pub fn sealers(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> SealerTrustRead {
     let unknown = || {
@@ -231,8 +273,8 @@ pub fn sealers(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> SealerT
             .map(|key_id| Sealer {
                 key_id: key_id.clone(),
                 trust: match rows.iter().find(|row| row.key_id == *key_id) {
-                    Some(row) if row.yours => SealerTrust::Yours,
-                    Some(_) => SealerTrust::Trusted,
+                    Some(row) if row.yours => SealerTrust::NamesYourKey,
+                    Some(_) => SealerTrust::NamesATrustedKey,
                     None => SealerTrust::NotTrusted,
                 },
             })

@@ -133,13 +133,15 @@ pub struct BundleView {
     /// names are drawn beside it, through `identifier`, so repository text and stikk's chrome
     /// stay apart (`C-T2a`, RFC 044 C1).
     pub sentence: &'static str,
-    /// Each recorded sealer with **whether this repository trusts it** (RFC 054 decision 3),
-    /// from one `trusted_keys` read made with this one.
+    /// Each recorded sealer with **which adopted key, if any, its id names** (RFC 054
+    /// decision 3, as amended), from one `trusted_keys` read made with this one.
     ///
     /// **prikk's ids, in prikk's order**, and prikk's own continuity note still sits beneath
     /// them: what stikk adds is an answer prikk does not give, not a replacement for what it
     /// does. Every entry is [`crate::trust::SealerTrust::Unknown`] where the list could not be
-    /// read, so a card says what it does not know rather than implying *not trusted*.
+    /// read, so a card says what it does not know rather than implying *not trusted*. A row
+    /// that names an adopted key is **not** a verdict on the signature, and a frontend drawing
+    /// these rows owes the reader [`crate::trust::NAMES_BUT_DOES_NOT_PROVE`] beneath them.
     pub sealers: crate::trust::SealerTrustRead,
 }
 
@@ -533,16 +535,25 @@ pub fn import_confirm_and_execute(
     })
 }
 
-/// One line per sealer: prikk's id, and what this repository says about it (RFC 054).
+/// One line per sealer: prikk's id, and what this repository says the id **names** (RFC 054
+/// decision 3, as amended).
 ///
 /// **The id is repository text and the sentence is stikk's**, joined here only because a card's
 /// aside body is lines of prose. A frontend that wants them apart has
 /// [`BundleView::sealers`].
+///
+/// Where any row names an adopted key, [`crate::trust::NAMES_BUT_DOES_NOT_PROVE`] follows the
+/// rows — and the caller puts prikk's own note after that, so the order on the card is: the
+/// rows, what a name is worth, then prikk's continuity note.
 fn sealer_lines(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> Vec<String> {
-    crate::trust::sealers(prikk, repo, sealed_by)
-        .judged()
+    let read = crate::trust::sealers(prikk, repo, sealed_by);
+    read.judged()
         .iter()
         .map(|sealer| format!("{} — {}", sealer.key_id, sealer.trust.sentence()))
+        .chain(
+            read.names_an_adopted_key()
+                .then(|| crate::trust::NAMES_BUT_DOES_NOT_PROVE.to_string()),
+        )
         .collect()
 }
 

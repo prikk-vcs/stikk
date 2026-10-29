@@ -150,13 +150,14 @@ fn judged(backend: &NullBackend, ids: &[&str]) -> Vec<Sealer> {
     }
 }
 
-/// **The three answers**, from one read (RFC 054 decision 3).
+/// **The three answers**, from one read (RFC 054 decision 3, as amended) — and each says what
+/// the id *names*, because that is all a bundle records.
 #[test]
-fn a_sealer_is_yours_trusted_or_not_trusted() {
+fn a_sealer_names_your_key_a_trusted_key_or_nothing_this_repository_adopted() {
     let backend = trusting(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
     let out = judged(&backend, &[MINE_ID, THEIRS_ID, "ed25519-0000000000000000"]);
-    assert_eq!(out[0].trust, SealerTrust::Yours);
-    assert_eq!(out[1].trust, SealerTrust::Trusted);
+    assert_eq!(out[0].trust, SealerTrust::NamesYourKey);
+    assert_eq!(out[1].trust, SealerTrust::NamesATrustedKey);
     assert_eq!(out[2].trust, SealerTrust::NotTrusted);
     // prikk's ids, in prikk's order, unrewritten.
     assert_eq!(out[0].key_id, MINE_ID);
@@ -208,6 +209,40 @@ fn an_untrusted_sealer_is_an_answer_and_not_a_refusal() {
         "not trusted by this repository",
         "a statement, not a reason to decline"
     );
+}
+
+/// **Which answers oblige the card to say what a name is worth.** The sentence follows the
+/// rows wherever one of them names an adopted key, and not where none does: an id nobody has
+/// adopted makes no claim for it to qualify.
+#[test]
+fn the_sentence_follows_the_rows_that_name_an_adopted_key() {
+    let backend = trusting(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
+    for (tag, ids, want) in [
+        ("yours", vec![MINE_ID], true),
+        ("theirs", vec![THEIRS_ID], true),
+        (
+            "one of each",
+            vec!["ed25519-0000000000000000", THEIRS_ID],
+            true,
+        ),
+        ("none adopted", vec!["ed25519-0000000000000000"], false),
+    ] {
+        let ids: Vec<String> = ids.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            sealers(&backend, Path::new("/repo"), &ids).names_an_adopted_key(),
+            want,
+            "{tag}"
+        );
+    }
+    // Below the band and after a failed read there are no claims either.
+    assert!(!SealerTrustRead::Unavailable.names_an_adopted_key());
+    let refused = NullBackend::supported()
+        .with_version(0, 55, 0)
+        .with_trusted_keys_refusal("integrity error: the trust store is unreadable");
+    let ids = vec![MINE_ID.to_string()];
+    assert!(!sealers(&refused, Path::new("/repo"), &ids).names_an_adopted_key());
+    // The sentence itself names no repository text, and says where the check happens.
+    assert!(NAMES_BUT_DOES_NOT_PROVE.contains("Verify"));
 }
 
 /// **No key material anywhere in what this module produces** (`NFR-S03`, §7 trap 1).

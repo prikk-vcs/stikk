@@ -169,6 +169,8 @@ fn ui_loop(
                     Action::OpenBundle => app.begin_open_bundle(),
                     Action::Import => app.begin_import(),
                     Action::Export => app.begin_export(),
+                    Action::SaveFile => app.begin_save_file(),
+                    Action::SaveAll => app.begin_save_all(),
                     Action::ToggleSealConsent => app.toggle_seal_consent(),
                     Action::OpenGlossary => app.open_glossary(),
                     Action::OpenPalette => app.open_palette(),

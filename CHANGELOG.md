@@ -4,6 +4,48 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position.
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | **The `Prikk` trait gains four required methods**, `file_meta`, `save_file`, `extract_plan` and `extract`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
+| `stikk-core` | **`ConfirmationSummary` gained a public field**, `notices: Vec<String>` — cautions about what confirming will produce, drawn above the consequence. The struct is not `#[non_exhaustive]`, so outside code that builds one as a literal, or destructures one exhaustively, must account for it, exactly as it did for `asides` in 0.16.0 and `merge_plan` in 0.15.0 |
+| `stikk-tui` | **`Overlay` gained `SavePath` and `SaveResult`.** The enum is not `#[non_exhaustive]`, so any outside exhaustive `match` must cover them |
+
+**Additive:** `stikk_prikk::FileMeta`, `FileMetaRead`, `FileSaved`, `ExtractReport`, `Extracted`
+and `FILES_FROM_MINOR`, with `NullBackend`'s six new builders and three call counters;
+`stikk_core::files` with `SaveFilePreview`, `SaveAllPreview`, `SaveFileTarget`, `SaveAllTarget`,
+`BlockCursorRow`, `save_file_preview`, `save_file_confirm_and_execute`, `save_all_preview`,
+`save_all_confirm_and_execute`, `suggested_file_destination`, `suggested_all_destination`,
+`saved_file_line`, `saved_all_lines`, `files_unavailable`, `block_cursor_len`,
+`block_cursor_row`, `block_cursor_file`, `block_short`, `no_files_to_save` and its sentences;
+`stikk_tui::overlay::SavePathKind`; `stikk_tui::App::begin_save_file` and `begin_save_all`. **No
+public item was removed**: `cargo public-api diff 0.16.0` reports *(none)* under both *Removed
+items* and *Changed items* for every crate.
+
+### Added
+
+- **Get an earlier version of a file back.** Open a block in History and its detail now lists its
+  patches **and its files**, with one cursor over both. **`F`** on a file saves that file as it
+  was at that block; **`A`** saves every file at the block into a new folder. Needs prikk 0.54 or
+  newer.
+
+  stikk suggests a destination beside your repository and shows it resolved, and the card names
+  the block, what is being saved, its size and exactly where it goes. **stikk will not write
+  inside the repository** — the copy would sit in your worktree as untracked files, and your next
+  commit would capture them — and **will not write over anything already there**. Both are
+  refused before prikk is asked, in stikk's own words.
+
+  Two things the card says when they apply: saving one file keeps its bytes but **not its execute
+  permission**, so a script comes back needing `chmod +x`, and saving all of them keeps it; and
+  where prikk has no trusted checkpoint in reach it replays every file from the start of history
+  and says so — the copy matches that history, but nothing has checked the history itself.
+
+  **Nothing in the repository or your worktree changes.** To use what came back, copy what you
+  want into your worktree yourself.
+
 ### Changed
 
 - **Validated through prikk 0.55.0.** Nothing stikk reads changed: `extract` now refuses a

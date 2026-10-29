@@ -958,6 +958,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        notices: Vec::new(),
         message_note: None,
         materializes: None,
         merge_plan: None,
@@ -5051,5 +5052,277 @@ fn rfc050_the_export_prompt_resolves_its_path_and_refuses_an_empty_one() {
             assert!(target.output.ends_with("out.bundle"));
         }
         other => panic!("expected an ExportPreview, got {other:?}"),
+    }
+}
+
+// =============================================================================================
+// RFC 053 — getting files back: the cursor over Block detail's files, and `F` / `A`.
+// =============================================================================================
+
+/// An Orientation at a prikk that offers the saves.
+fn files_orientation_view() -> stikk_core::OrientationView {
+    stikk_core::OrientationView {
+        prikk_minor: 55,
+        ..orientation_view(0, None, None)
+    }
+}
+
+/// A Block detail with two patches and two files, pushed straight onto the screen stack.
+fn block_with_files(app: &mut App, rx: &mpsc::Receiver<Request>, minor: u32) {
+    let _ = minor;
+    app.select();
+    let req = next_request(rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::History(Ok(two_block_history())),
+    });
+    app.select();
+    let req = next_request(rx);
+    let detail = BlockDetailView {
+        row: block("bbbb", 2),
+        is_tip: true,
+        state: stikk_core::BlockState::Listed(StateFiles {
+            target_block: "bbbb".into(),
+            files: vec![
+                stikk_prikk::StateFile::file("a.txt", 0o100_644),
+                stikk_prikk::StateFile::file("run.sh", 0o100_755),
+            ],
+            total_bytes: 22,
+        }),
+        patches: BlockPatches::Unreported(30),
+    };
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::BlockState {
+            reff: "heads/main".into(),
+            result: Ok(detail),
+        },
+    });
+}
+
+/// **The cursor crosses from the patches into the files, and back** (RFC 053 decision 3). Here
+/// the patches are unreported, so every row is a file — the crossing is the same arithmetic.
+#[test]
+fn the_block_cursor_reaches_the_files_and_comes_back() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    block_with_files(&mut app, &rx, 55);
+
+    let Focus::BlockDetail(view, cursor) = app.focus() else {
+        panic!("expected Block detail");
+    };
+    assert_eq!(cursor, 0);
+    assert_eq!(
+        stikk_core::block_cursor_len(view),
+        2,
+        "two files, no patches"
+    );
+    assert_eq!(stikk_core::block_cursor_file(view, 0), Some("a.txt"));
+
+    app.nav_down();
+    let Focus::BlockDetail(view, cursor) = app.focus() else {
+        panic!("expected Block detail");
+    };
+    assert_eq!(cursor, 1);
+    assert_eq!(stikk_core::block_cursor_file(view, cursor), Some("run.sh"));
+
+    // **It stops at the end**, as every other list's cursor does.
+    app.nav_down();
+    let Focus::BlockDetail(_, cursor) = app.focus() else {
+        panic!("expected Block detail");
+    };
+    assert_eq!(cursor, 1);
+
+    app.nav_up();
+    let Focus::BlockDetail(_, cursor) = app.focus() else {
+        panic!("expected Block detail");
+    };
+    assert_eq!(cursor, 0);
+}
+
+/// **`F` on a file opens the prompt, prefilled and outside the repository** — and sends nothing
+/// until the reader answers.
+#[test]
+fn f_on_a_file_prompts_with_a_destination_beside_the_repository() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    block_with_files(&mut app, &rx, 55);
+    app.begin_save_file();
+
+    match app.top_overlay() {
+        Some(Overlay::SavePath {
+            what: crate::overlay::SavePathKind::File { path, .. },
+            typed,
+            ..
+        }) => {
+            assert_eq!(path, "a.txt");
+            assert!(
+                typed.starts_with("/a-"),
+                "beside the repository, not inside it: {typed}"
+            );
+            assert!(typed.ends_with(".txt"), "{typed}");
+        }
+        other => panic!("expected the save prompt, got {other:?}"),
+    }
+    assert!(
+        rx.try_recv().is_err(),
+        "the prompt spawns nothing — prikk is asked only after the reader answers"
+    );
+}
+
+/// **`A` prompts from any row**, including one that is a patch, because it does not act on the
+/// selection at all.
+#[test]
+fn a_prompts_for_a_folder_from_any_row() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    block_with_files(&mut app, &rx, 55);
+    app.nav_down();
+    app.begin_save_all();
+
+    match app.top_overlay() {
+        Some(Overlay::SavePath {
+            what: crate::overlay::SavePathKind::All { block },
+            typed,
+            ..
+        }) => {
+            assert_eq!(block, "bbbb");
+            assert!(typed.contains("bbbb"), "the block's short id: {typed}");
+        }
+        other => panic!("expected the save prompt, got {other:?}"),
+    }
+    assert!(rx.try_recv().is_err(), "nothing spawned");
+}
+
+/// **`F` on a patch row answers without a prompt** (RFC 053 §5): it saves a *file*, and says so.
+#[test]
+fn f_on_a_patch_row_says_which_key_saves_what() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    app.select();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::History(Ok(two_block_history())),
+    });
+    app.select();
+    let req = next_request(&rx);
+    // A block whose patches are listed and whose files are not — so row 0 is a patch.
+    let detail = BlockDetailView {
+        row: block("bbbb", 2),
+        is_tip: true,
+        state: stikk_core::BlockState::Listed(StateFiles {
+            target_block: "bbbb".into(),
+            files: vec![stikk_prikk::StateFile::file("a.txt", 0o100_644)],
+            total_bytes: 4,
+        }),
+        patches: BlockPatches::Listed(vec![stikk_core::BlockPatchRow {
+            patch: stikk_prikk::ShownPatch {
+                patch_id: "p".repeat(64),
+                queued: false,
+                operations: Vec::new(),
+            },
+            message: stikk_core::PatchMessageState::Absent,
+        }]),
+    };
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::BlockState {
+            reff: "heads/main".into(),
+            result: Ok(detail),
+        },
+    });
+    app.begin_save_file();
+
+    assert!(app.top_overlay().is_none(), "no prompt for a patch row");
+    assert_eq!(app.banner(), Some(stikk_core::F_SAVES_A_FILE));
+    assert!(rx.try_recv().is_err(), "nothing spawned");
+}
+
+/// **Below the band both keys answer in stikk's own voice, and spawn nothing** (decision 7).
+#[test]
+fn below_the_band_both_keys_answer_without_spawning() {
+    let view = stikk_core::OrientationView {
+        prikk_minor: 53,
+        ..orientation_view(0, None, None)
+    };
+    for key in ["F", "A"] {
+        let (mut app, rx) = from_state("/repo", loaded(view.clone()), Palette::default());
+        block_with_files(&mut app, &rx, 53);
+        if key == "F" {
+            app.begin_save_file();
+        } else {
+            app.begin_save_all();
+        }
+        assert!(
+            app.top_overlay().is_none(),
+            "{key}: no prompt below the band"
+        );
+        let banner = app.banner().unwrap_or_default().to_string();
+        assert!(
+            banner.contains("0.54"),
+            "{key}: the band is named: {banner}"
+        );
+        assert!(rx.try_recv().is_err(), "{key}: nothing spawned");
+    }
+}
+
+/// **Where the files are unreported or the read failed, both keys say why and spawn nothing.**
+#[test]
+fn unreported_or_failed_files_answer_without_spawning() {
+    for state in [
+        stikk_core::BlockState::Unreported(45),
+        stikk_core::BlockState::Failed("prikk could not list them".to_string()),
+    ] {
+        let (mut app, rx) = from_state(
+            "/repo",
+            loaded(files_orientation_view()),
+            Palette::default(),
+        );
+        app.select();
+        let req = next_request(&rx);
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::History(Ok(two_block_history())),
+        });
+        app.select();
+        let req = next_request(&rx);
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::BlockState {
+                reff: "heads/main".into(),
+                result: Ok(BlockDetailView {
+                    row: block("bbbb", 2),
+                    is_tip: true,
+                    state: state.clone(),
+                    patches: BlockPatches::Unreported(30),
+                }),
+            },
+        });
+        app.begin_save_file();
+        assert!(app.top_overlay().is_none(), "no prompt: {state:?}");
+        let banner = app.banner().unwrap_or_default().to_string();
+        assert!(
+            banner.starts_with("There are no files to save at this block:"),
+            "{banner}"
+        );
+        app.begin_save_all();
+        assert!(
+            app.top_overlay().is_none(),
+            "no prompt for A either: {state:?}"
+        );
+        assert!(rx.try_recv().is_err(), "nothing spawned");
     }
 }

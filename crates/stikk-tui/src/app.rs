@@ -33,7 +33,7 @@ use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 use stikk_state::Config;
 
-use crate::overlay::{Overlay, RefNameKind, RefWriteKind};
+use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
 use crate::theme::Palette;
 use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
@@ -471,6 +471,8 @@ pub struct App {
     pending_import: Option<PendingImport>,
     /// The export in flight, if any (RFC 050 decision 5).
     pending_export: Option<PendingExport>,
+    /// The file or whole-block save in flight, if any (RFC 053).
+    pending_save: Option<PendingSave>,
     /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
     /// check compares against it; `None` until the first stamp, and no check is sent before it.
     stamp: Option<ChangeToken>,
@@ -680,6 +682,34 @@ enum PendingExport {
     Executing,
 }
 
+/// See [`App::pending_save`] (RFC 053).
+///
+/// **One slot for both keys.** `F` and `A` are the same ceremony over a different target, and
+/// only one can be in flight — the prompt is modal. Two slots would be two things to keep in
+/// step for no behaviour anyone can reach.
+enum PendingSave {
+    /// `Overlay::Loading` is on the stack; a preview is in flight.
+    AwaitingPreview(SaveTarget),
+    /// The preview succeeded; `token` is armed and `Overlay::Confirmation` awaits a yes.
+    Confirming {
+        /// Feed this into the matching `*_confirm_and_execute`.
+        token: Box<stikk_core::PreviewToken>,
+        /// Must match the preview's.
+        target: SaveTarget,
+    },
+    /// Confirm+execute is in flight; the target is kept for the result sentence.
+    Executing(SaveTarget),
+}
+
+/// Which of the two saves is pending.
+#[derive(Clone)]
+enum SaveTarget {
+    /// One file, from `F`.
+    File(stikk_core::SaveFileTarget),
+    /// Every file at the block, from `A`.
+    All(stikk_core::SaveAllTarget),
+}
+
 /// See [`App::pending_merge`] (RFC 047 decision 6).
 enum PendingMerge {
     /// `Overlay::Loading` is on the stack; a [`RequestKind::MergePreview`] is in flight.
@@ -808,6 +838,7 @@ impl App {
             pending_merge: None,
             pending_import: None,
             pending_export: None,
+            pending_save: None,
             ref_rows: Vec::new(),
             session: None,
             stored: None,
@@ -2001,6 +2032,264 @@ impl App {
         self.pending_export = Some(PendingExport::Executing);
     }
 
+    /// `F` in Block detail (RFC 053 decision 3): save the file the cursor is on.
+    ///
+    /// **Nothing is spawned by any of the answers below** — the band, the missing list and the
+    /// cursor-on-a-patch case are all decided from what Block detail already read.
+    pub fn begin_save_file(&mut self) {
+        let Some(Screen::BlockDetail { view, cursor, .. }) = self.screens.last() else {
+            return;
+        };
+        if let Some(reason) = self.files_unavailable_reason() {
+            self.banner = Some(reason);
+            return;
+        }
+        if let Some(reason) = view.state.unreported_reason() {
+            self.banner = Some(stikk_core::no_files_to_save(&reason));
+            return;
+        }
+        let Some(path) = stikk_core::block_cursor_file(view, *cursor) else {
+            // **The cursor is on a patch** (or past the end): `F` saves a file, and saying which
+            // is better than saving whatever happens to be first.
+            self.banner = Some(stikk_core::F_SAVES_A_FILE.to_string());
+            return;
+        };
+        let (path, block) = (path.to_string(), view.row.block_id.clone());
+        let suggested = stikk_core::suggested_file_destination(&self.repo, &path, &block);
+        self.overlays.push(Overlay::SavePath {
+            what: SavePathKind::File {
+                block,
+                path: path.clone(),
+            },
+            heading: path,
+            typed: suggested.display().to_string(),
+        });
+    }
+
+    /// `A` in Block detail (RFC 053 decision 3): save every file at this block.
+    pub fn begin_save_all(&mut self) {
+        let Some(Screen::BlockDetail { view, .. }) = self.screens.last() else {
+            return;
+        };
+        if let Some(reason) = self.files_unavailable_reason() {
+            self.banner = Some(reason);
+            return;
+        }
+        if let Some(reason) = view.state.unreported_reason() {
+            self.banner = Some(stikk_core::no_files_to_save(&reason));
+            return;
+        }
+        let block = view.row.block_id.clone();
+        let suggested = stikk_core::suggested_all_destination(&self.repo, &block);
+        self.overlays.push(Overlay::SavePath {
+            heading: stikk_core::block_short(&block),
+            what: SavePathKind::All { block },
+            typed: suggested.display().to_string(),
+        });
+    }
+
+    /// stikk's own sentence below the band, or `None` in it — read from the Orientation this
+    /// session already holds, so neither key handshakes (`C-T4d`).
+    fn files_unavailable_reason(&self) -> Option<String> {
+        let minor = self.prikk_minor()?;
+        (minor < stikk_core::FILES_FROM_MINOR).then(|| stikk_core::files_unavailable(minor))
+    }
+
+    /// The save prompt's `Enter`. **An empty path is not sent**, and the path is resolved here,
+    /// as the export prompt's is — the seam takes absolute paths only.
+    fn submit_save_path(&mut self, what: SavePathKind, typed: &str) {
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return;
+        }
+        self.overlays.pop();
+        let resolved = std::path::Path::new(typed);
+        let resolved = std::path::absolute(resolved).unwrap_or_else(|_| resolved.to_path_buf());
+        let (target, kind) = match what {
+            SavePathKind::File { block, path } => {
+                let target = stikk_core::SaveFileTarget {
+                    block,
+                    path,
+                    output: resolved,
+                };
+                (
+                    SaveTarget::File(target.clone()),
+                    RequestKind::SaveFilePreview { target },
+                )
+            }
+            SavePathKind::All { block } => {
+                let target = stikk_core::SaveAllTarget {
+                    block,
+                    dir: resolved,
+                };
+                (
+                    SaveTarget::All(target.clone()),
+                    RequestKind::SaveAllPreview { target },
+                )
+            }
+        };
+        let seq = self.dispatch(kind);
+        self.overlays.push(Overlay::Loading {
+            what: "save preview",
+            seq,
+        });
+        self.pending_save = Some(PendingSave::AwaitingPreview(target));
+    }
+
+    /// The confirmation step's `Enter` for a pending save: Tier Two, and no key.
+    fn submit_save_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingSave::Confirming { token, target }) = self.pending_save.take() else {
+            return; // no save is actually pending
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let kind = match target.clone() {
+            SaveTarget::File(target) => RequestKind::SaveFileConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                target,
+            },
+            SaveTarget::All(target) => RequestKind::SaveAllConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                target,
+            },
+        };
+        let seq = self.dispatch(kind);
+        self.overlays.push(Overlay::Loading { what: "save", seq });
+        self.pending_save = Some(PendingSave::Executing(target));
+    }
+
+    /// Answers either save preview: the card, or stikk's own reason.
+    fn apply_save_preview(
+        &mut self,
+        seq: u64,
+        blocked: Option<String>,
+        token: Option<Box<stikk_core::PreviewToken>>,
+        error: Option<stikk_model::StikkError>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        let pending = self.pending_save.take();
+        if let Some(error) = error {
+            self.overlays.remove(index);
+            self.surface(&error, OperationContext::Bundle);
+            return;
+        }
+        if let Some(reason) = blocked {
+            self.overlays.remove(index);
+            self.banner = Some(reason);
+            return;
+        }
+        let (Some(token), Some(PendingSave::AwaitingPreview(target))) = (token, pending) else {
+            self.overlays.remove(index);
+            return; // defensive
+        };
+        if let Some(slot) = self.overlays.get_mut(index) {
+            *slot = Overlay::Confirmation {
+                summary: Box::new(token.summary().clone()),
+                tier: token.tier(),
+                typed: String::new(),
+                error: None,
+            };
+        }
+        self.pending_save = Some(PendingSave::Confirming { token, target });
+    }
+
+    /// Answers [`RequestKind::SaveFileConfirmExecute`]. **Nothing is re-read**: nothing in the
+    /// repository changed (RFC 053 decision 6).
+    fn apply_save_file_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::FileSaved>>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        let pending = self.pending_save.take();
+        match result {
+            Ok(outcome) => match outcome.result {
+                stikk_prikk::FileSaved::Done => {
+                    let Some(PendingSave::Executing(SaveTarget::File(target))) = pending else {
+                        self.overlays.remove(index);
+                        return; // defensive
+                    };
+                    if let Some(slot) = self.overlays.get_mut(index) {
+                        *slot = Overlay::SaveResult {
+                            lines: vec![stikk_core::saved_file_line(&target)],
+                        };
+                    }
+                }
+                stikk_prikk::FileSaved::Unavailable => {
+                    self.overlays.remove(index);
+                    self.banner = Some(stikk_core::files_unavailable(
+                        self.prikk_minor().unwrap_or_default(),
+                    ));
+                }
+            },
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Bundle);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::SaveAllConfirmExecute`].
+    fn apply_save_all_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::Extracted>>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        let pending = self.pending_save.take();
+        match result {
+            Ok(outcome) => match outcome.result {
+                stikk_prikk::Extracted::Read(report) => {
+                    let Some(PendingSave::Executing(SaveTarget::All(target))) = pending else {
+                        self.overlays.remove(index);
+                        return; // defensive
+                    };
+                    if let Some(slot) = self.overlays.get_mut(index) {
+                        *slot = Overlay::SaveResult {
+                            lines: stikk_core::saved_all_lines(&target, &report),
+                        };
+                    }
+                }
+                stikk_prikk::Extracted::Unavailable => {
+                    self.overlays.remove(index);
+                    self.banner = Some(stikk_core::files_unavailable(
+                        self.prikk_minor().unwrap_or_default(),
+                    ));
+                }
+            },
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Bundle);
+            }
+        }
+    }
+
     /// Answers [`RequestKind::ExportPreview`]. A block is a banner: the reader is back where
     /// they were, with stikk's reason and the path still theirs to change.
     fn apply_export_preview(
@@ -2402,6 +2691,10 @@ impl App {
                 let (reff, typed) = (reff.clone(), typed.clone());
                 self.submit_export_path(reff, &typed);
             }
+            Some(Overlay::SavePath { what, typed, .. }) => {
+                let (what, typed) = (what.clone(), typed.clone());
+                self.submit_save_path(what, &typed);
+            }
             Some(Overlay::TagMessage {
                 name,
                 target,
@@ -2431,6 +2724,8 @@ impl App {
                     self.submit_import_confirmation(tier, &typed);
                 } else if self.pending_export.is_some() {
                     self.submit_export_confirmation(tier, &typed);
+                } else if self.pending_save.is_some() {
+                    self.submit_save_confirmation(tier, &typed);
                 }
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
@@ -2451,7 +2746,8 @@ impl App {
                 | Overlay::SwitchResult { .. }
                 | Overlay::MergeResult { .. }
                 | Overlay::ImportResult { .. }
-                | Overlay::ExportResult { .. },
+                | Overlay::ExportResult { .. }
+                | Overlay::SaveResult { .. },
             )
             | None => {
                 if self.overlays.is_empty() {
@@ -2857,6 +3153,7 @@ impl App {
                 | Overlay::RefName { typed, .. }
                 | Overlay::BundlePath { typed }
                 | Overlay::ExportPath { typed, .. }
+                | Overlay::SavePath { typed, .. }
                 | Overlay::TagMessage { typed, .. },
             ) => typed.push(ch),
             _ => {}
@@ -2879,6 +3176,7 @@ impl App {
                 | Overlay::RefName { typed, .. }
                 | Overlay::BundlePath { typed }
                 | Overlay::ExportPath { typed, .. }
+                | Overlay::SavePath { typed, .. }
                 | Overlay::TagMessage { typed, .. },
             ) => {
                 typed.pop();
@@ -2900,6 +3198,8 @@ impl App {
                     | Overlay::RefName { .. }
                     | Overlay::BundlePath { .. }
                     | Overlay::ExportPath { .. }
+                    | Overlay::SavePath { .. }
+                    | Overlay::SaveResult { .. }
                     | Overlay::TagMessage { .. }
             )
         ) || matches!(
@@ -2934,6 +3234,8 @@ impl App {
                 | Overlay::RefName { .. }
                 | Overlay::BundlePath { .. }
                 | Overlay::ExportPath { .. }
+                | Overlay::SavePath { .. }
+                | Overlay::SaveResult { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
@@ -3009,6 +3311,8 @@ impl App {
                 | Overlay::RefName { .. }
                 | Overlay::BundlePath { .. }
                 | Overlay::ExportPath { .. }
+                | Overlay::SavePath { .. }
+                | Overlay::SaveResult { .. }
                 | Overlay::TagMessage { .. }
                 | Overlay::RefWriteResult { .. }
                 | Overlay::SwitchResult { .. }
@@ -3023,8 +3327,10 @@ impl App {
                 Some(Screen::Queue { view, cursor, .. }) => {
                     *cursor = next_index(*cursor, view.patches.len());
                 }
+                // **Patches, then files** (RFC 053 decision 3): one cursor over both sections,
+                // so `↓` reaches a file without a second selection to keep in step.
                 Some(Screen::BlockDetail { view, cursor, .. }) => {
-                    *cursor = next_index(*cursor, view.patches.rows().len());
+                    *cursor = next_index(*cursor, stikk_core::block_cursor_len(view));
                 }
                 // Deliberately unclamped here: only the renderer knows the wrapped height, so it clamps
                 // and writes the clamped value back, as the Glossary does.
@@ -3144,6 +3450,10 @@ impl App {
             ResponseKind::ImportConfirmExecute(r) => r.is_ok(),
             ResponseKind::ExportPreview(r) => r.is_ok(),
             ResponseKind::ExportConfirmExecute(r) => r.is_ok(),
+            ResponseKind::SaveFilePreview(r) => r.is_ok(),
+            ResponseKind::SaveFileConfirmExecute(r) => r.is_ok(),
+            ResponseKind::SaveAllPreview(r) => r.is_ok(),
+            ResponseKind::SaveAllConfirmExecute(r) => r.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -3169,6 +3479,30 @@ impl App {
             ResponseKind::RefWritePreview(result) => self.apply_ref_write_preview(seq, result),
             ResponseKind::RefWriteConfirmExecute { kind, result } => {
                 self.apply_ref_write_confirm_execute(seq, kind, result);
+            }
+            ResponseKind::SaveFilePreview(result) => match result {
+                Ok(stikk_core::SaveFilePreview::Blocked(reason)) => {
+                    self.apply_save_preview(seq, Some(reason), None, None);
+                }
+                Ok(stikk_core::SaveFilePreview::Ready { token }) => {
+                    self.apply_save_preview(seq, None, Some(token), None);
+                }
+                Err(error) => self.apply_save_preview(seq, None, None, Some(error)),
+            },
+            ResponseKind::SaveAllPreview(result) => match result {
+                Ok(stikk_core::SaveAllPreview::Blocked(reason)) => {
+                    self.apply_save_preview(seq, Some(reason), None, None);
+                }
+                Ok(stikk_core::SaveAllPreview::Ready { token }) => {
+                    self.apply_save_preview(seq, None, Some(token), None);
+                }
+                Err(error) => self.apply_save_preview(seq, None, None, Some(error)),
+            },
+            ResponseKind::SaveFileConfirmExecute(result) => {
+                self.apply_save_file_confirm_execute(seq, result);
+            }
+            ResponseKind::SaveAllConfirmExecute(result) => {
+                self.apply_save_all_confirm_execute(seq, result);
             }
             ResponseKind::SwitchPreview(result) => self.apply_switch_preview(seq, result),
             ResponseKind::SwitchConfirmExecute(result) => {

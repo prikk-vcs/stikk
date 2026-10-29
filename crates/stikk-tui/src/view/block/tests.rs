@@ -370,7 +370,20 @@ fn a_failed_patches_read_leaves_the_rest_of_the_block_on_screen() {
         "{text}"
     );
     assert!(text.contains("no object bbbb"), "prikk's own words: {text}");
-    assert!(!text.contains('▸'), "nothing to select: {text}");
+    // **There is still something to select, and that changed with RFC 053.** Until the cursor
+    // ranged over the files too, a failed patches read left nothing selectable at all; now the
+    // one file is row zero, and marking it is what lets `F` save it. A failed *patches* read
+    // does not take the *files* away.
+    assert_eq!(
+        text.matches('▸').count(),
+        1,
+        "the file is selectable even though the patches are not: {text}"
+    );
+    assert!(
+        text.lines()
+            .any(|l| l.contains('▸') && l.contains("readme.txt")),
+        "and it is the file that is marked: {text}"
+    );
 }
 
 /// **RFC 036 review v1 §2.3: `BlockPatchRow::summary()`'s short id is an identifier.** Hex, so it

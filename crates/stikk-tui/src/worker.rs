@@ -216,6 +216,38 @@ pub(crate) enum RequestKind {
         /// The branch and the resolved destination.
         target: stikk_core::ExportTarget,
     },
+    /// Preview saving one file as it was at a block (RFC 053).
+    SaveFilePreview {
+        /// The block, the repository path and the resolved destination.
+        target: stikk_core::SaveFileTarget,
+    },
+    /// Confirm and run the file save this token was previewed for.
+    SaveFileConfirmExecute {
+        /// The armed token.
+        token: Box<stikk_core::PreviewToken>,
+        /// The session's signing readiness, read on the UI thread as every other write does.
+        readiness: stikk_model::Readiness,
+        /// The reader's answer.
+        evidence: stikk_core::Evidence,
+        /// Must match the preview's.
+        target: stikk_core::SaveFileTarget,
+    },
+    /// Preview saving every file at a block (RFC 053).
+    SaveAllPreview {
+        /// The block and the resolved destination directory.
+        target: stikk_core::SaveAllTarget,
+    },
+    /// Confirm and run the whole-block save this token was previewed for.
+    SaveAllConfirmExecute {
+        /// The armed token.
+        token: Box<stikk_core::PreviewToken>,
+        /// The session's signing readiness.
+        readiness: stikk_model::Readiness,
+        /// The reader's answer.
+        evidence: stikk_core::Evidence,
+        /// Must match the preview's.
+        target: stikk_core::SaveAllTarget,
+    },
     /// Confirm and run the export this token was previewed for.
     ExportConfirmExecute {
         /// The armed token.
@@ -299,6 +331,14 @@ pub(crate) enum ResponseKind {
     ImportPreview(Result<stikk_core::ImportPreview>),
     /// Answers [`RequestKind::ImportConfirmExecute`].
     ImportConfirmExecute(Result<stikk_core::Outcome<stikk_prikk::BundleImport>>),
+    /// Answers [`RequestKind::SaveFilePreview`].
+    SaveFilePreview(Result<stikk_core::SaveFilePreview>),
+    /// Answers [`RequestKind::SaveFileConfirmExecute`].
+    SaveFileConfirmExecute(Result<stikk_core::Outcome<stikk_prikk::FileSaved>>),
+    /// Answers [`RequestKind::SaveAllPreview`].
+    SaveAllPreview(Result<stikk_core::SaveAllPreview>),
+    /// Answers [`RequestKind::SaveAllConfirmExecute`].
+    SaveAllConfirmExecute(Result<stikk_core::Outcome<stikk_prikk::Extracted>>),
     /// Answers [`RequestKind::ExportPreview`].
     ExportPreview(Result<stikk_core::ExportPreview>),
     /// Answers [`RequestKind::ExportConfirmExecute`].
@@ -373,6 +413,10 @@ impl RequestKind {
             Self::OpenBundle { .. } => "bundle",
             Self::ImportPreview { .. } => "import preview",
             Self::ImportConfirmExecute { .. } => "import",
+            Self::SaveFilePreview { .. } => "save preview",
+            Self::SaveFileConfirmExecute { .. } => "save",
+            Self::SaveAllPreview { .. } => "save preview",
+            Self::SaveAllConfirmExecute { .. } => "save",
             Self::ExportPreview { .. } => "export preview",
             Self::ExportConfirmExecute { .. } => "export",
             Self::MergePreview { .. } => "merge preview",
@@ -547,6 +591,34 @@ pub(crate) fn run(
                     stikk_core::BUNDLE_LINEAGE_LIMIT,
                 ))
             }
+            RequestKind::SaveFilePreview { target } => {
+                ResponseKind::SaveFilePreview(stikk_core::save_file_preview(
+                    prikk,
+                    repo,
+                    &target.block,
+                    &target.path,
+                    &target.output,
+                ))
+            }
+            RequestKind::SaveFileConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                target,
+            } => ResponseKind::SaveFileConfirmExecute(stikk_core::save_file_confirm_and_execute(
+                prikk, repo, *token, readiness, evidence, &target,
+            )),
+            RequestKind::SaveAllPreview { target } => ResponseKind::SaveAllPreview(
+                stikk_core::save_all_preview(prikk, repo, &target.block, &target.dir),
+            ),
+            RequestKind::SaveAllConfirmExecute {
+                token,
+                readiness,
+                evidence,
+                target,
+            } => ResponseKind::SaveAllConfirmExecute(stikk_core::save_all_confirm_and_execute(
+                prikk, repo, *token, readiness, evidence, &target,
+            )),
             RequestKind::ExportPreview { target } => ResponseKind::ExportPreview(
                 stikk_core::export_preview(prikk, repo, &target.reff, &target.output),
             ),

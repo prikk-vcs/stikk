@@ -115,6 +115,74 @@ pub fn suggested_all_destination(repo: &Path, block: &str) -> PathBuf {
     parent.join(format!("{name}-{}", crate::bundle::short_id(block)))
 }
 
+/// A block id, shortened the way every card and view shortens one — for a frontend that needs
+/// the same spelling in a heading.
+#[must_use]
+pub fn block_short(block: &str) -> String {
+    crate::bundle::short_id(block)
+}
+
+/// What Block detail's cursor is on (RFC 053 decision 3).
+///
+/// **One list, two sections.** The cursor ranges over the block's patches and then its files, so
+/// a reader reaches a file with the same `↓` that walks the patches — and the keys can say which
+/// of the two they act on without a second cursor to keep in step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockCursorRow {
+    /// The patch at this index. `Enter` opens Patch detail for it.
+    Patch(usize),
+    /// The file at this index in the block's listed state. `Enter` does nothing; `F` saves it.
+    File(usize),
+}
+
+/// How many rows Block detail's cursor ranges over: its patches, then its files.
+///
+/// Files count only where prikk **listed** them — below the band, or after a failed read, there
+/// is a sentence where the list would be and nothing to put a cursor on.
+#[must_use]
+pub fn block_cursor_len(view: &crate::BlockDetailView) -> usize {
+    view.patches.rows().len() + listed_files(view).len()
+}
+
+/// What `cursor` is on, or `None` past the end.
+#[must_use]
+pub fn block_cursor_row(view: &crate::BlockDetailView, cursor: usize) -> Option<BlockCursorRow> {
+    let patches = view.patches.rows().len();
+    if cursor < patches {
+        return Some(BlockCursorRow::Patch(cursor));
+    }
+    let at = cursor - patches;
+    (at < listed_files(view).len()).then_some(BlockCursorRow::File(at))
+}
+
+/// The file the cursor is on, if it is on one.
+#[must_use]
+pub fn block_cursor_file(view: &crate::BlockDetailView, cursor: usize) -> Option<&str> {
+    match block_cursor_row(view, cursor)? {
+        BlockCursorRow::Patch(_) => None,
+        BlockCursorRow::File(at) => listed_files(view).get(at).map(|f| f.path.as_str()),
+    }
+}
+
+fn listed_files(view: &crate::BlockDetailView) -> &[stikk_prikk::StateFile] {
+    view.state.listed().map_or(&[][..], |state| &state.files)
+}
+
+/// **Why `F` has nothing to save here**, when Block detail shows a sentence instead of a file
+/// list — below [`FILES_FROM_MINOR`] is said by [`files_unavailable`] instead.
+///
+/// It carries prikk's own reason for the missing list rather than restating it: that sentence
+/// already says whether the band or a failed read is why.
+#[must_use]
+pub fn no_files_to_save(reason: &str) -> String {
+    format!("There are no files to save at this block: {reason}")
+}
+
+/// **What `F` says when the cursor is on a patch** (decision 3): `F` saves a *file*, and the
+/// files are listed below the patches.
+pub const F_SAVES_A_FILE: &str = "`F` saves one of this block's files — move down to the files below the patches and press it \
+     there. `A` saves all of them into a new folder.";
+
 /// What a preview decided, before it becomes a token or a sentence.
 enum ReadView {
     Blocked(String),
@@ -275,7 +343,7 @@ fn file_card(
     ];
     // **The one notice this card can carry** (F3): `cat --output` writes the bytes and no mode.
     if meta.mode & 0o111 != 0 {
-        summary.declaration_notices = vec![LOSES_THE_EXECUTE_BIT.to_string()];
+        summary.notices = vec![LOSES_THE_EXECUTE_BIT.to_string()];
     }
     (ReadView::Ready, summary)
 }
@@ -295,7 +363,7 @@ fn all_card(
     ];
     // **The one notice this card can carry** (F4), and only when prikk says so.
     if plan.provisional {
-        summary.declaration_notices = vec![PROVISIONAL_REPLAY.to_string()];
+        summary.notices = vec![PROVISIONAL_REPLAY.to_string()];
     }
     (ReadView::Ready, summary)
 }
@@ -318,6 +386,7 @@ fn summary(operation: &str, consequence: &str) -> ConfirmationSummary {
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        notices: Vec::new(),
         message_note: None,
         materializes: None,
         merge_plan: None,

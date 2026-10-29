@@ -556,6 +556,7 @@ fn summary(target_ids: Vec<&str>, target_name: Option<&str>) -> ConfirmationSumm
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        notices: Vec::new(),
         message_note: None,
         materializes: None,
         merge_plan: None,
@@ -1049,6 +1050,7 @@ fn summary_with_key_id(
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        notices: Vec::new(),
         message_note: None,
         materializes: None,
         merge_plan: None,
@@ -1282,6 +1284,11 @@ fn coverage(overlay: &Overlay) -> Coverage {
         // RFC 050 decisions 3 and 5: the same shape, for a path. Prose is fixed and the input
         // is one row, which the affordance region holds with the footer.
         Overlay::BundlePath { .. } | Overlay::ExportPath { .. } => Coverage::NoSelection,
+        // RFC 053 decision 4: the same shape again, for a destination path.
+        Overlay::SavePath { .. } => Coverage::NoSelection,
+        // RFC 053 decision 6: a content card of stikk's own two sentences at most. Treated as
+        // content that can grow, like every other result card here.
+        Overlay::SaveResult { .. } => Coverage::NoSelection,
         // RFC 044 decision 8: a content card. prikk prints four lines at most today, but the count
         // is prikk's, not stikk's, so it is treated as content that can grow.
         Overlay::RefWriteResult { .. } => Coverage::NoSelection,
@@ -1338,6 +1345,7 @@ fn gate_summary(consequence: &str) -> ConfirmationSummary {
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        notices: Vec::new(),
         message_note: None,
         materializes: None,
         merge_plan: None,
@@ -1661,6 +1669,46 @@ fn cases() -> Vec<Case> {
                 typed: "/home/someone/".to_string() + &"a-long-folder-".repeat(4) + "v2.bundle",
             }),
             last_row: "Esc to cancel".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "SavePath (one file)",
+            build: Box::new(|_| Overlay::SavePath {
+                what: SavePathKind::File {
+                    block: "f".repeat(64),
+                    path: "crates/".to_string() + &"a-long-directory-".repeat(4) + "a.txt",
+                },
+                heading: "crates/".to_string() + &"a-long-directory-".repeat(4) + "a.txt",
+                typed: "/home/someone/".to_string() + &"a-long-folder-".repeat(4) + "a-f687.txt",
+            }),
+            last_row: "Esc to cancel".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "SavePath (every file)",
+            build: Box::new(|_| Overlay::SavePath {
+                what: SavePathKind::All {
+                    block: "f".repeat(64),
+                },
+                heading: "f687c8ff7394".to_string(),
+                typed: "/home/someone/".to_string() + &"a-long-folder-".repeat(4) + "repo-f687",
+            }),
+            last_row: "Esc to cancel".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "SaveResult",
+            build: Box::new(|_| Overlay::SaveResult {
+                lines: vec![
+                    format!(
+                        "Saved {}a.txt as it was at f687c8ff7394 to /home/someone/{}a-f687.txt.",
+                        "a-long-directory-".repeat(4),
+                        "a-long-folder-".repeat(4)
+                    ),
+                    stikk_core::PROVISIONAL_REPLAY.to_string(),
+                ],
+            }),
+            last_row: "Esc to dismiss".to_string(),
             entry: None,
         },
         Case {
@@ -1994,6 +2042,7 @@ fn summary_with_claim(claim: stikk_core::KeyClaim, id: Option<&str>) -> Confirma
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        notices: Vec::new(),
         message_note: None,
         materializes: None,
         merge_plan: None,
@@ -4131,5 +4180,194 @@ fn capture_the_export_result_at_80x24() {
     assert!(
         flattened(&text).contains("not a trust decision"),
         "prikk's continuity note is kept: {text}"
+    );
+}
+
+// =============================================================================================
+// RFC 053 — the captures §5 asks for: both cards, the inside refusal, and both results.
+// =============================================================================================
+
+/// The block the measurement used, so the captures read as a real session's.
+const SAVE_BLOCK: &str = "f687c8ff7394b57414d88b191700eb67b4a15b5598cb11fb1bd848f0c1746243";
+
+fn save_summary(repo: &std::path::Path, executable: bool) -> stikk_core::ConfirmationSummary {
+    let backend = stikk_prikk::NullBackend::supported()
+        .with_version(0, 55, 0)
+        .with_file_meta(stikk_prikk::FileMeta {
+            kind: "file".to_string(),
+            encoding: "text".to_string(),
+            mode: if executable { 0o100_755 } else { 0o100_644 },
+            size: 18,
+        });
+    let out = stikk_core::suggested_file_destination(repo, "run.sh", SAVE_BLOCK);
+    match stikk_core::save_file_preview(&backend, repo, SAVE_BLOCK, "run.sh", &out) {
+        Ok(stikk_core::SaveFilePreview::Ready { token }) => token.summary().clone(),
+        other => panic!("expected a card, got {other:?}"),
+    }
+}
+
+fn save_all_summary(repo: &std::path::Path, provisional: bool) -> stikk_core::ConfirmationSummary {
+    let backend = stikk_prikk::NullBackend::supported()
+        .with_version(0, 55, 0)
+        .with_extract_plan(stikk_prikk::ExtractReport {
+            target_block_id: SAVE_BLOCK.to_string(),
+            provisional,
+            written: false,
+            file_count: 4,
+            total_bytes: 30,
+            largest_file_bytes: 18,
+        });
+    let dir = stikk_core::suggested_all_destination(repo, SAVE_BLOCK);
+    match stikk_core::save_all_preview(&backend, repo, SAVE_BLOCK, &dir) {
+        Ok(stikk_core::SaveAllPreview::Ready { token }) => token.summary().clone(),
+        other => panic!("expected a card, got {other:?}"),
+    }
+}
+
+/// A scratch repository, so the suggested destinations are real paths.
+fn save_repo(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("stikk-save-cap-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a scratch repository");
+    dir
+}
+
+/// **Capture: the one-file card at 80×24, with the execute notice.**
+#[test]
+fn capture_the_save_file_confirmation_at_80x24() {
+    let repo = save_repo("file");
+    let text = draw_at(
+        &Overlay::Confirmation {
+            summary: Box::new(save_summary(&repo, true)),
+            tier: Tier::Two,
+            typed: String::new(),
+            error: None,
+        },
+        80,
+        24,
+    );
+    println!("{text}");
+    let flat = flattened(&text);
+    assert!(flat.contains("Save file"), "{text}");
+    assert!(flat.contains("block f687c8ff7394"), "{text}");
+    assert!(flat.contains("file run.sh"), "{text}");
+    assert!(flat.contains("size 18 bytes"), "{text}");
+    // **The notice is there, and it is stikk's own sentence** (F3).
+    assert!(flat.contains("not its execute permission"), "{text}");
+    assert!(
+        flat.contains("nothing in the repository or your worktree changes"),
+        "the consequence: {text}"
+    );
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// **Capture: the every-file card at 80×24, with the provisional notice.**
+#[test]
+fn capture_the_save_all_confirmation_at_80x24() {
+    let repo = save_repo("all");
+    let text = draw_at(
+        &Overlay::Confirmation {
+            summary: Box::new(save_all_summary(&repo, true)),
+            tier: Tier::Two,
+            typed: String::new(),
+            error: None,
+        },
+        80,
+        24,
+    );
+    println!("{text}");
+    let flat = flattened(&text);
+    assert!(flat.contains("Save files"), "{text}");
+    assert!(flat.contains("files 4"), "{text}");
+    assert!(flat.contains("bytes 30"), "{text}");
+    assert!(
+        flat.contains("No trusted checkpoint is in reach"),
+        "the provisional notice: {text}"
+    );
+    // An ordinary plan carries neither notice.
+    let plain = draw_at(
+        &Overlay::Confirmation {
+            summary: Box::new(save_all_summary(&repo, false)),
+            tier: Tier::Two,
+            typed: String::new(),
+            error: None,
+        },
+        80,
+        24,
+    );
+    assert!(
+        !flattened(&plain).contains("No trusted checkpoint"),
+        "{plain}"
+    );
+    let _ = std::fs::remove_dir_all(&repo);
+}
+
+/// **Capture: the inside-the-repository refusal.** stikk's own words, and nothing of prikk's —
+/// prikk 0.54 would have written there.
+#[test]
+fn capture_the_inside_the_repository_save_refusal() {
+    println!("{}", stikk_core::FILES_INSIDE_THE_REPOSITORY);
+    assert!(
+        stikk_core::FILES_INSIDE_THE_REPOSITORY.contains("untracked files"),
+        "it says what would happen, not only that it is refused"
+    );
+    assert!(
+        stikk_core::FILES_INSIDE_THE_REPOSITORY.contains("outside the repository"),
+        "and what to do instead"
+    );
+}
+
+/// **Capture: both results at 80×24.** stikk's own sentence, with no `prikk reported —` heading:
+/// prikk prints nothing on a successful `cat --output`.
+#[test]
+fn capture_the_save_results_at_80x24() {
+    let one = draw_at(
+        &Overlay::SaveResult {
+            lines: vec![stikk_core::saved_file_line(&stikk_core::SaveFileTarget {
+                block: SAVE_BLOCK.to_string(),
+                path: "run.sh".to_string(),
+                output: std::path::Path::new("/home/someone/work/run-f687c8ff7394.sh")
+                    .to_path_buf(),
+            })],
+        },
+        80,
+        24,
+    );
+    println!("{one}");
+    assert!(
+        flattened(&one).contains("Saved run.sh as it was at f687c8ff7394"),
+        "{one}"
+    );
+    assert!(
+        !one.contains("prikk reported"),
+        "there is nothing of prikk's: {one}"
+    );
+
+    let all = draw_at(
+        &Overlay::SaveResult {
+            lines: stikk_core::saved_all_lines(
+                &stikk_core::SaveAllTarget {
+                    block: SAVE_BLOCK.to_string(),
+                    dir: std::path::Path::new("/home/someone/work/repo-f687c8ff7394").to_path_buf(),
+                },
+                &stikk_prikk::ExtractReport {
+                    target_block_id: SAVE_BLOCK.to_string(),
+                    provisional: true,
+                    written: true,
+                    file_count: 4,
+                    total_bytes: 30,
+                    largest_file_bytes: 18,
+                },
+            ),
+        },
+        80,
+        24,
+    );
+    println!("{all}");
+    let flat = flattened(&all);
+    assert!(flat.contains("Wrote 4 files (30 bytes)"), "{all}");
+    assert!(
+        flat.contains("No trusted checkpoint is in reach"),
+        "the provisional notice is repeated from the report: {all}"
     );
 }

@@ -34,6 +34,23 @@ use std::cell::Cell;
 use crate::text::{identifier, inert, wrap_indented};
 use crate::theme::Palette;
 
+/// Which of RFC 053's two saves [`Overlay::SavePath`] is prompting for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SavePathKind {
+    /// `F`: one file, as it was at this block.
+    File {
+        /// The block the file is read at.
+        block: String,
+        /// The repository path, as prikk names it.
+        path: String,
+    },
+    /// `A`: every file at this block, into a new folder.
+    All {
+        /// The block the files are read at.
+        block: String,
+    },
+}
+
 /// One overlay. Data-carrying variants own their state; `Glossary` reads the static asset.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Overlay {
@@ -236,6 +253,29 @@ pub enum Overlay {
         /// The path typed so far, prefilled with stikk's suggestion.
         typed: String,
     },
+    /// RFC 053 decision 4: where to write a file, or a block's files — **prefilled** with
+    /// stikk's suggestion, which is outside the repository by construction.
+    ///
+    /// **One overlay for both keys**, carrying which it is: the two prompts differ in their
+    /// heading and in what the answer becomes, and nothing else. A second overlay would be a
+    /// second renderer to keep in step with the first.
+    SavePath {
+        /// Which save this is, and what it needs to build its target.
+        what: SavePathKind,
+        /// What the heading names — the file's path for `F`, the block's short id for `A`.
+        heading: String,
+        /// The path typed so far, prefilled with stikk's suggestion.
+        typed: String,
+    },
+    /// RFC 053 decision 6: what stikk wrote, in stikk's own words.
+    ///
+    /// **stikk's sentence, not prikk's lines** — unlike every other result card here. prikk
+    /// prints nothing at all on a successful `cat --output` (F1), and `extract`'s JSON report is
+    /// a report rather than prose. There is nothing of prikk's to show verbatim.
+    SaveResult {
+        /// The sentence, and the provisional notice where the report carried one.
+        lines: Vec<String>,
+    },
     /// RFC 050 decision 3: the path of a bundle file to open.
     ///
     /// **Its own overlay, not [`Self::RefName`]'s.** That prompt fixes a prefix (`heads/` or
@@ -374,6 +414,11 @@ impl Overlay {
                 ..
             } => " New tag ",
             Self::BundlePath { .. } => " Open a bundle ",
+            Self::SavePath { what, .. } => match what {
+                SavePathKind::File { .. } => " Save this file ",
+                SavePathKind::All { .. } => " Save this block's files ",
+            },
+            Self::SaveResult { .. } => " Saved ",
             Self::ExportPath { .. } => " Export a bundle ",
             Self::TagMessage { .. } => " Tag message ",
             Self::RefWriteResult { kind, .. } => kind.done_title(),
@@ -422,6 +467,12 @@ pub fn render(
             area,
         ),
         Overlay::BundlePath { typed } => render_bundle_path(typed, palette, frame, area),
+        Overlay::SavePath {
+            what,
+            heading,
+            typed,
+        } => render_save_path(what, heading, typed, palette, frame, area),
+        Overlay::SaveResult { lines } => render_save_result(lines, palette, frame, area),
         Overlay::ExportPath { reff, typed } => {
             render_export_path(reff, typed, palette, frame, area);
         }
@@ -642,6 +693,16 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
             palette,
             "E",
             "export this branch to a bundle file (in the ref picker)",
+        ),
+        key_line(
+            palette,
+            "F",
+            "save the selected file as it was at this block (in Block)",
+        ),
+        key_line(
+            palette,
+            "A",
+            "save all of this block's files into a new folder (in Block)",
         ),
         key_line(palette, ":", "command palette"),
         key_line(palette, "R", "recent refusals"),
@@ -1647,6 +1708,21 @@ fn render_confirmation(
     }
     lines.push(Line::from(""));
 
+    // **Cautions about what confirming will produce** (RFC 053 decision 5), above the
+    // consequence and in warn. Unconditional, unlike `declaration_notices`, which is drawn only
+    // inside the counts block: a card with no counts carried those and showed nothing.
+    if !summary.notices.is_empty() {
+        for notice in &summary.notices {
+            for row in wrap_indented(notice, PANEL_PROSE_WIDTH, "  ") {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.warn),
+                )));
+            }
+        }
+        lines.push(Line::from(""));
+    }
+
     // The consequence — stikk's own words. The operation's own plan/content (prikk's verbatim text,
     // for Class A previews — RFC 013 F1) lives in the preview view itself, never restated here
     // (RFC 013 Q1: the confirmation restates the fixed summary, not the preview).
@@ -2436,6 +2512,111 @@ fn render_export_path(reff: &str, typed: &str, palette: &Palette, frame: &mut Fr
         width: CONFIRM_WIDTH,
         prose,
         actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 053 decision 4: where to write a copy, **prefilled** with stikk's suggestion.
+///
+/// **The suggestion is outside the repository by construction**, so a reader who accepts it
+/// never meets the one rule stikk adds. The notice says both rules anyway, because the reader
+/// editing the path is the one who needs them.
+fn render_save_path(
+    what: &SavePathKind,
+    heading: &str,
+    typed: &str,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let (label, title, notice) = match what {
+        SavePathKind::File { .. } => (
+            "Save ",
+            " Save this file ",
+            "A path is required. stikk writes nowhere inside the repository -- the copy would \
+             sit in your worktree as untracked files -- and never over a path that is already \
+             there. A relative path is taken from the directory stikk was started in. Nothing \
+             in the repository or your worktree changes.",
+        ),
+        SavePathKind::All { .. } => (
+            "Save every file at ",
+            " Save this block's files ",
+            "A folder is required, and stikk creates it. It writes nowhere inside the \
+             repository, and never over a path that is already there. A relative path is taken \
+             from the directory stikk was started in. Nothing in the repository or your \
+             worktree changes.",
+        ),
+    };
+    let mut prose = labelled(
+        label,
+        &identifier(heading),
+        PANEL_TEXT_WIDTH,
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        Style::default().fg(palette.accent),
+    );
+    prose.push(Line::from(""));
+    for row in wrap_indented(notice, PANEL_PROSE_WIDTH, "  ") {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.dim),
+        )));
+    }
+    prose.push(Line::from(""));
+
+    let actions = vec![
+        Line::from(vec![
+            Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
+            Span::styled(inert(typed), Style::default().fg(palette.fg)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Enter to continue \u{b7} Esc to cancel",
+            Style::default().fg(palette.accent),
+        )),
+    ];
+
+    Panel {
+        title,
+        width: CONFIRM_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 053 decision 6: what stikk wrote.
+///
+/// **stikk's own sentence, and no quote bar** — unlike every other result card here. prikk
+/// prints nothing at all on a successful `cat --output`, and `extract`'s answer is a JSON report
+/// rather than prose, so there is nothing of prikk's to show verbatim and a `prikk reported --`
+/// heading over stikk's own words would be a lie.
+fn render_save_result(lines: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
+    let mut prose: Vec<Line> = Vec::new();
+    for (at, line) in lines.iter().enumerate() {
+        if at > 0 {
+            prose.push(Line::from(""));
+        }
+        let style = if at == 0 {
+            Style::default().fg(palette.fg)
+        } else {
+            // The provisional notice, which is a caution rather than a result.
+            Style::default().fg(palette.warn)
+        };
+        for row in wrap_indented(&inert(line), SEAL_PROSE_WIDTH, "  ") {
+            prose.push(Line::from(Span::styled(row, style)));
+        }
+    }
+
+    Panel {
+        title: " Saved ",
+        width: SEAL_WIDTH,
+        prose,
+        actions: vec![Line::from(Span::styled(
+            "  Enter \u{b7} Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);

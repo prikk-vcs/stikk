@@ -370,6 +370,7 @@ fn compute(
                     .or_else(|| declaration.content_sentence())
             })
             .collect(),
+        notices: Vec::new(),
         message_note: None,
         materializes: None,
         merge_plan: None,
@@ -402,6 +403,7 @@ fn placeholder_summary() -> ConfirmationSummary {
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
+        notices: Vec::new(),
         message_note: None,
         materializes: None,
         merge_plan: None,

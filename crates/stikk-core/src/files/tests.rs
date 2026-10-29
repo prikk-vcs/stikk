@@ -211,11 +211,11 @@ fn the_execute_notice_is_on_an_executable_file_and_not_on_an_ordinary_one() {
     let out = suggested_file_destination(repo, "a.txt", BLOCK);
 
     let summary = file_summary(&saving(0o100755, false), repo, &out);
-    assert_eq!(summary.declaration_notices, vec![LOSES_THE_EXECUTE_BIT]);
+    assert_eq!(summary.notices, vec![LOSES_THE_EXECUTE_BIT]);
 
     let summary = file_summary(&saving(0o100644, false), repo, &out);
     assert!(
-        summary.declaration_notices.is_empty(),
+        summary.notices.is_empty(),
         "an ordinary file loses nothing, so there is nothing to say"
     );
 }
@@ -228,10 +228,10 @@ fn the_provisional_notice_is_on_a_provisional_plan_only() {
     let dir = suggested_all_destination(repo, BLOCK);
 
     let summary = all_summary(&saving(0o100644, true), repo, &dir);
-    assert_eq!(summary.declaration_notices, vec![PROVISIONAL_REPLAY]);
+    assert_eq!(summary.notices, vec![PROVISIONAL_REPLAY]);
 
     let summary = all_summary(&saving(0o100644, false), repo, &dir);
-    assert!(summary.declaration_notices.is_empty());
+    assert!(summary.notices.is_empty());
 }
 
 /// Both cards name what they act on, and say the same consequence in stikk's words — **naming

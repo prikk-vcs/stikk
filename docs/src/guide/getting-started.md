@@ -166,6 +166,37 @@ prikk compares without adopting them. **The branch you are on before its first s
 no block for prikk to compare, so `m` and `d` there say so and point you at `w` then `d`, which
 compares your worktree with what `commit` would author against.
 
+## Getting an earlier version back
+
+You broke a file and want the version from before. Open its block in History, and stikk writes it
+out for you — **outside your repository**, so nothing you have now is touched. Needs prikk 0.54 or
+newer.
+
+Open **History** with `Enter`, put the cursor on the block you want and press `Enter` again: that
+block's detail lists its patches and then **its files**. `↓` walks down through both.
+
+- **`F`** on a file saves **that file**, as it was at that block.
+- **`A`** anywhere in the block saves **every file at it** into a new folder.
+
+Either way stikk suggests a destination beside your repository — `a-f687c8ff7394.txt` for a file,
+`<your repository>-f687c8ff7394` for a folder — and you can type another. The card then names the
+block, what is being saved, how big it is, and exactly where it goes. Nothing is written until you
+press `Enter`.
+
+**stikk will not write inside your repository**, because the copy would sit in your worktree as
+untracked files and your next commit would capture them; and it **will not write over anything**
+that is already there. Both are refused before prikk is asked, with a sentence saying what to do
+instead.
+
+Two things the card tells you when they apply. Saving **one** file keeps its bytes but not its
+execute permission, so a script comes back needing `chmod +x` — saving all of them keeps it. And
+where prikk has no trusted checkpoint in reach it replays the files from the start of history and
+says so: the copy matches that history, but nothing has checked the history itself. `V` does that.
+
+**Nothing in your repository or your worktree changes.** To actually use what came back, copy what
+you want into your worktree yourself and commit it — which is also the honest answer while stikk
+cannot take a change back for you.
+
 ## Sharing work
 
 Two people share prikk history by **bundle files**. One exports a branch to a file, sends it any

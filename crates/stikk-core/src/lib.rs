@@ -70,12 +70,14 @@ pub use confirm::{
     unshown_paths_line, unshown_plan_lines_line,
 };
 pub use files::{
-    COPY_CONSEQUENCE, DESTINATION_EXISTS as FILES_DESTINATION_EXISTS, FILES_FROM_MINOR,
-    INSIDE_THE_REPOSITORY as FILES_INSIDE_THE_REPOSITORY, LOSES_THE_EXECUTE_BIT,
-    PROVISIONAL_REPLAY, SAVE_ALL_OPERATION, SAVE_FILE_OPERATION, SaveAllPreview, SaveAllTarget,
-    SaveFilePreview, SaveFileTarget, files_unavailable, save_all_confirm_and_execute,
-    save_all_preview, save_file_confirm_and_execute, save_file_preview, saved_all_lines,
-    saved_file_line, suggested_all_destination, suggested_file_destination,
+    BlockCursorRow, COPY_CONSEQUENCE, DESTINATION_EXISTS as FILES_DESTINATION_EXISTS,
+    F_SAVES_A_FILE, FILES_FROM_MINOR, INSIDE_THE_REPOSITORY as FILES_INSIDE_THE_REPOSITORY,
+    LOSES_THE_EXECUTE_BIT, PROVISIONAL_REPLAY, SAVE_ALL_OPERATION, SAVE_FILE_OPERATION,
+    SaveAllPreview, SaveAllTarget, SaveFilePreview, SaveFileTarget, block_cursor_file,
+    block_cursor_len, block_cursor_row, block_short, files_unavailable, no_files_to_save,
+    save_all_confirm_and_execute, save_all_preview, save_file_confirm_and_execute,
+    save_file_preview, saved_all_lines, saved_file_line, suggested_all_destination,
+    suggested_file_destination,
 };
 pub use glossary::{GlossaryEntry, TermMapping};
 pub use history::{

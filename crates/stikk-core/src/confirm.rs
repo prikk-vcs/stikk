@@ -161,6 +161,16 @@ pub struct ConfirmationSummary {
     /// RFC 032 decision 2: one sentence per declaration prikk will not author as a rename, from
     /// [`crate::DeclaredRename::notice`]. Carries paths: render each inert.
     pub declaration_notices: Vec<String>,
+    /// Cautions about what confirming will produce, in **stikk's own words**, drawn above the
+    /// consequence and in warn (RFC 053 decision 5).
+    ///
+    /// **Not [`Self::declaration_notices`]**, which is RFC 032's and is drawn only on a card that
+    /// has counts — a card with none would have carried these and shown nothing, which is how
+    /// this field came to exist. And not the consequence either: the consequence says what the
+    /// operation does, and these say what the *result* will and will not be.
+    ///
+    /// Empty for every operation that has none.
+    pub notices: Vec<String>,
     /// RFC 044 decision 6: the message a new tag will carry, restated so the confirmation shows
     /// what is about to be recorded. `None` for every other operation, and for a tag with no
     /// message — prikk refuses an empty one, so a blank message is no message, and the

@@ -193,7 +193,7 @@ fn block_lines<'a>(
                 palette,
                 width,
                 &format!(
-                    "state {} — {} file(s), {} byte(s):",
+                    "state {} — {} file(s), {} byte(s) · F saves the selected file, A saves all:",
                     if detail.is_tip {
                         "at tip"
                     } else {
@@ -211,9 +211,17 @@ fn block_lines<'a>(
                     Style::default().fg(palette.dim),
                 )));
             } else {
-                for file in files {
+                // **The cursor runs on from the patches** (RFC 053 decision 3), so `↓` reaches a
+                // file and `F` knows which one. The marker is the one History and the patch list
+                // above already use.
+                let first_file = detail.patches.rows().len();
+                for (at, file) in files.iter().enumerate() {
+                    let selected = cursor == first_file + at;
                     let mut spans = vec![
-                        Span::styled("    ", Style::default()),
+                        Span::styled(
+                            if selected { "  \u{25b8} " } else { "    " },
+                            Style::default().fg(palette.accent),
+                        ),
                         // The mode first, in the fixed-width octal Patch detail already shows
                         // (`100644`), so the paths below it line up whatever their length. Not
                         // reported is said, never shown as `0`, which would read as `000000` — a

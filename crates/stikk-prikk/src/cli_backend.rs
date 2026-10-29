@@ -1171,6 +1171,26 @@ impl Prikk for CliBackend {
         .map(crate::Extracted::Read)
     }
 
+    fn trusted_keys(&self, repo: &Path) -> Result<crate::TrustedKeys> {
+        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
+            return Ok(crate::TrustedKeys::Unavailable);
+        }
+        // **`list`, and never `check`** (RFC 054 F2): `check` exits 1 for an id that is simply
+        // not trusted, which `run` would classify as a refusal. One list answers every id.
+        let out = self.run(
+            Some(repo),
+            RequestCategory::ReadState,
+            [
+                OsStr::new("trust"),
+                OsStr::new("maintainer"),
+                OsStr::new("list"),
+                OsStr::new("--format"),
+                OsStr::new("json"),
+            ],
+        )?;
+        parse_json::trust_list(&out).map(crate::TrustedKeys::Listed)
+    }
+
     fn switch_branch(&self, repo: &Path, name: &str) -> Result<crate::SwitchResult> {
         // **Banded before anything else** (RFC 045 decision 4): below the band nothing is
         // spawned, not even the readiness read.

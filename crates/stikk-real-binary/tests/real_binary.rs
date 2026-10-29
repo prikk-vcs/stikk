@@ -7685,6 +7685,12 @@ impl Prikk for CountingWrites {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.bundle_import(repo, path)
     }
+    fn trusted_keys(
+        &self,
+        repo: &std::path::Path,
+    ) -> stikk_model::Result<stikk_prikk::TrustedKeys> {
+        self.inner.trusted_keys(repo)
+    }
     fn file_meta(
         &self,
         repo: &std::path::Path,

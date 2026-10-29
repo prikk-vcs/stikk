@@ -90,6 +90,8 @@ pub struct NullBackend {
     /// How many times [`Prikk::bundle_export`] has been asked — as
     /// [`Self::bundle_import_calls`], for the two destination rules.
     bundle_export_calls: Arc<AtomicUsize>,
+    /// What [`Prikk::trusted_keys`] answers (RFC 054).
+    trusted_keys: Scripted<crate::TrustedKeys>,
     /// What [`Prikk::file_meta`] answers (RFC 053).
     file_meta: Scripted<crate::FileMetaRead>,
     /// What [`Prikk::save_file`] answers (RFC 053).
@@ -197,6 +199,7 @@ impl NullBackend {
             // The default matches this backend's default version, which is below 0.53.
             bundle_verify: Ok(crate::BundleVerify::Unavailable),
             bundle_preview: Ok(crate::BundlePreview::Unavailable),
+            trusted_keys: Ok(crate::TrustedKeys::Unavailable),
             file_meta: Ok(crate::FileMetaRead::Unavailable),
             save_file: Ok(crate::FileSaved::Unavailable),
             save_file_calls: Arc::new(AtomicUsize::new(0)),
@@ -591,6 +594,22 @@ impl NullBackend {
         self.bundle_export_calls.load(Ordering::SeqCst)
     }
 
+    /// Answer [`Prikk::trusted_keys`] with `keys`, in the order given (RFC 054). **An empty
+    /// vector is a repository that has adopted nothing**, which is an answer.
+    #[must_use]
+    pub fn with_trusted_keys(mut self, keys: Vec<crate::TrustedKey>) -> Self {
+        self.trusted_keys = Ok(crate::TrustedKeys::Listed(keys));
+        self
+    }
+
+    /// Fail [`Prikk::trusted_keys`], so a test can show what a card says when the trust read
+    /// does not answer -- the rest of it unchanged (RFC 035 A3's rule).
+    #[must_use]
+    pub fn with_trusted_keys_refusal(mut self, message: impl Into<String>) -> Self {
+        self.trusted_keys = Err(message.into());
+        self
+    }
+
     /// Answer [`Prikk::file_meta`] with one file's metadata (RFC 053).
     #[must_use]
     pub fn with_file_meta(mut self, meta: crate::FileMeta) -> Self {
@@ -954,6 +973,10 @@ impl Prikk for NullBackend {
     ) -> Result<crate::BundleExport> {
         self.bundle_export_calls.fetch_add(1, Ordering::SeqCst);
         deliver(&self.bundle_export)
+    }
+
+    fn trusted_keys(&self, _repo: &Path) -> Result<crate::TrustedKeys> {
+        deliver(&self.trusted_keys)
     }
 
     fn file_meta(&self, _repo: &Path, _block: &str, _path: &str) -> Result<crate::FileMetaRead> {

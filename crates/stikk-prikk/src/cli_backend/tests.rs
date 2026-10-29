@@ -3422,3 +3422,70 @@ fn a_relative_destination_is_refused_before_prikk_is_asked_to_write() {
         "the refusal must come before prikk is spawned to write"
     );
 }
+
+// ---------------------------------------------------------------- RFC 054: the trust read
+
+/// **`list`, never `check`** (RFC 054 F2, §7 trap 2), and the argv is exactly five arguments.
+#[cfg(unix)]
+#[test]
+fn trusted_keys_asks_list_and_never_check() {
+    let report = concat!(
+        r#"{"schema_version": "trust-list-v1", "keys": [{"key_id": "ed25519-31f369d3abb7f64c", "#,
+        r#""public_key": "31f369d3abb7f64cd2cf70be31158181e361f25444d8de122cdff59389e7e946"}]}"#,
+    );
+    let (script, argv) = fake_files_prikk("trust", "0.55.0", report, 0);
+    let backend = CliBackend::with_program(&script);
+    let read = retrying_transient_exec_busy(|| backend.trusted_keys(std::path::Path::new(".")))
+        .expect("a read reads");
+    let crate::TrustedKeys::Listed(keys) = read else {
+        panic!("in band, prikk answered");
+    };
+    assert_eq!(keys.len(), 1);
+    let recorded = recorded_argv(&argv);
+    assert_eq!(
+        recorded,
+        vec!["trust", "maintainer", "list", "--format", "json"]
+    );
+    assert!(
+        !recorded.iter().any(|a| a == "check"),
+        "`check` exits 1 for an id that is simply not trusted — one `list` answers every id"
+    );
+}
+
+/// **An empty list is an answer**, not a refusal: a repository made with `init` alone.
+#[cfg(unix)]
+#[test]
+fn an_empty_trust_list_reaches_the_caller_as_an_empty_list() {
+    let (script, _argv) = fake_files_prikk(
+        "trustempty",
+        "0.55.0",
+        r#"{"schema_version": "trust-list-v1", "keys": []}"#,
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let read = retrying_transient_exec_busy(|| backend.trusted_keys(std::path::Path::new(".")))
+        .expect("a read reads");
+    assert_eq!(read, crate::TrustedKeys::Listed(Vec::new()));
+}
+
+/// **Below the band nothing is spawned**: the fake would record an argv if it ran.
+#[cfg(unix)]
+#[test]
+fn below_the_band_the_trust_list_is_unavailable_and_spawns_nothing() {
+    let (script, argv) = fake_files_prikk(
+        "trustband",
+        "0.53.0",
+        r#"{"schema_version": "trust-list-v1", "keys": []}"#,
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    assert_eq!(
+        retrying_transient_exec_busy(|| backend.trusted_keys(std::path::Path::new(".")))
+            .expect("below the band is an answer, not an error"),
+        crate::TrustedKeys::Unavailable
+    );
+    assert!(
+        !argv.exists(),
+        "below the band prikk must be asked its version and nothing else"
+    );
+}

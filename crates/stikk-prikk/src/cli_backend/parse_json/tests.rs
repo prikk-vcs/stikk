@@ -3972,3 +3972,71 @@ fn a_refusal_document_without_a_message_is_a_shape_error() {
     let err = refusal_message(text).expect_err("a refusal with no message must be refused");
     assert_eq!(err.class(), "environment");
 }
+
+// ---------------------------------------------------------------- RFC 054: the trust list
+//
+// **Captured from a real prikk 0.54.1**, 2026-10-29, by
+// `.git-exclude/reports/054-trust-read/measure054.sh` — a bare repository, one after `setup`,
+// and one with a second key adopted. Captured, never written.
+
+/// A repository made with `init` alone: adopted nothing.
+const TRUST_EMPTY_0_54: &str = r#"{
+  "schema_version": "trust-list-v1",
+  "keys": []
+}"#;
+
+/// After `setup`, and then a collaborator's key adopted — **in prikk's order**, which is
+/// adoption order.
+const TRUST_TWO_0_54: &str = r#"{
+  "schema_version": "trust-list-v1",
+  "keys": [
+    {"key_id": "ed25519-31f369d3abb7f64c", "public_key": "31f369d3abb7f64cd2cf70be31158181e361f25444d8de122cdff59389e7e946"},
+    {"key_id": "ed25519-9c0a44b1d2e3f501", "public_key": "9c0a44b1d2e3f5012b7c0a4e55d2117ab3340ef6627c118e2b4a9d0cf3e21847"}
+  ]
+}"#;
+
+#[test]
+fn an_empty_trust_list_is_a_list_and_not_an_error() {
+    let keys = trust_list(TRUST_EMPTY_0_54).expect("a bare repository's own report reads");
+    assert!(
+        keys.is_empty(),
+        "a repository that adopted nothing has adopted nothing — that is an answer"
+    );
+}
+
+#[test]
+fn the_trust_list_keeps_prikks_order_and_both_fields() {
+    let keys = trust_list(TRUST_TWO_0_54).expect("prikk 0.54.1's own report reads");
+    assert_eq!(keys.len(), 2);
+    assert_eq!(keys[0].key_id, "ed25519-31f369d3abb7f64c");
+    assert_eq!(
+        keys[0].public_key,
+        "31f369d3abb7f64cd2cf70be31158181e361f25444d8de122cdff59389e7e946"
+    );
+    // **Adoption order, kept** — the second is the collaborator's, adopted after `setup`'s.
+    assert_eq!(keys[1].key_id, "ed25519-9c0a44b1d2e3f501");
+}
+
+#[test]
+fn a_truncated_trust_list_is_a_shape_error() {
+    for (label, text) in [
+        ("cut off", TRUST_TWO_0_54[..70].to_string()),
+        ("no keys array", r#"{"schema_version": "trust-list-v1"}"#.to_string()),
+        (
+            "an entry with no public key",
+            TRUST_TWO_0_54.replace(
+                r#", "public_key": "31f369d3abb7f64cd2cf70be31158181e361f25444d8de122cdff59389e7e946""#,
+                "",
+            ),
+        ),
+        (
+            "another schema",
+            TRUST_TWO_0_54.replace("trust-list-v1", "trust-list-v2"),
+        ),
+    ] {
+        let err = trust_list(&text)
+            .err()
+            .unwrap_or_else(|| panic!("{label} must be refused"));
+        assert_eq!(err.class(), "environment", "{label}");
+    }
+}

@@ -968,6 +968,36 @@ pub enum Extracted {
     Unavailable,
 }
 
+/// One maintainer key this repository has adopted, from `trust maintainer list --format json`
+/// (`trust-list-v1`; RFC 054 decision 1).
+///
+/// **Public values only.** An id and a public key are what prikk publishes about an adopted key,
+/// and they are all stikk ever holds: no seed, no seed path, nothing `key status` reports under
+/// `path` (`NFR-S03`, `C-I1`).
+///
+/// **What adopting one means, and does not.** prikk accepts this key's signatures on the objects
+/// it signed. It does **not** let the key move a ref. prikk says so in its prose listing and not
+/// in the JSON (RFC 054 F1), which is why the sentence beside this in a view is stikk's own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustedKey {
+    /// prikk's own id for the key — `ed25519-<16 hex>` in every measured case.
+    pub key_id: String,
+    /// The public key, as prikk reports it. Public, never secret.
+    pub public_key: String,
+}
+
+/// The adopted maintainer keys, or why stikk did not ask.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrustedKeys {
+    /// prikk answered. **In prikk's own order**, which is adoption order, and **empty is an
+    /// answer**: a repository made with `init` alone has adopted nothing, and that is not a
+    /// failure to report.
+    Listed(Vec<TrustedKey>),
+    /// Below [`crate::FILES_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
+}
+
 /// What `branch switch` printed, or why stikk did not run it (RFC 045 decision 1).
 ///
 /// **Two streams, kept apart.** prikk writes its result to stdout and, at exit 0, can name a
@@ -2147,6 +2177,22 @@ pub trait Prikk: Send + Sync {
     /// # Errors
     /// As [`Self::extract_plan`].
     fn extract(&self, repo: &Path, block: &str, dir: &Path) -> Result<Extracted>;
+
+    /// The maintainer keys this repository has adopted
+    /// (`trust maintainer list --format json`; RFC 054 decision 1). Reads only.
+    ///
+    /// **`list`, never `check`.** One list answers every id at once and exits 0;
+    /// `trust maintainer check` exits **1** for an id that is not trusted, with a valid report
+    /// (RFC 054 F2) — a non-zero exit that means *no*, which every other command on this trait
+    /// means *refused* by. Asking once avoids both the per-id spawn and that ambiguity.
+    ///
+    /// **Banded at [`crate::FILES_FROM_MINOR`]**, the one measured band (RFC 054 decision 4):
+    /// below it nothing is spawned and the answer is [`TrustedKeys::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: a report of another shape is an environment error (`UD-02`),
+    /// or whatever stopped prikk running.
+    fn trusted_keys(&self, repo: &Path) -> Result<TrustedKeys>;
 }
 
 /// The one line a bundle's tip is read from: `tip block: <64 lowercase hex>`, in

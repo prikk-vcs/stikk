@@ -223,6 +223,11 @@ impl Prikk for Recording {
         self.inner.bundle_import(repo, path)
     }
 
+    fn trusted_keys(&self, repo: &Path) -> Result<stikk_prikk::TrustedKeys> {
+        self.record("trusted_keys");
+        self.inner.trusted_keys(repo)
+    }
+
     fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<stikk_prikk::FileMetaRead> {
         self.record("file_meta");
         self.inner.file_meta(repo, block, path)

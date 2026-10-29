@@ -47,8 +47,8 @@ use crate::{
     History, OperationContent, PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold,
     QueuedElsewhere, QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch, QueuedPath,
     RefEntry, RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles, ThresholdStatus,
-    UnpublishedBranch, UnsupportedPath, Verdict, Verification, VerifyStage, WorktreeEntry,
-    WorktreeStatus,
+    TrustedKey, UnpublishedBranch, UnsupportedPath, Verdict, Verification, VerifyStage,
+    WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -65,6 +65,7 @@ const VERIFY_SCHEMA: &str = "verify-report-v1";
 const BUNDLE_PREVIEW_SCHEMA: &str = "bundle-preview-v1";
 const PATH_CONTENT_SCHEMA: &str = "path-content-v1";
 const EXTRACT_REPORT_SCHEMA: &str = "extract-report-v1";
+const TRUST_LIST_SCHEMA: &str = "trust-list-v1";
 /// prikk's own refusal document, which `extract --format json` prints on **stdout** at
 /// exit 1 (RFC 053 F1). Recognized by this and nothing else — never by its prose.
 pub(super) const REFUSAL_SCHEMA: &str = "refusal-v1";
@@ -1532,4 +1533,30 @@ pub(super) fn refusal_message(text: &str) -> Result<Option<String>> {
             .map_err(|_| files_rule("a `refusal-v1` document with no string `message`"))?
             .to_string(),
     ))
+}
+
+/// `prikk trust maintainer list --format json` (`trust-list-v1`), prikk ≥ 0.54
+/// (RFC 054 decision 1).
+///
+/// **Order is prikk's**, and kept: it is adoption order, which is the only order prikk offers and
+/// the one a reader comparing two repositories' lists would expect. **An empty `keys` is a
+/// list**, not a missing field and not an error — a repository made with `init` alone has adopted
+/// nothing.
+///
+/// Both fields are required of every entry. A key with no `public_key` could not be compared with
+/// `key status`'s, which is the whole of how a row is marked *yours*.
+///
+/// # Errors
+/// [`StikkError::Environment`] if the text is not JSON, announces another schema, or is missing a
+/// field this shape requires.
+pub(super) fn trust_list(text: &str) -> Result<Vec<TrustedKey>> {
+    let value = report(text, TRUST_LIST_SCHEMA)?;
+    let mut keys = Vec::new();
+    for entry in value.array_field("keys")? {
+        keys.push(TrustedKey {
+            key_id: entry.str_field("key_id")?.to_string(),
+            public_key: entry.str_field("public_key")?.to_string(),
+        });
+    }
+    Ok(keys)
 }

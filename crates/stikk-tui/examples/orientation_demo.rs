@@ -126,6 +126,10 @@ impl Prikk for SlowOrientation {
         self.0.bundle_import(repo, path)
     }
 
+    fn trusted_keys(&self, repo: &Path) -> Result<stikk_prikk::TrustedKeys> {
+        self.0.trusted_keys(repo)
+    }
+
     fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<stikk_prikk::FileMetaRead> {
         self.0.file_meta(repo, block, path)
     }

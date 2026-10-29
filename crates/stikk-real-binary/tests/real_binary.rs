@@ -9192,10 +9192,10 @@ fn rfc054_the_trust_list_grows_and_only_your_own_key_is_marked_at_the_ceiling() 
 /// **Leg 4: a bundle's sealer is *not trusted* in a receiver that has not adopted it, and
 /// *trusted* once the harness does.**
 ///
-/// The sender seals under a key id of its own rather than prikk's default, so the two
-/// repositories' ids are distinct — which is the case RFC 054 decision 3 describes. The case
-/// where they are *not* is
-/// [`rfc054_a_shared_default_key_id_is_matched_by_id_alone`].
+/// The receiver has adopted nothing at all, so there is no id to collide with — the plain case
+/// decision 3 describes. The case where a sealer's id **is** one the receiver has adopted, for
+/// another key, is
+/// [`rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import`].
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn rfc054_a_bundles_sealer_becomes_trusted_when_the_key_is_adopted_at_the_ceiling() {
@@ -9247,8 +9247,10 @@ fn rfc054_a_bundles_sealer_becomes_trusted_when_the_key_is_adopted_at_the_ceilin
 
     // **A receiver made with `init` alone**, so it has adopted nothing at all — the honest
     // shape of meeting a stranger's bundle. A `setup` receiver would hold its own key under
-    // prikk's default id and collide with the sender's, which is
-    // `rfc054_a_shared_default_key_id_is_matched_by_id_alone`'s subject rather than this one's.
+    // the harness's `maintainer` id (`support.rs`, `MAINTAINER_KEY_ID`) and collide with the
+    // sender's, which is
+    // `rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import`'s subject
+    // rather than this one's.
     let receiver_dir = root.join("receiver");
     let _ = std::fs::remove_dir_all(&receiver_dir);
     std::fs::create_dir_all(&receiver_dir)
@@ -9316,34 +9318,42 @@ fn rfc054_a_bundles_sealer_becomes_trusted_when_the_key_is_adopted_at_the_ceilin
         view.sealers
             .judged()
             .iter()
-            .all(|s| s.trust == stikk_core::SealerTrust::Trusted),
+            .all(|s| s.trust == stikk_core::SealerTrust::NamesATrustedKey),
         "0.{}: adopted, and not yours: {:?}",
         bin.minor,
         view.sealers
     );
 }
 
-/// **A finding, pinned: two repositories that never set `PRIKK_MAINTAINER_KEY_ID` seal under
-/// prikk's default id, and the sealer row matches on that id alone.**
+/// **The measured case behind decision 3's wording: a sealer id is a name the sealer chose,
+/// and only `verify` after import checks the signature behind it.**
 ///
-/// `bundle-preview-v1`'s `sealed_by` carries ids and **no public keys** (RFC 054 F4), so there
-/// is no second half to compare — and prikk's default id is the role's own name, `maintainer`.
-/// Two people who have not chosen an id therefore collide, and this card says *trusted by this
-/// repository* about a key the repository has never seen.
+/// `bundle-preview-v1`'s `sealed_by` is the `key_id` string out of the signature envelope
+/// (RFC 054 F4) — ids, no public keys, checked against nothing at preview time. So a bundle
+/// sealed under an id the receiver has adopted previews cleanly and imports cleanly, whoever
+/// holds the key. The card therefore says the id **names** an adopted key, and carries
+/// [`stikk_core::NAMES_BUT_DOES_NOT_PROVE`] beneath the rows.
 ///
-/// **This test does not assert that the behaviour is right.** It pins what it is, so the
-/// wording decision 3 chose is reconsidered with the case in front of it rather than
-/// rediscovered by a user. Reported with RFC 054 Handoff A.
+/// **Where the shared id comes from here: the harness, not prikk.** `support.rs`'s
+/// `MAINTAINER_KEY_ID` puts every fixture's key under `maintainer`, so two fixtures hold
+/// *different* keys under the *same* id. (Since prikk 0.45.0 a key made by `setup` or
+/// `key generate --out` gets `ed25519-<16 hex of its public key>`, so two strangers do not
+/// normally collide by accident — a sender who wants to can still choose the id.) The shape
+/// is the same either way, and it is the architect's measured spoof at 0.55.0:
+/// `.git-exclude/reports/054-trust-read/spoof054-0.55.txt`.
+///
+/// **This leg is the evidence for the sentence stikk shows.** If prikk ever stops catching
+/// this at `verify`, it goes red.
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
-fn rfc054_a_shared_default_key_id_is_matched_by_id_alone() {
+fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     Fixture::clear_env();
     let bin = PrikkBin::ceiling();
     if !rfc054_in_band(&bin) || bin.minor < stikk_core::BUNDLE_FROM_MINOR {
-        eprintln!("RFC 054's collision leg SKIPPED at 0.{}.", bin.minor);
+        eprintln!("RFC 054's naming leg SKIPPED at 0.{}.", bin.minor);
         return;
     }
     let backend = CliBackend::with_program(&bin.path);
@@ -9360,14 +9370,15 @@ fn rfc054_a_shared_default_key_id_is_matched_by_id_alone() {
     backend
         .commit(&repo, "heads/main", "base")
         .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
-    // **Both fixtures use prikk's default id**, which is the whole point of this leg.
+    // **Both fixtures' keys sit under the harness's `maintainer`**, which is the whole point
+    // of this leg: the sender seals under an id the receiver has adopted for another key.
     sender.set_maintainer_env();
     backend
         .seal(&repo, "heads/main")
         .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
     Fixture::clear_env();
 
-    let bundle = root.join("default-id.bundle");
+    let bundle = root.join("named-id.bundle");
     prikk_ok(
         &bin,
         &repo,
@@ -9381,7 +9392,7 @@ fn rfc054_a_shared_default_key_id_is_matched_by_id_alone() {
         ],
     );
 
-    // A receiver with its own `setup` key — a *different* key under the *same* default id.
+    // A receiver with its own `setup` key — a *different* key under the *same* id.
     let receiver = Fixture::build(&bin);
     let opened = stikk_core::open_bundle(&backend, receiver.repo(), &bundle)
         .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
@@ -9397,16 +9408,94 @@ fn rfc054_a_shared_default_key_id_is_matched_by_id_alone() {
     );
     assert_eq!(
         judged[0].key_id, "maintainer",
-        "0.{}: prikk's default id is the role's own name",
+        "0.{}: the harness's id, shared by both fixtures",
         bin.minor
     );
+    // **`NamesATrustedKey`, not `NamesYourKey`**, and the environment is the reason: the keys
+    // are cleared above, so `key status` resolves no key of the reader's own and no row in the
+    // Trust view is marked *yours*. The id is adopted here all the same — by the receiver's own
+    // key, which is not the one that sealed this bundle, and that is exactly the case the
+    // sentence beneath the rows is for.
     assert_eq!(
         judged[0].trust,
-        stikk_core::SealerTrust::Trusted,
-        "0.{}: **the finding** — the receiver has never seen this key, and the row says \
-         trusted, because an id is all a bundle records",
+        stikk_core::SealerTrust::NamesATrustedKey,
+        "0.{}: the id names an adopted key, and the card says no more than that",
         bin.minor
     );
+
+    // **The sentence is on the card**, beneath the rows and above prikk's own note.
+    assert!(
+        view.sealers.names_an_adopted_key(),
+        "0.{}: the sentence is owed here",
+        bin.minor
+    );
+    let stikk_core::ImportPreview::Ready { token } = stikk_core::import_preview(
+        &backend,
+        receiver.repo(),
+        &bundle,
+        stikk_core::BUNDLE_LINEAGE_LIMIT,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: import_preview: {e}", bin.minor)) else {
+        panic!("0.{}: the bundle imports", bin.minor);
+    };
+    let summary = token.summary();
+    let aside = summary
+        .asides
+        .iter()
+        .find(|aside| aside.body.iter().any(|line| line.contains("maintainer")))
+        .unwrap_or_else(|| panic!("0.{}: the sealer aside: {summary:?}", bin.minor));
+    assert_eq!(
+        aside.body.first().map(String::as_str),
+        Some("maintainer — names a key this repository trusts"),
+        "0.{}: the row: {:?}",
+        bin.minor,
+        aside.body
+    );
+    assert_eq!(
+        aside.body.get(1).map(String::as_str),
+        Some(stikk_core::NAMES_BUT_DOES_NOT_PROVE),
+        "0.{}: what a name is worth, above prikk's note: {:?}",
+        bin.minor,
+        aside.body
+    );
+
+    // **Import, and then ask prikk.** This is the step the sentence sends the reader to.
+    stikk_core::import_confirm_and_execute(
+        &backend,
+        receiver.repo(),
+        *token,
+        backend
+            .readiness(receiver.repo())
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness,
+        stikk_core::Evidence::ExplicitYes,
+        &stikk_core::ImportTarget {
+            path: bundle.clone(),
+            received: "remotes/heads/main".to_string(),
+        },
+    )
+    .unwrap_or_else(|e| panic!("0.{}: import: {e}", bin.minor));
+
+    let stikk_core::VerifyView::Checked(checked) = stikk_core::verify(&backend, receiver.repo())
+        .unwrap_or_else(|e| panic!("0.{}: verify: {e}", bin.minor))
+    else {
+        panic!("0.{}: verify reports in band", bin.minor);
+    };
+    assert!(
+        !checked.ok,
+        "0.{}: **the point of the leg** — the seal does not verify against the adopted key",
+        bin.minor
+    );
+    assert!(
+        checked
+            .conditions
+            .iter()
+            .any(|row| row.id == "publication-trust"),
+        "0.{}: prikk's own condition: {:?}",
+        bin.minor,
+        checked.conditions
+    );
+    Fixture::clear_env();
 }
 
 /// **At the floor the list is unavailable, and the sealer row is 0.16.0's** — nothing extra,

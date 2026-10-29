@@ -1,6 +1,6 @@
 # Handoff A — RFC 055: the prikk 0.55 re-baseline (v1)
 
-**Companion to:** [RFC 055](../../accepted/055-prikk-0-55-rebaseline.md), **accepted 2026-10-29**. **Read the RFC
+**Companion to:** [RFC 055](../../done/055-prikk-0-55-rebaseline.md), **accepted 2026-10-29**. **Read the RFC
 first**, F1–F3 and decisions 1–4. **Covers:** all of it. 0.17.0's increment 3.
 **Best landed before RFC 053's [Handoff A](../053-get-files-back/a-get-files-back-handoff-v1.md) commit 1**, so 053's
 and 054's legs run at 0.55 from their first run. If 053 is already under way, land this next; nothing breaks either

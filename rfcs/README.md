@@ -29,16 +29,15 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 053 | [Getting files back: an earlier version, saved outside the repository](./accepted/053-get-files-back.md) | save one file as it was at a block (`cat --output`), or all of a block's files into a new folder (`extract`), from Block detail; outside the repository, never over an existing path; prikk ≥ 0.54. **Accepted 2026-10-29**; 0.17.0 increment 1 | [A: get files back](./handoffs/053-get-files-back/a-get-files-back-handoff-v1.md) |
-| 054 | [Trust, read-only: which keys this repository trusts](./accepted/054-trust-read-only.md) | a Trust view (`T`) of the adopted maintainer keys, yours marked; which adopted key each bundle sealer's id names (decision 3 amended); prikk ≥ 0.54. **Accepted 2026-10-29**, delivered 2026-10-29; 0.17.0 increment 2 | [A: trust, read-only](./handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md) |
-| 055 | [The prikk 0.55 re-baseline](./accepted/055-prikk-0-55-rebaseline.md) | validated through prikk 0.55.0; the suite green at 0.28.0 and 0.55.0 with only `VALIDATED_MAX_MINOR` moved. **Accepted 2026-10-29**; 0.17.0 increment 3, best landed before RFC 053's commit 1 | [A: the re-baseline](./handoffs/055-prikk-0-55-rebaseline/a-rebaseline-handoff-v1.md) |
+_None: RFCs 053, 054 and 055 delivered and closed 2026-10-29._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 053 | [Getting files back: an earlier version, saved outside the repository](./done/053-get-files-back.md) | 0.17.0 candidate (on `main`) | saving from Patch detail, History or Compare; writing into the worktree (`FR-053`'s materialize half, `FR-054`); three small follow-ups carried to the next touch | [A: get files back](./handoffs/053-get-files-back/a-get-files-back-handoff-v1.md) |
+| 054 | [Trust, read-only: which keys this repository trusts](./done/054-trust-read-only.md) | 0.17.0 candidate (on `main`); decision 3 amended in review | adding and removing keys and the TOFU event (`FR-103`'s write half); two prikk items held for a letter | [A: trust, read-only](./handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md) |
+| 055 | [The prikk 0.55 re-baseline](./done/055-prikk-0-55-rebaseline.md) | 0.17.0 candidate (on `main`) | none | [A: the re-baseline](./handoffs/055-prikk-0-55-rebaseline/a-rebaseline-handoff-v1.md) |
 | 051 | [Arch Linux packages on the AUR](./done/051-arch-linux-packages.md) | **0.16.0**; first publication by 0.16.0's release run | the push path, proven at the first publication; `aarch64` lint-only | [A: AUR packages](./handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) |
 | 052 | [The prikk 0.54 re-baseline, and prikk's own Windows installer](./done/052-prikk-0-54-rebaseline.md) | **0.16.0** | none | [A: the re-baseline](./handoffs/052-prikk-0-54-rebaseline/a-rebaseline-handoff-v1.md) |
 | 050 | [Exchange: sharing work as a bundle file](./done/050-exchange-bundles.md) | **0.16.0** | adopting a received branch (a merge), trusting its sealer, sync, opening a bundle with no repository, and choosing another branch to compare with; three prikk items held for a letter | [A: open a bundle](./handoffs/050-exchange-bundles/a-open-a-bundle-handoff-v1.md) · [B: import and export](./handoffs/050-exchange-bundles/b-import-and-export-handoff-v1.md) |

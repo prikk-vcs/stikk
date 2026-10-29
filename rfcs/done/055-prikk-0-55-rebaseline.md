@@ -1,6 +1,6 @@
 # RFC 055 — The prikk 0.55 re-baseline
 
-**Status.** **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/055-prikk-0-55-rebaseline/a-rebaseline-handoff-v1.md) issued. **Proposed 2026-10-29** by the architect, as 0.17.0's conditional increment 3
+**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`62e2ad0`, `051378e`); 0.17.0 candidate. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/055-prikk-0-55-rebaseline/a-rebaseline-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's conditional increment 3
 (`.git-exclude/release/0-17-0-scope.md`: *"if prikk publishes a new minor before the cut"*). prikk **0.55.0** published
 2026-10-28 (GitHub release *Latest*, crates.io). **No open question.**
 Measured against real prikk **0.55.0** and **0.28.0** binaries. Evidence: `.git-exclude/reports/053-get-files-back/`
@@ -63,3 +63,11 @@ From prikk's 0.55.0 release notes, each checked against stikk:
 
 **One handoff**, issued on acceptance. Its gate is F1 reproduced: the suite at 0.28.0 and 0.55.0 with the constant
 moved, then the full platform matrix in CI after the push.
+
+## Delivered
+
+**One handoff, two commits, green on `main` at `051378e`**: CI, Docs, supply chain, `installers.yml` (dispatched) and
+the real-binary suite on the full platform matrix (69 cases at 0.28.0 and 0.55.0). Commit 1 moved only
+`VALIDATED_MAX_MINOR`, and the suite at that commit is the evidence; commit 2 says `0.55.0` in the seven places stikk
+states the range. Two sentences true then and false once RFC 053 called `extract` were carried to RFC 053 and reworded
+there (`6b14260`).

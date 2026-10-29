@@ -1,6 +1,6 @@
 # Handoff A — RFC 054: trust, read-only (v1)
 
-**Companion to:** [RFC 054](../../accepted/054-trust-read-only.md), **accepted 2026-10-29**. **Read the RFC first**,
+**Companion to:** [RFC 054](../../done/054-trust-read-only.md), **accepted 2026-10-29**. **Read the RFC first**,
 F1–F4 and decisions 1–5. **Covers:** all of it. 0.17.0's increment 2.
 **Start when RFC 053's [Handoff A](../053-get-files-back/a-get-files-back-handoff-v1.md) is pushed.**
 **Not a release.**

@@ -1,6 +1,6 @@
 # RFC 053 — Getting files back: an earlier version, saved outside the repository
 
-**Status.** **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/053-get-files-back/a-get-files-back-handoff-v1.md) issued. **Proposed 2026-10-29** by the architect, as 0.17.0's increment 1 (`.git-exclude/release/0-17-0-scope.md`,
+**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`e304e9a`..`6b14260`, and `b280057` for Windows); 0.17.0 candidate. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/053-get-files-back/a-get-files-back-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's increment 1 (`.git-exclude/release/0-17-0-scope.md`,
 authorized 2026-10-29). **No open question.**
 Measured against a real prikk **0.54.1**: `.git-exclude/reports/053-get-files-back/` (`measure053.sh` →
 `measure053-0.54.txt`, one fresh repository and a receiver). prikk's source read in the clone at the `0.54.1` tag
@@ -150,3 +150,25 @@ unavailable.
   the need without it.
 - **Overwrite** anything, **force** a full replay, or **bound** a point by size.
 - **Save from Patch detail, History or Compare** (decision 3).
+
+## Delivered
+
+**One handoff, six commits, green on `main` at `18b4223`**: CI, Docs, supply chain, and the real-binary suite on the full
+platform matrix (80 cases at 0.28.0 and 0.55.0 on Linux and macOS; 79 on Windows, where the execute-bit leg is
+`#[cfg(unix)]`).
+
+- **A, getting files back** (`e304e9a`..`6b14260`). Four seam methods (`file_meta`, `save_file`, `extract_plan`,
+  `extract`), each refusing a relative path before anything is spawned, with `refusal-v1` recognised by
+  `schema_version` and its `message` shown verbatim. **Both destination rules are stikk's, decided before prikk is
+  asked**: never inside the repository, never over anything already there. `F` and `A` in Block detail, with the card
+  naming the block, the size and the resolved destination; the execute-bit and full-replay notices sit above the
+  consequence (`ConfirmationSummary::notices`, a Breaking row). Suite leg 3 proves the point of the rule: at 0.55
+  `cat --output` still writes inside the repository.
+- **Found after the push**: the first full-matrix run was red on Windows, in the test only: the test compared
+  `Path::display()` with prikk's forward-slash paths. Fixed in `b280057`, reviewed with RFC 054, green on Windows at
+  `18b4223`.
+- **Accepted deviations**: a refusal in both profiles rather than a `debug_assert!`; one 12-character short id; four
+  wrapper types.
+- **Carried to the next time those files are touched**: "already there" as `symlink_metadata(..).is_ok()` (prikk's
+  meaning, which a dangling symlink satisfies) in `files.rs` and `bundle.rs`; Block detail's key hint on its own row at
+  80 columns; `version.rs:113` rewrapped.

@@ -1,6 +1,6 @@
 # Handoff A — RFC 053: getting files back (v1)
 
-**Companion to:** [RFC 053](../../accepted/053-get-files-back.md), **accepted 2026-10-29**. **Read the RFC first**,
+**Companion to:** [RFC 053](../../done/053-get-files-back.md), **accepted 2026-10-29**. **Read the RFC first**,
 F1–F6 and decisions 1–8. **Covers:** all of it. 0.17.0's increment 1.
 **Not a release.**
 

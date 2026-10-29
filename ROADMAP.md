@@ -452,12 +452,12 @@ a fabricated worktree entry was fixed.
 
 Scoped and authorized 2026-10-29, in delivery order:
 
-1. **Getting files back** ([RFC 053](rfcs/accepted/053-get-files-back.md), `FR-053`'s non-destructive half): from
+1. **Getting files back — landed on `main`** ([RFC 053](rfcs/done/053-get-files-back.md), `FR-053`'s non-destructive half): from
    Block detail, save one file as it was at that block, or all of its files into a new folder — outside the
    repository, never over an existing path, previewed by prikk's own plan.
-2. **Trust, read-only** ([RFC 054](rfcs/accepted/054-trust-read-only.md), `FR-103`'s read half): a Trust view of the
+2. **Trust, read-only — landed on `main`** ([RFC 054](rfcs/done/054-trust-read-only.md), `FR-103`'s read half): a Trust view of the
    keys this repository trusts, yours marked, and on the bundle cards which adopted key each sealer's id names.
-3. **The prikk 0.55 re-baseline** ([RFC 055](rfcs/accepted/055-prikk-0-55-rebaseline.md)): prikk 0.55.0 was
+3. **The prikk 0.55 re-baseline — landed on `main`** ([RFC 055](rfcs/done/055-prikk-0-55-rebaseline.md)): prikk 0.55.0 was
    published 2026-10-28; the suite is green at 0.28.0 and 0.55.0 with only the validated ceiling moved.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,

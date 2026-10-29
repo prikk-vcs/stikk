@@ -1,6 +1,6 @@
 # RFC 054 — Trust, read-only: which keys this repository trusts
 
-**Status.** **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md) **delivered 2026-10-29** (pushed `18b4223`), with **decision 3 amended** in its review. **Proposed 2026-10-29** by the architect, as 0.17.0's increment 2 (`.git-exclude/release/0-17-0-scope.md`,
+**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`90d5ff1`..`18b4223`), with **decision 3 amended** in its review; 0.17.0 candidate. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's increment 2 (`.git-exclude/release/0-17-0-scope.md`,
 authorized 2026-10-29). **No open question.**
 Measured against a real prikk **0.54.1**: `.git-exclude/reports/054-trust-read/` (`measure054.sh` →
 `measure054-0.54.txt`, and `measure054-0.55.txt` at 0.55.0, identical but for the version: a bare repository, one after `setup`, a second adopted key, and a receiver that adopted
@@ -105,3 +105,23 @@ key this repository trusts*. **At 0.28**, unavailable.
 - **Change trust** (decision 5).
 - **Show any key material** beyond public keys and ids.
 - **Decline an import** because its sealer is not trusted.
+
+## Delivered
+
+**One handoff, nine commits in two review rounds (`b280057` among them is RFC 053's), green on `main` at `18b4223`**: CI, Docs, supply chain, and the
+real-binary suite on the full platform matrix (80 cases at 0.28.0 and 0.55.0; 79 on Windows).
+
+- **The seam**: `trusted_keys` on `trust maintainer list --format json`, banded at `FILES_FROM_MINOR`; `check` is
+  asserted absent by name. An empty `keys` is a list.
+- **The Trust view** (`T`): stikk's sentence on what trust means, each key in prikk's order with its public key
+  hard-split, **yours** only where id **and** public key match `key status`. An empty state that gives prikk's command
+  as text and says where a public key should come from. No key material, asserted on the rendered buffer.
+- **The bundle cards**: each sealer's id on its own rows, with the answer beneath it, so a long id never pushes the
+  answer off screen. Below the band, 0.16.0's rows (`SealerTrustRead::Unavailable`, kept apart from a failed read).
+- **Caught in review, and decision 3 amended**: the dev team's suite found a sealer marked trusted by a repository
+  that had never seen its key. The architect measured the general case (`spoof054.sh`): a bundle records the id its
+  sealer chose, preview and import accept a forged one, and only `verify` after import fails it. The cards now say
+  what an id **names**, followed by *"A bundle names its sealer but does not prove it…"*, and a suite leg imports such
+  a bundle and asserts Verify's `publication-trust` failure.
+- **Held for the next necessary letter**: whether `bundle-preview-v1` could say per sealer whether the seal verifies,
+  and whether a received ref that fails `verify` is meant to fail the whole repository.

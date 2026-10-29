@@ -2,6 +2,22 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Changed
+
+- **The two save keys in Block detail get a row of their own.** *"F saves the selected file, A
+  saves all"* shared a row with the state line, and at 80 columns it broke across two rows
+  mid-phrase. The state line reads as it did before, and the keys sit beneath it.
+
+### Fixed
+
+- **A broken shortcut where a file would be saved is refused by stikk, in its own words.** Where
+  the destination was a symbolic link pointing at something that is not there, stikk saw nothing
+  in the way and armed the card; prikk then refused it. Nothing was ever written over — but the
+  refusal came from the wrong program. stikk now asks the question prikk asks, for a saved file,
+  a saved folder and a bundle export alike.
+
 ## 0.17.0 — 2026-10-29
 
 **stikk now gets an earlier version of your files back, and shows which keys your repository

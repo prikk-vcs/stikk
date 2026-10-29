@@ -3768,3 +3768,207 @@ fn an_unmeasured_stage_status_is_kept_as_prikks_word() {
         report.raw
     );
 }
+
+// ---------------------------------------------------------------- RFC 053: the files readers
+//
+// **Captured from a real prikk 0.54.1 and 0.55.0**, 2026-10-29, by
+// `.git-exclude/reports/053-get-files-back/measure053.sh` — one repository with four files
+// (`a.txt`, `bin.dat`, `dir/sub/d.txt`, an executable `run.sh`), two blocks, and a receiver that
+// imported a bundle from it. Captured, never written.
+
+/// `cat --path a.txt --ref <B1> --format json`, prikk 0.54.1.
+const PATH_CONTENT_0_54: &str = r#"{
+  "schema_version": "path-content-v1",
+  "point": "f687c8ff7394b57414d88b191700eb67b4a15b5598cb11fb1bd848f0c1746243",
+  "target_block_id": "f687c8ff7394b57414d88b191700eb67b4a15b5598cb11fb1bd848f0c1746243",
+  "path": "a.txt", "kind": "file", "encoding": "text", "mode": 33188, "size": 4
+}"#;
+
+/// `extract --ref <B1> ../out1 --plan-only --format json`, prikk 0.54.1.
+const EXTRACT_PLAN_0_54: &str = r#"{
+  "schema_version": "extract-report-v1",
+  "extract_repository": "/tmp/scratch/r/.prikk",
+  "point": "f687c8ff7394b57414d88b191700eb67b4a15b5598cb11fb1bd848f0c1746243",
+  "point_kind": "block",
+  "target_block_id": "f687c8ff7394b57414d88b191700eb67b4a15b5598cb11fb1bd848f0c1746243",
+  "claim_parent_block_id": null,
+  "provisional": false,
+  "written": false,
+  "file_count": 4,
+  "total_bytes": 30,
+  "largest_file_bytes": 18
+}"#;
+
+/// `extract --ref remotes/heads/main ../out-recv --format json` in the receiver, prikk 0.54.1 —
+/// the one measured report with `provisional: true` (RFC 053 F4).
+const EXTRACT_PROVISIONAL_0_54: &str = r#"{
+  "schema_version": "extract-report-v1",
+  "extract_repository": "/tmp/scratch/s/.prikk",
+  "point": "remotes/heads/main",
+  "point_kind": "ref",
+  "target_block_id": "3dfadd19129262f68dcd261c62b9c7d8c94865e9aba51ced36eba0519b99da5e",
+  "claim_parent_block_id": null,
+  "provisional": true,
+  "written": true,
+  "file_count": 3,
+  "total_bytes": 25,
+  "largest_file_bytes": 18
+}"#;
+
+/// `extract` into an existing directory, prikk 0.54.1: a `refusal-v1` document on **stdout**.
+const REFUSAL_EXISTS_0_54: &str = r#"{"schema_version": "refusal-v1", "command": "extract", "refusal": "destination-exists", "reason": null, "message": "precondition not met: refusing to extract into an existing path: ../out1 (nothing was written)"}"#;
+
+/// `extract` into a path inside the repository, **prikk 0.55.0** — the refusal 0.54 did not make
+/// (RFC 053 F2, RFC 055 F2).
+const REFUSAL_INSIDE_0_55: &str = r#"{"schema_version": "refusal-v1", "command": "extract", "refusal": "destination-inside-repository", "reason": null, "message": "precondition not met: refusing to extract into inside-out, inside this repository's own root /tmp/scratch/r -- choose a destination outside the repository (nothing was written)"}"#;
+
+#[test]
+fn path_content_reads_the_four_fields_stikk_uses() {
+    let meta = path_content(PATH_CONTENT_0_54).expect("prikk 0.54.1's own report reads");
+    assert_eq!(meta.kind, "file");
+    assert_eq!(meta.encoding, "text");
+    // `0o100644` — not executable, which is what the card's notice turns on.
+    assert_eq!(meta.mode, 33188);
+    assert_eq!(meta.mode & 0o111, 0);
+    assert_eq!(meta.size, 4);
+}
+
+#[test]
+fn an_executable_mode_survives_as_prikk_reported_it() {
+    // `run.sh` at the same block: `0o100755`. The bit is the whole reason `mode` is read.
+    let text = PATH_CONTENT_0_54.replace("\"mode\": 33188", "\"mode\": 33261");
+    let meta = path_content(&text).expect("an executable file reads");
+    assert_eq!(meta.mode, 33261);
+    assert_ne!(meta.mode & 0o111, 0);
+}
+
+#[test]
+fn a_path_content_missing_a_field_is_a_shape_error() {
+    for (label, text) in [
+        (
+            "kind",
+            PATH_CONTENT_0_54.replace("\"kind\": \"file\", ", ""),
+        ),
+        ("mode", PATH_CONTENT_0_54.replace("\"mode\": 33188, ", "")),
+        ("size", PATH_CONTENT_0_54.replace(", \"size\": 4", "")),
+        (
+            "schema",
+            PATH_CONTENT_0_54.replace("path-content-v1", "path-content-v2"),
+        ),
+    ] {
+        let err = path_content(&text).err().unwrap_or_else(|| {
+            panic!("{label}: a report stikk cannot read must be refused, not defaulted")
+        });
+        assert_eq!(err.class(), "environment", "{label}");
+    }
+}
+
+#[test]
+fn an_extract_plan_reads_its_counts_and_says_it_wrote_nothing() {
+    let report = extract_report(EXTRACT_PLAN_0_54).expect("prikk 0.54.1's own plan reads");
+    assert!(!report.written, "`--plan-only` writes nothing");
+    assert!(!report.provisional);
+    assert_eq!(report.file_count, 4);
+    assert_eq!(report.total_bytes, 30);
+    assert_eq!(report.largest_file_bytes, 18);
+    assert_eq!(
+        report.target_block_id,
+        "f687c8ff7394b57414d88b191700eb67b4a15b5598cb11fb1bd848f0c1746243"
+    );
+}
+
+#[test]
+fn a_received_branchs_report_carries_provisional() {
+    let report = extract_report(EXTRACT_PROVISIONAL_0_54).expect("the receiver's report reads");
+    assert!(report.provisional, "RFC 053 F4: the notice turns on this");
+    assert!(report.written);
+    // **The point was a ref name and the report answers a block id**, which is why the field is
+    // read as an object id rather than carried as prikk's `point`.
+    assert_eq!(
+        report.target_block_id,
+        "3dfadd19129262f68dcd261c62b9c7d8c94865e9aba51ced36eba0519b99da5e"
+    );
+}
+
+#[test]
+fn a_truncated_extract_report_is_a_shape_error() {
+    for (label, text) in [
+        ("cut off", EXTRACT_PLAN_0_54[..120].to_string()),
+        (
+            "no provisional",
+            EXTRACT_PLAN_0_54.replace("  \"provisional\": false,\n", ""),
+        ),
+        (
+            "no file_count",
+            EXTRACT_PLAN_0_54.replace("  \"file_count\": 4,\n", ""),
+        ),
+        (
+            "another schema",
+            EXTRACT_PLAN_0_54.replace("extract-report-v1", "extract-report-v2"),
+        ),
+    ] {
+        let err = extract_report(&text)
+            .err()
+            .unwrap_or_else(|| panic!("{label} must be refused"));
+        assert_eq!(err.class(), "environment", "{label}");
+    }
+}
+
+/// **A `refusal-v1` is recognized by its `schema_version` and nothing else** (RFC 053 §7 trap 4),
+/// and its `message` travels verbatim.
+#[test]
+fn a_refusal_document_is_recognized_by_its_schema_and_carries_prikks_message() {
+    for (label, text, wanted) in [
+        (
+            "destination-exists, 0.54.1",
+            REFUSAL_EXISTS_0_54,
+            "precondition not met: refusing to extract into an existing path: ../out1 (nothing \
+             was written)",
+        ),
+        (
+            "destination-inside-repository, 0.55.0",
+            REFUSAL_INSIDE_0_55,
+            "precondition not met: refusing to extract into inside-out, inside this repository's \
+             own root /tmp/scratch/r -- choose a destination outside the repository (nothing was \
+             written)",
+        ),
+    ] {
+        let message = refusal_message(text)
+            .unwrap_or_else(|e| panic!("{label}: {e}"))
+            .unwrap_or_else(|| panic!("{label}: a refusal-v1 must be recognized"));
+        assert_eq!(message, wanted, "{label}: prikk's words, unrewritten");
+    }
+    // **Never parsed as a report**, which is the other half of the rule.
+    assert!(extract_report(REFUSAL_EXISTS_0_54).is_err());
+}
+
+#[test]
+fn anything_that_is_not_a_refusal_document_is_not_mistaken_for_one() {
+    for (label, text) in [
+        ("a real report", EXTRACT_PLAN_0_54),
+        (
+            "stderr prose",
+            "error: precondition not met: refusing to extract into an existing path",
+        ),
+        ("empty", ""),
+        (
+            "another schema",
+            r#"{"schema_version": "extract-report-v1"}"#,
+        ),
+    ] {
+        assert_eq!(
+            refusal_message(text).unwrap_or_else(|e| panic!("{label}: {e}")),
+            None,
+            "{label} is not a refusal document"
+        );
+    }
+}
+
+/// A `refusal-v1` with no `message` is a **shape error**, not a `None` — answering `None` would
+/// send the caller on to parse the same text as a report, and prikk's refusal would be lost.
+#[test]
+fn a_refusal_document_without_a_message_is_a_shape_error() {
+    let text = r#"{"schema_version": "refusal-v1", "command": "extract", "refusal": "io-failure"}"#;
+    let err = refusal_message(text).expect_err("a refusal with no message must be refused");
+    assert_eq!(err.class(), "environment");
+}

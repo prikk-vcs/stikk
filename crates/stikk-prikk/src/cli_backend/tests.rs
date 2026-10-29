@@ -3144,3 +3144,281 @@ fn a_missing_repeated_or_malformed_tip_line_refuses() {
     // refuses everything.
     assert!(crate::bundle_tip(&[good.to_string()]).is_ok());
 }
+
+// ---------------------------------------------------------------- RFC 053: the files seam
+//
+// **The argument vector is the thing to pin**, for the reason the ref writes pinned theirs: three
+// of RFC 053's traps live in the argv — the destination must arrive as one absolute argument, the
+// point must be the block id stikk was given, and **none of `--force`, `--allow-full-replay`,
+// `--max-files` or `--max-bytes` may ever be built**. A fake prikk that records its own argv is
+// how those become test failures rather than review findings.
+
+/// A fake `prikk` answering `--version` with `version`, logging every call's argv one per line to
+/// `argv`, and answering anything else with `lines` and exit `code`.
+#[cfg(unix)]
+fn fake_files_prikk(
+    tag: &str,
+    version: &str,
+    lines: &str,
+    code: i32,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-files-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let argv = dir.join("argv");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk {version}'; exit 0; fi\n\
+             : > \"{argv}\"\n\
+             for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"{argv}\"; done\n\
+             printf '%s' '{lines}'\n\
+             exit {code}\n",
+            argv = argv.display(),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (script, argv)
+}
+
+/// A minimal `extract-report-v1`, as one line, for the fake to print.
+#[cfg(unix)]
+const FAKE_EXTRACT_REPORT: &str = concat!(
+    r#"{"schema_version": "extract-report-v1", "target_block_id": "#,
+    r#""f687c8ff7394b57414d88b191700eb67b4a15b5598cb11fb1bd848f0c1746243", "#,
+    r#""provisional": false, "written": false, "file_count": 4, "total_bytes": 30, "#,
+    r#""largest_file_bytes": 18}"#,
+);
+
+#[cfg(unix)]
+const FAKE_BLOCK: &str = "f687c8ff7394b57414d88b191700eb67b4a15b5598cb11fb1bd848f0c1746243";
+
+/// **The point is the block id, the path is one argument, and `--output` is absolute** — and
+/// `--force` is nowhere (RFC 053 §7 traps 1–3).
+#[cfg(unix)]
+#[test]
+fn save_file_passes_the_block_an_absolute_output_and_never_force() {
+    let (script, argv) = fake_files_prikk("save", "0.55.0", "", 0);
+    let backend = CliBackend::with_program(&script);
+    let out = std::env::temp_dir().join("stikk-files-save-dest/a file.txt");
+    let saved = retrying_transient_exec_busy(|| {
+        backend.save_file(
+            std::path::Path::new("."),
+            FAKE_BLOCK,
+            "dir/a file.txt",
+            &out,
+        )
+    })
+    .expect("a save reads");
+    assert_eq!(saved, crate::FileSaved::Done);
+    let recorded = recorded_argv(&argv);
+    assert_eq!(
+        recorded,
+        vec![
+            "cat".to_string(),
+            "--path".to_string(),
+            "dir/a file.txt".to_string(),
+            "--ref".to_string(),
+            FAKE_BLOCK.to_string(),
+            "--output".to_string(),
+            out.display().to_string(),
+        ],
+        "the path and the destination must each stay one argument"
+    );
+    assert!(
+        !recorded.iter().any(|a| a == "--force"),
+        "`--force` must never be built: prikk's refusal of an existing file is the behaviour \
+         stikk wants"
+    );
+}
+
+/// **None of the four flags, ever** — on the plan or on the write (RFC 053 decision 1).
+#[cfg(unix)]
+#[test]
+fn extract_passes_the_block_an_absolute_dir_and_none_of_the_four_flags() {
+    let dir = std::env::temp_dir().join("stikk-files-extract-dest");
+    for (tag, plan_only) in [("plan", true), ("write", false)] {
+        let (script, argv) = fake_files_prikk(tag, "0.55.0", FAKE_EXTRACT_REPORT, 0);
+        let backend = CliBackend::with_program(&script);
+        let read = retrying_transient_exec_busy(|| {
+            if plan_only {
+                backend.extract_plan(std::path::Path::new("."), FAKE_BLOCK, &dir)
+            } else {
+                backend.extract(std::path::Path::new("."), FAKE_BLOCK, &dir)
+            }
+        })
+        .unwrap_or_else(|e| panic!("{tag}: {e}"));
+        let crate::Extracted::Read(report) = read else {
+            panic!("{tag}: in band, prikk answered");
+        };
+        assert_eq!(report.file_count, 4, "{tag}");
+
+        let recorded = recorded_argv(&argv);
+        let mut wanted = vec![
+            "extract".to_string(),
+            "--ref".to_string(),
+            FAKE_BLOCK.to_string(),
+            dir.display().to_string(),
+        ];
+        if plan_only {
+            wanted.push("--plan-only".to_string());
+        }
+        wanted.push("--format".to_string());
+        wanted.push("json".to_string());
+        assert_eq!(recorded, wanted, "{tag}");
+        for forbidden in [
+            "--force",
+            "--allow-full-replay",
+            "--max-files",
+            "--max-bytes",
+        ] {
+            assert!(
+                !recorded.iter().any(|a| a == forbidden),
+                "{tag}: `{forbidden}` must never be built — it removes a refusal stikk wants kept"
+            );
+        }
+    }
+}
+
+/// `cat --format json` is a **read**: no `--output`, and the four fields come back.
+#[cfg(unix)]
+#[test]
+fn file_meta_reads_without_writing_anything() {
+    let report = concat!(
+        r#"{"schema_version": "path-content-v1", "kind": "file", "#,
+        r#""encoding": "text", "mode": 33261, "size": 18}"#,
+    );
+    let (script, argv) = fake_files_prikk("meta", "0.55.0", report, 0);
+    let backend = CliBackend::with_program(&script);
+    let read = retrying_transient_exec_busy(|| {
+        backend.file_meta(std::path::Path::new("."), FAKE_BLOCK, "run.sh")
+    })
+    .expect("a read reads");
+    let crate::FileMetaRead::Read(meta) = read else {
+        panic!("in band, prikk answered");
+    };
+    assert_eq!(meta.mode, 33261);
+    assert_eq!(meta.size, 18);
+    let recorded = recorded_argv(&argv);
+    assert_eq!(
+        recorded,
+        vec![
+            "cat", "--path", "run.sh", "--ref", FAKE_BLOCK, "--format", "json"
+        ]
+    );
+    assert!(!recorded.iter().any(|a| a == "--output"));
+}
+
+/// **A `refusal-v1` on stdout at exit 1 becomes prikk's refusal, verbatim** — not a shape error,
+/// and not the classifier's reading of the stderr prose beside it (RFC 053 decision 1).
+#[cfg(unix)]
+#[test]
+fn an_extract_refusal_document_becomes_prikks_refusal_verbatim() {
+    let refusal = concat!(
+        r#"{"schema_version": "refusal-v1", "command": "extract", "#,
+        r#""refusal": "destination-exists", "reason": null, "message": "#,
+        r#""precondition not met: refusing to extract into an existing path: /tmp/out1 "#,
+        r#"(nothing was written)"}"#,
+    );
+    let (script, _argv) = fake_files_prikk("refusal", "0.55.0", refusal, 1);
+    let backend = CliBackend::with_program(&script);
+    let dir = std::env::temp_dir().join("stikk-files-refusal-dest");
+    let err = retrying_transient_exec_busy(|| {
+        backend.extract(std::path::Path::new("."), FAKE_BLOCK, &dir)
+    })
+    .expect_err("prikk exited 1 with a refusal document");
+    assert_eq!(
+        err.class(),
+        "refusal",
+        "prikk refused; stikk did not misread"
+    );
+    // **The message itself, not its rendering**: `Display` prefixes the class word, and what must
+    // be verbatim is what the variant carries into the view.
+    let stikk_model::StikkError::Refusal { message } = err else {
+        panic!("a refusal document must become a refusal");
+    };
+    assert_eq!(
+        message,
+        "precondition not met: refusing to extract into an existing path: /tmp/out1 (nothing was \
+         written)",
+        "prikk's message, unrewritten"
+    );
+}
+
+/// **Below the band nothing is spawned.** The fake would record an argv if it ran; the file must
+/// not exist at all.
+#[cfg(unix)]
+#[test]
+fn below_the_band_the_four_methods_answer_unavailable_and_spawn_nothing() {
+    let dir = std::env::temp_dir().join("stikk-files-band-dest");
+    let out = dir.join("a.txt");
+    let (script, argv) = fake_files_prikk("band", "0.53.0", FAKE_EXTRACT_REPORT, 0);
+    let backend = CliBackend::with_program(&script);
+    let repo = std::path::Path::new(".");
+
+    assert_eq!(
+        retrying_transient_exec_busy(|| backend.file_meta(repo, FAKE_BLOCK, "a.txt"))
+            .expect("below the band is an answer, not an error"),
+        crate::FileMetaRead::Unavailable
+    );
+    assert_eq!(
+        retrying_transient_exec_busy(|| backend.save_file(repo, FAKE_BLOCK, "a.txt", &out))
+            .expect("below the band is an answer"),
+        crate::FileSaved::Unavailable
+    );
+    assert_eq!(
+        retrying_transient_exec_busy(|| backend.extract_plan(repo, FAKE_BLOCK, &dir))
+            .expect("below the band is an answer"),
+        crate::Extracted::Unavailable
+    );
+    assert_eq!(
+        retrying_transient_exec_busy(|| backend.extract(repo, FAKE_BLOCK, &dir))
+            .expect("below the band is an answer"),
+        crate::Extracted::Unavailable
+    );
+    assert!(
+        !argv.exists(),
+        "below the band prikk must be asked its version and nothing else"
+    );
+}
+
+/// **A relative destination never reaches prikk** (RFC 053 §7 trap 1): `cat` and `extract` take no
+/// repository argument, so prikk would resolve it *inside the repository* — the one place this
+/// must never write.
+#[cfg(unix)]
+#[test]
+fn a_relative_destination_is_refused_before_prikk_is_asked_to_write() {
+    let (script, argv) = fake_files_prikk("relative", "0.55.0", FAKE_EXTRACT_REPORT, 0);
+    let backend = CliBackend::with_program(&script);
+    let repo = std::path::Path::new(".");
+    let relative = std::path::Path::new("out/a.txt");
+
+    for (label, result) in [
+        (
+            "save_file",
+            backend.save_file(repo, FAKE_BLOCK, "a.txt", relative).err(),
+        ),
+        (
+            "extract_plan",
+            backend.extract_plan(repo, FAKE_BLOCK, relative).err(),
+        ),
+        ("extract", backend.extract(repo, FAKE_BLOCK, relative).err()),
+    ] {
+        let err = result.unwrap_or_else(|| panic!("{label} must refuse a relative destination"));
+        assert_eq!(err.class(), "environment", "{label}");
+        assert!(err.to_string().contains("relative"), "{label}: {err}");
+    }
+    assert!(
+        !argv.exists(),
+        "the refusal must come before prikk is spawned to write"
+    );
+}

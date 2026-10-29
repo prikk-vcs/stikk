@@ -7506,6 +7506,12 @@ struct CountingWrites {
     imports: std::sync::atomic::AtomicUsize,
     /// How many times `bundle_export` was spawned, for the two destination rules.
     exports: std::sync::atomic::AtomicUsize,
+    /// How many times `save_file` was spawned. **The number RFC 053's guard legs assert is
+    /// zero**: stikk's two destination rules decline before prikk is asked, and a rule that
+    /// declined after the write would be no rule.
+    saves: std::sync::atomic::AtomicUsize,
+    /// How many times `extract` was spawned, for the same two rules.
+    extracts: std::sync::atomic::AtomicUsize,
 }
 
 impl CountingWrites {
@@ -7515,6 +7521,8 @@ impl CountingWrites {
             previews: std::sync::atomic::AtomicUsize::new(0),
             imports: std::sync::atomic::AtomicUsize::new(0),
             exports: std::sync::atomic::AtomicUsize::new(0),
+            saves: std::sync::atomic::AtomicUsize::new(0),
+            extracts: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 }
@@ -7676,6 +7684,42 @@ impl Prikk for CountingWrites {
         self.imports
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.bundle_import(repo, path)
+    }
+    fn file_meta(
+        &self,
+        repo: &std::path::Path,
+        block: &str,
+        path: &str,
+    ) -> stikk_model::Result<stikk_prikk::FileMetaRead> {
+        self.inner.file_meta(repo, block, path)
+    }
+    fn save_file(
+        &self,
+        repo: &std::path::Path,
+        block: &str,
+        path: &str,
+        output: &std::path::Path,
+    ) -> stikk_model::Result<stikk_prikk::FileSaved> {
+        self.saves.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.save_file(repo, block, path, output)
+    }
+    fn extract_plan(
+        &self,
+        repo: &std::path::Path,
+        block: &str,
+        dir: &std::path::Path,
+    ) -> stikk_model::Result<stikk_prikk::Extracted> {
+        self.inner.extract_plan(repo, block, dir)
+    }
+    fn extract(
+        &self,
+        repo: &std::path::Path,
+        block: &str,
+        dir: &std::path::Path,
+    ) -> stikk_model::Result<stikk_prikk::Extracted> {
+        self.extracts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.extract(repo, block, dir)
     }
     fn bundle_export(
         &self,

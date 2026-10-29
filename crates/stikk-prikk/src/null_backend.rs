@@ -90,6 +90,24 @@ pub struct NullBackend {
     /// How many times [`Prikk::bundle_export`] has been asked — as
     /// [`Self::bundle_import_calls`], for the two destination rules.
     bundle_export_calls: Arc<AtomicUsize>,
+    /// What [`Prikk::file_meta`] answers (RFC 053).
+    file_meta: Scripted<crate::FileMetaRead>,
+    /// What [`Prikk::save_file`] answers (RFC 053).
+    save_file: Scripted<crate::FileSaved>,
+    /// How many times [`Prikk::save_file`] has been asked — so a test can prove a destination
+    /// rule declined **without spawning it** (RFC 053 §7 trap 5). Shared across clones.
+    save_file_calls: Arc<AtomicUsize>,
+    /// What [`Prikk::extract_plan`] answers (RFC 053). **Its own slot, not [`Self::extract`]'s**:
+    /// the plan is read in the preview and the write runs at confirmation, and a test that shows
+    /// a destination rule stopping before either needs to script the two apart.
+    extract_plan: Scripted<crate::Extracted>,
+    /// How many times [`Prikk::extract_plan`] has been asked. Shared across clones.
+    extract_plan_calls: Arc<AtomicUsize>,
+    /// What [`Prikk::extract`] answers (RFC 053).
+    extract: Scripted<crate::Extracted>,
+    /// How many times [`Prikk::extract`] has been asked — as [`Self::save_file_calls`], for the
+    /// same two destination rules. Shared across clones.
+    extract_calls: Arc<AtomicUsize>,
     /// What [`Prikk::bundle_preview`] answers (RFC 050). **Its own slot, not `bundle_verify`'s**:
     /// the pair is read together, and a core test that shows a refused verify stopping before the
     /// preview needs to script the two independently.
@@ -179,6 +197,13 @@ impl NullBackend {
             // The default matches this backend's default version, which is below 0.53.
             bundle_verify: Ok(crate::BundleVerify::Unavailable),
             bundle_preview: Ok(crate::BundlePreview::Unavailable),
+            file_meta: Ok(crate::FileMetaRead::Unavailable),
+            save_file: Ok(crate::FileSaved::Unavailable),
+            save_file_calls: Arc::new(AtomicUsize::new(0)),
+            extract_plan: Ok(crate::Extracted::Unavailable),
+            extract_plan_calls: Arc::new(AtomicUsize::new(0)),
+            extract: Ok(crate::Extracted::Unavailable),
+            extract_calls: Arc::new(AtomicUsize::new(0)),
             bundle_preview_calls: Arc::new(AtomicUsize::new(0)),
             bundle_import: Ok(crate::BundleImport::Unavailable),
             bundle_import_calls: Arc::new(AtomicUsize::new(0)),
@@ -566,6 +591,84 @@ impl NullBackend {
         self.bundle_export_calls.load(Ordering::SeqCst)
     }
 
+    /// Answer [`Prikk::file_meta`] with one file's metadata (RFC 053).
+    #[must_use]
+    pub fn with_file_meta(mut self, meta: crate::FileMeta) -> Self {
+        self.file_meta = Ok(crate::FileMetaRead::Read(meta));
+        self
+    }
+
+    /// Fail [`Prikk::file_meta`], so a test can show prikk's refusal -- a path absent at that
+    /// block -- reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_file_meta_refusal(mut self, message: impl Into<String>) -> Self {
+        self.file_meta = Err(message.into());
+        self
+    }
+
+    /// Answer [`Prikk::save_file`] as prikk does on success: nothing written back (RFC 053 F1).
+    #[must_use]
+    pub fn with_save_file(mut self) -> Self {
+        self.save_file = Ok(crate::FileSaved::Done);
+        self
+    }
+
+    /// Fail [`Prikk::save_file`], so a test can show prikk's refusal -- an existing file, a
+    /// missing parent directory -- reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_save_file_refusal(mut self, message: impl Into<String>) -> Self {
+        self.save_file = Err(message.into());
+        self
+    }
+
+    /// How many times [`Prikk::save_file`] has been asked of this backend (and its clones).
+    #[must_use]
+    pub fn save_file_calls(&self) -> usize {
+        self.save_file_calls.load(Ordering::SeqCst)
+    }
+
+    /// Answer [`Prikk::extract_plan`] with `report` (RFC 053).
+    #[must_use]
+    pub fn with_extract_plan(mut self, report: crate::ExtractReport) -> Self {
+        self.extract_plan = Ok(crate::Extracted::Read(report));
+        self
+    }
+
+    /// Fail [`Prikk::extract_plan`], so a test can show prikk's refusal -- including a
+    /// `refusal-v1` document's message -- reaching the usual path verbatim.
+    #[must_use]
+    pub fn with_extract_plan_refusal(mut self, message: impl Into<String>) -> Self {
+        self.extract_plan = Err(message.into());
+        self
+    }
+
+    /// How many times [`Prikk::extract_plan`] has been asked of this backend (and its clones).
+    #[must_use]
+    pub fn extract_plan_calls(&self) -> usize {
+        self.extract_plan_calls.load(Ordering::SeqCst)
+    }
+
+    /// Answer [`Prikk::extract`] with `report` (RFC 053).
+    #[must_use]
+    pub fn with_extract(mut self, report: crate::ExtractReport) -> Self {
+        self.extract = Ok(crate::Extracted::Read(report));
+        self
+    }
+
+    /// Fail [`Prikk::extract`], so a test can show prikk's refusal reaching the usual path
+    /// verbatim.
+    #[must_use]
+    pub fn with_extract_refusal(mut self, message: impl Into<String>) -> Self {
+        self.extract = Err(message.into());
+        self
+    }
+
+    /// How many times [`Prikk::extract`] has been asked of this backend (and its clones).
+    #[must_use]
+    pub fn extract_calls(&self) -> usize {
+        self.extract_calls.load(Ordering::SeqCst)
+    }
+
     /// Answer [`Prikk::verify`] with `verification` (RFC 040).
     #[must_use]
     pub fn with_verification(mut self, verification: crate::Verification) -> Self {
@@ -851,6 +954,31 @@ impl Prikk for NullBackend {
     ) -> Result<crate::BundleExport> {
         self.bundle_export_calls.fetch_add(1, Ordering::SeqCst);
         deliver(&self.bundle_export)
+    }
+
+    fn file_meta(&self, _repo: &Path, _block: &str, _path: &str) -> Result<crate::FileMetaRead> {
+        deliver(&self.file_meta)
+    }
+
+    fn save_file(
+        &self,
+        _repo: &Path,
+        _block: &str,
+        _path: &str,
+        _output: &Path,
+    ) -> Result<crate::FileSaved> {
+        self.save_file_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.save_file)
+    }
+
+    fn extract_plan(&self, _repo: &Path, _block: &str, _dir: &Path) -> Result<crate::Extracted> {
+        self.extract_plan_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.extract_plan)
+    }
+
+    fn extract(&self, _repo: &Path, _block: &str, _dir: &Path) -> Result<crate::Extracted> {
+        self.extract_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.extract)
     }
 
     fn block_state(

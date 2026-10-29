@@ -25,9 +25,9 @@ pub mod version;
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
 pub use version::{
-    CURRENT_BRANCH_FROM_MINOR, DIFF_FROM_MINOR, EXCHANGE_FROM_MINOR, JSON_REPORTS_FROM_MINOR,
-    PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR, UNPUBLISHED_BRANCH_FROM_MINOR, Version,
-    validated_ceiling_display,
+    CURRENT_BRANCH_FROM_MINOR, DIFF_FROM_MINOR, EXCHANGE_FROM_MINOR, FILES_FROM_MINOR,
+    JSON_REPORTS_FROM_MINOR, PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR,
+    UNPUBLISHED_BRANCH_FROM_MINOR, Version, validated_ceiling_display,
 };
 
 use std::path::Path;
@@ -884,6 +884,88 @@ pub struct BundlePreviewRead {
     /// prikk's note that a move is not yet distinguishable from a delete plus a create,
     /// **verbatim**.
     pub rename_note: String,
+}
+
+/// One file's metadata at one block, from `cat --path <p> --ref <block> --format json`
+/// (`path-content-v1`; RFC 053 decision 1).
+///
+/// **Read, not shown.** Only [`Self::size`] reaches a card as a number, and [`Self::mode`] is
+/// read for one bit: whether the file is executable, which `cat --output` does **not** carry to
+/// the copy (RFC 053 F3). `kind` and `encoding` are prikk's own words, kept so a later reader can
+/// say what prikk said rather than infer it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileMeta {
+    /// prikk's own word for what this path is — `file` in every case measured.
+    pub kind: String,
+    /// prikk's own word for the content's encoding — `text` or `binary`.
+    pub encoding: String,
+    /// The POSIX mode prikk recorded, as prikk reports it (`33188` for `0o100644`).
+    ///
+    /// **Not the copy's mode.** `cat --output` writes the bytes and sets no permissions, so a
+    /// file whose mode has an execute bit here comes back without one (RFC 053 F3). The card says
+    /// so rather than leaving it to be discovered.
+    pub mode: u32,
+    /// The content's size in bytes, as prikk reports it.
+    pub size: u64,
+}
+
+/// One file's metadata, or why stikk did not ask for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileMetaRead {
+    /// prikk answered. Its `path-content-v1` report, parsed.
+    Read(FileMeta),
+    /// Below [`crate::FILES_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
+}
+
+/// Whether one file was written out, or why stikk did not try.
+///
+/// **`Done` carries nothing**, because prikk prints nothing on success (RFC 053 F1) — there is no
+/// report to keep, and inventing one from the request would be stikk asserting what it did not
+/// read. What the result sentence says comes from what stikk asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileSaved {
+    /// prikk wrote the file and exited 0, printing nothing.
+    Done,
+    /// Below [`crate::FILES_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
+}
+
+/// What `extract` reported, from `extract-report-v1` (RFC 053 decision 1).
+///
+/// **One type for the plan and for the write**, because prikk reports one schema for both and
+/// [`Self::written`] is what tells them apart. Two types would be stikk drawing a line prikk does
+/// not draw, and a caller could then hold a "plan" that had in fact written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtractReport {
+    /// The block prikk resolved the point to — a 64-hex id even where the point was a ref name.
+    pub target_block_id: String,
+    /// Whether prikk had to replay every file from the start of history with no trusted
+    /// checkpoint in reach (RFC 053 F4).
+    ///
+    /// **Not a verdict on the history.** prikk's own reading: the files match that history, and
+    /// nothing has checked the history's own integrity or whether its sealer is trusted here.
+    pub provisional: bool,
+    /// Whether this run wrote. `false` for `--plan-only`.
+    pub written: bool,
+    /// How many files the point holds.
+    pub file_count: u64,
+    /// Their total size in bytes.
+    pub total_bytes: u64,
+    /// The largest single file's size in bytes.
+    pub largest_file_bytes: u64,
+}
+
+/// An `extract` report, or why stikk did not ask for one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Extracted {
+    /// prikk answered. Its `extract-report-v1`, parsed.
+    Read(ExtractReport),
+    /// Below [`crate::FILES_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
 }
 
 /// What `branch switch` printed, or why stikk did not run it (RFC 045 decision 1).
@@ -1996,6 +2078,75 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError`]: prikk's own refusal for a destination it will not write or a
     /// ref it cannot find, verbatim (`ER-02`), or whatever stopped it running.
     fn bundle_export(&self, repo: &Path, ref_name: &str, output: &Path) -> Result<BundleExport>;
+
+    /// One file's metadata at one **block**, from `cat --path <p> --ref <block> --format json`
+    /// (RFC 053 decision 1). Writes nothing.
+    ///
+    /// **A block id, never a ref name.** A ref can move between the moment a card is drawn and
+    /// the moment it is confirmed; the block the reader opened cannot. Every method in this group
+    /// takes the point the same way, so none of them can be the one that drifted.
+    ///
+    /// **Banded at [`crate::FILES_FROM_MINOR`]**: below it nothing is spawned and the answer is
+    /// [`FileMetaRead::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: prikk's own refusal for a path that is not at that block,
+    /// verbatim (`ER-02`); a report of another shape is an environment error (`UD-02`).
+    fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<FileMetaRead>;
+
+    /// Write one file's bytes, as they were at one **block**, to `output`
+    /// (`cat --path <p> --ref <block> --output <output>`; RFC 053 decision 1).
+    ///
+    /// **`output` must be absolute.** `cat` takes no repository argument, so the seam runs prikk
+    /// with the repository as its working directory — and a relative `output` would then resolve
+    /// *inside the repository*, which is the one place this must never write. Resolving is the
+    /// caller's job, and this refuses a relative path rather than guessing a base.
+    ///
+    /// **And no `--force`.** prikk refuses an existing file without it (RFC 053 F1), which is the
+    /// behaviour stikk wants; the flag that removes it is never built here, not behind a
+    /// parameter and not behind a condition.
+    ///
+    /// **Banded at [`crate::FILES_FROM_MINOR`]**: below it nothing is spawned and the answer is
+    /// [`FileSaved::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: prikk's own refusal — an existing file, a path absent at that
+    /// block, a missing parent directory — verbatim (`ER-02`); or a relative `output`.
+    fn save_file(&self, repo: &Path, block: &str, path: &str, output: &Path) -> Result<FileSaved>;
+
+    /// What extracting a **block**'s files into `dir` would be, without writing
+    /// (`extract --ref <block> <dir> --plan-only --format json`; RFC 053 decision 1).
+    ///
+    /// **It does not say whether `dir` is free** (RFC 053 F6, measured): `--plan-only` answers
+    /// the counts and exits 0 even into an existing directory. Only the real run refuses, which
+    /// is why stikk checks the destination itself before either (decision 4).
+    ///
+    /// `dir` must be absolute, for [`Self::save_file`]'s reason.
+    ///
+    /// **Banded at [`crate::FILES_FROM_MINOR`]**: below it nothing is spawned and the answer is
+    /// [`Extracted::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: prikk's own refusal, verbatim (`ER-02`) — including a
+    /// `refusal-v1` document's `message`; a report of another shape is an environment error
+    /// (`UD-02`); or a relative `dir`.
+    fn extract_plan(&self, repo: &Path, block: &str, dir: &Path) -> Result<Extracted>;
+
+    /// Write every file at a **block** into a new `dir`
+    /// (`extract --ref <block> <dir> --format json`; RFC 053 decision 1).
+    ///
+    /// **Never `--force`, `--allow-full-replay` or `--max-files`/`--max-bytes`.** Each removes a
+    /// refusal stikk wants kept — overwriting a destination, replaying a history with no trusted
+    /// checkpoint in reach, and bounding a point by size — and none is built here.
+    ///
+    /// `dir` must be absolute, for [`Self::save_file`]'s reason.
+    ///
+    /// **Banded at [`crate::FILES_FROM_MINOR`]**: below it nothing is spawned and the answer is
+    /// [`Extracted::Unavailable`].
+    ///
+    /// # Errors
+    /// As [`Self::extract_plan`].
+    fn extract(&self, repo: &Path, block: &str, dir: &Path) -> Result<Extracted>;
 }
 
 /// The one line a bundle's tip is read from: `tip block: <64 lowercase hex>`, in

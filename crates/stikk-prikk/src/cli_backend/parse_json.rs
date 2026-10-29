@@ -43,10 +43,10 @@ use crate::json::{self, Json};
 use crate::{
     ActiveSessions, Authoring, BinaryBlob, BlockRow, BundleConflict, BundleEffect,
     BundlePreviewRead, Comparison, Connectivity, DeclarationResolution, Diff, DiffEntry, DiffFile,
-    DiffSide, DiffTarget, EffectKind, FailedCondition, FileContent, History, OperationContent,
-    PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold, QueuedElsewhere,
-    QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch, QueuedPath, RefEntry,
-    RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles, ThresholdStatus,
+    DiffSide, DiffTarget, EffectKind, ExtractReport, FailedCondition, FileContent, FileMeta,
+    History, OperationContent, PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold,
+    QueuedElsewhere, QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch, QueuedPath,
+    RefEntry, RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles, ThresholdStatus,
     UnpublishedBranch, UnsupportedPath, Verdict, Verification, VerifyStage, WorktreeEntry,
     WorktreeStatus,
 };
@@ -63,6 +63,11 @@ const TREE_SCHEMA: &str = "tree-listing-v1";
 const DIFF_SCHEMA: &str = "diff-report-v1";
 const VERIFY_SCHEMA: &str = "verify-report-v1";
 const BUNDLE_PREVIEW_SCHEMA: &str = "bundle-preview-v1";
+const PATH_CONTENT_SCHEMA: &str = "path-content-v1";
+const EXTRACT_REPORT_SCHEMA: &str = "extract-report-v1";
+/// prikk's own refusal document, which `extract --format json` prints on **stdout** at
+/// exit 1 (RFC 053 F1). Recognized by this and nothing else — never by its prose.
+pub(super) const REFUSAL_SCHEMA: &str = "refusal-v1";
 
 /// The first prikk minor whose queued patches carry `message` (prikk 0.42; RFC 028 as revised).
 const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
@@ -1446,4 +1451,85 @@ pub(super) fn bundle_preview(text: &str) -> Result<BundlePreviewRead> {
         effects,
         rename_note: value.str_field("rename_note")?.to_string(),
     })
+}
+
+fn files_rule(detail: impl std::fmt::Display) -> StikkError {
+    StikkError::environment_msg(format!(
+        "prikk's report is not the shape stikk reads: {detail}"
+    ))
+}
+
+/// `prikk cat --path <p> --ref <block> --format json` (`path-content-v1`), prikk ≥ 0.54
+/// (RFC 053 decision 1).
+///
+/// **Four fields, each required.** A missing one, or one of the wrong type, is a shape error and
+/// not a default (`UD-02`): a `size` stikk invented would go onto a card as a fact, and a `mode`
+/// it invented would decide whether the reader is warned that the copy loses its execute bit.
+///
+/// `kind` and `encoding` are carried as prikk's own words rather than parsed into a vocabulary:
+/// nothing in this increment branches on them, and a closed enum would refuse a report stikk has
+/// no reason to refuse.
+///
+/// # Errors
+/// [`StikkError::Environment`] if the text is not JSON, announces another schema, or is missing a
+/// field this shape requires.
+pub(super) fn path_content(text: &str) -> Result<FileMeta> {
+    let value = report(text, PATH_CONTENT_SCHEMA)?;
+    Ok(FileMeta {
+        kind: value.str_field("kind")?.to_string(),
+        encoding: value.str_field("encoding")?.to_string(),
+        mode: u32::try_from(value.u64_field("mode")?)
+            .map_err(|_| files_rule("`mode` does not fit a u32"))?,
+        size: value.u64_field("size")?,
+    })
+}
+
+/// `prikk extract [--plan-only] --format json` (`extract-report-v1`), prikk ≥ 0.54
+/// (RFC 053 decision 1).
+///
+/// **The fields stikk reads, and no more.** prikk also reports `extract_repository`, `point`,
+/// `point_kind` and `claim_parent_block_id`; stikk already knows the first three — it chose the
+/// repository and the point — and reading them back would be stikk checking prikk against
+/// stikk's own argument rather than learning anything. Each field below is required.
+///
+/// # Errors
+/// [`StikkError::Environment`] if the text is not JSON, announces another schema, or is missing a
+/// field this shape requires.
+pub(super) fn extract_report(text: &str) -> Result<ExtractReport> {
+    let value = report(text, EXTRACT_REPORT_SCHEMA)?;
+    Ok(ExtractReport {
+        target_block_id: object_id_field(&value, "target_block_id")?.to_string(),
+        provisional: value.bool_field("provisional")?,
+        written: value.bool_field("written")?,
+        file_count: value.u64_field("file_count")?,
+        total_bytes: value.u64_field("total_bytes")?,
+        largest_file_bytes: value.u64_field("largest_file_bytes")?,
+    })
+}
+
+/// prikk's `refusal-v1` document, if `text` is one — **recognized by `schema_version` alone**
+/// (RFC 053 decision 1, §7 trap 4).
+///
+/// Returns prikk's `message`, verbatim, for a caller to carry into a refusal. `None` where the
+/// text is not JSON or announces another schema, which is how a caller tells a refusal document
+/// apart from ordinary stderr prose without reading either.
+///
+/// **A `refusal-v1` with no `message` is a shape error, not a `None`**: answering `None` there
+/// would send the caller on to parse the same text as a report, and the refusal would be lost.
+///
+/// # Errors
+/// [`StikkError::Environment`] if the text announces `refusal-v1` and has no string `message`.
+pub(super) fn refusal_message(text: &str) -> Result<Option<String>> {
+    let Ok(value) = json::parse(text) else {
+        return Ok(None);
+    };
+    if value.str_field("schema_version").ok() != Some(REFUSAL_SCHEMA) {
+        return Ok(None);
+    }
+    Ok(Some(
+        value
+            .str_field("message")
+            .map_err(|_| files_rule("a `refusal-v1` document with no string `message`"))?
+            .to_string(),
+    ))
 }

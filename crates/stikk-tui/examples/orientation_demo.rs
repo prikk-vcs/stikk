@@ -126,6 +126,28 @@ impl Prikk for SlowOrientation {
         self.0.bundle_import(repo, path)
     }
 
+    fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<stikk_prikk::FileMetaRead> {
+        self.0.file_meta(repo, block, path)
+    }
+
+    fn save_file(
+        &self,
+        repo: &Path,
+        block: &str,
+        path: &str,
+        output: &Path,
+    ) -> Result<stikk_prikk::FileSaved> {
+        self.0.save_file(repo, block, path, output)
+    }
+
+    fn extract_plan(&self, repo: &Path, block: &str, dir: &Path) -> Result<stikk_prikk::Extracted> {
+        self.0.extract_plan(repo, block, dir)
+    }
+
+    fn extract(&self, repo: &Path, block: &str, dir: &Path) -> Result<stikk_prikk::Extracted> {
+        self.0.extract(repo, block, dir)
+    }
+
     fn bundle_export(
         &self,
         repo: &Path,

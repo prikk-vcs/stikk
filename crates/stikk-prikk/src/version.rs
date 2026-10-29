@@ -214,6 +214,20 @@ pub const CURRENT_BRANCH_FROM_MINOR: u32 = 42;
 /// [`CURRENT_BRANCH_FROM_MINOR`] does for the ref writes.
 pub const EXCHANGE_FROM_MINOR: u32 = 53;
 
+/// The first prikk minor stikk **saves a file or a point's files from**: prikk 0.54, where
+/// `extract` arrived (RFC 053 decision 7).
+///
+/// **One band for both keys**, `F` and `A`, though the two commands behind them are not the same
+/// age: `cat --output` is older, and `extract` is not. Banding them apart would offer a reader
+/// one of the pair on 0.53 and call the other unavailable, for a distinction they have no way to
+/// care about — and the measurement that made either safe to call was taken at 0.54, not before.
+/// No user is on an older band, so the band is set where the evidence is, as
+/// [`EXCHANGE_FROM_MINOR`] is.
+///
+/// Below it both keys answer *unavailable* in stikk's own voice (`C-T4d`) and **nothing is
+/// spawned**.
+pub const FILES_FROM_MINOR: u32 = 54;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

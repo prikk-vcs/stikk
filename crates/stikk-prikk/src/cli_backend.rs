@@ -165,6 +165,53 @@ impl CliBackend {
         Err(classify::classify(&stdout, &stderr, category))
     }
 
+    /// **Absolute, or stikk refuses to run prikk at all.**
+    ///
+    /// `cat` and `extract` take no repository argument, so [`Self::run`] gives them the
+    /// repository as their working directory — and prikk then resolves a relative destination
+    /// against *that*. A relative path here would therefore write **inside the repository**,
+    /// which is the one outcome RFC 053 decision 4 exists to prevent, and it would do it after
+    /// stikk's own check had already passed on a different interpretation of the same string.
+    ///
+    /// **A refusal, not a `debug_assert!`.** RFC 053 §2 asks for both; the assertion turned out to
+    /// add nothing and cost something. It cannot fire in a release build, where the damage would
+    /// be done, and in a debug build it panics *before* the refusal can be reached — which made
+    /// the refusal itself untestable in the only profile tests run in. One check, in both
+    /// profiles, and a panic is never the right answer in a TUI anyway.
+    fn absolute(path: &Path, what: &str) -> Result<()> {
+        if path.is_absolute() {
+            return Ok(());
+        }
+        Err(StikkError::environment_msg(format!(
+            "stikk would have asked prikk to write to a relative {what} ({}), which prikk \
+             resolves against the repository itself. Resolve it before calling the seam.",
+            path.display()
+        )))
+    }
+
+    /// Run an `extract` and read its report, turning a **`refusal-v1` document on stdout** into
+    /// prikk's refusal with its `message` verbatim (RFC 053 decision 1, F1).
+    ///
+    /// **Why not [`Self::run`].** `extract --format json` answers a refusal on **stdout**, as a
+    /// document, and exits 1. `run` would hand that exit to the classifier, which reads prose —
+    /// and prose is exactly what this document is not. So the exit is caught here, the document
+    /// is recognized by its `schema_version` alone, and anything that is *not* one falls through
+    /// to the same classifier every other command uses.
+    fn extract_report(&self, repo: &Path, args: Vec<OsString>) -> Result<crate::ExtractReport> {
+        let (stdout, stderr, ok) = self.run_capturing(Some(repo), args)?;
+        if !ok {
+            if let Some(message) = parse_json::refusal_message(&stdout)? {
+                return Err(StikkError::Refusal { message });
+            }
+            return Err(classify::classify(
+                &stdout,
+                &stderr,
+                RequestCategory::Exchange,
+            ));
+        }
+        parse_json::extract_report(&stdout)
+    }
+
     /// Run `prikk`, draining both streams, and return `(stdout, stderr, success)` **without**
     /// classifying a non-zero exit. Used where a non-zero exit is a normal outcome the caller must
     /// interpret itself — `worktree-status` exits 1 for a *dirty* tree (RFC 008 finding 2 / UD-05). A
@@ -1028,6 +1075,100 @@ impl Prikk for CliBackend {
             ],
         )?;
         Ok(crate::BundleExport::Done(printed_lines(&out)))
+    }
+
+    fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<crate::FileMetaRead> {
+        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
+            return Ok(crate::FileMetaRead::Unavailable);
+        }
+        let out = self.run(
+            Some(repo),
+            RequestCategory::ReadState,
+            [
+                OsStr::new("cat"),
+                OsStr::new("--path"),
+                OsStr::new(path),
+                OsStr::new("--ref"),
+                OsStr::new(block),
+                OsStr::new("--format"),
+                OsStr::new("json"),
+            ],
+        )?;
+        parse_json::path_content(&out).map(crate::FileMetaRead::Read)
+    }
+
+    fn save_file(
+        &self,
+        repo: &Path,
+        block: &str,
+        path: &str,
+        output: &Path,
+    ) -> Result<crate::FileSaved> {
+        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
+            return Ok(crate::FileSaved::Unavailable);
+        }
+        Self::absolute(output, "destination")?;
+        // **prikk prints nothing on success** (RFC 053 F1), so there is nothing to read back and
+        // nothing to parse. `run` classifies the refusals -- an existing file, a path absent at
+        // the block, a missing parent directory -- as prose, which is what `cat` writes.
+        self.run(
+            Some(repo),
+            RequestCategory::Exchange,
+            [
+                OsStr::new("cat"),
+                OsStr::new("--path"),
+                OsStr::new(path),
+                OsStr::new("--ref"),
+                OsStr::new(block),
+                OsStr::new("--output"),
+                output.as_os_str(),
+                // **And no `--force`** (decision 1, §7 trap 3): prikk's refusal of an existing
+                // file is the behaviour stikk wants, so the flag that removes it is never built.
+            ],
+        )?;
+        Ok(crate::FileSaved::Done)
+    }
+
+    fn extract_plan(&self, repo: &Path, block: &str, dir: &Path) -> Result<crate::Extracted> {
+        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
+            return Ok(crate::Extracted::Unavailable);
+        }
+        Self::absolute(dir, "destination")?;
+        self.extract_report(
+            repo,
+            vec![
+                OsString::from("extract"),
+                OsString::from("--ref"),
+                OsString::from(block),
+                dir.as_os_str().to_os_string(),
+                OsString::from("--plan-only"),
+                OsString::from("--format"),
+                OsString::from("json"),
+            ],
+        )
+        .map(crate::Extracted::Read)
+    }
+
+    fn extract(&self, repo: &Path, block: &str, dir: &Path) -> Result<crate::Extracted> {
+        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
+            return Ok(crate::Extracted::Unavailable);
+        }
+        Self::absolute(dir, "destination")?;
+        self.extract_report(
+            repo,
+            vec![
+                OsString::from("extract"),
+                OsString::from("--ref"),
+                OsString::from(block),
+                dir.as_os_str().to_os_string(),
+                OsString::from("--format"),
+                OsString::from("json"),
+                // **And none of `--force`, `--allow-full-replay`, `--max-files` or
+                // `--max-bytes`** (decision 1, §7 trap 3). Each removes a refusal stikk wants
+                // kept, and none is built here -- not behind a parameter, not behind a condition.
+            ],
+        )
+        .map(crate::Extracted::Read)
     }
 
     fn switch_branch(&self, repo: &Path, name: &str) -> Result<crate::SwitchResult> {

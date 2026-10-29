@@ -223,6 +223,32 @@ impl Prikk for Recording {
         self.inner.bundle_import(repo, path)
     }
 
+    fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<stikk_prikk::FileMetaRead> {
+        self.record("file_meta");
+        self.inner.file_meta(repo, block, path)
+    }
+
+    fn save_file(
+        &self,
+        repo: &Path,
+        block: &str,
+        path: &str,
+        output: &Path,
+    ) -> Result<stikk_prikk::FileSaved> {
+        self.record("save_file");
+        self.inner.save_file(repo, block, path, output)
+    }
+
+    fn extract_plan(&self, repo: &Path, block: &str, dir: &Path) -> Result<stikk_prikk::Extracted> {
+        self.record("extract_plan");
+        self.inner.extract_plan(repo, block, dir)
+    }
+
+    fn extract(&self, repo: &Path, block: &str, dir: &Path) -> Result<stikk_prikk::Extracted> {
+        self.record("extract");
+        self.inner.extract(repo, block, dir)
+    }
+
     fn bundle_export(
         &self,
         repo: &Path,

@@ -1,6 +1,6 @@
 # RFC 053 — Getting files back: an earlier version, saved outside the repository
 
-**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`e304e9a`..`6b14260`, and `b280057` for Windows); 0.17.0 candidate. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/053-get-files-back/a-get-files-back-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's increment 1 (`.git-exclude/release/0-17-0-scope.md`,
+**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`e304e9a`..`6b14260`, and `b280057` for Windows); **released in 0.17.0**. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/053-get-files-back/a-get-files-back-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's increment 1 (`.git-exclude/release/0-17-0-scope.md`,
 authorized 2026-10-29). **No open question.**
 Measured against a real prikk **0.54.1**: `.git-exclude/reports/053-get-files-back/` (`measure053.sh` →
 `measure053-0.54.txt`, one fresh repository and a receiver). prikk's source read in the clone at the `0.54.1` tag

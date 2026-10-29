@@ -133,6 +133,13 @@ stikk **shares work as a bundle file** — `i` opens one and shows prikk's own v
 and what prikk says importing it would change, `I` imports it as a received branch beside your
 own, and `E` writes a branch out to a file outside the repository — each previewed, and nothing
 written until you confirm (prikk ≥ 0.53).
+stikk **gets an earlier version of your files back** — in Block detail, `F` saves one file as it
+was at that block and `A` saves every file at it into a new folder, always outside the repository
+and never over anything already there, with nothing in the repository or your worktree changed
+(prikk ≥ 0.54).
+stikk **shows which keys this repository trusts** — `T` lists the adopted maintainer keys with
+your own marked, and a bundle card says which of them, if any, each recorded sealer's id names;
+read-only, and Verify after an import is what checks the signature (prikk ≥ 0.54).
 stikk **reopens each repository where you left it** — the focused ref, the view and the untracked filter,
 re-checked against prikk first and stored outside every repository; `STIKK_PRIVATE=1` remembers
 nothing.

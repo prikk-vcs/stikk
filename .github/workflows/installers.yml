@@ -549,10 +549,9 @@ jobs:
   # bookworm or Ubuntu 22.04. Handoff A's job measured that on this very runner, and this job
   # now proves the fix: the installer takes a **static musl** build, and that build runs here.
   #
-  # **It builds what it installs.** The published 0.14.0 has no aarch64 musl archive, so until
-  # 0.15.0 is out there is nothing to download -- and building it at the commit under test is
-  # better anyway: the installer and the build are then tested together on glibc 2.35 at every
-  # commit, not only at release. The archive is packaged exactly as `release.yml` packages it.
+  # **It builds what it installs**, at the commit under test, so the installer and the build are
+  # tested together on glibc 2.35 at every commit rather than only at release. The archive is
+  # packaged exactly as `release.yml` packages it.
   linux-aarch64:
     name: install.sh (ubuntu-22.04-arm, glibc 2.35)
     needs: derive
@@ -600,9 +599,10 @@ jobs:
           # `STIKK_VER` is the latest *published* release, which is the name `install.sh` will
           # ask the mirror for -- so the archive must carry it. But the binary inside was built
           # from this commit, and from release prep onward that is the *next* version: the prep
-          # commit sets the workspace to 0.15.0 while 0.14.0 is still the latest release. So the
-          # version this leg asserts is read from the workspace, not from `STIKK_VER`; asserting
-          # `STIKK_VER` would redden this job on the very commit we would be asked to tag.
+          # commit sets the workspace to the next version while the previous one is still the
+          # latest release. So the version this leg asserts is read from the workspace, not from
+          # `STIKK_VER`; asserting `STIKK_VER` would redden this job on the very commit we would
+          # be asked to tag.
           built="$(cargo metadata --no-deps --format-version 1 \
                     | jq -r '.packages[] | select(.name=="stikk") | .version')"
           echo "BUILT_VER=${built}" >> "$GITHUB_ENV"

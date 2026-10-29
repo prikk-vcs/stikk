@@ -20,15 +20,18 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.16.x shares work as a bundle file, installs in two plain steps on every platform — prikk's,
-then stikk's — against prikk 0.55.0.** Its AUR packages are on the way: [Install](./guide/install.md#arch-linux)
-says when they are published. Each program installs itself: one line
-installs stikk, and it prints prikk's own install command rather than installing prikk;
-**Exchange** opens a bundle file and shows prikk's verification and what importing would change
-(`i`), imports it as a received branch (`I`) and writes a branch out to a file (`E`); **Merge**
-brings one branch into another where prikk's own plan proves the two sides confluent; **Verify** (`V`) shows prikk's
-verdict on whether the repository is sound; and **Compare** reaches any two points, including any
-two refs. Every repository string is still shown as it is.
+**0.17.x gets an earlier version of your files back, shows which keys a repository trusts, and
+installs in two plain steps on every platform — prikk's, then stikk's — against prikk 0.55.0.** Its
+AUR packages are on the way: [Install](./guide/install.md#arch-linux) says when they are published.
+Each program installs itself: one line installs stikk, and it prints prikk's own install command
+rather than installing prikk; **`F`** and **`A`** in Block detail save one file, or every file at
+that block, outside the repository and never over anything already there; **`T`** lists the
+maintainer keys this repository trusts, and a bundle card says which of them each recorded sealer
+names; **Exchange** opens a bundle file and shows prikk's verification and what importing would
+change (`i`), imports it as a received branch (`I`) and writes a branch out to a file (`E`);
+**Merge** brings one branch into another where prikk's own plan proves the two sides confluent;
+**Verify** (`V`) shows prikk's verdict on whether the repository is sound; and **Compare** reaches
+any two points, including any two refs. Every repository string is still shown as it is.
 The security-critical
 layers (shared model, prikk seam, state layer), the interactive **TUI** (shell + Orientation, built on
 `ratatui` — RFC 001), **History** + Block detail (RFC 006), the refusal-explanation and glossary surfaces
@@ -85,5 +88,12 @@ prikk ≥ 0.53): `i` opens one and shows prikk's own verification and what prikk
 would change against your branch of that name, `I` imports it as `remotes/<name>` — read-only
 history beside your own, declined where it would change nothing or move that branch back — and
 `E` writes a branch out to a file outside the repository, never over one that is already there.
-Sync, and checkout of a block or a path, remain unbuilt; a
-**Trust & Keys** view and a **doctor**/lock-inspector view are named gaps too.
+**stikk gets an earlier version of your files back** (RFC 053, prikk ≥ 0.54): in Block detail, `F`
+saves one file as it was at that block and `A` saves every file at it into a new folder — always
+outside the repository and never over an existing path, both refused in stikk's own words before
+prikk is asked, with nothing in the repository or the worktree changed. **stikk shows which keys a
+repository trusts** (RFC 054, prikk ≥ 0.54): `T` lists the adopted maintainer keys with your own
+marked, and a bundle card says which of them, if any, each recorded sealer's id names — a name, not
+a signature, which Verify checks after the import. Sync, and checkout of a block or a path, remain
+unbuilt; **adopting and removing trusted keys**, and a **doctor**/lock-inspector view, are named
+gaps too.

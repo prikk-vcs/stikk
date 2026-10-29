@@ -1,6 +1,6 @@
 # RFC 055 — The prikk 0.55 re-baseline
 
-**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`62e2ad0`, `051378e`); 0.17.0 candidate. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/055-prikk-0-55-rebaseline/a-rebaseline-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's conditional increment 3
+**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`62e2ad0`, `051378e`); **released in 0.17.0**. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/055-prikk-0-55-rebaseline/a-rebaseline-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's conditional increment 3
 (`.git-exclude/release/0-17-0-scope.md`: *"if prikk publishes a new minor before the cut"*). prikk **0.55.0** published
 2026-10-28 (GitHub release *Latest*, crates.io). **No open question.**
 Measured against real prikk **0.55.0** and **0.28.0** binaries. Evidence: `.git-exclude/reports/053-get-files-back/`

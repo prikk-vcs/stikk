@@ -2,20 +2,36 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.17.0 — 2026-10-29
+
+**stikk now gets an earlier version of your files back, and shows which keys your repository
+trusts.** Open a block in History and its detail lists that block's patches **and its files**, with
+one cursor over both: **`F`** saves one file as it was at that block, and **`A`** saves every file
+at it into a new folder. stikk prefills a destination beside your repository and **refuses to write
+inside it, or over anything already there**, in its own words before prikk is asked; the card names
+the block, the size and exactly where the copy goes, and says when execute permission is lost or
+the history behind the copy has not been checked. Nothing in the repository or your worktree
+changes (RFC 053). **`T`** lists the maintainer keys this repository trusts, in prikk's order and
+with your own marked, and a bundle card now says beneath each recorded sealer **which adopted key,
+if any, its id names** — a bundle records a name and nothing to check it against, so import it and
+press `V`, which is where prikk checks each signature against the key trusted here (RFC 054). Both
+need prikk 0.54 or newer; below that, each surface is what it was. The range is validated through
+prikk 0.55.0 (RFC 055), and the real-binary suite drives **80 cases** against real prikk binaries at
+0.28.0 and 0.55.0, on Linux, macOS and Windows.
 
 ### Breaking
 
-Per RFC 011, for a `0.x` crate the minor version is the breaking position.
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-state` and the `stikk` launcher are unchanged.**
 
 | Crate | Change |
 |---|---|
 | `stikk-prikk` | **The `Prikk` trait gains five required methods**, `file_meta`, `save_file`, `extract_plan`, `extract` and `trusted_keys`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
-| `stikk-core` | **`ConfirmationSummary` gained a public field**, `notices: Vec<String>` — cautions about what confirming will produce, drawn above the consequence. The struct is not `#[non_exhaustive]`, so outside code that builds one as a literal, or destructures one exhaustively, must account for it, exactly as it did for `asides` in 0.16.0 and `merge_plan` in 0.15.0 |
+| `stikk-core` | **Two structs gained a public field.** `ConfirmationSummary` gained `notices: Vec<String>` — cautions about what confirming will produce, drawn above the consequence — and `BundleView` gained `sealers: SealerTrustRead`, what this repository says about each recorded sealer. Neither struct is `#[non_exhaustive]`, so outside code that builds one as a literal, or destructures one exhaustively, must account for them, exactly as it did for `asides` in 0.16.0 and `merge_plan` in 0.15.0 |
 | `stikk-tui` | **`Overlay` gained `SavePath` and `SaveResult`, and `Screen` and `Focus` gained `Trust`.** None of the three enums is `#[non_exhaustive]`, so any outside exhaustive `match` must cover them |
 
 **Additive:** `stikk_prikk::FileMeta`, `FileMetaRead`, `FileSaved`, `ExtractReport`, `Extracted`
-and `FILES_FROM_MINOR`, with `NullBackend`'s six new builders and three call counters;
+and `FILES_FROM_MINOR`, with `NullBackend`'s eight new builders and three call counters;
 `stikk_core::files` with `SaveFilePreview`, `SaveAllPreview`, `SaveFileTarget`, `SaveAllTarget`,
 `BlockCursorRow`, `save_file_preview`, `save_file_confirm_and_execute`, `save_all_preview`,
 `save_all_confirm_and_execute`, `suggested_file_destination`, `suggested_all_destination`,

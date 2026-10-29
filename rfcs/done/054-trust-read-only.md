@@ -1,6 +1,6 @@
 # RFC 054 — Trust, read-only: which keys this repository trusts
 
-**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`90d5ff1`..`18b4223`), with **decision 3 amended** in its review; 0.17.0 candidate. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's increment 2 (`.git-exclude/release/0-17-0-scope.md`,
+**Status.** **Done 2026-10-29**: Handoff A delivered on `main` (`90d5ff1`..`18b4223`), with **decision 3 amended** in its review; **released in 0.17.0**. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.17.0's increment 2 (`.git-exclude/release/0-17-0-scope.md`,
 authorized 2026-10-29). **No open question.**
 Measured against a real prikk **0.54.1**: `.git-exclude/reports/054-trust-read/` (`measure054.sh` →
 `measure054-0.54.txt`, and `measure054-0.55.txt` at 0.55.0, identical but for the version: a bare repository, one after `setup`, a second adopted key, and a receiver that adopted

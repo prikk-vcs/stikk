@@ -273,6 +273,30 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk gets an earlier version of your files back, and shows which keys you trust (0.17.0, breaking)
+
+- **Getting files back** (`FR-053`'s non-destructive half, [RFC 053](rfcs/done/053-get-files-back.md), prikk ≥ 0.54):
+  Block detail lists a block's patches **and its files**, with one cursor over both — `F` saves one file as it was
+  at that block, `A` saves every file at it into a new folder. stikk prefills a destination beside the repository
+  and **refuses to write inside it, or over anything already there**, in its own words before prikk is asked. The
+  card names the block, the size and where the copy goes, and says when execute permission is lost or the history
+  behind the copy has not been checked. Nothing in the repository or the worktree changes; materializing into the
+  worktree is still `FR-053`'s destructive half.
+- **Trust, read-only** (`FR-103`'s read half, [RFC 054](rfcs/done/054-trust-read-only.md), prikk ≥ 0.54): `T` lists
+  the adopted maintainer keys in prikk's order, with yours marked — id **and** public key both matching `key status`
+  — and the bundle cards say beneath each recorded sealer which adopted key, if any, its id names. No key material
+  beyond ids and public keys is shown, and an untrusted sealer declines nothing. **Decision 3 was amended during the
+  review**: a bundle names its sealer and proves nothing, because `sealed_by` is a string checked against nothing —
+  measured, a sender can seal under an id the receiver trusts and both preview and import run clean — so the rows
+  say what the id *names* and the card sends the reader to Verify, which is where prikk checks the signature.
+  Adding and removing keys is the half still to come.
+- **The prikk 0.55 re-baseline** ([RFC 055](rfcs/done/055-prikk-0-55-rebaseline.md)): the two 0.55 changes that
+  come near stikk cost nothing — `extract` now refuses a destination inside the repository, which stikk refuses
+  itself first, before prikk is asked, and a damaged bundle's refusal is worded differently, which stikk shows
+  verbatim.
+- **The validated prikk range is `>= 0.28`, through `0.55.0`** (was `0.54.1`); the real-binary suite drives 80 cases
+  at 0.28.0 and 0.55.0 on Linux, macOS and Windows.
+
 ## Shipped — stikk shares work as a bundle file, and installs from the AUR (0.16.0, breaking)
 
 - **The panels' prose gets a right gutter** ([RFC 013 Handoff B](rfcs/handoffs/013-preview-and-confirmation-machinery/b-panel-prose-gutter-handoff-v1.md)):
@@ -448,17 +472,12 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.17.0: stikk gets an earlier version of your files back, and tells you whose work you trust
+## Next — 0.18.0, not yet scoped
 
-Scoped and authorized 2026-10-29, in delivery order:
-
-1. **Getting files back — landed on `main`** ([RFC 053](rfcs/done/053-get-files-back.md), `FR-053`'s non-destructive half): from
-   Block detail, save one file as it was at that block, or all of its files into a new folder — outside the
-   repository, never over an existing path, previewed by prikk's own plan.
-2. **Trust, read-only — landed on `main`** ([RFC 054](rfcs/done/054-trust-read-only.md), `FR-103`'s read half): a Trust view of the
-   keys this repository trusts, yours marked, and on the bundle cards which adopted key each sealer's id names.
-3. **The prikk 0.55 re-baseline — landed on `main`** ([RFC 055](rfcs/done/055-prikk-0-55-rebaseline.md)): prikk 0.55.0 was
-   published 2026-10-28; the suite is green at 0.28.0 and 0.55.0 with only the validated ceiling moved.
+**The candidate:** the **trust write half** (`FR-103`) — adopting and removing maintainer keys, with the
+TOFU-conflict refusal presented as the security event it is. The read half shipped in 0.17.0, which is what makes
+the write half the next thing a user asks for. **The scope is the owner's to authorize**, and nothing is in
+delivery until it is.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and
@@ -488,9 +507,11 @@ token (RFC 048 Handoff C), and can join any release when they exist. **The AUR p
   Compare, and the scroll and selection anchors they need.)*
 - **Exchange**: bundle export/verify/import and the **sync assistant** (`FR-090…094`), with the input
   ceilings surfaced before an operation runs.
-- **Trust & keys** (`FR-103/104`): the Trust & Keys view; adopted maintainer keys;
-  TOFU-conflict-as-security-event. *(The key-id display shipped in 0.6.0 — RFC 023 B — and signing
-  readiness asks prikk's `key status` at ≥ 0.41 since RFC 026 B; still no seed is ever stored.)*
+- **Trust & keys** (`FR-104`, and `FR-103`'s remainder — **0.18.0's candidate**): adopting and removing
+  maintainer keys, and TOFU-conflict-as-security-event, with the signing-readiness detail beside them.
+  *(The read half shipped in 0.17.0 — RFC 054: the Trust view and the bundle cards' sealer rows. The
+  key-id display shipped in 0.6.0 — RFC 023 B — and signing readiness asks prikk's `key status` at
+  ≥ 0.41 since RFC 026 B; still no seed is ever stored.)*
 - **The GUI** (`GU-01…09`): the same operations rendered natively, reaching TUI parity through the
   shared operation layer, with drag-and-drop constrained to prikk-legal targets.
 - **Internationalization** (en / ja / nb) and accessibility hardening across both frontends

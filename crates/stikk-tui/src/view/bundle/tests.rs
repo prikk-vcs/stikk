@@ -217,8 +217,16 @@ fn capture_a_refused_file_at_80x24() {
 #[test]
 fn the_key_ids_are_never_drawn_without_prikks_note() {
     let text = draw_at(&fast_forward(), 80, 60, 0);
-    assert!(text.contains("Sealed by z-maint"), "{text}");
+    // **The heading and the id are two rows since RFC 054**, because each id now carries what
+    // this repository says about it — a row of its own, in its own span.
+    assert!(text.contains("Sealed by"), "{text}");
+    assert!(text.contains("z-maint"), "{text}");
     assert!(flattened(&text).contains("not a trust decision"), "{text}");
+    // **And the answer is beside the id**, which is what RFC 054 adds to this row.
+    assert!(
+        flattened(&text).contains("z-maint — not trusted by this repository"),
+        "{text}"
+    );
     // And prikk's rename note travels with the effects it qualifies.
     assert!(flattened(&text).contains("delete plus a create"), "{text}");
 }
@@ -348,4 +356,71 @@ fn the_comparison_says_importing_leaves_your_branch_alone() {
         "the name is said once, by the label: {text}"
     );
     assert!(flowed.contains("This bundle carries heads/main"), "{text}");
+}
+
+/// **Capture: the three sealer answers at 80 columns** (RFC 054 decision 3) — and prikk's own
+/// note still beneath them, because what stikk adds is an answer prikk does not give, not a
+/// replacement for what it does.
+#[test]
+fn capture_the_three_sealer_answers_at_80_columns() {
+    let mut view = match fast_forward() {
+        BundleOpened::Read(view) => *view,
+        other => panic!("expected a read view, got {other:?}"),
+    };
+    view.preview.sealed_by = vec![
+        "ed25519-31f369d3abb7f64c".to_string(),
+        "ed25519-9c0a44b1d2e3f501".to_string(),
+        "ed25519-0000000000000000".to_string(),
+    ];
+    view.sealers = stikk_core::SealerTrustRead::Judged(vec![
+        stikk_core::Sealer {
+            key_id: "ed25519-31f369d3abb7f64c".to_string(),
+            trust: stikk_core::SealerTrust::Yours,
+        },
+        stikk_core::Sealer {
+            key_id: "ed25519-9c0a44b1d2e3f501".to_string(),
+            trust: stikk_core::SealerTrust::Trusted,
+        },
+        stikk_core::Sealer {
+            key_id: "ed25519-0000000000000000".to_string(),
+            trust: stikk_core::SealerTrust::NotTrusted,
+        },
+    ]);
+    let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
+    println!("{text}");
+    let flat = flattened(&text);
+    assert!(flat.contains("ed25519-31f369d3abb7f64c — yours"), "{text}");
+    assert!(
+        flat.contains("ed25519-9c0a44b1d2e3f501 — trusted by this repository"),
+        "{text}"
+    );
+    assert!(
+        flat.contains("ed25519-0000000000000000 — not trusted by this repository"),
+        "{text}"
+    );
+    assert!(
+        flat.contains("not a trust decision"),
+        "prikk's note: {text}"
+    );
+}
+
+/// **Below the band the row is 0.16.0's**: prikk's ids and note, and nothing stikk added
+/// (RFC 054 decision 4). *Could not be read* would report a limit of stikk's own as if it had
+/// asked and failed.
+#[test]
+fn below_the_band_the_sealer_row_is_prikks_ids_alone() {
+    let mut view = match fast_forward() {
+        BundleOpened::Read(view) => *view,
+        other => panic!("expected a read view, got {other:?}"),
+    };
+    view.sealers = stikk_core::SealerTrustRead::Unavailable;
+    let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
+    let flat = flattened(&text);
+    assert!(flat.contains("z-maint"), "the id is still drawn: {text}");
+    assert!(!flat.contains("trusted by this repository"), "{text}");
+    assert!(!flat.contains("could not be read"), "{text}");
+    assert!(
+        flat.contains("not a trust decision"),
+        "prikk's note: {text}"
+    );
 }

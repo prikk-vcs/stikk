@@ -296,19 +296,44 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
     if view.preview.sealed_by.is_empty() {
         lines.push(dim("No author key material is recorded.", palette, width));
     } else {
-        let ids: Vec<String> = view
-            .preview
-            .sealed_by
-            .iter()
-            .map(|id| identifier(id))
-            .collect();
-        for row in
-            crate::view::wrap_hanging(&format!("Sealed by {}", ids.join(", ")), width, TOP, "    ")
-        {
-            lines.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.fg),
-            )));
+        lines.push(Line::from(Span::styled(
+            format!("{TOP}Sealed by"),
+            Style::default().fg(palette.fg),
+        )));
+        // **One row per sealer, each with what this repository says about it** (RFC 054
+        // decision 3). The id is repository text; the answer beside it is stikk's chrome, in
+        // its own span — the rule every other row here follows.
+        //
+        // **Below the band there is no answer**, and the ids are drawn alone, exactly as
+        // 0.16.0 drew them: `judged()` is empty there, so the fallback is the same loop over
+        // prikk's own list.
+        let judged = view.sealers.judged();
+        if judged.is_empty() {
+            for id in &view.preview.sealed_by {
+                lines.push(Line::from(Span::styled(
+                    format!("{QUOTED}{}", identifier(id)),
+                    Style::default().fg(palette.accent),
+                )));
+            }
+        } else {
+            for sealer in judged {
+                lines.push(Line::from(vec![
+                    Span::styled(QUOTED, Style::default()),
+                    Span::styled(
+                        identifier(&sealer.key_id),
+                        Style::default().fg(palette.accent),
+                    ),
+                    Span::styled(
+                        format!("  \u{2014} {}", sealer.trust.sentence()),
+                        Style::default().fg(match sealer.trust {
+                            stikk_core::SealerTrust::Trusted | stikk_core::SealerTrust::Yours => {
+                                palette.fg
+                            }
+                            _ => palette.warn,
+                        }),
+                    ),
+                ]));
+            }
         }
         // **prikk's own words, and they are the point of the row.** The ids above read as an
         // assurance without this; prikk said it, so prikk says it here.

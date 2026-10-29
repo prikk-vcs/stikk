@@ -9551,3 +9551,546 @@ fn rfc054_below_the_band_trust_is_unavailable() {
         bin.minor
     );
 }
+
+// ---------------------------------------------------------------- RFC 056: adopt and remove
+
+/// Whether this binary lists and writes trust (RFC 056 decision 1, the Trust view's own band).
+fn rfc056_in_band(bin: &PrikkBin) -> bool {
+    if bin.minor >= stikk_core::TRUST_FROM_MINOR {
+        return true;
+    }
+    eprintln!(
+        "RFC 056 SKIPPED at 0.{} — adopt and remove need prikk ≥ 0.{}.",
+        bin.minor,
+        stikk_core::TRUST_FROM_MINOR
+    );
+    false
+}
+
+/// An operator who may write, which is all either trust write asks for (F1).
+fn rfc056_operator() -> stikk_model::Readiness {
+    stikk_model::Readiness {
+        read_only: false,
+        ..stikk_model::Readiness::none()
+    }
+}
+
+/// The adopted keys, read through the seam.
+fn rfc056_list(
+    backend: &impl stikk_prikk::Prikk,
+    repo: &std::path::Path,
+    minor: u32,
+) -> Vec<stikk_core::TrustRow> {
+    match stikk_core::trust::read(backend, repo)
+        .unwrap_or_else(|e| panic!("0.{minor}: the trust read: {e}"))
+    {
+        stikk_core::TrustView::Listed { rows, .. } => rows,
+        other => panic!("0.{minor}: expected a list, got {other:?}"),
+    }
+}
+
+/// A second repository's own maintainer key, as **prikk's own list** reports it — a real key
+/// pair, with no seed read here or anywhere in this file.
+fn rfc056_another_key(bin: &PrikkBin, backend: &impl stikk_prikk::Prikk) -> (String, Fixture) {
+    let other = Fixture::build(bin);
+    let rows = rfc056_list(backend, other.repo(), bin.minor);
+    let public = rows
+        .first()
+        .map(|row| row.public_key.clone())
+        .unwrap_or_else(|| panic!("0.{}: `setup` adopts its own key", bin.minor));
+    (public, other)
+}
+
+/// Adopt `public` under `key_id`, through stikk's own preview and confirmation.
+fn rfc056_adopt(
+    backend: &impl stikk_prikk::Prikk,
+    repo: &std::path::Path,
+    minor: u32,
+    key_id: &str,
+    public: &str,
+) {
+    let preview = stikk_core::adopt_preview(backend, repo, rfc056_operator(), key_id, public)
+        .unwrap_or_else(|e| panic!("0.{minor}: adopt_preview: {e}"));
+    let stikk_core::AdoptPreview::Ready { token } = preview else {
+        panic!("0.{minor}: expected an armed adopt, got {preview:?}");
+    };
+    stikk_core::adopt_confirm_and_execute(
+        backend,
+        repo,
+        *token,
+        rfc056_operator(),
+        stikk_core::Evidence::TypedName(key_id.to_string()),
+        key_id,
+        public,
+    )
+    .unwrap_or_else(|e| panic!("0.{minor}: the adopt: {e}"));
+}
+
+/// Remove `key_id`, through stikk's own preview and confirmation.
+fn rfc056_remove(
+    backend: &impl stikk_prikk::Prikk,
+    repo: &std::path::Path,
+    minor: u32,
+    key_id: &str,
+) -> stikk_core::TrustWriteResult {
+    let preview = stikk_core::remove_preview(backend, repo, rfc056_operator(), key_id)
+        .unwrap_or_else(|e| panic!("0.{minor}: remove_preview: {e}"));
+    let stikk_core::RemovePreview::Ready { token } = preview else {
+        panic!("0.{minor}: expected an armed removal, got {preview:?}");
+    };
+    stikk_core::remove_confirm_and_execute(
+        backend,
+        repo,
+        *token,
+        rfc056_operator(),
+        stikk_core::Evidence::TypedName(key_id.to_string()),
+        key_id,
+    )
+    .unwrap_or_else(|e| panic!("0.{minor}: the removal: {e}"))
+    .result
+}
+
+/// **Legs 1, 2 and 3 at the ceiling** (RFC 056's Delivery): an adopt grows the list; adopting
+/// the same key again is declined; a *different* key under that id is the security event. The
+/// last two spawn **no write at all**.
+///
+/// Leg 1 adopts under the key's **own default id**, so the no-notice path runs against real
+/// prikk too — the harness's fixtures all sit under `maintainer` (`support.rs`), which is not a
+/// default id and would take the notice path every time.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc056_adopting_grows_the_list_and_the_two_declines_write_nothing_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc056_in_band(&bin) {
+        return;
+    }
+    let counting = CountingWrites::new(&bin);
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let (theirs, _other) = rfc056_another_key(&bin, &counting);
+    let their_id = stikk_core::default_key_id(&theirs);
+    let before = rfc056_list(&counting, &repo, bin.minor).len();
+
+    // **Leg 1.** The card carries no default-id notice, because the id is the key's own.
+    let preview =
+        stikk_core::adopt_preview(&counting, &repo, rfc056_operator(), &their_id, &theirs)
+            .unwrap_or_else(|e| panic!("0.{}: adopt_preview: {e}", bin.minor));
+    let stikk_core::AdoptPreview::Ready { token } = preview else {
+        panic!("0.{}: expected an armed adopt, got {preview:?}", bin.minor);
+    };
+    assert!(
+        token.summary().notices.is_empty(),
+        "0.{}: the id is this key's default: {:?}",
+        bin.minor,
+        token.summary().notices
+    );
+    assert_eq!(token.summary().target_name.as_deref(), Some(&their_id[..]));
+    stikk_core::adopt_confirm_and_execute(
+        &counting,
+        &repo,
+        *token,
+        rfc056_operator(),
+        stikk_core::Evidence::TypedName(their_id.clone()),
+        &their_id,
+        &theirs,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: the adopt: {e}", bin.minor));
+    let rows = rfc056_list(&counting, &repo, bin.minor);
+    assert_eq!(rows.len(), before + 1, "0.{}: the list grew", bin.minor);
+    assert!(
+        rows.iter()
+            .any(|row| row.key_id == their_id && row.public_key == theirs),
+        "0.{}: and it is the key that was adopted: {rows:?}",
+        bin.minor
+    );
+
+    let writes = counting
+        .trust_writes
+        .load(std::sync::atomic::Ordering::SeqCst);
+
+    // **Leg 2.** The same key again: stikk answers from the list it just read.
+    match stikk_core::adopt_preview(&counting, &repo, rfc056_operator(), &their_id, &theirs)
+        .unwrap_or_else(|e| panic!("0.{}: adopt_preview: {e}", bin.minor))
+    {
+        stikk_core::AdoptPreview::Blocked(said) => {
+            assert_eq!(said, stikk_core::ALREADY_TRUSTED, "0.{}", bin.minor);
+        }
+        other => panic!("0.{}: expected a decline, got {other:?}", bin.minor),
+    }
+
+    // **Leg 3.** A different key under that id: the security event, with both public keys.
+    // **The fixture's own key**, found by its id rather than by `yours`: the environment is
+    // cleared here, so `key status` resolves nothing and no row is marked.
+    let mine = rfc056_list(&counting, &repo, bin.minor)
+        .into_iter()
+        .find(|row| row.key_id != their_id)
+        .unwrap_or_else(|| panic!("0.{}: `setup` adopted this repository's own key", bin.minor));
+    match stikk_core::adopt_preview(
+        &counting,
+        &repo,
+        rfc056_operator(),
+        &their_id,
+        &mine.public_key,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: adopt_preview: {e}", bin.minor))
+    {
+        stikk_core::AdoptPreview::TwoKeys(conflict) => {
+            assert_eq!(conflict.key_id, their_id);
+            assert_eq!(conflict.adopted, theirs, "0.{}", bin.minor);
+            assert_eq!(conflict.given, mine.public_key, "0.{}", bin.minor);
+        }
+        other => panic!(
+            "0.{}: expected the security event, got {other:?}",
+            bin.minor
+        ),
+    }
+
+    assert_eq!(
+        counting
+            .trust_writes
+            .load(std::sync::atomic::Ordering::SeqCst),
+        writes,
+        "0.{}: **neither decline spawned a write**",
+        bin.minor
+    );
+    Fixture::clear_env();
+}
+
+/// **Legs 4, 5 and 6 at the ceiling**: a removal shrinks the list; re-adopting that id with a
+/// *different* key is prikk's own refusal, verbatim (F2 — the case stikk cannot see, because
+/// `trust-list-v1` lists only current keys); and a list of one declines with no write.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc056_removing_shrinks_the_list_and_a_removed_id_is_prikks_refusal_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc056_in_band(&bin) {
+        return;
+    }
+    let counting = CountingWrites::new(&bin);
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let (theirs, _other) = rfc056_another_key(&bin, &counting);
+    let their_id = stikk_core::default_key_id(&theirs);
+    rfc056_adopt(&counting, &repo, bin.minor, &their_id, &theirs);
+    let before = rfc056_list(&counting, &repo, bin.minor).len();
+
+    // **Leg 5.** The removal, and the list it leaves.
+    let result = rfc056_remove(&counting, &repo, bin.minor, &their_id);
+    assert!(
+        result
+            .printed
+            .iter()
+            .any(|line| line.contains("revoked maintainer key")),
+        "0.{}: prikk's own line: {:?}",
+        bin.minor,
+        result.printed
+    );
+    assert_eq!(
+        result.see_verify,
+        Some(stikk_core::REMOVED_SEE_VERIFY),
+        "0.{}: a removal points at Verify",
+        bin.minor
+    );
+    let stikk_core::TrustView::Listed { rows, .. } = &result.view else {
+        panic!("0.{}: the list is re-read", bin.minor);
+    };
+    assert_eq!(rows.len(), before - 1, "0.{}: it shrank", bin.minor);
+    assert!(
+        !rows.iter().any(|row| row.key_id == their_id),
+        "0.{}: and the removed id is gone: {rows:?}",
+        bin.minor
+    );
+
+    // **Leg 4.** Re-adopting that id with another key: stikk's guards see nothing wrong, because
+    // the id is no longer in the list — and prikk refuses it anyway, in words that say exactly
+    // what happened (decision 5).
+    // As above: by id, because the environment is cleared and nothing is marked *yours*.
+    let mine = rfc056_list(&counting, &repo, bin.minor)
+        .into_iter()
+        .find(|row| row.key_id != their_id)
+        .unwrap_or_else(|| panic!("0.{}: `setup` adopted this repository's own key", bin.minor));
+    let preview = stikk_core::adopt_preview(
+        &counting,
+        &repo,
+        rfc056_operator(),
+        &their_id,
+        &mine.public_key,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: adopt_preview: {e}", bin.minor));
+    let stikk_core::AdoptPreview::Ready { token } = preview else {
+        panic!(
+            "0.{}: stikk cannot see this one coming (F2), got {preview:?}",
+            bin.minor
+        );
+    };
+    let err = stikk_core::adopt_confirm_and_execute(
+        &counting,
+        &repo,
+        *token,
+        rfc056_operator(),
+        stikk_core::Evidence::TypedName(their_id.clone()),
+        &their_id,
+        &mine.public_key,
+    )
+    .expect_err("prikk refuses a removed id under a different key");
+    assert!(
+        err.to_string()
+            .contains("already adopted with a different public key"),
+        "0.{}: prikk's words, verbatim: {err}",
+        bin.minor
+    );
+
+    // **Leg 6.** A list of one: stikk declines before prikk is asked, and says what to do.
+    let rows = rfc056_list(&counting, &repo, bin.minor);
+    assert_eq!(rows.len(), 1, "0.{}: one key left: {rows:?}", bin.minor);
+    let writes = counting
+        .trust_writes
+        .load(std::sync::atomic::Ordering::SeqCst);
+    match stikk_core::remove_preview(&counting, &repo, rfc056_operator(), &rows[0].key_id)
+        .unwrap_or_else(|e| panic!("0.{}: remove_preview: {e}", bin.minor))
+    {
+        stikk_core::RemovePreview::Blocked(said) => {
+            assert_eq!(said, stikk_core::LAST_KEY, "0.{}", bin.minor);
+        }
+        other => panic!("0.{}: expected a decline, got {other:?}", bin.minor),
+    }
+    assert_eq!(
+        counting
+            .trust_writes
+            .load(std::sync::atomic::Ordering::SeqCst),
+        writes,
+        "0.{}: the last-key decline spawned nothing",
+        bin.minor
+    );
+    Fixture::clear_env();
+}
+
+/// **Leg 7, the one that matters**: removing the key that sealed this history makes stikk's own
+/// Verify fail it — and adopting the same key under the same id again repairs it.
+///
+/// **This leg is the evidence for decision 3's sentence**, the one the remove card always
+/// carries: *"If this key sealed blocks in this repository, Verify will fail them until the same
+/// key is adopted again under the same id."* If prikk ever stops behaving this way, this goes
+/// red and the sentence is reconsidered rather than quietly left wrong.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc056_removing_the_sealing_key_fails_verify_until_it_is_adopted_again_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc056_in_band(&bin) || bin.minor < stikk_core::VERIFY_FROM_MINOR {
+        return;
+    }
+    let backend = CliBackend::with_program(&bin.path);
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+
+    // History this repository's own key sealed.
+    std::fs::write(repo.join("a.txt"), "a\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+    assert!(
+        rfc056_verify_ok(&backend, &repo, bin.minor),
+        "0.{}: the premise — a sealed repository verifies",
+        bin.minor
+    );
+
+    // **A second key first**, because prikk refuses to remove the last one (F4) — which is
+    // exactly what leg 6 asserts stikk says before asking.
+    let (theirs, _other) = rfc056_another_key(&bin, &backend);
+    let their_id = stikk_core::default_key_id(&theirs);
+    rfc056_adopt(&backend, &repo, bin.minor, &their_id, &theirs);
+
+    let sealing = rfc056_list(&backend, &repo, bin.minor)
+        .into_iter()
+        .find(|row| row.key_id != their_id)
+        .unwrap_or_else(|| panic!("0.{}: the key that sealed this history", bin.minor));
+    rfc056_remove(&backend, &repo, bin.minor, &sealing.key_id);
+
+    let stikk_core::VerifyView::Checked(checked) = stikk_core::verify(&backend, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: verify: {e}", bin.minor))
+    else {
+        panic!("0.{}: verify reports in band", bin.minor);
+    };
+    assert!(
+        !checked.ok,
+        "0.{}: **the point of the leg** — the sealed history no longer verifies",
+        bin.minor
+    );
+    assert!(
+        checked
+            .conditions
+            .iter()
+            .any(|row| row.id == "publication-trust"),
+        "0.{}: prikk's own condition: {:?}",
+        bin.minor,
+        checked.conditions
+    );
+
+    // **And adopting the same key under the same id repairs it**, which is what makes the
+    // card's sentence say *until*, not *forever*.
+    rfc056_adopt(
+        &backend,
+        &repo,
+        bin.minor,
+        &sealing.key_id,
+        &sealing.public_key,
+    );
+    assert!(
+        rfc056_verify_ok(&backend, &repo, bin.minor),
+        "0.{}: re-adopting the same key under the same id repairs it",
+        bin.minor
+    );
+    Fixture::clear_env();
+}
+
+/// Whether prikk's verdict on this repository is sound, through stikk's own Verify.
+fn rfc056_verify_ok(backend: &impl stikk_prikk::Prikk, repo: &std::path::Path, minor: u32) -> bool {
+    match stikk_core::verify(backend, repo).unwrap_or_else(|e| panic!("0.{minor}: verify: {e}")) {
+        stikk_core::VerifyView::Checked(checked) => checked.ok,
+        other => panic!("0.{minor}: verify reports in band, got {other:?}"),
+    }
+}
+
+/// **Leg 8**: removing your own key is allowed, and prikk then reports the maintainer role as
+/// `not-adopted` — the state the card's second notice warns about, measured rather than
+/// asserted from the prose.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc056_removing_your_own_key_leaves_the_maintainer_role_not_adopted_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc056_in_band(&bin) {
+        return;
+    }
+    let backend = CliBackend::with_program(&bin.path);
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let (theirs, _other) = rfc056_another_key(&bin, &backend);
+    rfc056_adopt(
+        &backend,
+        &repo,
+        bin.minor,
+        &stikk_core::default_key_id(&theirs),
+        &theirs,
+    );
+
+    // **The card marks it as yours**, which needs the id *and* the public key to match -- so
+    // the environment carries the fixture's own key while the preview is built.
+    fixture.set_maintainer_env();
+    let mine = rfc056_list(&backend, &repo, bin.minor)
+        .into_iter()
+        .find(|row| row.yours)
+        .unwrap_or_else(|| panic!("0.{}: this repository knows its own key", bin.minor));
+    let preview = stikk_core::remove_preview(&backend, &repo, rfc056_operator(), &mine.key_id)
+        .unwrap_or_else(|e| panic!("0.{}: remove_preview: {e}", bin.minor));
+    let stikk_core::RemovePreview::Ready { token } = preview else {
+        panic!(
+            "0.{}: expected an armed removal, got {preview:?}",
+            bin.minor
+        );
+    };
+    assert!(
+        token
+            .summary()
+            .notices
+            .iter()
+            .any(|notice| notice == stikk_core::REMOVE_YOUR_OWN),
+        "0.{}: the card says it is yours: {:?}",
+        bin.minor,
+        token.summary().notices
+    );
+    stikk_core::remove_confirm_and_execute(
+        &backend,
+        &repo,
+        *token,
+        rfc056_operator(),
+        stikk_core::Evidence::TypedName(mine.key_id.clone()),
+        &mine.key_id,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: the removal: {e}", bin.minor));
+
+    let readiness = backend
+        .readiness(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor));
+    assert_eq!(
+        readiness.readiness.maintainer,
+        stikk_model::RoleReadiness::Known(stikk_model::Binding::NotAdopted),
+        "0.{}: prikk reports the role as not-adopted after the removal",
+        bin.minor
+    );
+    Fixture::clear_env();
+}
+
+/// **At the floor both writes are unavailable, and nothing is spawned** (decision 1).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc056_below_the_band_both_writes_are_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    assert!(
+        bin.minor < stikk_core::TRUST_FROM_MINOR,
+        "the floor is below the band"
+    );
+    let counting = CountingWrites::new(&bin);
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let said = stikk_core::trust_unavailable(bin.minor);
+
+    match stikk_core::adopt_preview(
+        &counting,
+        &repo,
+        rfc056_operator(),
+        "ed25519-0000000000000000",
+        &"0".repeat(64),
+    )
+    .unwrap_or_else(|e| panic!("0.{}: adopt_preview: {e}", bin.minor))
+    {
+        stikk_core::AdoptPreview::Blocked(reason) => assert_eq!(reason, said, "0.{}", bin.minor),
+        other => panic!("0.{}: expected a block, got {other:?}", bin.minor),
+    }
+    match stikk_core::remove_preview(
+        &counting,
+        &repo,
+        rfc056_operator(),
+        "ed25519-0000000000000000",
+    )
+    .unwrap_or_else(|e| panic!("0.{}: remove_preview: {e}", bin.minor))
+    {
+        stikk_core::RemovePreview::Blocked(reason) => assert_eq!(reason, said, "0.{}", bin.minor),
+        other => panic!("0.{}: expected a block, got {other:?}", bin.minor),
+    }
+    assert_eq!(
+        counting
+            .trust_writes
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "0.{}: nothing was spawned below the band",
+        bin.minor
+    );
+    Fixture::clear_env();
+}

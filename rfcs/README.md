@@ -25,7 +25,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 055 | [The prikk 0.55 re-baseline](./proposed/055-prikk-0-55-rebaseline.md) | 0.17.0 increment 3: validated through prikk 0.55.0; the suite green with only the constant moved |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
@@ -34,6 +33,7 @@ _Design settled; implementer may start; work has not yet shipped._
 |----|-------|-----------|---------|
 | 053 | [Getting files back: an earlier version, saved outside the repository](./accepted/053-get-files-back.md) | save one file as it was at a block (`cat --output`), or all of a block's files into a new folder (`extract`), from Block detail; outside the repository, never over an existing path; prikk ≥ 0.54. **Accepted 2026-10-29**; 0.17.0 increment 1 | [A: get files back](./handoffs/053-get-files-back/a-get-files-back-handoff-v1.md) |
 | 054 | [Trust, read-only: which keys this repository trusts](./accepted/054-trust-read-only.md) | a Trust view (`T`) of the adopted maintainer keys, yours marked; whether each bundle sealer is trusted; prikk ≥ 0.54. **Accepted 2026-10-29**; 0.17.0 increment 2 | [A: trust, read-only](./handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md) |
+| 055 | [The prikk 0.55 re-baseline](./accepted/055-prikk-0-55-rebaseline.md) | validated through prikk 0.55.0; the suite green at 0.28.0 and 0.55.0 with only `VALIDATED_MAX_MINOR` moved. **Accepted 2026-10-29**; 0.17.0 increment 3, best landed before RFC 053's commit 1 | [A: the re-baseline](./handoffs/055-prikk-0-55-rebaseline/a-rebaseline-handoff-v1.md) |
 
 ## Done (implemented)
 

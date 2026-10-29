@@ -457,7 +457,7 @@ Scoped and authorized 2026-10-29, in delivery order:
    repository, never over an existing path, previewed by prikk's own plan.
 2. **Trust, read-only** ([RFC 054](rfcs/accepted/054-trust-read-only.md), `FR-103`'s read half): a Trust view of the
    keys this repository trusts, yours marked, and on the bundle cards whether each sealer is trusted.
-3. **The prikk 0.55 re-baseline** ([RFC 055](rfcs/proposed/055-prikk-0-55-rebaseline.md)): prikk 0.55.0 was
+3. **The prikk 0.55 re-baseline** ([RFC 055](rfcs/accepted/055-prikk-0-55-rebaseline.md)): prikk 0.55.0 was
    published 2026-10-28; the suite is green at 0.28.0 and 0.55.0 with only the validated ceiling moved.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,

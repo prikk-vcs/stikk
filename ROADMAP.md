@@ -472,17 +472,24 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.18.0, not yet scoped
+## Next — 0.18.0: stikk lets you choose whose keys this repository trusts
 
-**The candidate:** the **trust write half** (`FR-103`) — adopting and removing maintainer keys, with the
-TOFU-conflict refusal presented as the security event it is. The read half shipped in 0.17.0, which is what makes
-the write half the next thing a user asks for. **The scope is the owner's to authorize**, and nothing is in
-delivery until it is.
+Scoped and authorized 2026-10-29, in delivery order:
+
+1. **Trust, adopt and remove** ([RFC 056](rfcs/proposed/056-trust-adopt-and-remove.md), proposed; `FR-103`'s write
+   half): from the Trust view, adopt a maintainer key (`a`) or remove one (`x`), each previewed and confirmed by
+   typing the key id. The remove card says that removing the key which sealed your history makes Verify fail it until
+   the key is adopted again (measured); a different key under a known id is shown as the security event it is.
+2. **The carried follow-ups** ([RFC 053 Handoff B](rfcs/handoffs/053-get-files-back/b-carried-follow-ups-handoff-v1.md)):
+   "already there" counts a dangling symlink, as prikk does; Block detail's key hint on its own row; two rewraps and a
+   test fixture completed.
+3. **A prikk re-baseline**, only if prikk publishes a new minor before the cut. The cut does not wait for it.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and
 token (RFC 048 Handoff C), and can join any release when they exist. **The AUR packages** publish by a dispatch of
-`aur.yml` the day the AUR grants the adoption of the restored `stikk` and `stikk-bin`; no release waits for it.
+`aur.yml`, for the latest release, the day the AUR grants the adoption of the restored `stikk` and `stikk-bin`; no
+release waits for it.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 

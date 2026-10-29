@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 056 | [Trust, adopt and remove: choosing whose keys this repository trusts](./proposed/056-trust-adopt-and-remove.md) | `FR-103`'s write half: adopt (`a`) and remove (`x`) a maintainer key from the Trust view, Tier Three typed; the measured cost of removing a key that sealed your history; a changed key under a known id as a security event; prikk ≥ 0.54. 0.18.0 increment 1 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
@@ -35,7 +36,7 @@ _None: RFCs 053, 054 and 055 delivered and closed 2026-10-29._
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
-| 053 | [Getting files back: an earlier version, saved outside the repository](./done/053-get-files-back.md) | **0.17.0** | saving from Patch detail, History or Compare; writing into the worktree (`FR-053`'s materialize half, `FR-054`); three small follow-ups carried to the next touch | [A: get files back](./handoffs/053-get-files-back/a-get-files-back-handoff-v1.md) |
+| 053 | [Getting files back: an earlier version, saved outside the repository](./done/053-get-files-back.md) | **0.17.0** | saving from Patch detail, History or Compare; writing into the worktree (`FR-053`'s materialize half, `FR-054`); three small follow-ups carried to the next touch | [A: get files back](./handoffs/053-get-files-back/a-get-files-back-handoff-v1.md) · [B: carried follow-ups](./handoffs/053-get-files-back/b-carried-follow-ups-handoff-v1.md) |
 | 054 | [Trust, read-only: which keys this repository trusts](./done/054-trust-read-only.md) | **0.17.0**; decision 3 amended in review | adding and removing keys and the TOFU event (`FR-103`'s write half); two prikk items held for a letter | [A: trust, read-only](./handoffs/054-trust-read-only/a-trust-read-only-handoff-v1.md) |
 | 055 | [The prikk 0.55 re-baseline](./done/055-prikk-0-55-rebaseline.md) | **0.17.0** | none | [A: the re-baseline](./handoffs/055-prikk-0-55-rebaseline/a-rebaseline-handoff-v1.md) |
 | 051 | [Arch Linux packages on the AUR](./done/051-arch-linux-packages.md) | **0.16.0**; first publication by 0.16.0's release run | the push path, proven at the first publication; `aarch64` lint-only | [A: AUR packages](./handoffs/051-arch-linux-packages/a-aur-packages-handoff-v1.md) |

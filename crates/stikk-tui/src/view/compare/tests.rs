@@ -23,6 +23,12 @@ const RAW_MULTILINE: &str = r#"{
     "mode": 33188,
     "size": 5
   },
+  "to": {
+    "kind": "file",
+    "encoding": "text",
+    "mode": 33188,
+    "size": 7
+  },
   "minimal": true,
   "hunks": [
     "@@ -1 +1 @@\n-keep\n+keep  \n"

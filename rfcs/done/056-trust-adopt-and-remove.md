@@ -1,6 +1,6 @@
 # RFC 056 — Trust, adopt and remove: choosing whose keys this repository trusts
 
-**Status.** **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/056-trust-adopt-and-remove/a-adopt-and-remove-handoff-v1.md) issued. **Proposed 2026-10-29** by the architect, as 0.18.0's increment 1 (`.git-exclude/release/0-18-0-scope.md`,
+**Status.** **Done 2026-10-30**: Handoff A delivered on `main` (`de50098`..`e33b31a`); 0.18.0 candidate. **Accepted by the project owner 2026-10-29**; [Handoff A](../handoffs/056-trust-adopt-and-remove/a-adopt-and-remove-handoff-v1.md). **Proposed 2026-10-29** by the architect, as 0.18.0's increment 1 (`.git-exclude/release/0-18-0-scope.md`,
 authorized 2026-10-29). **No open question**: the scope's one design point, how to present a refused adopt, is decided
 here (decision 5).
 **Measured** against a real prikk **0.55.0**: `.git-exclude/reports/056-trust-write/` (`measure056.sh` →
@@ -173,3 +173,30 @@ id. It is also what a mix-up looks like.
 - **Run `check`**, or parse prikk's prose.
 - **Count** the blocks a removal affects.
 - **Adopt tags or author keys.**
+
+## Delivered
+
+**One handoff, six commits, green on `main` at `e33b31a`**: CI, Docs, supply chain, and the real-binary suite on the
+full platform matrix (85 cases at 0.28.0 and 0.55.0 on Linux and macOS; 84 on Windows, where the execute-bit leg is
+`#[cfg(unix)]`). F1–F4 reproduced at 0.54.1 and 0.55.0.
+
+- **The seam**: `trust_add` and `trust_remove`, category `Trust`, banded at `FILES_FROM_MINOR`, through one private
+  helper. prikk's lines are carried verbatim and nothing is parsed. `--format` is asserted absent.
+- **The guards**, inside `confirm::preview`, so they run again at confirmation. Each declines with no write spawned,
+  proved by counters:
+  - already trusted;
+  - a different key under a known id (`TwoKeys`, the security event, never armed);
+  - no longer trusted;
+  - the last key.
+- **The cards**, confirmed by typing the key id:
+  - adopt carries what trust means, where a key should come from, and a notice when the id is not the key's default;
+  - remove always carries the Verify sentence, plus the "your own key" notice when id and public key both match.
+- **Suite leg 7 is the evidence for decision 3**: removing the key that sealed the fixture's history fails stikk's
+  Verify with `publication-trust`, and adopting it again passes.
+- **Accepted deviation**: the public key is in an aside's body, which wraps, rather than in a row that clips.
+- **Carried to the confirmation overlay's follow-up**, with its older *prose against the right border* item:
+  - a long key id clips the typed confirmation's prompt and echo, pinned by
+    `capture_rfc056_typed_confirmation_at_80_columns`;
+  - a 64-hex key splits 63 + 1 rather than 32 + 32.
+- **Held for the next necessary letter**: a per-block sealer in `log-report-v1` (to count what a removal breaks), and a
+  `refusal-v1` id for the different-key refusal (to give a removed id the security-event card too).

@@ -1,6 +1,6 @@
 # Handoff A — RFC 056: trust, adopt and remove (v1)
 
-**Companion to:** [RFC 056](../../accepted/056-trust-adopt-and-remove.md), **accepted 2026-10-29**. **Read the RFC
+**Companion to:** [RFC 056](../../done/056-trust-adopt-and-remove.md), **accepted 2026-10-29**. **Read the RFC
 first**, F1–F4 and decisions 1–7. **Covers:** all of it. This is 0.18.0's increment 1.
 **Independent of RFC 053's [Handoff B](../053-get-files-back/b-carried-follow-ups-handoff-v1.md).** Land either one
 first, but submit them separately.

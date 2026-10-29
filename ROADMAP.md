@@ -476,11 +476,11 @@ a fabricated worktree entry was fixed.
 
 Scoped and authorized 2026-10-29, in delivery order:
 
-1. **Trust, adopt and remove** ([RFC 056](rfcs/accepted/056-trust-adopt-and-remove.md), accepted 2026-10-29; `FR-103`'s write
+1. **Trust, adopt and remove — landed on `main`** ([RFC 056](rfcs/done/056-trust-adopt-and-remove.md), `e33b31a`; `FR-103`'s write
    half): from the Trust view, adopt a maintainer key (`a`) or remove one (`x`), each previewed and confirmed by
    typing the key id. The remove card says that removing the key which sealed your history makes Verify fail it until
    the key is adopted again (measured); a different key under a known id is shown as the security event it is.
-2. **The carried follow-ups** ([RFC 053 Handoff B](rfcs/handoffs/053-get-files-back/b-carried-follow-ups-handoff-v1.md)):
+2. **The carried follow-ups — landed on `main`** ([RFC 053 Handoff B](rfcs/handoffs/053-get-files-back/b-carried-follow-ups-handoff-v1.md)):
    "already there" counts a dangling symlink, as prikk does; Block detail's key hint on its own row; two rewraps and a
    test fixture completed.
 3. **A prikk re-baseline**, only if prikk publishes a new minor before the cut. The cut does not wait for it.

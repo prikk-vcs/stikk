@@ -24,8 +24,8 @@ and `FILES_FROM_MINOR`, with `NullBackend`'s six new builders and three call cou
 `stikk_tui::overlay::SavePathKind`; `stikk_tui::App::begin_save_file` and `begin_save_all`;
 `stikk_prikk::TrustedKey`, `TrustedKeys` and `NullBackend`'s three new builders;
 `stikk_core::trust` with `TrustView`, `TrustRow`, `Sealer`, `SealerTrust`, `SealerTrustRead`,
-`read`, `sealers`, `trust_unavailable`, `TRUST_FROM_MINOR` and its sentences, plus
-`BundleView::sealers`; `stikk_tui::App::open_trust`. **No public item was removed**: `cargo public-api diff 0.16.0` reports *(none)* under both *Removed
+`read`, `sealers`, `trust_unavailable`, `TRUST_FROM_MINOR`, `NAMES_BUT_DOES_NOT_PROVE` and its
+other sentences, plus `BundleView::sealers`; `stikk_tui::App::open_trust`. **No public item was removed**: `cargo public-api diff 0.16.0` reports *(none)* under both *Removed
 items* and *Changed items* for every crate.
 
 ### Added
@@ -49,11 +49,16 @@ items* and *Changed items* for every crate.
   **Nothing in the repository or your worktree changes.** To use what came back, copy what you
   want into your worktree yourself.
 
-- **See which keys this repository trusts, and whether a bundle's sealer is one of them.** `T`
+- **See which keys this repository trusts, and which of them a bundle's sealer names.** `T`
   anywhere a repository is open lists the adopted maintainer keys, in prikk's order, with your
-  own marked — and each bundle card now says beside every recorded sealer whether this
-  repository trusts it, with prikk's own note that recording a key is not trusting one still
-  beneath. Needs prikk 0.54 or newer; below that the sealer row is what it was.
+  own marked — and each bundle card now says, beneath every recorded sealer, **which adopted
+  key, if any, its id names**, with prikk's own note that recording a key is not trusting one
+  still beneath that. Needs prikk 0.54 or newer; below that the sealer row is what it was.
+
+  **A name is not a signature, and the card says so.** A bundle records the id its sealer chose
+  and nothing to check it against, so a bundle sealed under an id you trust previews and
+  imports clean whoever holds the key. Import it and press **`V`**: verifying is where prikk
+  checks each signature against the key trusted here, and fails a seal that does not verify.
 
   **Read-only.** stikk adopts and removes nothing, and an untrusted sealer declines no import:
   received branches exist so that history you have not vouched for can sit beside your own.

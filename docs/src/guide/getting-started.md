@@ -239,12 +239,17 @@ and names `prikk bundle import` for doing it anyway.
 **Taking received work into a branch of yours is not in stikk yet.** A received ref cannot seed a
 branch, and adopting one is a merge: `prikk merge --from remotes/<name>` does it today.
 
-### Whose key sealed it, and whether you trust it
+### Whose key sealed it, and what that is worth
 
-A bundle records the key ids that sealed what is inside. Beside each one stikk says whether this
-repository has adopted that key — *trusted by this repository*, *yours*, or *not trusted by this
-repository* — with prikk's own note still beneath them: recording a key is not trusting one.
-Needs prikk 0.54 or newer; below that you get prikk's ids and note alone.
+A bundle records the key ids that sealed what is inside. Beneath each one stikk says which
+adopted key, if any, that id **names** — *names a key this repository trusts*, *names your key*,
+or *not trusted by this repository* — with prikk's own note still beneath them: recording a key
+is not trusting one. Needs prikk 0.54 or newer; below that you get prikk's ids and note alone.
+
+**A name is not a signature, and the card says so.** A bundle records the id its sealer chose
+and nothing to check it against, so anyone can seal under an id you trust and the preview will
+still read clean. **Import it, then press `V`:** verifying is where prikk checks each signature
+against the key trusted here, and a seal that does not verify fails the check.
 
 **None of this stops an import.** An untrusted sealer is a fact about what you are looking at,
 not a refusal — received branches exist precisely so history you have not vouched for can sit

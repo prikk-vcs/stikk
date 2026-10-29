@@ -8700,11 +8700,18 @@ fn rfc053_every_file_is_saved_and_matches_prikks_tree_at_the_ceiling() {
             if path.is_dir() {
                 stack.push(path);
             } else {
+                // **`/`, whatever the platform writes** — prikk reports repository paths with
+                // forward slashes everywhere, and `Path::display` uses the platform's own
+                // separator. Without this the comparison passes on Linux and macOS and fails on
+                // Windows with `dir\sub\d.txt` against `dir/sub/d.txt`, which is what the
+                // first full-matrix run found: the files were in the right places with the right
+                // sizes, and only this test's spelling of them differed.
                 let relative = path
                     .strip_prefix(&dir)
                     .unwrap_or(&path)
                     .display()
-                    .to_string();
+                    .to_string()
+                    .replace('\\', "/");
                 let size = std::fs::metadata(&path)
                     .unwrap_or_else(|e| panic!("0.{}: stat: {e}", bin.minor))
                     .len();

@@ -555,10 +555,12 @@ pub fn adopt_preview(
                 return Ok(blocked(TWO_KEYS_ONE_ID, ADOPT_OPERATION));
             }
             let mut summary = summary(ADOPT_OPERATION, ADOPT_CONSEQUENCE);
-            summary.target_ids = vec![
-                confirm::TargetId::named("key id", key_id.clone()),
-                confirm::TargetId::named("public key", public_key.clone()),
-            ];
+            // **The id is the target row; the key is an aside's body.** Measured at 80
+            // columns: a target row and an aside's *name* are each drawn unwrapped, and a
+            // 64-character public key does not fit on either -- it was clipped mid-key, which
+            // is the one value on this card a reader may want to compare character by
+            // character. An aside's body wraps, and hard-splits a word this long.
+            summary.target_ids = vec![confirm::TargetId::named("key id", key_id.clone())];
             // **The typed evidence is the key id** (§7 trap 1), matched exactly by `confirm`.
             summary.target_name = Some(key_id.clone());
             summary.notices = Vec::new();
@@ -566,10 +568,11 @@ pub fn adopt_preview(
                 summary.notices.push(not_the_default_id(&public_key));
             }
             summary.asides = vec![confirm::Aside {
-                before: "",
+                before: "the public key",
                 name: String::new(),
                 after: "",
                 body: vec![
+                    public_key.clone(),
                     WHAT_TRUST_MEANS.to_string(),
                     WHERE_TO_GET_THE_KEY.to_string(),
                 ],
@@ -632,11 +635,16 @@ pub fn remove_preview(
                 return Ok(blocked(LAST_KEY, REMOVE_OPERATION));
             }
             let mut summary = summary(REMOVE_OPERATION, REMOVE_CONSEQUENCE);
-            summary.target_ids = vec![
-                confirm::TargetId::named("key id", key_id.clone()),
-                confirm::TargetId::named("public key", row.public_key.clone()),
-            ];
+            // As the adopt card: the id is the target row, the key is an aside's body, which
+            // is the only one of the two that wraps a 64-character value.
+            summary.target_ids = vec![confirm::TargetId::named("key id", key_id.clone())];
             summary.target_name = Some(key_id.clone());
+            summary.asides = vec![confirm::Aside {
+                before: "the public key",
+                name: String::new(),
+                after: "",
+                body: vec![row.public_key.clone()],
+            }];
             // **Always**, because stikk cannot count the blocks this would un-verify (F4).
             summary.notices = vec![REMOVE_MAY_FAIL_VERIFY.to_string()];
             // **And a failed `key status` costs only this notice** (RFC 035 A3's rule): the

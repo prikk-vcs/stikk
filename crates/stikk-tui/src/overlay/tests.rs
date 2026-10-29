@@ -4482,3 +4482,97 @@ fn capture_rfc056_typed_confirmation_at_80_columns() {
         "it is clipped, not absent: {text}"
     );
 }
+
+/// **RFC 056's Delivery captures, at exactly 80 columns**: the adopt card with and without the
+/// default-id notice, the remove card for a collaborator's key and for your own, and the
+/// security event. Each card is built by the **core's own preview**, not by hand, so what is
+/// captured is what a reader gets.
+///
+/// ```text
+/// cargo test -p stikk-tui --lib capture_rfc056_cards — --nocapture
+/// ```
+#[test]
+fn capture_rfc056_cards_at_80_columns() {
+    use stikk_prikk::{NullBackend, TrustedKey};
+
+    const MINE: &str = "ed25519-31f369d3abb7f64c";
+    const MINE_KEY: &str = "31f369d3abb7f64cd2cf70be31158181e361f25444d8de122cdff59389e7e946";
+    const THEIRS: &str = "ed25519-9c0a44b1d2e3f501";
+    const THEIRS_KEY: &str = "9c0a44b1d2e3f5012b7c0a4e55d2117ab3340ef6627c118e2b4a9d0cf3e21847";
+    const NEW_ID: &str = "ed25519-6762b6359a650c0a";
+    const NEW_KEY: &str = "6762b6359a650c0a5acaa723a5fc2ad78b354fcac296495b9cbf46c0d32a3f7f";
+
+    let backend = NullBackend::supported()
+        .with_version(0, 55, 0)
+        .with_trusted_keys(vec![
+            TrustedKey {
+                key_id: MINE.to_string(),
+                public_key: MINE_KEY.to_string(),
+            },
+            TrustedKey {
+                key_id: THEIRS.to_string(),
+                public_key: THEIRS_KEY.to_string(),
+            },
+        ])
+        .with_readiness(stikk_prikk::ReadinessReport {
+            readiness: stikk_model::Readiness::none(),
+            author: stikk_prikk::RoleDetail::default(),
+            maintainer: stikk_prikk::RoleDetail {
+                key_id: Some(MINE.to_string()),
+                public_key: Some(MINE_KEY.to_string()),
+                ..stikk_prikk::RoleDetail::default()
+            },
+        });
+    let repo = std::path::Path::new("/repo");
+    let operator = stikk_model::Readiness {
+        read_only: false,
+        ..stikk_model::Readiness::none()
+    };
+
+    let adopt = |key_id: &str, public: &str| match stikk_core::adopt_preview(
+        &backend, repo, operator, key_id, public,
+    )
+    .expect("the preview answers")
+    {
+        stikk_core::AdoptPreview::Ready { token } => token,
+        other => panic!("expected an armed adopt, got {other:?}"),
+    };
+    let remove = |key_id: &str| match stikk_core::remove_preview(&backend, repo, operator, key_id)
+        .expect("the preview answers")
+    {
+        stikk_core::RemovePreview::Ready { token } => token,
+        other => panic!("expected an armed removal, got {other:?}"),
+    };
+
+    let cards = [
+        ("adopt, the key's own default id", adopt(NEW_ID, NEW_KEY)),
+        (
+            "adopt, an id the key did not derive",
+            adopt("ed25519-2222222222222222", NEW_KEY),
+        ),
+        ("remove, a collaborator's key", remove(THEIRS)),
+        ("remove, your own key", remove(MINE)),
+    ];
+    for (label, token) in cards {
+        let overlay = Overlay::Confirmation {
+            summary: Box::new(token.summary().clone()),
+            tier: token.tier(),
+            typed: String::new(),
+            error: None,
+        };
+        let text = draw_at(&overlay, 80, 30);
+        println!("--- RFC 056: {label} (80 columns) ---\n{text}");
+        assert!(text.contains("to confirm:"), "{label}: {text}");
+    }
+
+    let conflict = Overlay::TrustConflict {
+        conflict: Box::new(stikk_core::TwoKeysOneId {
+            key_id: THEIRS.to_string(),
+            adopted: THEIRS_KEY.to_string(),
+            given: NEW_KEY.to_string(),
+        }),
+    };
+    let text = draw_at(&conflict, 80, 30);
+    println!("--- RFC 056: the security event (80 columns) ---\n{text}");
+    assert!(!text.contains("to confirm"), "nothing to approve: {text}");
+}

@@ -462,14 +462,15 @@ fn the_adopt_card_carries_both_values_the_two_sentences_and_the_consequence() {
         .iter()
         .map(|row| (row.role, row.id.as_str()))
         .collect();
-    assert_eq!(
-        rows,
-        vec![(Some("key id"), NEW_ID), (Some("public key"), NEW_KEY)]
-    );
+    assert_eq!(rows, vec![(Some("key id"), NEW_ID)]);
     assert_eq!(summary.consequence, ADOPT_CONSEQUENCE);
+    // **The public key is an aside's body**, because that is what wraps: measured at 80
+    // columns, a target row drawn unwrapped clipped a 64-character key mid-value.
+    assert_eq!(summary.asides[0].before, "the public key");
     assert_eq!(
         summary.asides[0].body,
         vec![
+            NEW_KEY.to_string(),
             WHAT_TRUST_MEANS.to_string(),
             WHERE_TO_GET_THE_KEY.to_string()
         ]

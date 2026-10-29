@@ -7512,6 +7512,9 @@ struct CountingWrites {
     saves: std::sync::atomic::AtomicUsize,
     /// How many times `extract` was spawned, for the same two rules.
     extracts: std::sync::atomic::AtomicUsize,
+    /// How many times a **trust write** was spawned -- `trust_add` and `trust_remove` together,
+    /// since RFC 056's guard legs assert that neither ran.
+    trust_writes: std::sync::atomic::AtomicUsize,
 }
 
 impl CountingWrites {
@@ -7522,6 +7525,7 @@ impl CountingWrites {
             imports: std::sync::atomic::AtomicUsize::new(0),
             exports: std::sync::atomic::AtomicUsize::new(0),
             saves: std::sync::atomic::AtomicUsize::new(0),
+            trust_writes: std::sync::atomic::AtomicUsize::new(0),
             extracts: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -7690,6 +7694,25 @@ impl Prikk for CountingWrites {
         repo: &std::path::Path,
     ) -> stikk_model::Result<stikk_prikk::TrustedKeys> {
         self.inner.trusted_keys(repo)
+    }
+    fn trust_add(
+        &self,
+        repo: &std::path::Path,
+        key_id: &str,
+        public_key: &str,
+    ) -> stikk_model::Result<stikk_prikk::TrustWritten> {
+        self.trust_writes
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.trust_add(repo, key_id, public_key)
+    }
+    fn trust_remove(
+        &self,
+        repo: &std::path::Path,
+        key_id: &str,
+    ) -> stikk_model::Result<stikk_prikk::TrustWritten> {
+        self.trust_writes
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.trust_remove(repo, key_id)
     }
     fn file_meta(
         &self,

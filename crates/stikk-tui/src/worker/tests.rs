@@ -228,6 +228,21 @@ impl Prikk for Recording {
         self.inner.trusted_keys(repo)
     }
 
+    fn trust_add(
+        &self,
+        repo: &Path,
+        key_id: &str,
+        public_key: &str,
+    ) -> Result<stikk_prikk::TrustWritten> {
+        self.record("trust_add");
+        self.inner.trust_add(repo, key_id, public_key)
+    }
+
+    fn trust_remove(&self, repo: &Path, key_id: &str) -> Result<stikk_prikk::TrustWritten> {
+        self.record("trust_remove");
+        self.inner.trust_remove(repo, key_id)
+    }
+
     fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<stikk_prikk::FileMetaRead> {
         self.record("file_meta");
         self.inner.file_meta(repo, block, path)

@@ -326,6 +326,25 @@ impl CliBackend {
         Ok(crate::RefWrite::Done(printed_lines(&out)))
     }
 
+    /// The two trust writes, which differ only in their argv (RFC 056 decision 1).
+    ///
+    /// **Banded first, like every other write**: below the band nothing is spawned, not even the
+    /// readiness read. **No key is asked for**: `Trust` requires `ReadWrite` and nothing more
+    /// (`category.rs`), which is what prikk measured -- both commands run with no key material
+    /// at all (F1). **No `--format`**, which prikk refuses as an unknown argument.
+    fn trust_write(&self, repo: &Path, args: &[&OsStr], what: &str) -> Result<crate::TrustWritten> {
+        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
+            return Ok(crate::TrustWritten::Unavailable);
+        }
+        if !Prikk::readiness(self, repo)?.readiness.may_operate() {
+            return Err(StikkError::NotReady {
+                detail: format!("{what} is not available in read-only mode"),
+            });
+        }
+        let out = self.run(Some(repo), RequestCategory::Trust, args.iter().copied())?;
+        Ok(crate::TrustWritten::Done(printed_lines(&out)))
+    }
+
     /// Build the [`StikkError::Internal`] for a usage-error exit (RFC 009 F6): the repository was not
     /// touched (no repository work runs before prikk validates its arguments), so the fault-screen
     /// framing `present()` already gives `Internal` ("the repository was not touched") is accurate
@@ -1189,6 +1208,41 @@ impl Prikk for CliBackend {
             ],
         )?;
         parse_json::trust_list(&out).map(crate::TrustedKeys::Listed)
+    }
+
+    fn trust_add(
+        &self,
+        repo: &Path,
+        key_id: &str,
+        public_key: &str,
+    ) -> Result<crate::TrustWritten> {
+        self.trust_write(
+            repo,
+            &[
+                OsStr::new("trust"),
+                OsStr::new("maintainer"),
+                OsStr::new("add"),
+                OsStr::new("--key-id"),
+                OsStr::new(key_id),
+                OsStr::new("--public-key"),
+                OsStr::new(public_key),
+            ],
+            "adopting a maintainer key",
+        )
+    }
+
+    fn trust_remove(&self, repo: &Path, key_id: &str) -> Result<crate::TrustWritten> {
+        self.trust_write(
+            repo,
+            &[
+                OsStr::new("trust"),
+                OsStr::new("maintainer"),
+                OsStr::new("remove"),
+                OsStr::new("--key-id"),
+                OsStr::new(key_id),
+            ],
+            "removing a maintainer key",
+        )
     }
 
     fn switch_branch(&self, repo: &Path, name: &str) -> Result<crate::SwitchResult> {

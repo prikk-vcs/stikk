@@ -92,6 +92,15 @@ pub struct NullBackend {
     bundle_export_calls: Arc<AtomicUsize>,
     /// What [`Prikk::trusted_keys`] answers (RFC 054).
     trusted_keys: Scripted<crate::TrustedKeys>,
+    /// What the two trust writes answer (RFC 056). **One script for both**, as the three ref
+    /// writes share one: a test drives one of them at a time, and the counters below say which
+    /// ran.
+    trust_write: Scripted<crate::TrustWritten>,
+    /// How many times [`Prikk::trust_add`] has been asked -- the number every guard test
+    /// asserts is **zero**. Shared across clones.
+    trust_add_calls: Arc<AtomicUsize>,
+    /// How many times [`Prikk::trust_remove`] has been asked, for the same reason.
+    trust_remove_calls: Arc<AtomicUsize>,
     /// What [`Prikk::file_meta`] answers (RFC 053).
     file_meta: Scripted<crate::FileMetaRead>,
     /// What [`Prikk::save_file`] answers (RFC 053).
@@ -200,6 +209,9 @@ impl NullBackend {
             bundle_verify: Ok(crate::BundleVerify::Unavailable),
             bundle_preview: Ok(crate::BundlePreview::Unavailable),
             trusted_keys: Ok(crate::TrustedKeys::Unavailable),
+            trust_write: Ok(crate::TrustWritten::Unavailable),
+            trust_add_calls: Arc::new(AtomicUsize::new(0)),
+            trust_remove_calls: Arc::new(AtomicUsize::new(0)),
             file_meta: Ok(crate::FileMetaRead::Unavailable),
             save_file: Ok(crate::FileSaved::Unavailable),
             save_file_calls: Arc::new(AtomicUsize::new(0)),
@@ -618,6 +630,33 @@ impl NullBackend {
         self
     }
 
+    /// Answer both trust writes with prikk's printed lines (RFC 056).
+    #[must_use]
+    pub fn with_trust_write(mut self, lines: Vec<String>) -> Self {
+        self.trust_write = Ok(crate::TrustWritten::Done(lines));
+        self
+    }
+
+    /// Fail both trust writes, so a test can show prikk's refusal reaching the usual path
+    /// verbatim -- the case decision 5 shows under stikk's own heading.
+    #[must_use]
+    pub fn with_trust_write_refusal(mut self, message: impl Into<String>) -> Self {
+        self.trust_write = Err(message.into());
+        self
+    }
+
+    /// How many times [`Prikk::trust_add`] has been asked of this backend (and its clones).
+    #[must_use]
+    pub fn trust_add_calls(&self) -> usize {
+        self.trust_add_calls.load(Ordering::SeqCst)
+    }
+
+    /// How many times [`Prikk::trust_remove`] has been asked of this backend (and its clones).
+    #[must_use]
+    pub fn trust_remove_calls(&self) -> usize {
+        self.trust_remove_calls.load(Ordering::SeqCst)
+    }
+
     /// Answer [`Prikk::file_meta`] with one file's metadata (RFC 053).
     #[must_use]
     pub fn with_file_meta(mut self, meta: crate::FileMeta) -> Self {
@@ -985,6 +1024,21 @@ impl Prikk for NullBackend {
 
     fn trusted_keys(&self, _repo: &Path) -> Result<crate::TrustedKeys> {
         deliver(&self.trusted_keys)
+    }
+
+    fn trust_add(
+        &self,
+        _repo: &Path,
+        _key_id: &str,
+        _public_key: &str,
+    ) -> Result<crate::TrustWritten> {
+        self.trust_add_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.trust_write)
+    }
+
+    fn trust_remove(&self, _repo: &Path, _key_id: &str) -> Result<crate::TrustWritten> {
+        self.trust_remove_calls.fetch_add(1, Ordering::SeqCst);
+        deliver(&self.trust_write)
     }
 
     fn file_meta(&self, _repo: &Path, _block: &str, _path: &str) -> Result<crate::FileMetaRead> {

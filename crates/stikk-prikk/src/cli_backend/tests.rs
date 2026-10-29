@@ -3489,3 +3489,225 @@ fn below_the_band_the_trust_list_is_unavailable_and_spawns_nothing() {
         "below the band prikk must be asked its version and nothing else"
     );
 }
+
+// ---------------------------------------------------------------- RFC 056: the trust writes
+
+/// A fake prikk that answers `--version` and `key status`, then records the argv of whatever
+/// else it is asked and prints `lines` with exit `code`.
+///
+/// Separate from [`fake_ref_write_prikk`] only in the version it reports: the trust writes are
+/// banded at `FILES_FROM_MINOR`, which 0.52 is below.
+#[cfg(unix)]
+fn fake_trust_write_prikk(
+    tag: &str,
+    version: &str,
+    lines: &str,
+    code: i32,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-trustwrite-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let argv = dir.join("argv");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk {version}'; exit 0; fi\n\
+             if [ \"$2\" = \"status\" ]; then\n\
+             printf '%s\\n' '{{\"schema_version\":\"key-status-v1\",\"roles\":[{{\"role\":\"author\",\"usable\":true,\"key_id\":\"a\",\"binding\":\"matches\"}},{{\"role\":\"maintainer\",\"usable\":true,\"key_id\":\"m\",\"binding\":\"matches\"}}]}}'\n\
+             exit 0\n\
+             fi\n\
+             : > \"{argv}\"\n\
+             for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"{argv}\"; done\n\
+             printf '%s' '{lines}'\n\
+             exit {code}\n",
+            argv = argv.display(),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (script, argv)
+}
+
+/// A 64-hex public key, as prikk prints one.
+#[cfg(unix)]
+const FAKE_PUBLIC_KEY: &str = "31f369d3abb7f64cd2cf70be31158181e361f25444d8de122cdff59389e7e946";
+
+/// **`add`'s argv, exactly** (RFC 056 decision 1) — and **never `--format`**, which prikk
+/// refuses as an unknown argument, exit 2 (F1).
+#[cfg(unix)]
+#[test]
+fn trust_add_passes_the_id_and_the_public_key_and_never_a_format_flag() {
+    let (script, argv) = fake_trust_write_prikk(
+        "add",
+        "0.55.0",
+        "trusted maintainer key: ed25519-31f369d3abb7f64c\nadopted maintainer keys: 2\n",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.trust_add(
+            std::path::Path::new("."),
+            "ed25519-31f369d3abb7f64c",
+            FAKE_PUBLIC_KEY,
+        )
+    })
+    .expect("an adopt");
+    assert_eq!(
+        out,
+        crate::TrustWritten::Done(vec![
+            "trusted maintainer key: ed25519-31f369d3abb7f64c".to_string(),
+            "adopted maintainer keys: 2".to_string(),
+        ])
+    );
+    let recorded = recorded_argv(&argv);
+    assert_eq!(
+        recorded,
+        vec![
+            "trust",
+            "maintainer",
+            "add",
+            "--key-id",
+            "ed25519-31f369d3abb7f64c",
+            "--public-key",
+            FAKE_PUBLIC_KEY,
+        ]
+    );
+    assert!(!recorded.iter().any(|a| a == "--format"), "{recorded:?}");
+}
+
+/// **`remove`'s argv, exactly**, and the id is one argument.
+#[cfg(unix)]
+#[test]
+fn trust_remove_passes_the_id_as_one_argument() {
+    let (script, argv) = fake_trust_write_prikk(
+        "remove",
+        "0.55.0",
+        "revoked maintainer key: ed25519-31f369d3abb7f64c\n",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.trust_remove(std::path::Path::new("."), "ed25519-31f369d3abb7f64c")
+    })
+    .expect("a removal");
+    assert_eq!(
+        out,
+        crate::TrustWritten::Done(vec![
+            "revoked maintainer key: ed25519-31f369d3abb7f64c".to_string()
+        ])
+    );
+    assert_eq!(
+        recorded_argv(&argv),
+        vec![
+            "trust",
+            "maintainer",
+            "remove",
+            "--key-id",
+            "ed25519-31f369d3abb7f64c",
+        ]
+    );
+    assert!(
+        !recorded_argv(&argv).iter().any(|a| a == "--format"),
+        "neither write takes one"
+    );
+}
+
+/// **prikk's two "nothing changed" lines are carried through as lines** (F1): both exit 0, and
+/// the seam parses neither. stikk's guards answer these before prikk is asked; what reaches
+/// here is still prikk's own sentence.
+#[cfg(unix)]
+#[test]
+fn the_already_trusted_and_was_not_trusted_lines_are_carried_through() {
+    for (tag, printed) in [
+        (
+            "already",
+            "maintainer key already trusted: ed25519-31f369d3abb7f64c\nadopted maintainer keys: 2\n",
+        ),
+        (
+            "notrusted",
+            "maintainer key was not trusted: ed25519-0000000000000000\n",
+        ),
+    ] {
+        let (script, _argv) = fake_trust_write_prikk(tag, "0.55.0", printed, 0);
+        let backend = CliBackend::with_program(&script);
+        let out = retrying_transient_exec_busy(|| {
+            backend.trust_remove(std::path::Path::new("."), "ed25519-0000000000000000")
+        })
+        .expect("exit 0 is not a refusal");
+        let crate::TrustWritten::Done(lines) = out else {
+            panic!("{tag}: in band, prikk answered");
+        };
+        assert_eq!(
+            lines,
+            printed
+                .trim_end()
+                .lines()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            "{tag}: prikk's lines, verbatim and in order"
+        );
+    }
+}
+
+/// **A refusal is prikk's, verbatim** (`ER-02`) — the TOFU case decision 5 shows under stikk's
+/// own heading, with no prose matched on.
+#[cfg(unix)]
+#[test]
+fn a_refused_adopt_carries_prikks_words_verbatim() {
+    let said = "error: precondition not met: maintainer key id ed25519-31f369d3abb7f64c is \
+                already adopted with a different public key. A key id travels in every \
+                signature, so adopting this key under another local id would match none of its \
+                blocks";
+    let (script, _argv) = fake_trust_write_prikk("refused", "0.55.0", said, 1);
+    let backend = CliBackend::with_program(&script);
+    let err = retrying_transient_exec_busy(|| {
+        backend.trust_add(
+            std::path::Path::new("."),
+            "ed25519-31f369d3abb7f64c",
+            FAKE_PUBLIC_KEY,
+        )
+    })
+    .expect_err("prikk refused");
+    assert_eq!(err.class(), "refusal");
+    assert!(
+        err.to_string()
+            .contains("already adopted with a different public key"),
+        "{err}"
+    );
+}
+
+/// **Below the band nothing is spawned**, for either write: the fake would record an argv.
+#[cfg(unix)]
+#[test]
+fn below_the_band_both_trust_writes_are_unavailable_and_spawn_nothing() {
+    let (script, argv) = fake_trust_write_prikk("band", "0.53.0", "unreachable\n", 0);
+    let backend = CliBackend::with_program(&script);
+    assert_eq!(
+        retrying_transient_exec_busy(|| backend.trust_add(
+            std::path::Path::new("."),
+            "ed25519-31f369d3abb7f64c",
+            FAKE_PUBLIC_KEY
+        ))
+        .expect("below the band is an answer, not an error"),
+        crate::TrustWritten::Unavailable
+    );
+    assert_eq!(
+        retrying_transient_exec_busy(
+            || backend.trust_remove(std::path::Path::new("."), "ed25519-31f369d3abb7f64c")
+        )
+        .expect("below the band is an answer, not an error"),
+        crate::TrustWritten::Unavailable
+    );
+    assert!(
+        !argv.exists(),
+        "below the band prikk must be asked its version and nothing else"
+    );
+}

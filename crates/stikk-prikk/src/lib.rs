@@ -998,6 +998,25 @@ pub enum TrustedKeys {
     Unavailable,
 }
 
+/// What a trust write printed, or why stikk did not run it (RFC 056 decision 1).
+///
+/// **prikk's lines, verbatim, and stikk parses none of them.** Neither `trust maintainer add`
+/// nor `trust maintainer remove` takes `--format json` -- prikk refuses the flag as an unknown
+/// argument, exit 2 (RFC 056 F1) -- so prose is all there is, and prose is not a schema. What
+/// the repository now holds is read back with [`Prikk::trusted_keys`], which is JSON.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrustWritten {
+    /// prikk ran and exited 0. Its printed lines, for the result screen.
+    ///
+    /// **Exit 0 is not always a change**: *"maintainer key already trusted: ID"* and
+    /// *"maintainer key was not trusted: ID"* both exit 0 (F1). stikk's guards answer those
+    /// before prikk is asked; prikk's own line is still shown where one reaches here.
+    Done(Vec<String>),
+    /// Below [`crate::FILES_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
+    /// (`C-T4d`).
+    Unavailable,
+}
+
 /// What `branch switch` printed, or why stikk did not run it (RFC 045 decision 1).
 ///
 /// **Two streams, kept apart.** prikk writes its result to stdout and, at exit 0, can name a
@@ -2193,6 +2212,36 @@ pub trait Prikk: Send + Sync {
     /// [`stikk_model::StikkError`]: a report of another shape is an environment error (`UD-02`),
     /// or whatever stopped prikk running.
     fn trusted_keys(&self, repo: &Path) -> Result<TrustedKeys>;
+
+    /// Adopt a maintainer key (`trust maintainer add --key-id ID --public-key HEX`; RFC 056
+    /// decision 1).
+    ///
+    /// **No key material, and none needed.** `public_key` is a public key, and both halves are
+    /// labels prikk prints itself. Measured at 0.54.1 and 0.55.0: the command runs with no seed
+    /// anywhere and `key status` reporting both roles unusable (F1).
+    ///
+    /// **Never pass `--format`**: prikk refuses it as an unknown argument, exit 2 (F1). The
+    /// answer is read back with [`Self::trusted_keys`].
+    ///
+    /// **Banded at [`crate::FILES_FROM_MINOR`]**, the Trust view's own band: below it nothing is
+    /// spawned and the answer is [`TrustWritten::Unavailable`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: prikk's refusal verbatim -- a malformed public key, or an id
+    /// already adopted with a different key (F2) -- or whatever stopped prikk running.
+    fn trust_add(&self, repo: &Path, key_id: &str, public_key: &str) -> Result<TrustWritten>;
+
+    /// Remove a maintainer key (`trust maintainer remove --key-id ID`; RFC 056 decision 1).
+    ///
+    /// **An id that is not adopted exits 0**, with *"maintainer key was not trusted: ID"* (F1).
+    /// Removing the **last** key is refused, exit 1 (F4). Both are stikk's guards' business
+    /// before this is called; neither is read back out of the prose here.
+    ///
+    /// Banded and erroring as [`Self::trust_add`].
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: prikk's refusal verbatim, or whatever stopped prikk running.
+    fn trust_remove(&self, repo: &Path, key_id: &str) -> Result<TrustWritten>;
 }
 
 /// The one line a bundle's tip is read from: `tip block: <64 lowercase hex>`, in

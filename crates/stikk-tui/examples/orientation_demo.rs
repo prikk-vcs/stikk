@@ -130,6 +130,19 @@ impl Prikk for SlowOrientation {
         self.0.trusted_keys(repo)
     }
 
+    fn trust_add(
+        &self,
+        repo: &Path,
+        key_id: &str,
+        public_key: &str,
+    ) -> Result<stikk_prikk::TrustWritten> {
+        self.0.trust_add(repo, key_id, public_key)
+    }
+
+    fn trust_remove(&self, repo: &Path, key_id: &str) -> Result<stikk_prikk::TrustWritten> {
+        self.0.trust_remove(repo, key_id)
+    }
+
     fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<stikk_prikk::FileMetaRead> {
         self.0.file_meta(repo, block, path)
     }

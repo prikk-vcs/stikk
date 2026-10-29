@@ -4822,6 +4822,7 @@ fn bundle_screen(app: &mut App, rx: &mpsc::Receiver<Request>, tip: Option<&str>)
                 verified,
                 preview,
                 sentence: stikk_core::WOULD_BRING_FORWARD,
+                sealers: stikk_core::SealerTrustRead::Judged(Vec::new()),
             },
         )))),
     });

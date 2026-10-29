@@ -393,6 +393,14 @@ impl NullBackend {
         self
     }
 
+    /// Fail [`Prikk::readiness`], so a test can show what a view does when stikk cannot learn
+    /// which key is its own -- RFC 054's Trust view keeps the list and marks no row.
+    #[must_use]
+    pub fn with_readiness_refusal(mut self, message: impl Into<String>) -> Self {
+        self.readiness = Err(message.into());
+        self
+    }
+
     /// Replace the orientation this backend returns.
     #[must_use]
     pub fn with_orientation(mut self, orientation: Orientation) -> Self {

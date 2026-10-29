@@ -67,11 +67,24 @@ fn opened(
         rename_note: RENAME_NOTE.to_string(),
     };
     let sentence = sentence_for(connectivity, conflict).expect("a measured pair has a sentence");
+    // **The sealers as a repository that has adopted nothing would judge them** (RFC 054):
+    // these fixtures are a receiver meeting someone else's bundle for the first time.
+    let sealers = stikk_core::SealerTrustRead::Judged(
+        preview
+            .sealed_by
+            .iter()
+            .map(|key_id| stikk_core::Sealer {
+                key_id: key_id.clone(),
+                trust: stikk_core::SealerTrust::NotTrusted,
+            })
+            .collect(),
+    );
     BundleOpened::Read(Box::new(BundleView {
         path: "/home/someone/downloads/v2.bundle".to_string(),
         verified: VERIFIED.iter().map(ToString::to_string).collect(),
         preview,
         sentence,
+        sealers,
     }))
 }
 

@@ -34,6 +34,7 @@ pub mod refusal_history;
 pub mod seal;
 pub mod session;
 pub mod switch;
+pub mod trust;
 pub mod verify;
 
 pub use bundle::{
@@ -120,6 +121,11 @@ pub use switch::{
     ALREADY_THE_CURRENT_BRANCH, INCOMPLETE_PLAN, NO_FILE_PLAN, SWITCH_FROM_MINOR, SWITCH_OPERATION,
     SwitchPreview, WORK_IS_QUEUED_FOR_THIS_BRANCH, switch_confirm_and_execute, switch_preview,
     switch_unavailable,
+};
+pub use trust::{
+    HOW_TO_ADOPT, NONE_ADOPTED, OWN_KEY_UNKNOWN, Sealer, SealerTrust, SealerTrustRead,
+    TRUST_FROM_MINOR, TrustRow, TrustView, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY, sealers,
+    trust_unavailable,
 };
 pub use verify::{
     Checked, ConditionRow, JSON_OMITS, StageRow, VERIFY_FROM_MINOR, VerifyView, checked, verify,

@@ -133,6 +133,14 @@ pub struct BundleView {
     /// names are drawn beside it, through `identifier`, so repository text and stikk's chrome
     /// stay apart (`C-T2a`, RFC 044 C1).
     pub sentence: &'static str,
+    /// Each recorded sealer with **whether this repository trusts it** (RFC 054 decision 3),
+    /// from one `trusted_keys` read made with this one.
+    ///
+    /// **prikk's ids, in prikk's order**, and prikk's own continuity note still sits beneath
+    /// them: what stikk adds is an answer prikk does not give, not a replacement for what it
+    /// does. Every entry is [`stikk_core::SealerTrust::Unknown`] where the list could not be
+    /// read, so a card says what it does not know rather than implying *not trusted*.
+    pub sealers: crate::trust::SealerTrustRead,
 }
 
 impl BundleView {
@@ -232,11 +240,15 @@ pub fn open_bundle(prikk: &impl Prikk, repo: &Path, path: &Path) -> Result<Bundl
         }
     };
     let sentence = sentence_for(preview.connectivity, preview.conflict)?;
+    // **One read for every sealer** (RFC 054 decision 3), made with this one so the view holds
+    // a single answer rather than asking again per row.
+    let sealers = crate::trust::sealers(prikk, repo, &preview.sealed_by);
     Ok(BundleOpened::Read(Box::new(BundleView {
         path: shown,
         verified,
         preview,
         sentence,
+        sealers,
     })))
 }
 
@@ -451,7 +463,13 @@ pub fn import_preview(
                         before: SEALED_BY_BEFORE,
                         name: preview.sealed_by.join(", "),
                         after: SEALED_BY_AFTER,
-                        body: vec![preview.sealed_by_note.clone()],
+                        // **One line per sealer, then prikk's note** (RFC 054 decision 3).
+                        // The read is inside `confirm::preview`, so it is re-taken at
+                        // confirmation like every other fact on this card.
+                        body: sealer_lines(prikk, repo, &preview.sealed_by)
+                            .into_iter()
+                            .chain(std::iter::once(preview.sealed_by_note.clone()))
+                            .collect(),
                     },
                 ],
             },
@@ -513,6 +531,19 @@ pub fn import_confirm_and_execute(
     confirm::execute(prikk, repo, confirmed, || {
         prikk.bundle_import(repo, &target.path)
     })
+}
+
+/// One line per sealer: prikk's id, and what this repository says about it (RFC 054).
+///
+/// **The id is repository text and the sentence is stikk's**, joined here only because a card's
+/// aside body is lines of prose. A frontend that wants them apart has
+/// [`BundleView::sealers`].
+fn sealer_lines(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> Vec<String> {
+    crate::trust::sealers(prikk, repo, sealed_by)
+        .judged()
+        .iter()
+        .map(|sealer| format!("{} — {}", sealer.key_id, sealer.trust.sentence()))
+        .collect()
 }
 
 /// An object id, shortened the way History, seal and every preview already shorten one.

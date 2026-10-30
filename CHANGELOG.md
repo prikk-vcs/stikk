@@ -2,6 +2,42 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position.
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | **`Orientation`'s two reported-as-prose fields changed type.** `active_patch_warning` is now `Option<ActivePatchWarning>` — prikk's own line below prikk 0.43, and the threshold with its two numbers at or above it — and `interrupted_materialization` is `Option<Vec<String>>`, prikk's routes rather than its sentence. Outside code that read either as a `String` must match on the new shape |
+| `stikk-core` | **`OrientationView::interrupted_materialization` is `Option<Vec<String>>`**, for the same reason |
+
+**Additive:** `stikk_prikk::ActivePatchWarning` and `ORIENTATION_JSON_FROM_MINOR`;
+`stikk_core::INTERRUPTED_MATERIALIZATION` and `active_patch_sentence`;
+`stikk_prikk::cli_backend::orientation_from_prose`, which is `#[doc(hidden)]` and exists for the
+suite's equivalence leg. **No public item was removed**: `cargo public-api diff 0.18.0` reports
+*(none)* under *Removed items* for every crate.
+
+### Changed
+
+- **Orientation reads prikk's JSON status at prikk 0.43 or newer.** The screen every session
+  opens on was built from `prikk status`'s prose, which prikk itself calls *"current CLI
+  vocabulary, not a stable machine-readable schema"*. It now reads `status --format json`, whose
+  report has carried every field Orientation needs since prikk 0.43; below that, the prose
+  parser is unchanged. **One read either way**, and nothing you see changes except three lines.
+
+  **Two of those lines are prikk's data, and stikk now words them.** The JSON states the
+  active-patch threshold as a word and two numbers, and an interrupted checkout as a list of
+  commands, with no sentence anywhere to show. So stikk writes the sentence and carries prikk's
+  numbers and prikk's commands inside it, exactly: *"3 patches are queued, at or above prikk's
+  recommended threshold of 2. Consider sealing."*, and, over the commands, *"A checkout or
+  branch switch stopped part-way. Move aside any file it named, then run one of:"*. Neither says
+  *"prikk reports"* any more, because the words are no longer prikk's.
+
+  **The third line** is a current branch prikk cannot resolve, which the JSON gives as `null`:
+  stikk says *"unresolved — `prikk doctor` can say why"* where it used to show prikk's sentinel.
+
 ## 0.18.0 — 2026-10-30
 
 **stikk now adopts and removes the keys your repository trusts, and warns you before a removal

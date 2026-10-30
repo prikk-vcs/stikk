@@ -232,3 +232,45 @@ fn rfc034_an_interrupted_materialization_shows_stikks_lead_in_and_prikks_routes(
     let quiet = render_to_text(&view(Readiness::none(), true, 0, 0));
     assert!(!quiet.contains("interrupted"), "{quiet}");
 }
+
+/// **RFC 057's captures, at exactly 80 columns**: the two lines stikk now words itself, as a
+/// reader meets them on Orientation.
+///
+/// ```text
+/// cargo test -p stikk-tui --lib capture_rfc057 — --nocapture
+/// ```
+#[test]
+fn capture_rfc057_orientation_at_80_columns() {
+    let at_80 = |v: &OrientationView| {
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render(v, &Palette::default(), f, f.area()))
+            .unwrap();
+        crate::test_util::buffer_text(terminal.backend().buffer())
+    };
+
+    let interrupted = OrientationView {
+        interrupted_materialization: Some(vec![
+            "prikk checkout --patch-materialize --ref heads/main".to_string(),
+            "prikk branch switch heads/main".to_string(),
+        ]),
+        ..view(Readiness::none(), true, 0, 0)
+    };
+    let text = at_80(&interrupted);
+    println!("--- RFC 057: an interrupted materialization, 80 columns\n{text}");
+    assert!(
+        text.contains("stopped part-way"),
+        "stikk's lead-in, wrapped not clipped:\n{text}"
+    );
+
+    let unresolved = OrientationView {
+        current_branch: stikk_model::CurrentBranch::Unresolved(
+            "unresolved — `prikk doctor` can say why".to_string(),
+        ),
+        ..view(Readiness::none(), true, 0, 0)
+    };
+    let text = at_80(&unresolved);
+    println!("--- RFC 057: a current branch prikk cannot resolve, 80 columns\n{text}");
+    assert!(text.contains("`prikk doctor` can say why"), "{text}");
+}

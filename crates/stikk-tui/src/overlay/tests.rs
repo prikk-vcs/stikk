@@ -4576,3 +4576,116 @@ fn capture_rfc056_cards_at_80_columns() {
     println!("--- RFC 056: the security event (80 columns) ---\n{text}");
     assert!(!text.contains("to confirm"), "nothing to approve: {text}");
 }
+
+/// **RFC 057's commit-card captures, at exactly 80 columns**: the consequence with the warn
+/// threshold and with the hard limit, and the card that is not shown at all because an
+/// interrupted materialization blocks the preview.
+///
+/// **Built by the core's own preview**, not by hand, so what is captured is what a reader gets.
+#[test]
+fn capture_rfc057_commit_card_at_80_columns() {
+    use stikk_prikk::{ActivePatchWarning, NullBackend, Orientation, WorktreeStatus};
+
+    let orientation =
+        |warning: Option<ActivePatchWarning>, interrupted: Option<Vec<String>>| Orientation {
+            interrupted_materialization: interrupted,
+            queued_patches: 3,
+            queued_target: Some("heads/main".to_string()),
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: warning,
+            current_branch: stikk_model::CurrentBranch::NotReported,
+        };
+    let backend = |o: Orientation| {
+        NullBackend::supported()
+            .with_orientation(o)
+            .with_worktree_status(WorktreeStatus {
+                refused_declarations: None,
+                reff: "heads/main".to_string(),
+                clean: false,
+                tracked: 1,
+                unchanged: 0,
+                missing: 0,
+                modified: 1,
+                untracked: 0,
+                unsupported: 0,
+                refused: None,
+                entries: Vec::new(),
+                queued_elsewhere: None,
+                declarations: Vec::new(),
+            })
+            .with_change_token(stikk_model::ChangeToken::compose(
+                [("heads/main", "0".repeat(64).as_str())],
+                0,
+                None,
+                &stikk_model::CurrentBranch::NotReported,
+            ))
+    };
+
+    for (label, warning) in [
+        (
+            "the warn threshold",
+            ActivePatchWarning::Threshold {
+                blocking: false,
+                count: 3,
+                threshold: 2,
+            },
+        ),
+        (
+            "the hard limit",
+            ActivePatchWarning::Threshold {
+                blocking: true,
+                count: 3,
+                threshold: 3,
+            },
+        ),
+    ] {
+        let backend = backend(orientation(Some(warning), None));
+        let outcome =
+            stikk_core::commit_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+                .expect("reads");
+        let stikk_core::CommitPreviewOutcome::Ready { token, .. } = outcome else {
+            panic!("{label}: expected Ready, got {outcome:?}");
+        };
+        let overlay = Overlay::Confirmation {
+            summary: Box::new(token.summary().clone()),
+            tier: token.tier(),
+            typed: String::new(),
+            error: None,
+        };
+        let text = draw_at(&overlay, 80, 26);
+        println!("--- RFC 057: the commit card at {label} (80 columns) ---\n{text}");
+        assert!(
+            text.contains("patches are queued"),
+            "{label}: stikk's sentence, with prikk's numbers: {text}"
+        );
+    }
+
+    // **The interrupted state has no card at all**: commit is blocked before one is armed
+    // (RFC 034 §7.2), and the reason is stikk's lead-in over prikk's routes.
+    let backend = backend(orientation(
+        None,
+        Some(vec![
+            "prikk checkout --patch-materialize --ref heads/main".to_string(),
+            "prikk branch switch heads/main".to_string(),
+        ]),
+    ));
+    match stikk_core::commit_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("reads")
+    {
+        stikk_core::CommitPreviewOutcome::Blocked(reason) => {
+            println!(
+                "--- RFC 057: commit, blocked by an interrupted materialization ---\n{reason}"
+            );
+            assert!(
+                reason.starts_with(stikk_core::INTERRUPTED_MATERIALIZATION),
+                "{reason}"
+            );
+            assert!(
+                reason.contains("prikk branch switch heads/main"),
+                "{reason}"
+            );
+        }
+        other => panic!("expected Blocked, got {other:?}"),
+    }
+}

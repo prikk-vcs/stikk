@@ -10403,3 +10403,189 @@ fn rfc057_at_the_floor_orientation_asks_for_prose() {
     }
     Fixture::clear_env();
 }
+
+// ------------------------------------------- RFC 053 Handoff C: going back to an earlier block
+
+/// **The route back to an earlier block, driven through stikk's own three keys** (RFC 053
+/// Handoff C §2) — and the evidence for the guide's subsection.
+///
+/// prikk writes no block id into the worktree: `checkout --ref <block-id>` needs a branch, and
+/// `branch create --from <block-id>` refuses because a block id *"does not resolve to a
+/// published ref"* (measured at 0.55.0,
+/// `.git-exclude/reports/057-scope-0-19/measure-checkout-0.55.txt`). What works is a tag at the
+/// block, a branch from the tag, and a switch — which are `t`, `n` and `s`, each through the
+/// core function its key calls.
+///
+/// **What it asserts:** the switch's own preview names the files it will write and delete;
+/// afterwards the worktree holds the older block's files byte for byte, with the newer file
+/// gone; Orientation reports the new branch as current; and **the tag is still there**, which
+/// is the sentence the guide owes a reader who cannot remove one.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn going_back_to_an_earlier_block_through_a_tag_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_prikk::DIFF_FROM_MINOR {
+        eprintln!(
+            "RFC 053 C SKIPPED at 0.{} — a branch switch needs prikk ≥ 0.{}.",
+            bin.minor,
+            stikk_prikk::DIFF_FROM_MINOR
+        );
+        return;
+    }
+    let backend = CliBackend::with_program(&bin.path);
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let readiness = || {
+        backend
+            .readiness(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+            .readiness
+    };
+    let write_file = |name: &str, body: &str| {
+        std::fs::write(repo.join(name), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+    };
+    let seal = |message: &str| {
+        fixture.set_author_env();
+        backend
+            .commit(&repo, "heads/main", message)
+            .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, "heads/main")
+            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+        Fixture::clear_env();
+    };
+
+    // 1. Two blocks. The second changes `a.txt` and adds `c.txt`; `b.txt` never moves.
+    write_file("a.txt", "one\n");
+    write_file("b.txt", "keep\n");
+    seal("first");
+    let older = backend
+        .history(&repo, "heads/main", 10)
+        .unwrap_or_else(|e| panic!("0.{}: history: {e}", bin.minor))
+        .blocks
+        .first()
+        .map(|block| block.block_id.clone())
+        .unwrap_or_else(|| panic!("0.{}: the first block", bin.minor));
+    write_file("a.txt", "two\n");
+    write_file("c.txt", "new\n");
+    seal("second");
+
+    // 2. `t` on that block: a tag, by block id.
+    let tag = stikk_core::NewTag {
+        name: "tags/back",
+        target: older.as_str(),
+        message: "",
+    };
+    fixture.set_maintainer_env();
+    let preview = stikk_core::create_tag_preview(&backend, &repo, tag)
+        .unwrap_or_else(|e| panic!("0.{}: create_tag_preview: {e}", bin.minor));
+    let stikk_core::RefWritePreview::Ready { token } = preview else {
+        panic!("0.{}: expected a tag preview, got {preview:?}", bin.minor);
+    };
+    stikk_core::create_tag_confirm_and_execute(
+        &backend,
+        &repo,
+        *token,
+        readiness(),
+        stikk_core::Evidence::ExplicitYes,
+        tag,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: the tag: {e}", bin.minor));
+
+    // 3. `n` in the ref picker, on that tag: a branch at its tip.
+    let preview = stikk_core::create_branch_preview(&backend, &repo, "heads/back", "tags/back")
+        .unwrap_or_else(|e| panic!("0.{}: create_branch_preview: {e}", bin.minor));
+    let stikk_core::RefWritePreview::Ready { token } = preview else {
+        panic!(
+            "0.{}: expected a branch preview, got {preview:?}",
+            bin.minor
+        );
+    };
+    stikk_core::create_branch_confirm_and_execute(
+        &backend,
+        &repo,
+        *token,
+        readiness(),
+        stikk_core::Evidence::ExplicitYes,
+        "heads/back",
+        "tags/back",
+    )
+    .unwrap_or_else(|e| panic!("0.{}: the branch: {e}", bin.minor));
+    Fixture::clear_env();
+
+    // 4. `s` in the ref picker: the switch, previewed first.
+    let preview = stikk_core::switch_preview(&backend, &repo, "heads/back")
+        .unwrap_or_else(|e| panic!("0.{}: switch_preview: {e}", bin.minor));
+    let stikk_core::SwitchPreview::Ready { token } = preview else {
+        panic!(
+            "0.{}: expected a switch preview, got {preview:?}",
+            bin.minor
+        );
+    };
+    // **The preview names every file**, which is what the guide tells a reader to read.
+    let plan = token
+        .summary()
+        .materializes
+        .clone()
+        .unwrap_or_else(|| panic!("0.{}: a Ready switch carries a file plan", bin.minor));
+    assert!(
+        plan.written.iter().any(|path| path == "a.txt"),
+        "0.{}: the file the older block has differently: {plan:?}",
+        bin.minor
+    );
+    assert!(
+        plan.deleted.iter().any(|path| path == "c.txt"),
+        "0.{}: the file the older block does not have: {plan:?}",
+        bin.minor
+    );
+    stikk_core::switch_confirm_and_execute(
+        &backend,
+        &repo,
+        *token,
+        readiness(),
+        stikk_core::Evidence::ExplicitYes,
+        "heads/back",
+    )
+    .unwrap_or_else(|e| panic!("0.{}: the switch: {e}", bin.minor));
+
+    // 5. The worktree is the older block's, byte for byte.
+    let read = |name: &str| -> String {
+        std::fs::read_to_string(repo.join(name))
+            .unwrap_or_else(|e| panic!("0.{}: read {name}: {e}", bin.minor))
+    };
+    assert_eq!(read("a.txt"), "one\n", "0.{}", bin.minor);
+    assert_eq!(read("b.txt"), "keep\n", "0.{}: untouched", bin.minor);
+    assert!(
+        !repo.join("c.txt").exists(),
+        "0.{}: the newer file is gone",
+        bin.minor
+    );
+    // Orientation says which branch you are on now.
+    assert_eq!(
+        stikk_core::orient(&backend, &repo)
+            .unwrap_or_else(|e| panic!("0.{}: orient: {e}", bin.minor))
+            .current_branch,
+        stikk_model::CurrentBranch::Branch(
+            stikk_model::RefName::parse("heads/back").expect("a ref name")
+        ),
+        "0.{}",
+        bin.minor
+    );
+    // **And the tag is still there**, which the guide says and stikk cannot undo.
+    assert!(
+        backend
+            .tags(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: tags: {e}", bin.minor))
+            .iter()
+            .any(|entry| entry.name == "tags/back"),
+        "0.{}: the tag this route leaves behind",
+        bin.minor
+    );
+    Fixture::clear_env();
+}

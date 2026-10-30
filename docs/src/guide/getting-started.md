@@ -197,6 +197,37 @@ says so: the copy matches that history, but nothing has checked the history itse
 you want into your worktree yourself and commit it — which is also the honest answer while stikk
 cannot take a change back for you.
 
+### Going back to an earlier block
+
+The last section is for **looking at or copying** an old version: `F` and `A` write outside your
+repository and change nothing. This one is for **working from** an earlier block — having its
+files in your worktree and carrying on from there.
+
+prikk writes no block id into a worktree: a checkout needs a branch, and a branch cannot be
+created straight from a block id. **The route that works is three steps, each one a key stikk
+already has:**
+
+1. **`t`** on the block — in History, or in its detail — tags it. Give the tag a name you can
+   live with (see below).
+2. **`n`** in the ref picker (`b`), with that tag selected, creates a branch at it.
+3. **`s`** in the ref picker, with that branch selected, switches to it.
+
+**What each step writes.** The tag and the branch are **published names**: they are part of the
+repository and anyone you share it with will see them. The switch is the step that touches your
+files — its card lists **every file it will write and every file it will delete** before anything
+happens, so read that list rather than the branch name. Afterwards your worktree is that block's,
+and stikk says which branch you are on now.
+
+The switch **refuses** while you have uncommitted changes, or queued work for another branch, and
+the card says which. Commit or seal first, or switch somewhere else.
+
+**What it leaves behind: the tag.** stikk offers no way to remove a tag, and prikk's own deletion
+of one does not exist — so the name you choose is the name that stays. Something like
+`tags/before-the-rewrite` is kinder to read later than `tags/tmp`.
+
+**Going forward again** is the same third step: select your original branch in the ref picker and
+press `s`.
+
 ## Sharing work
 
 Two people share prikk history by **bundle files**. One exports a branch to a file, sends it any

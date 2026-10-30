@@ -975,9 +975,10 @@ fn a_refused_path_and_a_refused_declaration_are_different_preventions() {
     }
 }
 
-/// **stikk's lead-in, then prikk's routes, each whole** (RFC 057 decision 2). The JSON names
-/// the ways out as commands with no sentence around them, so the framing is stikk's — and the
-/// commands are carried exactly, because a clipped or reworded command is worse than none.
+/// **stikk's sentence, with prikk's routes delimited inside it** (RFC 057 decision 2, as
+/// review v1 refined it). The card's text wraps on whitespace, so two commands run together
+/// would leave no way to see where the first ends — and these are the commands the reader is
+/// meant to copy.
 #[test]
 fn an_interrupted_materialization_makes_the_preview_unavailable_with_prikks_routes() {
     const ROUTES: [&str; 2] = [
@@ -991,21 +992,44 @@ fn an_interrupted_materialization_makes_the_preview_unavailable_with_prikks_rout
     match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
         CommitPreviewOutcome::Blocked(reason) => {
             assert!(
-                reason.starts_with(stikk_core_interrupted_lead_in()),
-                "stikk's lead-in, and no \"prikk reports:\": {reason}"
+                reason.starts_with("A checkout or branch switch stopped part-way."),
+                "stikk's sentence, and no \"prikk reports:\": {reason}"
             );
             assert!(!reason.contains("prikk reports"), "{reason}");
-            for route in ROUTES {
-                assert!(reason.contains(route), "prikk's route, whole: {reason}");
-            }
+            // **Each route whole, inside backticks, joined by " or "** -- so the two commands
+            // cannot read as one.
+            assert!(
+                reason.contains(&format!("`{}` or `{}`.", ROUTES[0], ROUTES[1])),
+                "delimited and joined: {reason}"
+            );
         }
         other => panic!("expected Blocked, got {other:?}"),
     }
 }
 
-/// The lead-in, named once here so this test reads as the sentence it asserts.
-fn stikk_core_interrupted_lead_in() -> &'static str {
-    crate::INTERRUPTED_MATERIALIZATION
+/// **The sentence generalises past prikk's two routes.** prikk sends two today; three join with
+/// commas and *"or"* before the last, so a longer list stays a sentence.
+#[test]
+fn the_interrupted_sentence_joins_two_routes_with_or_and_more_with_commas() {
+    let routes =
+        |n: usize| -> Vec<String> { (1..=n).map(|i| format!("prikk route-{i}")).collect() };
+    assert!(
+        crate::interrupted_sentence(&routes(1)).ends_with("then run `prikk route-1`."),
+        "{}",
+        crate::interrupted_sentence(&routes(1))
+    );
+    assert!(
+        crate::interrupted_sentence(&routes(2))
+            .ends_with("then run `prikk route-1` or `prikk route-2`."),
+        "{}",
+        crate::interrupted_sentence(&routes(2))
+    );
+    assert!(
+        crate::interrupted_sentence(&routes(3))
+            .ends_with("then run `prikk route-1`, `prikk route-2`, or `prikk route-3`."),
+        "{}",
+        crate::interrupted_sentence(&routes(3))
+    );
 }
 
 #[test]

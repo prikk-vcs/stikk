@@ -20,12 +20,44 @@ use stikk_prikk::Prikk;
 const MESSAGES_PERSIST_MIN: (u32, u32, u32) = (0, 32, 0);
 
 /// **stikk's lead-in over prikk's routes out of an interrupted materialization** (RFC 057
-/// decision 2).
+/// decision 2), where each route gets **a row of its own** — the Orientation view.
 ///
 /// `status-report-v1` gives the routes as a list and no sentence at all, so the framing is
 /// stikk's. **The routes themselves are prikk's**, carried verbatim beneath this, one per row.
+///
+/// A surface that cannot give each route a row wants [`interrupted_sentence`] instead.
 pub const INTERRUPTED_MATERIALIZATION: &str =
     "A checkout or branch switch stopped part-way. Move aside any file it named, then run one of:";
+
+/// **The same fact as one sentence**, for a card that cannot give each route a row (review v1).
+///
+/// **The routes are delimited, because they are commands the reader is meant to copy.** A
+/// confirmation card's text goes through `wrap_indented`, which splits on whitespace, so a line
+/// break between two routes cannot survive it and *"… then run one of: prikk checkout
+/// --patch-materialize --ref heads/main prikk branch switch heads/main"* leaves no way to tell
+/// where the first command ends. Each route is wrapped in backticks, as stikk's other sentences
+/// quote a command, and they are joined with *"or"* — prikk's own conjunction in the prose form
+/// of this line.
+///
+/// **One fact, one wording**: this is [`INTERRUPTED_MATERIALIZATION`]'s first clause with the
+/// routes folded into it, never a second account of what happened.
+///
+/// prikk sends two routes today. Three or more join with commas and *"or"* before the last,
+/// so a longer list stays a sentence rather than becoming a run of names.
+#[must_use]
+pub fn interrupted_sentence(routes: &[String]) -> String {
+    let quoted: Vec<String> = routes.iter().map(|route| format!("`{route}`")).collect();
+    let joined = match quoted.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, [first])) => format!("{first} or {last}"),
+        Some((last, rest)) => format!("{}, or {last}", rest.join(", ")),
+    };
+    format!(
+        "A checkout or branch switch stopped part-way. Move aside any file it named, then run \
+         {joined}."
+    )
+}
 
 /// The active-patch warning, in whichever voice prikk's report allows (RFC 057 decision 2).
 ///

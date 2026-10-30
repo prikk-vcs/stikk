@@ -245,10 +245,12 @@ fn compute(
     //
     // **The lead-in is stikk's and the routes are prikk's** (RFC 057 decision 2): the JSON names
     // the ways out as commands, with no sentence around them, so there is no *"prikk reports:"*
-    // to write any more. Each route is carried exactly as prikk wrote it.
+    // to write any more. Each route is carried exactly as prikk wrote it, **in backticks**: a
+    // card's text wraps on whitespace, so two commands run together here would leave no way to
+    // see where the first ends (review v1).
     if let Some(routes) = orientation.interrupted_materialization.as_deref() {
         return Ok((
-            CommitReadView::Blocked(interrupted_block(routes)),
+            CommitReadView::Blocked(crate::interrupted_sentence(routes)),
             placeholder_summary(),
         ));
     }
@@ -424,14 +426,6 @@ fn placeholder_summary() -> ConfirmationSummary {
         merge_plan: None,
         asides: Vec::new(),
     }
-}
-
-/// stikk's lead-in and prikk's routes, as one blocked reason (RFC 057 decision 2).
-fn interrupted_block(routes: &[String]) -> String {
-    std::iter::once(crate::INTERRUPTED_MATERIALIZATION.to_string())
-        .chain(routes.iter().cloned())
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// What becomes permanent, in stikk's own words (`TU-09`) — with the active-patch threshold

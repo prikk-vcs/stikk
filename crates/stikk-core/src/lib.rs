@@ -93,7 +93,10 @@ pub use merge::{
     WORK_IS_QUEUED_FOR_INTO, merge_baseline, merge_confirm_and_execute, merge_plan_view,
     merge_preview, merge_unavailable, not_confluent,
 };
-pub use orient::{INTERRUPTED_MATERIALIZATION, OrientationView, active_patch_sentence, orient};
+pub use orient::{
+    INTERRUPTED_MATERIALIZATION, OrientationView, active_patch_sentence, interrupted_sentence,
+    orient,
+};
 pub use palette::{Command, NO_FOCUSED_REF_REASON};
 pub use patch::{
     AS_AT_BLOCK_END, CONTENT_DISPLAY_BYTES, CONTENT_FROM_MINOR, NO_PATH_REPORTED, OperationRow,

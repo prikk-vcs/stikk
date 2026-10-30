@@ -4678,12 +4678,15 @@ fn capture_rfc057_commit_card_at_80_columns() {
                 "--- RFC 057: commit, blocked by an interrupted materialization ---\n{reason}"
             );
             assert!(
-                reason.starts_with(stikk_core::INTERRUPTED_MATERIALIZATION),
+                reason.starts_with("A checkout or branch switch stopped part-way."),
                 "{reason}"
             );
             assert!(
-                reason.contains("prikk branch switch heads/main"),
-                "{reason}"
+                reason.contains(
+                    "`prikk checkout --patch-materialize --ref heads/main` or \
+                     `prikk branch switch heads/main`."
+                ),
+                "each command delimited, so the two cannot read as one: {reason}"
             );
         }
         other => panic!("expected Blocked, got {other:?}"),

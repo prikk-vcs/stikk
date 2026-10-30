@@ -61,9 +61,10 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.18.x lets you choose whose keys this repository trusts, gets an earlier version of your files
-back, and installs in two plain steps on every platform — prikk's, then stikk's — against prikk
-0.55.0.** `T` lists the adopted maintainer keys with your own marked, **`a` adopts one and `x`
+**v0.19.x lets you choose whose keys this repository trusts, gets an earlier version of your files
+back — or a whole earlier block, the guide shows how — and installs in two plain steps on every
+platform — prikk's, then stikk's — against prikk 0.55.0.** A confirmation that asks you to type a
+key id back **never cuts that id off**, however long it is. `T` lists the adopted maintainer keys with your own marked, **`a` adopts one and `x`
 removes one** — each confirmed by typing the key id, and the removal says first that it can make
 your own sealed history fail Verify until the key is adopted again. In Block detail, `F` saves one
 file as it was at that block and `A` saves every file at it into a new folder, always outside the

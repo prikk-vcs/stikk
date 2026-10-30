@@ -2,11 +2,30 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.19.0 — 2026-10-31
+
+**stikk now reads prikk's status as structured data, never cuts off a key id you have to type, and
+its guide shows how to go back to an earlier block.** The screen every session opens on was built
+from `prikk status`'s plain-English output, which prikk itself calls *"current CLI vocabulary, not
+a stable machine-readable schema"*; at prikk 0.43 or newer it now reads that command's **JSON**
+instead, and a suite case reads each of five repository states both ways and compares every field
+(RFC 057). **Two lines are stikk's own words now**, because the JSON states them as data and
+carries no sentence to show: the queued-patches warning — *"3 patches are queued, at or above
+prikk's recommended threshold of 2. Consider sealing."* — and a checkout that stopped part-way,
+whose **two recovery commands the commit card now shows in backticks**, so you can see where one
+ends and the next begins. prikk's numbers and prikk's commands are carried exactly; what changed is
+the sentence around them. **A long key id is no longer cut off where you have to type it back**: the
+typed confirmation splits it across rows instead, a value split that way now splits evenly — a
+public key reads as 32 + 32 — and an id made of hidden-character escapes no longer overflows its
+row, which matters because a bundle's sealer id is chosen by whoever sealed it. **And the guide
+shows the way back to an earlier block**: tag it, branch from the tag, switch to the branch, with
+what each step publishes and what it leaves behind. The real-binary suite drives **88 cases**
+against real prikk binaries at 0.28.0 and 0.55.0, on Linux, macOS and Windows.
 
 ### Breaking
 
-Per RFC 011, for a `0.x` crate the minor version is the breaking position.
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-state`, `stikk-tui` and the `stikk` launcher are unchanged.**
 
 | Crate | Change |
 |---|---|
@@ -14,10 +33,21 @@ Per RFC 011, for a `0.x` crate the minor version is the breaking position.
 | `stikk-core` | **`OrientationView::interrupted_materialization` is `Option<Vec<String>>`**, for the same reason |
 
 **Additive:** `stikk_prikk::ActivePatchWarning` and `ORIENTATION_JSON_FROM_MINOR`;
-`stikk_core::INTERRUPTED_MATERIALIZATION` and `active_patch_sentence`;
-`stikk_prikk::cli_backend::orientation_from_prose`, which is `#[doc(hidden)]` and exists for the
-suite's equivalence leg. **No public item was removed**: `cargo public-api diff 0.18.0` reports
-*(none)* under *Removed items* for every crate.
+`stikk_core::INTERRUPTED_MATERIALIZATION`, `active_patch_sentence` and `interrupted_sentence`;
+and `stikk_prikk::cli_backend::orientation_from_prose`, which exists for the suite's equivalence
+leg and is `#[doc(hidden)]`, so `cargo public-api` does not list it although a dependent crate
+could call it. **No public item was removed**: `cargo public-api diff 0.18.0` reports *(none)*
+under *Removed items* for every crate.
+
+### Added
+
+- **The guide shows how to go back to an earlier block.** prikk writes no block id into a
+  worktree, so there is a route rather than a command: **`t`** tags the block, **`n`** in the ref
+  picker creates a branch at that tag, and **`s`** switches to it — after which your worktree
+  holds that block's files. The new section says what each step publishes, that the switch's own
+  card lists every file it will write and delete, when it refuses, and what the route leaves
+  behind: a tag, which neither stikk nor prikk can remove, so the name is worth choosing. A suite
+  case drives the three steps against real prikk.
 
 ### Changed
 
@@ -37,6 +67,24 @@ suite's equivalence leg. **No public item was removed**: `cargo public-api diff 
 
   **The third line** is a current branch prikk cannot resolve, which the JSON gives as `null`:
   stikk says *"unresolved — `prikk doctor` can say why"* where it used to show prikk's sentinel.
+
+### Fixed
+
+- **A long key id is no longer cut off where you have to type it back.** A confirmation that asks
+  you to type a key id drew that id on one unwrapped row, so at 80 columns an id longer than the
+  card lost its tail — in the row naming it, in the prompt, and in the echo of what you had
+  typed. All three now split across rows instead, and the prompt separates into *"Type this to
+  confirm:"* with the id beneath it only where it has to.
+
+- **A value split across rows splits evenly.** A 64-character public key came out as 63
+  characters and then 1, which reads as a defect and is hard to compare against another key. It
+  now reads as 32 + 32.
+
+- **An id made of hidden-character escapes no longer overflows its row.** stikk writes a
+  character that does not show as itself as `\u202e`, which is six columns for one character, and
+  an id full of them could be drawn wider than the row holding it and clipped at the border. The
+  rows are now measured in columns, and each escape stays whole. This matters most where it is
+  least accidental: **a bundle's sealer id is chosen by whoever sealed it.**
 
 ## 0.18.0 — 2026-10-30
 

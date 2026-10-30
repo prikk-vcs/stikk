@@ -20,8 +20,10 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.18.x chooses whose keys a repository trusts, gets an earlier version of your files back, and
-installs in two plain steps on every platform — prikk's, then stikk's — against prikk 0.55.0.** Its
+**0.19.x chooses whose keys a repository trusts, gets an earlier version of your files back — or a
+whole earlier block, the guide shows how — and installs in two plain steps on every platform —
+prikk's, then stikk's — against prikk 0.55.0.** A confirmation that asks you to type a key id back
+**never cuts that id off**, however long it is. Its
 AUR packages are on the way: [Install](./guide/install.md#arch-linux) says when they are published.
 Each program installs itself: one line installs stikk, and it prints prikk's own install command
 rather than installing prikk; **`T`** lists the maintainer keys this repository trusts, where

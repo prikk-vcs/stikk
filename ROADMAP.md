@@ -273,6 +273,30 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk reads prikk as data, its typed cards fit, and the guide goes back (0.19.0, breaking)
+
+- **Orientation on `status --format json`** ([RFC 057](rfcs/done/057-orientation-on-status-json.md), prikk ≥ 0.43):
+  the screen every session opens on is built from `status-report-v1` rather than from prose prikk itself calls
+  *"current CLI vocabulary, not a stable machine-readable schema"*; the prose parser stays for the floor's band, and
+  there is **one read either way**. An equivalence suite leg reads each of five measured states both ways and compares
+  every field, with the typed warning compared by content. **Two lines became stikk's own words**, because the JSON
+  states them as data and carries no sentence: the active-patch threshold, and a checkout that stopped part-way, whose
+  two recovery commands the commit card shows in backticks. prikk's numbers and commands are carried exactly.
+  `current_branch: null` is stikk's *"unresolved — `prikk doctor` can say why"*.
+- **The typed card's layout** ([RFC 056 Handoff B](rfcs/handoffs/056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md)):
+  a long key id is never cut off where it must be typed back — the target row, the prompt and the echo all split — and
+  a split value splits **evenly**, a public key as 32 + 32. **Rows are measured in columns**, so an id made of
+  hidden-character escapes cannot overflow its row and be clipped, which matters because a bundle's sealer id is chosen
+  by whoever sealed it. The third item once carried here, prose against the right border, shipped in 0.16.0
+  (`a6e4a7c`).
+- **Going back to an earlier block, in the guide** ([RFC 053 Handoff C](rfcs/handoffs/053-get-files-back/c-going-back-guide-handoff-v1.md)):
+  tag the block, branch from the tag, switch to the branch — the only route prikk 0.55 allows, since it writes no
+  block id into a worktree. The section says what each step publishes, that the switch's card lists every file, and
+  that the tag stays; a suite leg drives the three steps through stikk's own core functions.
+- **No prikk re-baseline was needed**: prikk is still at 0.55.0, which this range already validates.
+- **The validated prikk range is `>= 0.28`, through `0.55.0`** (unchanged); the real-binary suite drives 88 cases at
+  0.28.0 and 0.55.0 on Linux and macOS, 87 on Windows, where one leg is Unix-only by construction.
+
 ## Shipped — stikk lets you choose whose keys this repository trusts (0.18.0, breaking)
 
 - **Trust, adopt and remove** (`FR-103`'s write half, [RFC 056](rfcs/done/056-trust-adopt-and-remove.md),
@@ -491,22 +515,12 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.19.0: stikk reads prikk more reliably, its typed cards fit, and the guide goes back
+## Next — 0.20.0, not yet scoped
 
-Scoped and authorized 2026-10-30, in delivery order:
+**No candidate is named**: 0.20.0 depends on prikk's answers to the consolidated letter, and the scope is the owner's
+to authorize.
 
-1. **Orientation on `status --format json` — landed on `main`** ([RFC 057](rfcs/done/057-orientation-on-status-json.md), `5322ecc`):
-   the screen every session opens on, built from `status-report-v1` at prikk ≥ 0.43, the prose parser kept for the
-   floor; the active-patch warning and an interrupted materialization said in stikk's words with prikk's numbers and
-   commands.
-2. **The typed card's layout — landed on `main`** (`2f654c2`; [RFC 056 Handoff B](rfcs/handoffs/056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md)):
-   a long id is never cut off where it must be typed back, and a split value splits evenly (a key as 32 + 32). The
-   third item once carried here, prose against the right border, shipped in 0.16.0 (`a6e4a7c`).
-3. **Going back to an earlier block, in the guide — landed on `main`** (`e324a9c`; [RFC 053 Handoff C](rfcs/handoffs/053-get-files-back/c-going-back-guide-handoff-v1.md)):
-   tag the block, branch from the tag, switch — the route prikk 0.55 allows, proved by a suite leg.
-4. **A prikk re-baseline**, only if prikk publishes a new minor before the cut. The cut does not wait for it.
-
-**A consolidated letter to prikk** is approved for research and drafting this cycle; the owner sends it.
+**A consolidated letter to prikk** is being drafted; the owner sends it.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and

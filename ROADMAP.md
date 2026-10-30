@@ -499,10 +499,10 @@ Scoped and authorized 2026-10-30, in delivery order:
    the screen every session opens on, built from `status-report-v1` at prikk ≥ 0.43, the prose parser kept for the
    floor; the active-patch warning and an interrupted materialization said in stikk's words with prikk's numbers and
    commands.
-2. **The typed card's layout** ([RFC 056 Handoff B](rfcs/handoffs/056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md)):
+2. **The typed card's layout — landed on `main`** (`2f654c2`; [RFC 056 Handoff B](rfcs/handoffs/056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md)):
    a long id is never cut off where it must be typed back, and a split value splits evenly (a key as 32 + 32). The
    third item once carried here, prose against the right border, shipped in 0.16.0 (`a6e4a7c`).
-3. **Going back to an earlier block, in the guide** ([RFC 053 Handoff C](rfcs/handoffs/053-get-files-back/c-going-back-guide-handoff-v1.md)):
+3. **Going back to an earlier block, in the guide — landed on `main`** (`e324a9c`; [RFC 053 Handoff C](rfcs/handoffs/053-get-files-back/c-going-back-guide-handoff-v1.md)):
    tag the block, branch from the tag, switch — the route prikk 0.55 allows, proved by a suite leg.
 4. **A prikk re-baseline**, only if prikk publishes a new minor before the cut. The cut does not wait for it.
 

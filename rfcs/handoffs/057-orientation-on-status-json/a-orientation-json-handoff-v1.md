@@ -1,6 +1,6 @@
 # Handoff A — RFC 057: Orientation on `status --format json` (v1)
 
-**Companion to:** [RFC 057](../../accepted/057-orientation-on-status-json.md), **accepted 2026-10-30**. **Read the RFC
+**Companion to:** [RFC 057](../../done/057-orientation-on-status-json.md), **accepted 2026-10-30**. **Read the RFC
 first**: F1, F2 and decisions 1–5. **Covers:** all of it. **0.19.0's increment 1.**
 **Land it before RFC 056's [Handoff B](../056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md)** if both are in
 flight, because both re-capture the commit card. It is independent of RFC 053's Handoff C.

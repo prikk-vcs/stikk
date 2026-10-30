@@ -1,6 +1,6 @@
 # RFC 057 — Orientation on `status --format json`
 
-**Status.** **Accepted by the project owner 2026-10-30**; [Handoff A](../handoffs/057-orientation-on-status-json/a-orientation-json-handoff-v1.md) issued. **Proposed 2026-10-30** by the architect, as 0.19.0's increment 1 (`.git-exclude/release/0-19-0-scope.md`,
+**Status.** **Done 2026-10-30**: Handoff A delivered on `main` (`86e7c34`..`5322ecc`); 0.19.0 candidate. **Accepted by the project owner 2026-10-30**; [Handoff A](../handoffs/057-orientation-on-status-json/a-orientation-json-handoff-v1.md). **Proposed 2026-10-30** by the architect, as 0.19.0's increment 1 (`.git-exclude/release/0-19-0-scope.md`,
 authorized 2026-10-30). **No open question.**
 **Measured** against real prikk **0.53.0, 0.54.1 and 0.55.0**: `.git-exclude/reports/057-orientation-json/`
 (`measure057.sh` → `measure057-0.5{3,4,5}.txt`, identical across the three once ids and paths are normalised). Five
@@ -104,3 +104,25 @@ RFC 014 F5, RFC 034 §7). That cannot continue on the JSON path, because the JSO
 - **Read `provisional_worktree`** (decision 4).
 - **Drop the prose parser**: the floor needs it.
 - **Change what Orientation shows**, except the wording of decision 2's two lines and decision 3's one.
+
+## Delivered
+
+**One handoff, six commits, green on `main` at `5322ecc`**: CI, Docs, supply chain, and the real-binary suite on the
+full platform matrix (87 cases at 0.28.0 and 0.55.0 on Linux and macOS; 86 on Windows).
+
+- **The seam**: `ORIENTATION_JSON_FROM_MINOR = 43`, with one read either way. It reuses the Queue view's own readers
+  of `status-report-v1`, so the two cannot disagree. Every key is required and both vocabularies are closed. The prose
+  parser's interrupted reading is removed, because the JSON band now covers it.
+- **The words**:
+  - `active_patch_sentence` is prikk's line below the band and stikk's around prikk's numbers above it;
+  - Orientation lists each route on its own row;
+  - the commit card puts the routes in backticks, joined by *"or"* (`774e9e8`, review v1). Bare commands run
+    together once the text wraps.
+- **The proof**: an equivalence leg reads five states through JSON and through prose. Every field agrees, and both
+  warning states are counted as reached. The floor leg is proved by an argv shim and by prikk 0.28 refusing
+  `--format`.
+- **Found by the dev team**:
+  - Orientation never showed the active-patch warning; only the commit card does.
+  - stikk's *"unresolved"* sentence was drawn as repository text and attributed to prikk in two places. Both fixed.
+- **One red interval**, at `774e9e8`. The review's no-resubmission instruction named the unit tests but not the
+  real-binary suite, and RFC 034's leg still asserted the old lead-in. Fixed in `5322ecc`.

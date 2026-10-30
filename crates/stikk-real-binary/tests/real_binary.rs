@@ -4163,21 +4163,31 @@ fn rfc034_an_interrupted_materialization_is_shown_and_blocks_only_commit() {
         "0.{}: {marker:?}",
         ceiling.minor
     );
-    // Commit is unavailable, with stikk's lead-in over those routes.
+    // Commit is unavailable, in stikk's sentence with prikk's routes inside it.
+    //
+    // **The card's wording is not the Orientation view's** (RFC 057 review v1): the view gives
+    // each route a row and leads in with *"run one of:"*, while the card folds them into one
+    // sentence with each command in backticks, because a card's text wraps on whitespace and
+    // two bare commands would run together.
     fixture.set_author_env();
     let preview = stikk_core::commit_preview(&ceiling_backend, &repo, "heads/main");
     Fixture::clear_env();
     match preview {
         Ok(stikk_core::CommitPreviewOutcome::Blocked(reason)) => {
             assert!(
-                reason.contains(stikk_core::INTERRUPTED_MATERIALIZATION),
-                "0.{}: stikk's lead-in: {reason}",
+                reason.starts_with("A checkout or branch switch stopped part-way."),
+                "0.{}: stikk's sentence: {reason}",
+                ceiling.minor
+            );
+            assert!(
+                !reason.contains("prikk reports"),
+                "0.{}: the words are stikk's: {reason}",
                 ceiling.minor
             );
             for route in marker {
                 assert!(
-                    reason.contains(route),
-                    "0.{}: prikk's route, whole: {reason}",
+                    reason.contains(&format!("`{route}`")),
+                    "0.{}: prikk's route, whole and delimited: {reason}",
                     ceiling.minor
                 );
             }

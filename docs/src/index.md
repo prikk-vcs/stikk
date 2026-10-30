@@ -20,14 +20,15 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.17.x gets an earlier version of your files back, shows which keys a repository trusts, and
+**0.18.x chooses whose keys a repository trusts, gets an earlier version of your files back, and
 installs in two plain steps on every platform — prikk's, then stikk's — against prikk 0.55.0.** Its
 AUR packages are on the way: [Install](./guide/install.md#arch-linux) says when they are published.
 Each program installs itself: one line installs stikk, and it prints prikk's own install command
-rather than installing prikk; **`F`** and **`A`** in Block detail save one file, or every file at
-that block, outside the repository and never over anything already there; **`T`** lists the
-maintainer keys this repository trusts, and a bundle card says which of them each recorded sealer
-names; **Exchange** opens a bundle file and shows prikk's verification and what importing would
+rather than installing prikk; **`T`** lists the maintainer keys this repository trusts, where
+**`a`** adopts one and **`x`** removes one — each confirmed by typing the key id, and a removal
+says first what it can cost your own history at Verify; **`F`** and **`A`** in Block detail save
+one file, or every file at that block, outside the repository and never over anything already
+there; a bundle card says which adopted key each recorded sealer names; **Exchange** opens a bundle file and shows prikk's verification and what importing would
 change (`i`), imports it as a received branch (`I`) and writes a branch out to a file (`E`);
 **Merge** brings one branch into another where prikk's own plan proves the two sides confluent;
 **Verify** (`V`) shows prikk's verdict on whether the repository is sound; and **Compare** reaches
@@ -94,6 +95,11 @@ outside the repository and never over an existing path, both refused in stikk's 
 prikk is asked, with nothing in the repository or the worktree changed. **stikk shows which keys a
 repository trusts** (RFC 054, prikk ≥ 0.54): `T` lists the adopted maintainer keys with your own
 marked, and a bundle card says which of them, if any, each recorded sealer's id names — a name, not
-a signature, which Verify checks after the import. Sync, and checkout of a block or a path, remain
-unbuilt; **adopting and removing trusted keys**, and a **doctor**/lock-inspector view, are named
-gaps too.
+a signature, which Verify checks after the import. **stikk chooses them, too** (RFC 056, prikk ≥
+0.54): `a` adopts a key and `x` removes the selected one, each previewed and confirmed by **typing
+the key id** — stikk's first typed confirmations, and neither needs a key of your own. The remove
+card says that removing a key which sealed this history makes Verify fail it until the same key is
+adopted again under the same id, and says so again for your own key; an id already trusted under a
+different key is shown as the security event it is, with both public keys and nothing to confirm.
+Sync, and checkout of a block or a path, remain unbuilt; **adopting a received tag** and **author
+keys**, and a **doctor**/lock-inspector view, are named gaps too.

@@ -3211,8 +3211,9 @@ impl App {
             // below a verdict to open — and **nothing here acts on it** (RFC 040 decision 4):
             // Verify repairs nothing, clears no lock, and changes nothing at all.
             Some(Screen::Verify { .. }) => {}
-            // **The Trust view is a leaf, and read-only** (RFC 054 decision 2): there is
-            // nothing on it to open and nothing to confirm.
+            // **The Trust view is a leaf** (RFC 054 decision 2): there is nothing below a key
+            // to open. It is no longer read-only -- `a` and `x` write (RFC 056) -- but neither
+            // is `Enter`, which would be a write nobody asked for on the selected row.
             Some(Screen::Trust { .. }) => {}
             // **`Enter` is the merge** (RFC 047 decision 6) — offered only from a plan prikk
             // judged `Confluent`, because that is the only outcome prikk will merge from.

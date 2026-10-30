@@ -1,9 +1,12 @@
-//! The Trust view: which maintainer keys this repository trusts (RFC 054 decision 2).
+//! The Trust view: which maintainer keys this repository trusts (RFC 054 decision 2), and
+//! choosing them (RFC 056 decisions 2 and 3).
 //!
 //! # What this view is careful to say
 //!
-//! - **It is read-only, and the title says so.** Nothing here adopts or removes a key; `Esc`
-//!   is the only key that does anything.
+//! - **The title says which keys apply.** Where there is a list, it names `a` and `x`; where
+//!   there is none — below the band, or after a refused read — it says *read only*, because
+//!   neither key does anything there (`adoptable`). The view's own keys are the cursor, `a`,
+//!   `x`, `r` and `Esc`; every write is previewed and confirmed by typing the key id.
 //! - **What trust means is stikk's own sentence**, because prikk says it in the prose listing
 //!   and not in the JSON stikk reads (RFC 054 F1). Saying it costs no second spawn, and leaving
 //!   it out would let a reader take *trusted* for authority over their own branches.

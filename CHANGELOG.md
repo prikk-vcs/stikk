@@ -2,24 +2,46 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.18.0 — 2026-10-30
+
+**stikk now adopts and removes the keys your repository trusts, and warns you before a removal
+would make your own history fail to verify.** In the Trust view, **`a`** adopts a maintainer key
+and **`x`** removes the one you have selected — each previewed, then confirmed by **typing the key
+id**, which are stikk's first typed confirmations. Adopting asks for the public key, then for the
+id it signs under, prefilled with the id prikk would give that key and editable because its owner
+may sign under another; stikk checks the shape of both before prikk is asked, so a mistyped key
+keeps the prompt open instead of becoming a refusal. **The remove card says what it can cost**: if
+the key sealed blocks here, Verify will fail them **until the same key is adopted again under the
+same id** — measured, and a suite case proves both halves — and it says so again for your own key,
+which you cannot seal with once it is gone. **An id already trusted under a different key is shown
+as the security event it is**, with both public keys and nothing to confirm: two keys cannot share
+an id, because an id travels in every signature. Neither operation needs a signing key of your own,
+and both need prikk 0.54 or newer (RFC 056). Beside them, two smaller things a 0.17.0 user meets: a
+**broken shortcut** where a file would be saved — a symbolic link pointing at nothing — is now
+refused by stikk in its own words rather than by prikk after the card was armed, and Block detail's
+`F`/`A` hint has a row of its own instead of breaking mid-phrase at 80 columns. The real-binary
+suite drives **85 cases** against real prikk binaries at 0.28.0 and 0.55.0, on Linux, macOS and
+Windows.
 
 ### Breaking
 
-Per RFC 011, for a `0.x` crate the minor version is the breaking position.
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-state`, `stikk-core` and the `stikk` launcher are unchanged.**
 
 | Crate | Change |
 |---|---|
 | `stikk-prikk` | **The `Prikk` trait gains two required methods**, `trust_add` and `trust_remove`. Anything outside this workspace that implements the trait stops compiling until it implements them; nothing that only *calls* the trait is affected |
-| `stikk-tui` | **`Focus::Trust` carries a third value**, the selected row — the Trust view has a cursor now, because `x` acts on one. Outside code that destructures that variant must take it |
+| `stikk-tui` | **`Focus::Trust` carries a third value**, the selected row — the Trust view has a cursor now, because `x` acts on one — and **`Overlay` gained `TrustPublicKey`, `TrustKeyId`, `TrustConflict` and `TrustResult`.** Neither enum is `#[non_exhaustive]`, so outside code that destructures that variant, or matches `Overlay` exhaustively, must account for them |
 
 **Additive:** `stikk_prikk::TrustWritten`, with `NullBackend`'s two new builders and two call
 counters; `stikk_core::trust`'s `AdoptPreview`, `RemovePreview`, `TwoKeysOneId`,
 `TrustWriteResult`, `adopt_preview`, `remove_preview`, `adopt_confirm_and_execute`,
 `remove_confirm_and_execute`, `default_key_id`, `not_the_default_id`, `check_public_key`,
-`check_key_id` and the new sentences; `stikk_core::OperationContext::Trust`, which is additive
-only because that enum is `#[non_exhaustive]`; `stikk_tui::Overlay`'s four new variants and
-`App::begin_adopt_key`.
+`check_key_id`, the two operation names and the new sentences;
+`stikk_core::OperationContext::Trust`, which is additive only because that enum is
+`#[non_exhaustive]`; `stikk_tui::App::begin_adopt_key` and `begin_remove_key`. **No public item
+was removed**: `cargo public-api diff 0.17.0` reports *(none)* under *Removed items* for every
+crate, and the one *Changed item* is `Focus::Trust`.
 
 ### Added
 

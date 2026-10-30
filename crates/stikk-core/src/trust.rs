@@ -1,5 +1,5 @@
-//! Which maintainer keys this repository trusts, and whether a bundle's sealer is one of them
-//! (RFC 054).
+//! Which maintainer keys this repository trusts, whether a bundle's sealer is one of them
+//! (RFC 054), and adopting or removing one (RFC 056).
 //!
 //! # What trust is here, and what it is not
 //!
@@ -8,12 +8,15 @@
 //! of `trust maintainer list`, not in the JSON stikk reads (RFC 054 F1), so the sentence a view
 //! shows beside the list is stikk's own rather than a second spawn to fetch prikk's.
 //!
-//! # Read-only
+//! # What reads, and what writes
 //!
-//! Nothing here adds, removes or confirms anything. Changing trust is Tier Three Typed with a
-//! changed key under a known id as a security event, and it is its own increment. **An untrusted
-//! sealer does not block an import either**: received refs exist precisely so that history you
-//! have not vouched for can sit beside your own.
+//! **The list is a read** (RFC 054): [`read`] and [`sealers`] ask prikk and change nothing.
+//! **Adopting and removing write** (RFC 056), and both are **Tier Three Typed** — confirmed by
+//! typing the key id, with every guard inside the preview so `confirm` takes it again at the
+//! moment the reader answers, and with a changed key under a known id raised as the security
+//! event it is rather than as a confirmation. **An untrusted sealer still does not block an
+//! import**: received refs exist precisely so that history you have not vouched for can sit
+//! beside your own.
 //!
 //! # No key material
 //!

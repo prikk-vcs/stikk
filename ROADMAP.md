@@ -273,6 +273,25 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk lets you choose whose keys this repository trusts (0.18.0, breaking)
+
+- **Trust, adopt and remove** (`FR-103`'s write half, [RFC 056](rfcs/done/056-trust-adopt-and-remove.md),
+  prikk ≥ 0.54): from the Trust view, `a` adopts a maintainer key and `x` removes the selected one — each
+  previewed, then confirmed by **typing the key id**, which are stikk's first typed confirmations. Adopting asks for
+  the public key, then for the id it signs under, prefilled with the id prikk would give that key and editable
+  because its owner may sign under another; stikk checks the shape of both before prikk is asked. **The remove card
+  says what it can cost**: if the key sealed blocks here, Verify fails them until the same key is adopted again under
+  the same id — measured, and the suite's leg 7 proves both halves — and it says so again for your own key. An id
+  already trusted under a **different** key is the security event, with both public keys and nothing to confirm.
+  Neither operation needs a signing key. **Adopting a received tag and author keys are still to come.**
+- **The carried follow-ups** ([RFC 053 Handoff B](rfcs/handoffs/053-get-files-back/b-carried-follow-ups-handoff-v1.md)):
+  *"already there"* now means what prikk means, so a **dangling symlink** at a save or export destination is refused
+  by stikk in its own words rather than by prikk after the card was armed; Block detail's `F`/`A` hint has a row of
+  its own, where at 80 columns it used to break mid-phrase; two doc rewraps and one test fixture completed.
+- **No prikk re-baseline was needed**: prikk is still at 0.55.0, which this range already validates.
+- **The validated prikk range is `>= 0.28`, through `0.55.0`** (unchanged); the real-binary suite drives 85 cases at
+  0.28.0 and 0.55.0 on Linux, macOS and Windows.
+
 ## Shipped — stikk gets an earlier version of your files back, and shows which keys you trust (0.17.0, breaking)
 
 - **Getting files back** (`FR-053`'s non-destructive half, [RFC 053](rfcs/done/053-get-files-back.md), prikk ≥ 0.54):
@@ -472,18 +491,12 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.18.0: stikk lets you choose whose keys this repository trusts
+## Next — 0.19.0, not yet scoped
 
-Scoped and authorized 2026-10-29, in delivery order:
-
-1. **Trust, adopt and remove — landed on `main`** ([RFC 056](rfcs/done/056-trust-adopt-and-remove.md), `e33b31a`; `FR-103`'s write
-   half): from the Trust view, adopt a maintainer key (`a`) or remove one (`x`), each previewed and confirmed by
-   typing the key id. The remove card says that removing the key which sealed your history makes Verify fail it until
-   the key is adopted again (measured); a different key under a known id is shown as the security event it is.
-2. **The carried follow-ups — landed on `main`** ([RFC 053 Handoff B](rfcs/handoffs/053-get-files-back/b-carried-follow-ups-handoff-v1.md)):
-   "already there" counts a dangling symlink, as prikk does; Block detail's key hint on its own row; two rewraps and a
-   test fixture completed.
-3. **A prikk re-baseline**, only if prikk publishes a new minor before the cut. The cut does not wait for it.
+**A candidate:** the **confirmation overlay's layout follow-up**, whose three carried items are listed in RFC 056's
+*Delivered* section and in RFC 047's — a very long key id cut off in the typed confirmation, a public key splitting
+63 + 1 rather than 32 + 32, and prose flush against the card's right border. They belong together because each one
+means re-capturing every card. **The scope is the owner's to authorize**, and nothing is in delivery until it is.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and
@@ -514,9 +527,10 @@ release waits for it.
   Compare, and the scroll and selection anchors they need.)*
 - **Exchange**: bundle export/verify/import and the **sync assistant** (`FR-090…094`), with the input
   ceilings surfaced before an operation runs.
-- **Trust & keys** (`FR-104`, and `FR-103`'s remainder — **0.18.0's candidate**): adopting and removing
-  maintainer keys, and TOFU-conflict-as-security-event, with the signing-readiness detail beside them.
-  *(The read half shipped in 0.17.0 — RFC 054: the Trust view and the bundle cards' sealer rows. The
+- **Trust & keys** (`FR-104`, and what is left of `FR-103`): **adopting a received tag** (`FR-072`) and
+  **author keys**, with the signing-readiness detail beside them. *(`FR-103` is otherwise done: the
+  read half shipped in 0.17.0 — RFC 054, the Trust view and the bundle cards' sealer rows — and the
+  write half, adopt and remove with the TOFU conflict as a security event, in 0.18.0, RFC 056. The
   key-id display shipped in 0.6.0 — RFC 023 B — and signing readiness asks prikk's `key status` at
   ≥ 0.41 since RFC 026 B; still no seed is ever stored.)*
 - **The GUI** (`GU-01…09`): the same operations rendered natively, reaching TUI parity through the

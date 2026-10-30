@@ -495,7 +495,7 @@ a fabricated worktree entry was fixed.
 
 Scoped and authorized 2026-10-30, in delivery order:
 
-1. **Orientation on `status --format json`** ([RFC 057](rfcs/proposed/057-orientation-on-status-json.md), proposed):
+1. **Orientation on `status --format json`** ([RFC 057](rfcs/accepted/057-orientation-on-status-json.md), accepted 2026-10-30):
    the screen every session opens on, built from `status-report-v1` at prikk ≥ 0.43, the prose parser kept for the
    floor; the active-patch warning and an interrupted materialization said in stikk's words with prikk's numbers and
    commands.

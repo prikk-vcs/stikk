@@ -25,12 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 057 | [Orientation on `status --format json`](./proposed/057-orientation-on-status-json.md) | Orientation built from `status-report-v1` at prikk ≥ 0.43, the prose parser kept for the floor; the active-patch warning and an interrupted materialization in stikk's words with prikk's numbers and commands. 0.19.0 increment 1 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 056 delivered and closed 2026-10-30._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 057 | [Orientation on `status --format json`](./accepted/057-orientation-on-status-json.md) | Orientation built from `status-report-v1` at prikk ≥ 0.43, the prose parser kept for the floor; the active-patch warning and an interrupted materialization in stikk's words with prikk's numbers and commands. **Accepted 2026-10-30**; 0.19.0 increment 1 | [A: Orientation on JSON](./handoffs/057-orientation-on-status-json/a-orientation-json-handoff-v1.md) |
 
 ## Done (implemented)
 

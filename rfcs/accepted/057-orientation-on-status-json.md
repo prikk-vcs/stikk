@@ -1,6 +1,6 @@
 # RFC 057 — Orientation on `status --format json`
 
-**Status.** **Proposed 2026-10-30** by the architect, as 0.19.0's increment 1 (`.git-exclude/release/0-19-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-30**; [Handoff A](../handoffs/057-orientation-on-status-json/a-orientation-json-handoff-v1.md) issued. **Proposed 2026-10-30** by the architect, as 0.19.0's increment 1 (`.git-exclude/release/0-19-0-scope.md`,
 authorized 2026-10-30). **No open question.**
 **Measured** against real prikk **0.53.0, 0.54.1 and 0.55.0**: `.git-exclude/reports/057-orientation-json/`
 (`measure057.sh` → `measure057-0.5{3,4,5}.txt`, identical across the three once ids and paths are normalised). Five

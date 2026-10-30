@@ -10104,3 +10104,292 @@ fn rfc056_below_the_band_both_writes_are_unavailable() {
     );
     Fixture::clear_env();
 }
+
+// ---------------------------------------------------------------- RFC 057: Orientation on JSON
+
+/// Set `PRIKK_ACTIVE_PATCH_WARN`/`_LIMIT` for one measurement, and clear them after.
+///
+/// **Under `ENV_LOCK`**, like every other variable this harness sets: the caller holds it.
+fn rfc057_with_thresholds<T>(
+    warn: Option<&str>,
+    limit: Option<&str>,
+    run: impl FnOnce() -> T,
+) -> T {
+    // SAFETY: the caller holds `ENV_LOCK`, the same discipline `Fixture::set_author_env` keeps.
+    #[allow(unsafe_code)]
+    unsafe {
+        match warn {
+            Some(value) => std::env::set_var("PRIKK_ACTIVE_PATCH_WARN", value),
+            None => std::env::remove_var("PRIKK_ACTIVE_PATCH_WARN"),
+        }
+        match limit {
+            Some(value) => std::env::set_var("PRIKK_ACTIVE_PATCH_LIMIT", value),
+            None => std::env::remove_var("PRIKK_ACTIVE_PATCH_LIMIT"),
+        }
+    }
+    let out = run();
+    #[allow(unsafe_code)]
+    unsafe {
+        std::env::remove_var("PRIKK_ACTIVE_PATCH_WARN");
+        std::env::remove_var("PRIKK_ACTIVE_PATCH_LIMIT");
+    }
+    out
+}
+
+/// **RFC 057's proof of "no visible change"**: at the ceiling, the JSON path and the prose
+/// parser agree on every field, for each of the five measured states.
+///
+/// **(a)** is `Prikk::orientation`, which is the JSON path at the ceiling; **(b)** is `prikk
+/// status`'s own text, read by the prose parser through
+/// [`stikk_prikk::cli_backend::orientation_from_prose`] — a `#[doc(hidden)]` door that exists
+/// for this leg, because the product picks one reader by version and nothing in it can run the
+/// other against the same repository.
+///
+/// **The two typed fields are compared by their content**, which is the whole of decision 2:
+/// (a)'s `Threshold` numbers must be the ones inside (b)'s `Said` sentence.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc057_json_and_prose_orientation_agree_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_prikk::ORIENTATION_JSON_FROM_MINOR {
+        eprintln!(
+            "RFC 057 SKIPPED at 0.{} — the JSON path starts at 0.{}.",
+            bin.minor,
+            stikk_prikk::ORIENTATION_JSON_FROM_MINOR
+        );
+        return;
+    }
+    let backend = CliBackend::with_program(&bin.path);
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+
+    // The five states `measure057.sh` measures, built in its order. **A: nothing published** is
+    // this fixture before anything is committed. `compared` counts the two states where prikk
+    // warns, so a leg that silently stopped reaching them cannot pass.
+    let mut compared = 0_u32;
+
+    for (at, (state, warn, limit)) in [
+        ("A: nothing published", None, None),
+        ("B: one sealed block", None, None),
+        ("C: one queued patch", None, None),
+        ("D: the warn threshold", Some("1"), None),
+        ("E: the hard limit", Some("1"), Some("1")),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        // Build the state this step needs, on top of the last.
+        match at {
+            1 => {
+                std::fs::write(repo.join("a.txt"), "a\n")
+                    .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+                fixture.set_author_env();
+                backend
+                    .commit(&repo, "heads/main", "one")
+                    .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+                fixture.set_maintainer_env();
+                backend
+                    .seal(&repo, "heads/main")
+                    .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+                Fixture::clear_env();
+            }
+            2 => {
+                std::fs::write(repo.join("b.txt"), "b\n")
+                    .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+                fixture.set_author_env();
+                backend
+                    .commit(&repo, "heads/main", "two")
+                    .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+                Fixture::clear_env();
+            }
+            _ => {}
+        }
+
+        compared += rfc057_with_thresholds(warn, limit, || {
+            // (a) the product's own path, which is JSON here.
+            let json = backend
+                .orientation(&repo)
+                .unwrap_or_else(|e| panic!("0.{}: {state}: orientation: {e}", bin.minor));
+            // (b) prikk's prose, read by the parser the floor still uses.
+            let text = prikk_ok(&bin, &repo, &["status"]);
+            let prose = stikk_prikk::cli_backend::orientation_from_prose(
+                &String::from_utf8_lossy(&text.stdout),
+                bin.minor,
+            )
+            .unwrap_or_else(|e| panic!("0.{}: {state}: the prose parser: {e}", bin.minor));
+
+            assert_eq!(
+                json.queued_patches, prose.queued_patches,
+                "0.{}: {state}: queued",
+                bin.minor
+            );
+            assert_eq!(
+                json.queued_target, prose.queued_target,
+                "0.{}: {state}: the queue's target",
+                bin.minor
+            );
+            assert_eq!(
+                json.main_ref_state, prose.main_ref_state,
+                "0.{}: {state}: heads/main",
+                bin.minor
+            );
+            assert_eq!(
+                json.trailing_partial_wal_bytes, prose.trailing_partial_wal_bytes,
+                "0.{}: {state}: the torn tail",
+                bin.minor
+            );
+            assert_eq!(
+                json.current_branch, prose.current_branch,
+                "0.{}: {state}: the current branch",
+                bin.minor
+            );
+            // Neither path reports an interrupted materialization in these five states, and
+            // the prose path never reports one at all (RFC 057 decision 1).
+            assert_eq!(
+                json.interrupted_materialization, None,
+                "0.{}: {state}",
+                bin.minor
+            );
+            assert_eq!(
+                prose.interrupted_materialization, None,
+                "0.{}: {state}",
+                bin.minor
+            );
+
+            // **The one field that is not equal, and the one that proves the point.** prikk
+            // says it in prose and states it in JSON; the numbers must be the same numbers.
+            match (&json.active_patch_warning, &prose.active_patch_warning) {
+                (None, None) => 0,
+                (
+                    Some(stikk_prikk::ActivePatchWarning::Threshold {
+                        blocking,
+                        count,
+                        threshold,
+                    }),
+                    Some(stikk_prikk::ActivePatchWarning::Said(said)),
+                ) => {
+                    assert!(
+                        said.contains(&format!("({count})")),
+                        "0.{}: {state}: prikk's sentence carries the same count: {said}",
+                        bin.minor
+                    );
+                    assert!(
+                        said.contains(&format!("({threshold})")),
+                        "0.{}: {state}: and the same threshold: {said}",
+                        bin.minor
+                    );
+                    assert_eq!(
+                        *blocking,
+                        said.contains("hard limit"),
+                        "0.{}: {state}: and the same severity: {said}",
+                        bin.minor
+                    );
+                    1
+                }
+                (json, prose) => panic!(
+                    "0.{}: {state}: the two paths disagree about the warning: {json:?} vs {prose:?}",
+                    bin.minor
+                ),
+            }
+        });
+    }
+    assert_eq!(
+        compared, 2,
+        "0.{}: both warning states were reached -- the warn threshold and the hard limit",
+        bin.minor
+    );
+    Fixture::clear_env();
+}
+
+/// **At the floor the prose path is the one that runs**, and `--format` is never passed.
+///
+/// Proved twice, because neither proof alone is complete: the **shim** records the argv stikk
+/// actually spawned, and the **binary itself** refuses `--format` at this version, so an
+/// `orientation` that succeeds here cannot have used it. The shim is Unix-only; the refusal is
+/// measured on every platform.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc057_at_the_floor_orientation_asks_for_prose() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    assert!(
+        bin.minor < stikk_prikk::ORIENTATION_JSON_FROM_MINOR,
+        "the floor is below the JSON band"
+    );
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+
+    // **prikk itself refuses the flag at this version**, exit 2, so a successful read proves
+    // the flag was not passed.
+    let refused = std::process::Command::new(&bin.path)
+        .args(["status", "--format", "json"])
+        .current_dir(&repo)
+        .output()
+        .unwrap_or_else(|e| panic!("0.{}: spawn: {e}", bin.minor));
+    assert!(
+        !refused.status.success(),
+        "0.{}: prikk refuses `--format` here, which is why the band exists",
+        bin.minor
+    );
+    let read = CliBackend::with_program(&bin.path)
+        .orientation(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor));
+    assert_eq!(read.queued_patches, 0, "0.{}", bin.minor);
+    assert_eq!(
+        read.current_branch,
+        stikk_model::CurrentBranch::NotReported,
+        "0.{}: 0.28 keeps no current-branch pointer",
+        bin.minor
+    );
+
+    #[cfg(unix)]
+    {
+        // **The argv stikk spawned**, recorded by a shim that execs the real binary.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = repo
+            .parent()
+            .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+            .join("shim");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("mkdir: {e}"));
+        let argv = dir.join("argv");
+        let shim = dir.join("prikk");
+        std::fs::write(
+            &shim,
+            format!(
+                "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> \"{}\"; done\nexec \"{}\" \"$@\"\n",
+                argv.display(),
+                bin.path.display()
+            ),
+        )
+        .unwrap_or_else(|e| panic!("write the shim: {e}"));
+        let mut perms = std::fs::metadata(&shim)
+            .unwrap_or_else(|e| panic!("stat the shim: {e}"))
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&shim, perms).unwrap_or_else(|e| panic!("chmod the shim: {e}"));
+
+        CliBackend::with_program(&shim)
+            .orientation(&repo)
+            .unwrap_or_else(|e| panic!("0.{}: orientation through the shim: {e}", bin.minor));
+        let recorded = std::fs::read_to_string(&argv).unwrap_or_else(|e| panic!("read argv: {e}"));
+        assert!(
+            recorded.lines().any(|line| line == "status"),
+            "0.{}: it asked for status: {recorded:?}",
+            bin.minor
+        );
+        assert!(
+            !recorded.lines().any(|line| line == "--format"),
+            "0.{}: and never for a format: {recorded:?}",
+            bin.minor
+        );
+    }
+    Fixture::clear_env();
+}

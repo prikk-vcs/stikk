@@ -37,6 +37,23 @@ mod classify;
 mod parse;
 mod parse_json;
 
+/// **The prose reader, reachable from a test** (RFC 057's equivalence leg).
+///
+/// `orientation` picks one of two readers by version, so nothing in the product can run the
+/// other against the same repository -- which is exactly what the leg has to do to prove that
+/// the JSON path shows what the prose path showed. The alternative would be a second backend
+/// built around a fake binary, which would prove something about the fake.
+///
+/// **Not for product code**: every caller inside stikk goes through [`Prikk::orientation`],
+/// which decides the band.
+///
+/// # Errors
+/// As the prose reader: a [`StikkError::Environment`] naming the field it could not read.
+#[doc(hidden)]
+pub fn orientation_from_prose(status: &str, prikk_minor: u32) -> Result<Orientation> {
+    parse::orientation(status, prikk_minor)
+}
+
 /// The exit code prikk uses for a usage error detected before any repository work — an unknown,
 /// duplicate, or malformed argument (prikk 0.28+; RFC 009 F6). This is a bug in the command *stikk*
 /// assembled, never prikk's semantic refusal, so it is routed to [`StikkError::Internal`] and must

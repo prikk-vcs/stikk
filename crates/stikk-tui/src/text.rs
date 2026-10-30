@@ -188,35 +188,57 @@ pub fn wrap_indented(text: &str, width: usize, indent: &str) -> Vec<String> {
     lines
 }
 
-/// Split one value into the fewest rows that fit `available`, **as evenly as possible**
-/// (RFC 056 Handoff B §1).
+/// Split one value into the fewest rows that fit `available`, **balanced by width** (RFC 056
+/// Handoff B §1, corrected by its review v1).
 ///
-/// **Why even.** Filling each row and leaving the remainder on the last splits a 64-character
-/// key as 63 + 1, which reads as a defect and is hard to compare against another key. The same
-/// value as 32 + 32 reads as one value on two rows. The row count is unchanged — this is the
-/// same number of rows, differently filled — so nothing that fits on one row is ever split.
+/// **Why balanced.** Filling each row and leaving the remainder on the last splits a
+/// 64-character key as 63 + 1, which reads as a defect and is hard to compare against another
+/// key. The same value as 32 + 32 reads as one value on two rows. The row count is the one a
+/// fill-and-remainder split would have used, so nothing that fits on one row is ever split.
 ///
-/// Rows differ by at most one character, and the longer ones come first. Measured by `char`,
-/// which is what the terminal grid measures, and what the two callers already count by.
+/// **No row is ever wider than `available`.** The pieces a split may fall between are not all
+/// one column wide — an escape is six, or twelve for a surrogate pair (see [`split_units`]) — so
+/// the rows are balanced by the **columns** they occupy, not by how many pieces they hold. The
+/// one exception is a single piece wider than `available`, which gets a row of its own; that
+/// needs a panel under twelve columns wide, where nothing would fit either way.
+///
+/// Rows are as equal as the pieces allow. Measured by `char`, which is what the terminal grid
+/// measures, and what the two callers already count by.
 fn even_rows(text: &str, available: usize) -> Vec<String> {
     let available = available.max(1);
     let units = split_units(text);
-    let total = units.len();
-    if total <= available {
+    // **Measured in columns, not pieces** (review v1). A piece is one `char` or one whole
+    // escape, and an escape is **six columns** (twelve for a surrogate pair), so counting
+    // pieces against the width let an escaped value come back one row wide enough to be
+    // clipped at the border -- the very failure this helper exists to remove.
+    let width: usize = units.iter().map(|unit| unit.chars().count()).sum();
+    if width <= available {
         return vec![text.to_string()];
     }
-    // The fewest rows that can hold it, which is what filling each row would have used.
-    let rows = total.div_ceil(available);
-    let base = total / rows;
-    // The first `remainder` rows take one unit more, so the rows differ by at most one.
-    let remainder = total % rows;
-    let mut units = units.into_iter();
-    (0..rows)
-        .map(|row| {
-            let take = base + usize::from(row < remainder);
-            units.by_ref().take(take).collect()
-        })
-        .collect()
+    // The fewest rows that can hold it by width, then a target each row aims at, so the rows
+    // come out as equal as the pieces allow.
+    let rows = width.div_ceil(available);
+    let target = width.div_ceil(rows);
+    let mut out: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0;
+    for unit in units {
+        let unit_width = unit.chars().count();
+        // **A row is never wider than `available`**, and never past the target once it holds
+        // something -- so a piece that would overflow either bound starts the next row. A
+        // single piece wider than `available` gets a row of its own, which needs a panel
+        // narrower than twelve columns and would be clipped whatever stikk did.
+        if current_width > 0 && (current_width + unit_width > target.min(available)) {
+            out.push(std::mem::take(&mut current));
+            current_width = 0;
+        }
+        current.push_str(&unit);
+        current_width += unit_width;
+    }
+    if !current.is_empty() || out.is_empty() {
+        out.push(current);
+    }
+    out
 }
 
 /// The pieces [`even_rows`] may split between: one ordinary `char`, or **one whole escape**.

@@ -501,3 +501,52 @@ fn below_the_band_the_sealer_row_is_prikks_ids_alone() {
         "prikk's note: {text}"
     );
 }
+
+/// **A sealer id made mostly of escapes still fits the card** (RFC 056 Handoff B review v1).
+///
+/// A bundle's sealer id is chosen by whoever sealed it (RFC 054), so the ids most likely to be
+/// full of invisible or bidirectional characters are the adversarial ones — and those are
+/// exactly what `identifier` rewrites as `\uXXXX`, six columns each. The rows are balanced by
+/// the columns they occupy, so no row of an escaped id is wider than the card.
+#[test]
+fn a_sealer_id_made_of_escapes_still_fits_and_shows_its_answer_at_80_columns() {
+    // Ten right-to-left overrides and ten zero-width spaces, among ordinary characters: 20
+    // escapes at six columns each, plus 20 plain, is 140 columns of drawn text.
+    let hostile: String = (0..20)
+        .map(|i| if i % 2 == 0 { "\u{202e}x" } else { "\u{200b}y" })
+        .collect();
+    let mut view = match fast_forward() {
+        BundleOpened::Read(view) => *view,
+        other => panic!("expected a read view, got {other:?}"),
+    };
+    view.preview.sealed_by = vec![hostile.clone()];
+    view.sealers = stikk_core::SealerTrustRead::Judged(vec![stikk_core::Sealer {
+        key_id: hostile.clone(),
+        trust: stikk_core::SealerTrust::NotTrusted,
+    }]);
+    let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
+    println!("{text}");
+    assert!(
+        text.lines().all(|line| line.chars().count() <= 80),
+        "nothing overflows the card: {text}"
+    );
+    let flat = flattened(&text);
+    assert!(
+        flat.contains("not trusted by this repository"),
+        "the answer is still drawn: {text}"
+    );
+    // **Nothing is shown as itself** that should not be: every override is an escape, and each
+    // one is whole on its row.
+    assert!(!text.contains('\u{202e}'), "{text}");
+    assert!(!text.contains('\u{200b}'), "{text}");
+    assert_eq!(
+        text.matches("\\u202e").count(),
+        10,
+        "every override is whole: {text}"
+    );
+    assert_eq!(
+        text.matches("\\u200b").count(),
+        10,
+        "and every zero-width space: {text}"
+    );
+}

@@ -416,3 +416,67 @@ fn an_escape_at_the_split_point_stays_whole_on_one_row() {
     );
     assert_eq!(rows.concat(), pair);
 }
+
+/// **No row is ever wider than the available width** (RFC 056 Handoff B review v1): a piece is
+/// one `char` **or one whole escape**, and an escape is six columns, so rows balanced by piece
+/// *count* could come out far wider than the row they sit in.
+///
+/// The review's own example: 63 pieces, ten of them escapes, at 63 columns available. Counting
+/// pieces, that is "63 ≤ 63" and one row of 113 columns, which ratatui clips at the border —
+/// and **the ids most likely to be full of escapes are the adversarial ones**, since a bundle's
+/// sealer id is chosen by whoever sealed it (RFC 054).
+#[test]
+fn no_row_is_wider_than_the_available_width_however_many_escapes() {
+    let escaped = "\\u202e".repeat(10) + &"a".repeat(53); // 63 pieces, 113 columns
+    assert_eq!(escaped.chars().count(), 113);
+    let rows = wrap_verbatim(&escaped, 63, "");
+    for row in &rows {
+        assert!(
+            row.chars().count() <= 63,
+            "a row of {} columns: {rows:?}",
+            row.chars().count()
+        );
+    }
+    // Every escape is still whole, and the rows rejoin to the input.
+    assert_eq!(rows.concat(), escaped, "nothing is lost");
+    assert_eq!(
+        rows.iter()
+            .map(|row| row.matches("\\u202e").count())
+            .sum::<usize>(),
+        10,
+        "every escape is whole on some row: {rows:?}"
+    );
+}
+
+/// **A value made only of escapes** balances by width too: twenty escapes are 120 columns, so
+/// at 63 available they come out as two rows of ten.
+#[test]
+fn a_value_of_only_escapes_balances_by_width() {
+    let escaped = "\\u202e".repeat(20);
+    assert_eq!(escaped.chars().count(), 120);
+    let rows = wrap_verbatim(&escaped, 63, "");
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    for row in &rows {
+        assert_eq!(row.chars().count(), 60, "{rows:?}");
+        assert_eq!(row.matches("\\u202e").count(), 10, "{rows:?}");
+    }
+    assert_eq!(rows.concat(), escaped);
+}
+
+/// **A surrogate pair at a row boundary stays whole** — twelve columns that mean one character,
+/// and nothing by halves.
+#[test]
+fn a_surrogate_pair_at_a_row_boundary_stays_whole() {
+    // Six columns of plain text, then the pair, then more: at a width of 10 the pair cannot sit
+    // on the first row, so it must start the second rather than be cut.
+    let text = format!("{}\\ud83d\\ude00{}", "a".repeat(6), "b".repeat(6));
+    let rows = wrap_verbatim(&text, 10, "");
+    assert!(
+        rows.iter().any(|row| row.contains("\\ud83d\\ude00")),
+        "{rows:?}"
+    );
+    for row in &rows {
+        assert!(row.chars().count() <= 12, "{rows:?}");
+    }
+    assert_eq!(rows.concat(), text);
+}

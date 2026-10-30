@@ -163,15 +163,27 @@ fn prikks_current_branch_has_a_whole_row_above_heads_main() {
         row(&branch, "heads/main")
     );
 
-    let unresolved = render_to_text(&with(stikk_model::CurrentBranch::Unresolved(
-        "<unresolved; run `prikk doctor`>".to_string(),
-    )));
-    println!("--- Orientation, unresolved\n{unresolved}");
-    assert!(
-        unresolved
-            .contains("branch      <unresolved; run `prikk doctor`> — prikk's current branch"),
-        "{unresolved}"
-    );
+    // **Unresolved is a sentence, drawn as one** (RFC 057 decision 3): no trailing
+    // *"— prikk's current branch"* clause, which would be a second em-dash aside on a row that
+    // already has one. Below the JSON band the sentence is prikk's sentinel; at or above it,
+    // stikk's own. Both are drawn the same way.
+    for said in [
+        "<unresolved; run `prikk doctor`>",
+        "unresolved — `prikk doctor` can say why",
+    ] {
+        let unresolved = render_to_text(&with(stikk_model::CurrentBranch::Unresolved(
+            said.to_string(),
+        )));
+        println!("--- Orientation, unresolved: {said}\n{unresolved}");
+        assert!(
+            unresolved.contains(&format!("branch      {said}")),
+            "{unresolved}"
+        );
+        assert!(
+            !unresolved.contains(&format!("{said} — prikk's current branch")),
+            "a sentence takes no name's suffix: {unresolved}"
+        );
+    }
 
     let below_0_42 = render_to_text(&with(stikk_model::CurrentBranch::NotReported));
     assert!(

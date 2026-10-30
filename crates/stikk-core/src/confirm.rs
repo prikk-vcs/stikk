@@ -438,8 +438,10 @@ pub fn branch_notice(target: &str, current: &stikk_model::CurrentBranch) -> Opti
              is given.",
             branch.as_str()
         )),
+        // **Not *"prikk reports"*** (RFC 057 decision 3): at prikk ≥ 0.43 the report says only
+        // `null`, and the sentence after it is stikk's own.
         stikk_model::CurrentBranch::Unresolved(text) => Some(format!(
-            "This targets {target}. prikk reports its current branch as {text}."
+            "This targets {target}. prikk's current branch is {text}."
         )),
     }
 }

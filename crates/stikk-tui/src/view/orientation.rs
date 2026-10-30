@@ -134,10 +134,22 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
 
     // RFC 029 Handoff B (review v1 §2.1): prikk's current branch, whole. The status bar may shorten it to
     // fit its one line; this row never does, and wraps with the view. Below 0.42 prikk reports none.
+    // **Unresolved is a sentence, not a name** (RFC 057 decision 3), so it is drawn as one: no
+    // `identifier`, which is for repository text, and no *"— prikk's current branch"* clause
+    // after it, which would read as a second em-dash aside on a row that already has one.
+    if let CurrentBranch::Unresolved(said) = &view.current_branch {
+        lines.push(field(
+            palette,
+            "branch",
+            vec![Span::styled(
+                inert(said).to_string(),
+                Style::default().fg(palette.warn),
+            )],
+        ));
+    }
     let branch = match &view.current_branch {
         CurrentBranch::Branch(branch) => Some(branch.as_str()),
-        CurrentBranch::Unresolved(text) => Some(text.as_str()),
-        CurrentBranch::NotReported => None,
+        CurrentBranch::Unresolved(_) | CurrentBranch::NotReported => None,
     };
     if let Some(branch) = branch {
         lines.push(field(

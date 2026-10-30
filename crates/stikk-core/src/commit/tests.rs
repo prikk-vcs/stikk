@@ -675,7 +675,7 @@ fn commits_branch_notice_follows_each_row_of_safeguard_three_exactly() {
         (
             CurrentBranch::Unresolved("<unresolved; run `prikk doctor`>".to_string()),
             Some(
-                "This targets heads/main. prikk reports its current branch as <unresolved; run `prikk doctor`>.",
+                "This targets heads/main. prikk's current branch is <unresolved; run `prikk doctor`>.",
             ),
         ),
         (CurrentBranch::NotReported, None),

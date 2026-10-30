@@ -4156,22 +4156,32 @@ fn rfc034_an_interrupted_materialization_is_shown_and_blocks_only_commit() {
         return;
     };
 
-    // prikk's own sentence, whole, with its routes.
+    // **prikk's routes, each whole** (RFC 057 decision 2): the JSON names the ways out as
+    // commands, and stikk carries them exactly.
     assert!(
-        marker.contains("stopped part-way"),
-        "0.{}: {marker}",
+        marker.iter().any(|route| route.contains("prikk ")),
+        "0.{}: {marker:?}",
         ceiling.minor
     );
-    // Commit is unavailable, in prikk's words.
+    // Commit is unavailable, with stikk's lead-in over those routes.
     fixture.set_author_env();
     let preview = stikk_core::commit_preview(&ceiling_backend, &repo, "heads/main");
     Fixture::clear_env();
     match preview {
-        Ok(stikk_core::CommitPreviewOutcome::Blocked(reason)) => assert!(
-            reason.contains(marker),
-            "0.{}: commit is blocked in prikk's words: {reason}",
-            ceiling.minor
-        ),
+        Ok(stikk_core::CommitPreviewOutcome::Blocked(reason)) => {
+            assert!(
+                reason.contains(stikk_core::INTERRUPTED_MATERIALIZATION),
+                "0.{}: stikk's lead-in: {reason}",
+                ceiling.minor
+            );
+            for route in marker {
+                assert!(
+                    reason.contains(route),
+                    "0.{}: prikk's route, whole: {reason}",
+                    ceiling.minor
+                );
+            }
+        }
         other => panic!("0.{}: expected Blocked, got {other:?}", ceiling.minor),
     }
     // **Reads are not blocked**, and stikk must not block them.

@@ -19,20 +19,61 @@ use stikk_prikk::Prikk;
 /// against, a different question from what a specific prikk release does with a message.
 const MESSAGES_PERSIST_MIN: (u32, u32, u32) = (0, 32, 0);
 
+/// **stikk's lead-in over prikk's routes out of an interrupted materialization** (RFC 057
+/// decision 2).
+///
+/// `status-report-v1` gives the routes as a list and no sentence at all, so the framing is
+/// stikk's. **The routes themselves are prikk's**, carried verbatim beneath this, one per row.
+pub const INTERRUPTED_MATERIALIZATION: &str =
+    "A checkout or branch switch stopped part-way. Move aside any file it named, then run one of:";
+
+/// The active-patch warning, in whichever voice prikk's report allows (RFC 057 decision 2).
+///
+/// **Below the JSON band these are prikk's own words**, carried verbatim (`ER-02`), which is
+/// what stikk has always shown. **At or above it prikk states the threshold as data** — a
+/// vocabulary word and two numbers, with no sentence anywhere in the report — so the sentence
+/// is stikk's and prikk's numbers are carried inside it.
+///
+/// One function, so the Orientation view and the commit card cannot word the same fact
+/// differently.
+#[must_use]
+pub fn active_patch_sentence(warning: &stikk_prikk::ActivePatchWarning) -> String {
+    match warning {
+        stikk_prikk::ActivePatchWarning::Said(said) => said.clone(),
+        stikk_prikk::ActivePatchWarning::Threshold {
+            blocking: false,
+            count,
+            threshold,
+        } => format!(
+            "{count} patches are queued, at or above prikk's recommended threshold of \
+             {threshold}. Consider sealing."
+        ),
+        stikk_prikk::ActivePatchWarning::Threshold {
+            blocking: true,
+            count,
+            threshold,
+        } => format!(
+            "{count} patches are queued, at prikk's limit of {threshold}. prikk refuses to \
+             commit until you seal."
+        ),
+    }
+}
+
 /// Everything the Orientation view shows (design VW-01). A plain value handed to a frontend to
 /// render; it is never authority and is re-derived on refresh (data model INV-8).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrientationView {
     /// prikk's raw version line, verbatim.
     pub prikk_version: String,
-    /// prikk's interrupted-materialization line, **verbatim**, when a checkout or branch switch stopped
-    /// part-way (prikk ≥ 0.43; RFC 034 §7). `None` when prikk reports none, and below 0.43, where prikk
-    /// reports the state nowhere at all.
+    /// **prikk's routes out of an interrupted materialization**, verbatim, when a checkout or
+    /// branch switch stopped part-way (prikk ≥ 0.43; RFC 034 §7, RFC 057 decision 2). `None`
+    /// when prikk reports none, and below 0.43, where prikk reports the state nowhere at all.
     ///
     /// **A state of the repository, not an error.** Reads keep working — Changes and History are
     /// unaffected, measured — and only `commit` refuses, which is why commit's preview blocks on it and
-    /// the Orientation view merely says so. prikk's sentence names both ways out, so it is shown whole.
-    pub interrupted_materialization: Option<String>,
+    /// the Orientation view merely says so. The lead-in is stikk's
+    /// ([`INTERRUPTED_MATERIALIZATION`]); each route is prikk's own command, shown whole.
+    pub interrupted_materialization: Option<Vec<String>>,
     /// Whether this prikk version is at or above the floor stikk requires; when false the UI degrades
     /// mutation to read-only and says why (NFR-R03).
     pub prikk_supported: bool,

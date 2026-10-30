@@ -241,7 +241,11 @@ fn captures_the_active_patch_warn_threshold_line_verbatim() {
     let o = orientation(STATUS_QUEUED_WITH_WARNING_FIXTURE, 30).expect("status parses");
     assert_eq!(o.queued_patches, 1);
     assert_eq!(o.queued_target.as_deref(), Some("heads/main"));
-    let warning = o.active_patch_warning.expect("warning must be captured");
+    let crate::ActivePatchWarning::Said(warning) =
+        o.active_patch_warning.expect("warning must be captured")
+    else {
+        panic!("the prose band says it; only the JSON band states it (RFC 057 decision 2)");
+    };
     assert!(
         warning.starts_with("warning: active patches (1) at or above the recommended threshold")
     );
@@ -251,7 +255,11 @@ fn captures_the_active_patch_warn_threshold_line_verbatim() {
 #[test]
 fn captures_the_active_patch_hard_limit_line_verbatim_distinguishable_from_the_warn_wording() {
     let o = orientation(STATUS_QUEUED_AT_HARD_LIMIT_FIXTURE, 30).expect("status parses");
-    let warning = o.active_patch_warning.expect("warning must be captured");
+    let crate::ActivePatchWarning::Said(warning) =
+        o.active_patch_warning.expect("warning must be captured")
+    else {
+        panic!("the prose band says it, verbatim");
+    };
     assert!(warning.contains("configured hard limit"));
     assert!(!warning.contains("recommended threshold"));
 }
@@ -1835,6 +1843,9 @@ fn a_queue_with_missing_target_metadata_reads_as_a_count_with_no_target() {
 /// Captured verbatim from **prikk 0.46.0** reading a repository whose marker prikk **0.42.0** set, by
 /// refusing a `checkout --patch-materialize` that would have overwritten a file with different content.
 /// prikk 0.43.0 prints the identical line for the identical repository (measured both ways).
+///
+/// **Kept as a fixture although nothing reads the line any more** (RFC 057 decision 1): it is the
+/// shape of the report the prose parser must still tolerate, and the test below pins that it does.
 const STATUS_INTERRUPTED_MATERIALIZATION_0_46_FIXTURE: &str = "\
 prikk repository: /tmp/probe/.prikk
 active WAL records: 0
@@ -1846,18 +1857,15 @@ queued patches: 0
 status: multi-operation text diff minimization and plugins not yet implemented
 ";
 
+/// **The prose path never reports an interrupted materialization** (RFC 057 decision 1): prikk
+/// prints that line only at ≥ 0.43, which is the JSON band, so the reading that used to be here
+/// could not be reached by any supported prikk. The line is still tolerated — a report carrying
+/// it parses, and every other field reads as before.
 #[test]
-fn an_interrupted_materialization_is_carried_verbatim_with_prikks_own_routes() {
+fn the_prose_path_tolerates_the_interrupted_line_and_reads_nothing_from_it() {
     let orientation =
         orientation(STATUS_INTERRUPTED_MATERIALIZATION_0_46_FIXTURE, 46).expect("parses");
-    assert_eq!(
-        orientation.interrupted_materialization.as_deref(),
-        Some(
-            "a checkout or branch switch stopped part-way; move aside any file it named, then run \
-             prikk checkout --patch-materialize --ref heads/main or prikk branch switch heads/main"
-        ),
-        "prikk's sentence, naming both ways out, never reworded"
-    );
+    assert_eq!(orientation.interrupted_materialization, None);
     // The line changes nothing else the report says (the reader looks fields up by label).
     assert_eq!(orientation.queued_patches, 0);
     assert_eq!(
@@ -1870,9 +1878,6 @@ fn an_interrupted_materialization_is_carried_verbatim_with_prikks_own_routes() {
 
 #[test]
 fn no_marker_line_is_no_marker_at_any_version() {
-    // **Absence is not a version error here**, unlike `current branch:`: prikk prints this line only
-    // when the marker is set, and below 0.43 never — the state is unreportable there (RFC 034 §7.4),
-    // which is why `present()` glosses 0.42's commit refusal instead.
     for (fixture, minor) in [
         (STATUS_QUEUED_0_42_FIXTURE, 42),
         (STATUS_QUEUED_FIXTURE, 38),

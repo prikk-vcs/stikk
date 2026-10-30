@@ -4040,3 +4040,369 @@ fn a_truncated_trust_list_is_a_shape_error() {
         assert_eq!(err.class(), "environment", "{label}");
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 057: `status --format json` as Orientation reads it (`status-report-v1`), prikk >= 0.43.
+//
+// **The five fixtures below are prikk 0.55.0's own**, pasted from
+// `.git-exclude/reports/057-orientation-json/measure057-0.55.txt` with only the scratch path
+// normalised to `/tmp/repo/.prikk`. The same five are byte-identical at 0.53.0 and 0.54.1 once
+// ids and paths are normalised (RFC 057's own measurement, re-run at 0.55.0 for this handoff).
+// ---------------------------------------------------------------------------------------------
+
+const STATUS_057_A_INIT_ONLY: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 0,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": null,
+  "current_branch": "heads/main",
+  "provisional_worktree": null,
+  "interrupted_materialization": null,
+  "queue": {
+    "count": 0,
+    "target_ref": null,
+    "target_ref_status": null,
+    "threshold_status": null,
+    "warn_threshold": null,
+    "hard_limit": null,
+    "patches": []
+  }
+}"#;
+
+const STATUS_057_B_ONE_SEALED_BLOCK: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 0,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "9bc68aeb91179d8fa435414ece2eb4e1069f5cacbcbc1dcf1d96c8552c3b9d83",
+  "current_branch": "heads/main",
+  "provisional_worktree": null,
+  "interrupted_materialization": null,
+  "queue": {
+    "count": 0,
+    "target_ref": null,
+    "target_ref_status": null,
+    "threshold_status": null,
+    "warn_threshold": null,
+    "hard_limit": null,
+    "patches": []
+  }
+}"#;
+
+const STATUS_057_C_ONE_QUEUED: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 1,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "9bc68aeb91179d8fa435414ece2eb4e1069f5cacbcbc1dcf1d96c8552c3b9d83",
+  "current_branch": "heads/main",
+  "provisional_worktree": null,
+  "interrupted_materialization": null,
+  "queue": {
+    "count": 1,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "88ede5d343df3dd83dd84ebb9effd9d23268916ef11e75815293660a80a780ed", "message": "two", "operations": [
+        {"kind": "create-file", "paths": [{"path": "b.txt"}]}
+      ]}
+    ]
+  }
+}"#;
+
+const STATUS_057_D_WARN: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 1,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "9bc68aeb91179d8fa435414ece2eb4e1069f5cacbcbc1dcf1d96c8552c3b9d83",
+  "current_branch": "heads/main",
+  "provisional_worktree": null,
+  "interrupted_materialization": null,
+  "queue": {
+    "count": 1,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "warn",
+    "warn_threshold": 1,
+    "hard_limit": 1000,
+    "patches": [
+      {"patch_id": "88ede5d343df3dd83dd84ebb9effd9d23268916ef11e75815293660a80a780ed", "message": "two", "operations": [
+        {"kind": "create-file", "paths": [{"path": "b.txt"}]}
+      ]}
+    ]
+  }
+}"#;
+
+const STATUS_057_E_HARD_LIMIT: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 1,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "9bc68aeb91179d8fa435414ece2eb4e1069f5cacbcbc1dcf1d96c8552c3b9d83",
+  "current_branch": "heads/main",
+  "provisional_worktree": null,
+  "interrupted_materialization": null,
+  "queue": {
+    "count": 1,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "hard-limit",
+    "warn_threshold": 1,
+    "hard_limit": 1,
+    "patches": [
+      {"patch_id": "88ede5d343df3dd83dd84ebb9effd9d23268916ef11e75815293660a80a780ed", "message": "two", "operations": [
+        {"kind": "create-file", "paths": [{"path": "b.txt"}]}
+      ]}
+    ]
+  }
+}"#;
+
+/// **The two states no script can reach**, built in `print_status_json`'s exact shape
+/// (`prikk-cli/src/output/status.rs`, read for RFC 057's F1 table). The writer:
+///
+/// ```text
+/// None => json.push_str("  \"current_branch\": null,\n"),
+/// ```
+///
+/// and, for the marker:
+///
+/// ```text
+/// json.push_str(&format!(
+///     "  \"interrupted_materialization\": {{\"routes\": [{}, {}]}},\n",
+///     escape_json_string(&format!("prikk checkout --patch-materialize --ref {branch}")),
+///     escape_json_string(&format!("prikk branch switch {branch}"))
+/// ));
+/// ```
+const STATUS_057_UNRESOLVED_BRANCH: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 0,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "9bc68aeb91179d8fa435414ece2eb4e1069f5cacbcbc1dcf1d96c8552c3b9d83",
+  "current_branch": null,
+  "provisional_worktree": null,
+  "interrupted_materialization": null,
+  "queue": {
+    "count": 0,
+    "target_ref": null,
+    "target_ref_status": null,
+    "threshold_status": null,
+    "warn_threshold": null,
+    "hard_limit": null,
+    "patches": []
+  }
+}"#;
+
+/// As above, with the marker set. The branch inside the routes is the current one, which is how
+/// prikk writes them.
+const STATUS_057_INTERRUPTED: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 0,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "9bc68aeb91179d8fa435414ece2eb4e1069f5cacbcbc1dcf1d96c8552c3b9d83",
+  "current_branch": "heads/main",
+  "provisional_worktree": null,
+  "interrupted_materialization": {"routes": ["prikk checkout --patch-materialize --ref heads/main", "prikk branch switch heads/main"]},
+  "queue": {
+    "count": 0,
+    "target_ref": null,
+    "target_ref_status": null,
+    "threshold_status": null,
+    "warn_threshold": null,
+    "hard_limit": null,
+    "patches": []
+  }
+}"#;
+
+fn branch(name: &str) -> stikk_model::CurrentBranch {
+    stikk_model::CurrentBranch::Branch(stikk_model::RefName::parse(name).expect("a ref name"))
+}
+
+/// **Every measured state, read into the `Orientation` the prose path builds** (RFC 057 F1).
+#[test]
+fn rfc057_each_measured_state_reads_into_the_same_orientation() {
+    let a = orientation(STATUS_057_A_INIT_ONLY).expect("A parses");
+    assert_eq!(a.queued_patches, 0);
+    assert_eq!(a.queued_target, None);
+    assert_eq!(a.main_ref_state, None, "`<not published>` is `null` here");
+    assert_eq!(a.trailing_partial_wal_bytes, 0);
+    assert_eq!(a.active_patch_warning, None, "an empty queue warns nothing");
+    assert_eq!(a.current_branch, branch("heads/main"));
+    assert_eq!(a.interrupted_materialization, None);
+
+    let b = orientation(STATUS_057_B_ONE_SEALED_BLOCK).expect("B parses");
+    assert_eq!(
+        b.main_ref_state.as_deref(),
+        Some("9bc68aeb91179d8fa435414ece2eb4e1069f5cacbcbc1dcf1d96c8552c3b9d83"),
+        "a published heads/main is its RefState id"
+    );
+    assert_eq!(b.queued_patches, 0);
+
+    let c = orientation(STATUS_057_C_ONE_QUEUED).expect("C parses");
+    assert_eq!(c.queued_patches, 1);
+    assert_eq!(c.queued_target.as_deref(), Some("heads/main"));
+    assert_eq!(
+        c.active_patch_warning, None,
+        "`threshold_status: \"none\"` is not a warning, though the two numbers are present"
+    );
+
+    // **The two numbers are prikk's**, and which one is carried depends on which threshold the
+    // queue is at: the warn threshold here, the hard limit below.
+    let d = orientation(STATUS_057_D_WARN).expect("D parses");
+    assert_eq!(
+        d.active_patch_warning,
+        Some(crate::ActivePatchWarning::Threshold {
+            blocking: false,
+            count: 1,
+            threshold: 1,
+        })
+    );
+
+    let e = orientation(STATUS_057_E_HARD_LIMIT).expect("E parses");
+    assert_eq!(
+        e.active_patch_warning,
+        Some(crate::ActivePatchWarning::Threshold {
+            blocking: true,
+            count: 1,
+            threshold: 1,
+        })
+    );
+}
+
+/// **`current_branch: null` is `Unresolved`, carrying stikk's own sentence** (RFC 057
+/// decision 3). The prose path carries prikk's sentinel; the JSON has none to carry.
+#[test]
+fn rfc057_a_null_current_branch_is_unresolved_in_stikks_words() {
+    let read = orientation(STATUS_057_UNRESOLVED_BRANCH).expect("parses");
+    let stikk_model::CurrentBranch::Unresolved(said) = read.current_branch else {
+        panic!("expected Unresolved, got {:?}", read.current_branch);
+    };
+    assert_eq!(said, "unresolved — `prikk doctor` can say why");
+    assert!(
+        !said.contains('<'),
+        "prikk's sentinel is not in the JSON, so stikk does not invent one: {said:?}"
+    );
+}
+
+/// **The routes, verbatim and in prikk's order** (RFC 057 decision 2). stikk adds the lead-in
+/// where it draws them, and nothing to the commands themselves.
+#[test]
+fn rfc057_an_interrupted_materialization_carries_both_routes_verbatim() {
+    let read = orientation(STATUS_057_INTERRUPTED).expect("parses");
+    assert_eq!(
+        read.interrupted_materialization,
+        Some(vec![
+            "prikk checkout --patch-materialize --ref heads/main".to_string(),
+            "prikk branch switch heads/main".to_string(),
+        ])
+    );
+    // And the rest of the report reads as it does without the marker.
+    assert_eq!(read.current_branch, branch("heads/main"));
+    assert_eq!(read.queued_patches, 0);
+}
+
+/// **Both vocabularies are closed, and a missing key is an error** (RFC 057 decision 1,
+/// `UD-02`). prikk writes every key of this report, with `null` where the prose omits a line,
+/// so a key that is not there means stikk is reading a report it does not know.
+#[test]
+fn rfc057_an_unknown_word_or_a_missing_key_is_refused() {
+    let cases: [(&str, String, &str); 6] = [
+        (
+            "an unknown threshold_status",
+            STATUS_057_D_WARN.replace(
+                "\"threshold_status\": \"warn\"",
+                "\"threshold_status\": \"urgent\"",
+            ),
+            "threshold_status",
+        ),
+        (
+            "an unknown target_ref_status",
+            STATUS_057_C_ONE_QUEUED
+                .replace("\"target_ref\": \"heads/main\"", "\"target_ref\": null")
+                .replace(
+                    "\"target_ref_status\": null",
+                    "\"target_ref_status\": \"borrowed\"",
+                ),
+            "target_ref_status",
+        ),
+        (
+            "no current_branch key at all",
+            STATUS_057_A_INIT_ONLY.replace("  \"current_branch\": \"heads/main\",\n", ""),
+            "current_branch",
+        ),
+        (
+            "no interrupted_materialization key at all",
+            STATUS_057_A_INIT_ONLY.replace("  \"interrupted_materialization\": null,\n", ""),
+            "interrupted_materialization",
+        ),
+        (
+            "no trailing_partial_wal_bytes key at all",
+            STATUS_057_A_INIT_ONLY.replace("  \"trailing_partial_wal_bytes\": 0,\n", ""),
+            "trailing_partial_wal_bytes",
+        ),
+        (
+            "no queue at all",
+            STATUS_057_A_INIT_ONLY.replace("\"queue\": {", "\"not_the_queue\": {"),
+            "queue",
+        ),
+    ];
+    for (what, text, names) in cases {
+        let err = orientation(&text).expect_err(what);
+        assert_eq!(err.class(), "environment", "{what}: {err}");
+        assert!(err.to_string().contains(names), "{what}: {err}");
+    }
+}
+
+/// **An interrupted materialization with no route is a shape error**: it would say a checkout
+/// stopped part-way and name no way out, which is worse than either answer.
+#[test]
+fn rfc057_an_interrupted_materialization_with_no_routes_is_refused() {
+    for (what, text) in [
+        (
+            "an empty list",
+            STATUS_057_INTERRUPTED.replace(
+                "{\"routes\": [\"prikk checkout --patch-materialize --ref heads/main\", \"prikk branch switch heads/main\"]}",
+                "{\"routes\": []}",
+            ),
+        ),
+        (
+            "a route that is not a string",
+            STATUS_057_INTERRUPTED.replace(
+                "\"prikk branch switch heads/main\"",
+                "17",
+            ),
+        ),
+    ] {
+        let err = orientation(&text).expect_err(what);
+        assert_eq!(err.class(), "environment", "{what}: {err}");
+        assert!(err.to_string().contains("routes"), "{what}: {err}");
+    }
+}
+
+/// **A `current_branch` that is not a ref name is refused**, the same rule the prose path keeps.
+#[test]
+fn rfc057_a_current_branch_that_is_not_a_ref_name_is_refused() {
+    let text = STATUS_057_A_INIT_ONLY.replace(
+        "\"current_branch\": \"heads/main\"",
+        "\"current_branch\": \"\"",
+    );
+    let err = orientation(&text).expect_err("an empty name is not a ref");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("current_branch"), "{err}");
+}
+
+/// **A report of another schema is refused before any field is read** — the RFC 012 F-e failure
+/// shape, applied here as everywhere.
+#[test]
+fn rfc057_a_report_of_another_schema_is_refused() {
+    let text = STATUS_057_A_INIT_ONLY.replace("status-report-v1", "status-report-v2");
+    let err = orientation(&text).expect_err("v2 is not v1");
+    assert_eq!(err.class(), "environment");
+    assert!(err.to_string().contains("status-report-v1"), "{err}");
+}

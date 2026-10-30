@@ -26,8 +26,8 @@ pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
 pub use version::{
     CURRENT_BRANCH_FROM_MINOR, DIFF_FROM_MINOR, EXCHANGE_FROM_MINOR, FILES_FROM_MINOR,
-    JSON_REPORTS_FROM_MINOR, PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR,
-    UNPUBLISHED_BRANCH_FROM_MINOR, Version, validated_ceiling_display,
+    JSON_REPORTS_FROM_MINOR, ORIENTATION_JSON_FROM_MINOR, PATCH_PATH_AT_PATCH_FROM_MINOR,
+    TREE_FROM_MINOR, UNPUBLISHED_BRANCH_FROM_MINOR, Version, validated_ceiling_display,
 };
 
 use std::path::Path;
@@ -66,29 +66,62 @@ pub struct Orientation {
     pub main_ref_state: Option<String>,
     /// Trailing partial WAL bytes, if any — a torn tail an interrupted commit left behind.
     pub trailing_partial_wal_bytes: u64,
-    /// prikk's interrupted-materialization line, **verbatim**, when a checkout or branch switch stopped
-    /// part-way and left the worktree unverified (prikk ≥ 0.43; RFC 034 decision 4 §7).
+    /// **prikk's routes out of an interrupted materialization**, verbatim, when a checkout or
+    /// branch switch stopped part-way and left the worktree unverified (prikk ≥ 0.43; RFC 034
+    /// decision 4 §7, RFC 057 decision 2).
     ///
     /// `None` when prikk reports none — **and below 0.43, where prikk reports the state nowhere at all**
     /// (measured: 0.42 prints no such line, its `status --format json` has no such field, and its
     /// `doctor` finds nothing; only its `commit` refuses, which `present()` glosses instead).
     ///
-    /// **It is a state of the repository, not an error**, and prikk's sentence names both ways out, so
-    /// it is carried whole rather than reworded (`ER-02`).
-    pub interrupted_materialization: Option<String>,
-    /// prikk's own active-patch threshold warning, verbatim, when the queue is at or above the warn or
-    /// hard-limit threshold (`PRIKK_ACTIVE_PATCH_WARN`/`_LIMIT`; design `C-D2a`; RFC 014 F5). `None`
-    /// below the warn threshold. Read from the same `status` report `Orientation` already parses — the
-    /// parser has tolerated this line's presence since RFC 012, deferred to this increment (see
-    /// `cli_backend::parse::orientation`'s doc). Never paraphrased (`ER-02`): stikk surfaces the limit
-    /// it is about to hit using prikk's own words, computed against whatever thresholds are actually
-    /// configured — including operator overrides stikk has no other way to know about.
-    pub active_patch_warning: Option<String>,
+    /// **The commands, not the sentence.** `status-report-v1` gives
+    /// `interrupted_materialization.routes` as a list, with no prose around it, so the framing
+    /// is stikk's (`stikk_core::INTERRUPTED_MATERIALIZATION`) and each route is carried exactly
+    /// as prikk wrote it. The prose path never sets this: prikk prints that line only at ≥ 0.43,
+    /// which is the JSON band.
+    ///
+    /// **It is a state of the repository, not an error**, and the routes name both ways out, so
+    /// they are carried whole rather than summarised.
+    pub interrupted_materialization: Option<Vec<String>>,
+    /// The active-patch threshold warning, when the queue is at or above the warn or hard-limit
+    /// threshold (`PRIKK_ACTIVE_PATCH_WARN`/`_LIMIT`; design `C-D2a`; RFC 014 F5, RFC 057
+    /// decision 2). `None` below the warn threshold, which is where most sessions sit.
+    ///
+    /// **Two shapes, because prikk reports it two ways** — see [`ActivePatchWarning`]. Either
+    /// way the numbers are prikk's, computed against whatever thresholds are actually
+    /// configured, including operator overrides stikk has no other way to know about.
+    pub active_patch_warning: Option<ActivePatchWarning>,
     /// prikk's current branch, from the `current branch:` line prikk ≥ 0.42 prints in `status` (RFC 030
     /// decision 1): not reported below 0.42, prikk's unresolved text verbatim, or a validated branch.
     /// Read from the `status` report this struct already parses — never from `.prikk/current-branch`
     /// (`CON-1`). Nothing renders it yet; RFC 029 Handoff B does.
     pub current_branch: stikk_model::CurrentBranch,
+}
+
+/// prikk's active-patch threshold warning, in whichever form prikk gave it (RFC 057 decision 2).
+///
+/// **The prose says it; the JSON states it.** Below [`crate::ORIENTATION_JSON_FROM_MINOR`] prikk
+/// writes a sentence, and stikk shows that sentence verbatim (`ER-02`), as it always has. At or
+/// above the band there is no sentence in `status-report-v1` at all -- only a vocabulary word
+/// and two numbers -- so stikk writes the sentence and carries prikk's numbers inside it.
+///
+/// **Neither form is a paraphrase of the other**: one is prikk's words, the other is stikk's
+/// about prikk's data, and the type keeps a reader of this struct from mistaking which.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActivePatchWarning {
+    /// Below the band: prikk's own line, verbatim, beginning `warning: active patches`.
+    Said(String),
+    /// At or above the band, from `queue.threshold_status` with its two numbers.
+    Threshold {
+        /// `true` at the hard limit, where prikk refuses to commit; `false` at the warn
+        /// threshold, where it does not.
+        blocking: bool,
+        /// `queue.count`: how many patches are queued.
+        count: u64,
+        /// The threshold this warning is about -- `warn_threshold`, or `hard_limit` when
+        /// `blocking`.
+        threshold: u64,
+    },
 }
 
 /// The active queue, as [`Prikk::queue`] reads it (design `FR-051`; RFC 028 decision 1).

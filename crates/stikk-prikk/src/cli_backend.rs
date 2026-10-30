@@ -512,10 +512,21 @@ impl Prikk for CliBackend {
     }
 
     fn orientation(&self, repo: &Path) -> Result<Orientation> {
-        let status = self.run(Some(repo), RequestCategory::ReadHistory, ["status"])?;
         // RFC 030 decision 1: only the version tells a prikk with no current-branch pointer (< 0.42)
         // from a report that lost its `current branch:` line (≥ 0.42) — the handshake is cached.
         let prikk_minor = Prikk::handshake(self)?.version.minor;
+        // **RFC 057 decision 1: the schema where there is one, the prose at the floor.** The gate
+        // is here, beside the flag it adds, as `history`'s is — a parser that had to know the
+        // version would be two parsers in one function. **One read either way.**
+        if prikk_minor >= crate::ORIENTATION_JSON_FROM_MINOR {
+            let status = self.run(
+                Some(repo),
+                RequestCategory::ReadHistory,
+                ["status", "--format", "json"],
+            )?;
+            return parse_json::orientation(&status);
+        }
+        let status = self.run(Some(repo), RequestCategory::ReadHistory, ["status"])?;
         parse::orientation(&status, prikk_minor)
     }
 

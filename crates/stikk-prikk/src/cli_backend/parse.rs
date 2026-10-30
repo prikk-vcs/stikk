@@ -60,19 +60,15 @@ pub(super) fn orientation(status: &str, prikk_minor: u32) -> Result<Orientation>
         parse_queued(&required_field(status, "queued patches:")?)?;
     let trailing_partial_wal_bytes = required_u64(status, "trailing partial WAL bytes:")?;
     let main_ref_state = optional_object_id(status, "heads/main RefState:")?;
+    // **prikk's own sentence, verbatim** (`ER-02`), which is the only form this band has: below
+    // `ORIENTATION_JSON_FROM_MINOR` there is no report to read the numbers from (RFC 057
+    // decision 2).
     let active_patch_warning = status
         .lines()
         .map(str::trim)
         .find(|line| line.starts_with("warning: active patches"))
-        .map(str::to_string);
+        .map(|line| crate::ActivePatchWarning::Said(line.to_string()));
     let current_branch = current_branch(status, prikk_minor)?;
-    // RFC 034 §7: prikk ≥ 0.43 prints this line when a checkout or branch switch stopped part-way. Read
-    // from the prose `status` Orientation already parses — prikk's own sentence, naming both ways out —
-    // rather than from the JSON report, which is a different seam call and would cost a second read.
-    // **Its absence is not a version error:** prikk prints it only when the marker is set, and below
-    // 0.43 never (measured at 0.42.0, 0.43.0 and 0.46.0).
-    let interrupted_materialization =
-        field(status, "interrupted materialization:").map(str::to_string);
     Ok(Orientation {
         queued_patches,
         queued_target,
@@ -80,7 +76,10 @@ pub(super) fn orientation(status: &str, prikk_minor: u32) -> Result<Orientation>
         trailing_partial_wal_bytes,
         active_patch_warning,
         current_branch,
-        interrupted_materialization,
+        // **Never set on this path** (RFC 057 decision 1). prikk prints its
+        // `interrupted materialization:` line only at ≥ 0.43, which is the JSON band, so the
+        // reading that used to be here could no longer be reached by any supported prikk.
+        interrupted_materialization: None,
     })
 }
 

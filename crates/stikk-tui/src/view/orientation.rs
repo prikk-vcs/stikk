@@ -95,22 +95,27 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
     // an error** — reads keep working, and only `commit` refuses — so it is a field here rather than a
     // fault, in prikk's own words, which name both ways out. Wrapped rather than clipped: the sentence
     // carries two commands a user has to be able to read (RFC 024).
-    if let Some(interrupted) = &view.interrupted_materialization {
+    if let Some(routes) = &view.interrupted_materialization {
+        // **The lead-in is stikk's now** (RFC 057 decision 2): the JSON gives the ways out as
+        // commands and no sentence, so there is nothing of prikk's to quote here -- and saying
+        // *"prikk reports"* over stikk's own words would be the wrong attribution.
         lines.push(field(
             palette,
             "interrupted",
             vec![Span::styled(
-                "prikk reports a checkout that stopped part-way —",
+                stikk_core::INTERRUPTED_MATERIALIZATION,
                 Style::default().fg(palette.warn),
             )],
         ));
-        // One line, wrapped by this view's own `Paragraph` (which trims, so a hand-made indent would be
-        // dropped anyway). prikk's sentence is carried whole: it names both ways out, and a clipped
-        // command is worse than none.
-        lines.push(Line::from(Span::styled(
-            inert(interrupted).to_string(),
-            Style::default().fg(palette.fg),
-        )));
+        // **One row per route, prikk's command verbatim**, wrapped by this view's own
+        // `Paragraph` (which trims, so a hand-made indent would be dropped anyway) rather than
+        // clipped: a clipped command is worse than none.
+        for route in routes {
+            lines.push(Line::from(Span::styled(
+                inert(route).to_string(),
+                Style::default().fg(palette.fg),
+            )));
+        }
     }
 
     if view.trailing_partial_wal_bytes != 0 {

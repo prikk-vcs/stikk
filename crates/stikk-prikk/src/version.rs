@@ -205,6 +205,20 @@ pub const PATCH_PATH_AT_PATCH_FROM_MINOR: u32 = 52;
 /// 0.42. **One constant for both facts**, rather than a second literal that could drift from it.
 pub const CURRENT_BRANCH_FROM_MINOR: u32 = 42;
 
+/// The first prikk minor whose **`status --format json`** carries everything Orientation reads:
+/// prikk 0.43 (RFC 057 decision 1).
+///
+/// **Two facts set it, and the later one wins.** `current_branch` is in `status-report-v1` from
+/// **0.42.0**, and `interrupted_materialization` from **0.43.0** (prikk's own changelog, and
+/// measured at 0.53.0, 0.54.1 and 0.55.0). Reading the JSON at 0.42 would therefore lose a
+/// state the prose reports -- so the band is 0.43, where every row of RFC 057 F1's table is
+/// present.
+///
+/// At or above it `orientation` runs `status --format json`; below it, `status` and the prose
+/// parser, unchanged. **One read either way**, and nothing a user sees changes but the wording
+/// of the two lines prikk gives as data rather than as sentences (decision 2).
+pub const ORIENTATION_JSON_FROM_MINOR: u32 = 43;
+
 /// The first prikk minor stikk reads **bundles** at: prikk 0.53, the only version measured
 /// (RFC 050 decision 6).
 ///

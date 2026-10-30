@@ -37,8 +37,11 @@ pub struct CommitPreview {
     /// The whole-worktree capture this commit would author (`UD-06`): there is no staging, so this is
     /// every difference against the baseline, not a selection.
     pub changes: ChangesView,
-    /// prikk's own active-patch threshold warning, verbatim, when the queue is near or at a limit
-    /// (`C-D2a`; RFC 014 F5) — surfaced here, in the preview, before any refusal.
+    /// The active-patch threshold warning, when the queue is near or at a limit (`C-D2a`;
+    /// RFC 014 F5) — surfaced here, in the preview, before any refusal.
+    ///
+    /// **One sentence, built by [`crate::active_patch_sentence`]**: prikk's own words below the
+    /// JSON band, and stikk's around prikk's numbers at or above it (RFC 057 decision 2).
     pub active_patch_notice: Option<String>,
 }
 
@@ -237,12 +240,15 @@ fn compute(
     }
 
     // RFC 034 §7.2: a checkout or branch switch that stopped part-way leaves the worktree unverified,
-    // and prikk's own `commit` and `doctor` both say commit refuses. prikk's sentence names both ways
-    // out, so it is shown whole rather than reworded (`ER-02`). **Reads are not blocked** — Changes and
-    // History keep working, measured with the marker set.
-    if let Some(interrupted) = orientation.interrupted_materialization.as_deref() {
+    // and prikk's own `commit` and `doctor` both say commit refuses. **Reads are not blocked** —
+    // Changes and History keep working, measured with the marker set.
+    //
+    // **The lead-in is stikk's and the routes are prikk's** (RFC 057 decision 2): the JSON names
+    // the ways out as commands, with no sentence around them, so there is no *"prikk reports:"*
+    // to write any more. Each route is carried exactly as prikk wrote it.
+    if let Some(routes) = orientation.interrupted_materialization.as_deref() {
         return Ok((
-            CommitReadView::Blocked(format!("prikk reports: {interrupted}")),
+            CommitReadView::Blocked(interrupted_block(routes)),
             placeholder_summary(),
         ));
     }
@@ -342,7 +348,13 @@ fn compute(
         target_ids: vec![crate::confirm::TargetId::bare(reff)],
         counts,
         capability: Some(Capability::Author),
-        consequence: consequence(orientation.active_patch_warning.as_deref()),
+        consequence: consequence(
+            orientation
+                .active_patch_warning
+                .as_ref()
+                .map(crate::active_patch_sentence)
+                .as_deref(),
+        ),
         target_name: None,
         signing_key_id: signing_key_id.clone(),
         signing_key_claim: claim,
@@ -378,7 +390,10 @@ fn compute(
     };
     let preview = CommitPreview {
         changes: view,
-        active_patch_notice: orientation.active_patch_warning,
+        active_patch_notice: orientation
+            .active_patch_warning
+            .as_ref()
+            .map(crate::active_patch_sentence),
     };
     Ok((CommitReadView::Ready(Box::new(preview)), summary))
 }
@@ -411,8 +426,17 @@ fn placeholder_summary() -> ConfirmationSummary {
     }
 }
 
-/// What becomes permanent, in stikk's own words (`TU-09`) — with prikk's own active-patch threshold
-/// warning appended verbatim when present (`C-D2a`; RFC 014 F5), never paraphrased (`ER-02`).
+/// stikk's lead-in and prikk's routes, as one blocked reason (RFC 057 decision 2).
+fn interrupted_block(routes: &[String]) -> String {
+    std::iter::once(crate::INTERRUPTED_MATERIALIZATION.to_string())
+        .chain(routes.iter().cloned())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// What becomes permanent, in stikk's own words (`TU-09`) — with the active-patch threshold
+/// warning appended when present (`C-D2a`; RFC 014 F5): **prikk's own sentence below the JSON
+/// band, and stikk's around prikk's numbers at or above it** (RFC 057 decision 2).
 fn consequence(active_patch_warning: Option<&str>) -> String {
     const BASE: &str = "Queues this worktree capture as a new patch in the active WAL; nothing is sealed until you \
          run Seal.";

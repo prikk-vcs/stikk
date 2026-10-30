@@ -181,17 +181,20 @@ fn prikks_current_branch_has_a_whole_row_above_heads_main() {
     assert!(!below_0_42.contains("  branch "), "{below_0_42}");
 }
 
-/// RFC 034 §7: a checkout that stopped part-way is a **state of the repository**, shown in prikk's own
-/// words — which name both ways out — rather than as a fault. Reads keep working; only commit refuses.
+/// RFC 034 §7: a checkout that stopped part-way is a **state of the repository**, not a fault —
+/// reads keep working and only commit refuses. **stikk's lead-in, then prikk's routes, each
+/// whole** (RFC 057 decision 2): the JSON names the ways out as commands and writes no sentence
+/// around them, so the framing is stikk's and the commands are carried exactly.
 #[test]
-fn rfc034_an_interrupted_materialization_is_shown_whole_in_prikks_words() {
-    const PRIKK_SAYS: &str = "a checkout or branch switch stopped part-way; move aside any file it \
-                              named, then run prikk checkout --patch-materialize --ref heads/main or \
-                              prikk branch switch heads/main";
+fn rfc034_an_interrupted_materialization_shows_stikks_lead_in_and_prikks_routes() {
+    const ROUTES: [&str; 2] = [
+        "prikk checkout --patch-materialize --ref heads/main",
+        "prikk branch switch heads/main",
+    ];
     let mut v = view(Readiness::none(), true, 0, 0);
-    v.interrupted_materialization = Some(PRIKK_SAYS.to_string());
+    v.interrupted_materialization = Some(ROUTES.iter().map(ToString::to_string).collect());
     let text = render_to_text(&v);
-    println!("--- RFC 034: a checkout that stopped part-way, 90 columns\n{text}");
+    println!("--- RFC 057: a checkout that stopped part-way, 90 columns\n{text}");
     let flat: String = text
         .lines()
         .map(|line| line.trim_matches(|c: char| c == '│' || c.is_whitespace()))
@@ -202,12 +205,16 @@ fn rfc034_an_interrupted_materialization_is_shown_whole_in_prikks_words() {
         .join(" ");
     assert!(flat.contains("interrupted"), "{text}");
     assert!(
-        flat.contains(
-            "a checkout or branch switch stopped part-way; move aside any file it named, then run \
-             prikk checkout --patch-materialize --ref heads/main or prikk branch switch heads/main"
-        ),
-        "prikk's sentence, whole, with both routes:\n{text}"
+        flat.contains(stikk_core::INTERRUPTED_MATERIALIZATION),
+        "stikk's lead-in, whole:\n{text}"
     );
+    assert!(
+        !flat.contains("prikk reports"),
+        "the words are stikk's now:\n{text}"
+    );
+    for route in ROUTES {
+        assert!(flat.contains(route), "prikk's route, whole:\n{text}");
+    }
 
     // Nothing is said when prikk reports nothing.
     let quiet = render_to_text(&view(Readiness::none(), true, 0, 0));

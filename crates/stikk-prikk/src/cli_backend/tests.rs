@@ -3711,3 +3711,75 @@ fn below_the_band_both_trust_writes_are_unavailable_and_spawn_nothing() {
         "below the band prikk must be asked its version and nothing else"
     );
 }
+
+// ---------------------------------------------------------------- RFC 057: the Orientation band
+
+/// A fake prikk that reports `version`, records the argv of whatever it is asked, and answers a
+/// `status` with or without `--format json` accordingly.
+#[cfg(unix)]
+fn fake_orientation_prikk(tag: &str, version: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("stikk-orient-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let argv = dir.join("argv");
+    let script = dir.join("fake-prikk.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = \"--version\" ]; then echo 'prikk {version}'; exit 0; fi\n\
+             : > \"{argv}\"\n\
+             for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"{argv}\"; done\n\
+             if [ \"$2\" = \"--format\" ]; then\n\
+             printf '{{\"schema_version\": \"status-report-v1\", \"repository\": \"/tmp/r/.prikk\", \"active_wal_records\": 0, \"trailing_partial_wal_bytes\": 0, \"heads_main_ref_state\": null, \"current_branch\": \"heads/main\", \"provisional_worktree\": null, \"interrupted_materialization\": null, \"queue\": {{\"count\": 0, \"target_ref\": null, \"target_ref_status\": null, \"threshold_status\": null, \"warn_threshold\": null, \"hard_limit\": null, \"patches\": []}}}}\\n'\n\
+             exit 0\n\
+             fi\n\
+             printf 'prikk repository: /tmp/r/.prikk\\n\
+             active WAL records: 0\\n\
+             trailing partial WAL bytes: 0\\n\
+             heads/main RefState: <not published>\\n\
+             current branch: heads/main\\n\
+             queued patches: 0\\n\
+             status: multi-operation text diff minimization and plugins not yet implemented\\n'\n\
+             exit 0\n",
+            argv = argv.display(),
+        ),
+    )
+    .expect("write the fake prikk script");
+    let mut perms = std::fs::metadata(&script)
+        .expect("stat the script")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).expect("make the script executable");
+    (script, argv)
+}
+
+/// **The band, from both sides** (RFC 057 decision 1): 0.42 asks for prose, 0.43 asks for JSON,
+/// and each gets the same `Orientation` from the same repository. **One read either way** — the
+/// argv recorder holds the last spawn, and `--version` is the only other call.
+#[cfg(unix)]
+#[test]
+fn rfc057_orientation_reads_json_from_0_43_and_prose_below_it() {
+    for (version, want) in [
+        ("0.42.0", vec!["status"]),
+        ("0.43.0", vec!["status", "--format", "json"]),
+        ("0.55.0", vec!["status", "--format", "json"]),
+    ] {
+        let (script, argv) = fake_orientation_prikk(&version.replace('.', "_"), version);
+        let backend = CliBackend::with_program(&script);
+        let read = retrying_transient_exec_busy(|| backend.orientation(std::path::Path::new(".")))
+            .unwrap_or_else(|e| panic!("{version}: orientation: {e}"));
+        assert_eq!(recorded_argv(&argv), want, "{version}");
+        assert_eq!(read.queued_patches, 0, "{version}");
+        assert_eq!(read.main_ref_state, None, "{version}");
+        assert_eq!(
+            read.current_branch,
+            stikk_model::CurrentBranch::Branch(
+                stikk_model::RefName::parse("heads/main").expect("a ref name")
+            ),
+            "{version}: the same branch, read two ways"
+        );
+    }
+}

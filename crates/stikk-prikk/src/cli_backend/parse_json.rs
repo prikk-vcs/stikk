@@ -37,18 +37,18 @@
 //! that is the RFC 012 F-e failure shape, applied to JSON. An unknown schema is an environment error
 //! naming both what was found and what stikk knows, the same way the version gate does.
 
-use stikk_model::{ObjectId, RefName, StikkError};
+use stikk_model::{CurrentBranch, ObjectId, RefName, StikkError};
 
 use crate::json::{self, Json};
 use crate::{
     ActiveSessions, Authoring, BinaryBlob, BlockRow, BundleConflict, BundleEffect,
     BundlePreviewRead, Comparison, Connectivity, DeclarationResolution, Diff, DiffEntry, DiffFile,
     DiffSide, DiffTarget, EffectKind, ExtractReport, FailedCondition, FileContent, FileMeta,
-    History, OperationContent, PatchMessage, PatchOperation, Queue, QueueTarget, QueueThreshold,
-    QueuedElsewhere, QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch, QueuedPath,
-    RefEntry, RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles, ThresholdStatus,
-    TrustedKey, UnpublishedBranch, UnsupportedPath, Verdict, Verification, VerifyStage,
-    WorktreeEntry, WorktreeStatus,
+    History, OperationContent, Orientation, PatchMessage, PatchOperation, Queue, QueueTarget,
+    QueueThreshold, QueuedElsewhere, QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch,
+    QueuedPath, RefEntry, RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles,
+    ThresholdStatus, TrustedKey, UnpublishedBranch, UnsupportedPath, Verdict, Verification,
+    VerifyStage, WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -952,6 +952,143 @@ fn nullable_u64(value: &Json, key: &str) -> Result<Option<u64>> {
         Some(Json::Number(n)) => Ok(Some(*n)),
         Some(_) => Err(queue_rule(format!("`{key}` should be a number or null"))),
     }
+}
+
+/// `prikk status --format json` as **Orientation** reads it (`status-report-v1`), prikk ≥
+/// [`crate::ORIENTATION_JSON_FROM_MINOR`] (RFC 057 decision 1).
+///
+/// **The same report the Queue view reads, and a different part of it.** [`queue`] takes
+/// `queue.patches`; this takes the rows of RFC 057 F1's table and **ignores `patches`**, so
+/// neither reader has to know about the other's fields. `provisional_worktree` is ignored too
+/// (decision 4): it is not in Orientation today, and reading it would be a visible change of
+/// its own.
+///
+/// **Every rule here is stikk's, and breaking one is an environment error, never prikk's
+/// refusal** (`UD-02`):
+///
+/// - the schema is checked first;
+/// - `queue.target_ref` and `queue.target_ref_status` are read by [`queue_target`], the Queue
+///   view's own reader, so the two cannot disagree about what a missing-metadata queue is;
+/// - `queue.threshold_status` and its two numbers are read by [`queue_threshold`], likewise,
+///   and both vocabularies are **closed**: an unknown word is a shape error;
+/// - `trailing_partial_wal_bytes` is a required number, and `heads_main_ref_state` a validated
+///   object id or `null`;
+/// - `current_branch` is a validated ref name, or `null` for
+///   [`stikk_model::CurrentBranch::Unresolved`] carrying **stikk's** sentence (decision 3) --
+///   there is no sentinel to carry here, as there is in the prose;
+/// - `interrupted_materialization` is `null`, or an object whose `routes` is a non-empty array
+///   of non-empty strings, carried verbatim.
+///
+/// **A missing key is an error, not an absence.** prikk writes every key of this report, with
+/// `null` where the prose would omit a line (F1, measured in all five states), so a key that is
+/// not there means stikk is reading a report it does not know.
+///
+/// # Errors
+/// [`StikkError::Environment`] naming the broken rule or the missing field.
+pub(super) fn orientation(text: &str) -> Result<Orientation> {
+    let value = report(text, STATUS_SCHEMA)?;
+    let queue = match value.get("queue") {
+        Some(queue @ Json::Object(_)) => queue,
+        Some(_) => return Err(status_rule("`queue` should be an object")),
+        None => return Err(status_rule("missing field `queue`")),
+    };
+    let queued_patches = queue.u64_field("count")?;
+    // **The Queue view's own readers**, so one report cannot mean two things (RFC 057 §2).
+    let queued_target = match queue_target(queue)? {
+        QueueTarget::Ref(name) => Some(name),
+        // Both missing-metadata forms map to `None`, exactly as the prose path maps prikk's two
+        // sentinels: Orientation names a ref it can trust, or none.
+        QueueTarget::MissingMetadata
+        | QueueTarget::MalformedMetadata
+        | QueueTarget::NotReported => None,
+    };
+    let active_patch_warning =
+        queue_threshold(queue, queued_patches)?.and_then(|threshold| match threshold.status {
+            ThresholdStatus::None => None,
+            ThresholdStatus::Warn => Some(crate::ActivePatchWarning::Threshold {
+                blocking: false,
+                count: queued_patches,
+                threshold: threshold.warn,
+            }),
+            ThresholdStatus::HardLimit => Some(crate::ActivePatchWarning::Threshold {
+                blocking: true,
+                count: queued_patches,
+                threshold: threshold.hard_limit,
+            }),
+        });
+    Ok(Orientation {
+        queued_patches,
+        queued_target,
+        main_ref_state: opt_object_id_field(&value, "heads_main_ref_state")?
+            .map(ToString::to_string),
+        trailing_partial_wal_bytes: value.u64_field("trailing_partial_wal_bytes")?,
+        active_patch_warning,
+        current_branch: json_current_branch(&value)?,
+        interrupted_materialization: interrupted_routes(&value)?,
+    })
+}
+
+/// `current_branch`: a validated ref name, or `null` (RFC 057 decision 3).
+///
+/// **`null` carries stikk's sentence, not prikk's.** The prose prints a sentinel
+/// (`<unresolved; run `prikk doctor`>`) which the prose path carries verbatim; the JSON prints
+/// nothing but `null`, so there is nothing to carry and the words are stikk's.
+fn json_current_branch(value: &Json) -> Result<CurrentBranch> {
+    match nullable_str(value, "current_branch")? {
+        None => Ok(CurrentBranch::Unresolved(
+            CURRENT_BRANCH_UNRESOLVED_JSON.to_string(),
+        )),
+        Some(name) => RefName::parse(name)
+            .map(CurrentBranch::Branch)
+            .map_err(|_| {
+                status_rule(format!(
+                    "has a `current_branch` that is not a ref name: {name:?}"
+                ))
+            }),
+    }
+}
+
+/// **stikk's own words** for `current_branch: null` (RFC 057 decision 3).
+const CURRENT_BRANCH_UNRESOLVED_JSON: &str = "unresolved \u{2014} `prikk doctor` can say why";
+
+/// `interrupted_materialization`: `null`, or an object whose `routes` is a non-empty array of
+/// non-empty strings (RFC 057 F1, from prikk's `print_status_json`).
+///
+/// **The routes are commands, carried verbatim.** An empty list would say *"a checkout stopped
+/// part-way, and here is nothing to do about it"*, which is worse than either answer, so it is
+/// a shape error.
+fn interrupted_routes(value: &Json) -> Result<Option<Vec<String>>> {
+    let field = match value.get("interrupted_materialization") {
+        None => return Err(status_rule("missing field `interrupted_materialization`")),
+        Some(Json::Null) => return Ok(None),
+        Some(field @ Json::Object(_)) => field,
+        Some(_) => {
+            return Err(status_rule(
+                "`interrupted_materialization` should be an object or null",
+            ));
+        }
+    };
+    let routes = field.array_field("routes")?;
+    if routes.is_empty() {
+        return Err(status_rule(
+            "`interrupted_materialization.routes` is empty, so prikk named no way out",
+        ));
+    }
+    routes
+        .iter()
+        .map(|route| match route {
+            Json::String(route) if !route.trim().is_empty() => Ok(route.clone()),
+            _ => Err(status_rule(
+                "every `interrupted_materialization.routes` entry should be a non-empty string",
+            )),
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
+}
+
+/// A broken rule in `status-report-v1`, as Orientation reads it.
+fn status_rule(detail: impl std::fmt::Display) -> StikkError {
+    StikkError::environment_msg(format!("prikk's status report {detail}"))
 }
 
 /// `prikk status --format json`'s `queue` (`status-report-v1`), prikk ≥ 0.39 (RFC 028 decision 1).

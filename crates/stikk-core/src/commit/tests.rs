@@ -119,12 +119,15 @@ fn a_ready_preview_carries_the_worktree_counts_and_a_token() {
     }
 }
 
+/// **Below the JSON band the warning is prikk's own line, carried verbatim** (RFC 057
+/// decision 2): there is no report to read numbers from there, so there is nothing for stikk to
+/// word.
 #[test]
-fn the_active_patch_warning_is_carried_verbatim_into_the_preview_and_consequence() {
+fn prikks_own_active_patch_warning_is_carried_verbatim_into_the_preview_and_consequence() {
     let backend = ready_backend().with_orientation(orientation(800, None)).with_orientation(
         Orientation {
             interrupted_materialization: None,
-            active_patch_warning: Some("warning: active patches (800) at or above the recommended threshold (800); consider running `prikk seal`".to_string()),
+            active_patch_warning: Some(stikk_prikk::ActivePatchWarning::Said("warning: active patches (800) at or above the recommended threshold (800); consider running `prikk seal`".to_string())),
             ..orientation(800, None)
         },
     );
@@ -972,27 +975,37 @@ fn a_refused_path_and_a_refused_declaration_are_different_preventions() {
     }
 }
 
+/// **stikk's lead-in, then prikk's routes, each whole** (RFC 057 decision 2). The JSON names
+/// the ways out as commands with no sentence around them, so the framing is stikk's — and the
+/// commands are carried exactly, because a clipped or reworded command is worse than none.
 #[test]
-fn an_interrupted_materialization_makes_the_preview_unavailable_in_prikks_words() {
-    const PRIKK_SAYS: &str = "a checkout or branch switch stopped part-way; move aside any file it \
-                              named, then run prikk checkout --patch-materialize --ref heads/main or \
-                              prikk branch switch heads/main";
+fn an_interrupted_materialization_makes_the_preview_unavailable_with_prikks_routes() {
+    const ROUTES: [&str; 2] = [
+        "prikk checkout --patch-materialize --ref heads/main",
+        "prikk branch switch heads/main",
+    ];
     let mut orientation = orientation(0, None);
-    orientation.interrupted_materialization = Some(PRIKK_SAYS.to_string());
+    orientation.interrupted_materialization =
+        Some(ROUTES.iter().map(ToString::to_string).collect());
     let backend = ready_backend().with_orientation(orientation);
     match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads") {
         CommitPreviewOutcome::Blocked(reason) => {
             assert!(
-                reason.contains(PRIKK_SAYS),
-                "prikk's sentence, whole: {reason}"
+                reason.starts_with(stikk_core_interrupted_lead_in()),
+                "stikk's lead-in, and no \"prikk reports:\": {reason}"
             );
-            assert!(
-                reason.starts_with("prikk reports:"),
-                "attributed to prikk, never stikk's own claim: {reason}"
-            );
+            assert!(!reason.contains("prikk reports"), "{reason}");
+            for route in ROUTES {
+                assert!(reason.contains(route), "prikk's route, whole: {reason}");
+            }
         }
         other => panic!("expected Blocked, got {other:?}"),
     }
+}
+
+/// The lead-in, named once here so this test reads as the sentence it asserts.
+fn stikk_core_interrupted_lead_in() -> &'static str {
+    crate::INTERRUPTED_MATERIALIZATION
 }
 
 #[test]

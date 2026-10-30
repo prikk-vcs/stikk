@@ -491,12 +491,22 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.19.0, not yet scoped
+## Next — 0.19.0: stikk reads prikk more reliably, its typed cards fit, and the guide goes back
 
-**A candidate:** the **confirmation overlay's layout follow-up**, whose three carried items are listed in RFC 056's
-*Delivered* section and in RFC 047's — a very long key id cut off in the typed confirmation, a public key splitting
-63 + 1 rather than 32 + 32, and prose flush against the card's right border. They belong together because each one
-means re-capturing every card. **The scope is the owner's to authorize**, and nothing is in delivery until it is.
+Scoped and authorized 2026-10-30, in delivery order:
+
+1. **Orientation on `status --format json`** ([RFC 057](rfcs/proposed/057-orientation-on-status-json.md), proposed):
+   the screen every session opens on, built from `status-report-v1` at prikk ≥ 0.43, the prose parser kept for the
+   floor; the active-patch warning and an interrupted materialization said in stikk's words with prikk's numbers and
+   commands.
+2. **The typed card's layout** ([RFC 056 Handoff B](rfcs/handoffs/056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md)):
+   a long id is never cut off where it must be typed back, and a split value splits evenly (a key as 32 + 32). The
+   third item once carried here, prose against the right border, shipped in 0.16.0 (`a6e4a7c`).
+3. **Going back to an earlier block, in the guide** ([RFC 053 Handoff C](rfcs/handoffs/053-get-files-back/c-going-back-guide-handoff-v1.md)):
+   tag the block, branch from the tag, switch — the route prikk 0.55 allows, proved by a suite leg.
+4. **A prikk re-baseline**, only if prikk publishes a new minor before the cut. The cut does not wait for it.
+
+**A consolidated letter to prikk** is approved for research and drafting this cycle; the owner sends it.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and

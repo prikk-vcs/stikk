@@ -194,7 +194,7 @@ full platform matrix (85 cases at 0.28.0 and 0.55.0 on Linux and macOS; 84 on Wi
 - **Suite leg 7 is the evidence for decision 3**: removing the key that sealed the fixture's history fails stikk's
   Verify with `publication-trust`, and adopting it again passes.
 - **Accepted deviation**: the public key is in an aside's body, which wraps, rather than in a row that clips.
-- **Carried to the confirmation overlay's follow-up**, with its older *prose against the right border* item:
+- **Carried to the confirmation overlay's follow-up** (0.19.0's [Handoff B](../handoffs/056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md)). The *prose against the right border* item once listed beside these had in fact shipped in 0.16.0 (`a6e4a7c`); corrected 2026-10-30:
   - a long key id clips the typed confirmation's prompt and echo, pinned by
     `capture_rfc056_typed_confirmation_at_80_columns`;
   - a 64-hex key splits 63 + 1 rather than 32 + 32.

@@ -1,6 +1,6 @@
 //! Tests for the inert-text primitive (threat model C-T2a).
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use super::*;
 
@@ -116,18 +116,20 @@ fn wrap_verbatim_changes_no_byte_of_its_input() {
     );
 }
 
-/// A row wider than the viewport is **hard-split**, with every byte kept and every piece indented.
+/// A row wider than the viewport is **hard-split**, with every byte kept and every piece
+/// indented — and the pieces are **as equal as possible** (RFC 056 Handoff B §1).
 #[test]
-fn wrap_verbatim_hard_splits_without_losing_anything() {
+fn wrap_verbatim_hard_splits_evenly_without_losing_anything() {
     let text = "0123456789abcdefghij";
     let rows = wrap_verbatim(text, 10, "  ");
-    // Width 10 less a 2-column indent leaves 8 columns per row.
+    // Width 10 less a 2-column indent leaves 8 columns per row, so 20 characters need three
+    // rows — and three rows of 7, 7 and 6 rather than 8, 8 and 4.
     assert_eq!(
         rows,
         vec![
-            "  01234567".to_string(),
-            "  89abcdef".to_string(),
-            "  ghij".to_string()
+            "  0123456".to_string(),
+            "  789abcd".to_string(),
+            "  efghij".to_string()
         ]
     );
     let rejoined: String = rows
@@ -313,4 +315,104 @@ fn a_replacement_character_from_prikk_is_shown_as_itself() {
         .any(|step| step.contains('\u{FFFD}')),
         "the next step still fires on prikk's own substitution"
     );
+}
+
+/// **One value splits into equal rows** (RFC 056 Handoff B §1), not a full row and a remainder:
+/// a 64-hex key reads as 32 + 32, which can be compared against another key, where 63 + 1 reads
+/// as a defect.
+///
+/// **The row count is the same** as filling each row would have used — this changes where the
+/// characters sit, never how many rows they need.
+#[test]
+fn one_value_splits_into_rows_as_equal_as_possible() {
+    let hex = "a1b2c3d4".repeat(8); // 64 characters, as a public key is
+    assert_eq!(hex.chars().count(), 64);
+    // 65 columns less a two-column indent leaves 63, so two rows — of 32 and 32.
+    let rows = wrap_verbatim(&hex, 65, "  ");
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].trim_start().chars().count(), 32);
+    assert_eq!(rows[1].trim_start().chars().count(), 32);
+
+    // 120 characters over the same 63 columns: two rows of 60.
+    let long = "a1b2c3d4".repeat(15);
+    assert_eq!(long.chars().count(), 120);
+    let rows = wrap_verbatim(&long, 65, "  ");
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].trim_start().chars().count(), 60);
+    assert_eq!(rows[1].trim_start().chars().count(), 60);
+
+    // Exactly the available width is one row, untouched.
+    let exact: String = "x".repeat(63);
+    assert_eq!(wrap_verbatim(&exact, 65, "  "), vec![format!("  {exact}")]);
+
+    // And nothing is lost, in any of them.
+    let rejoined: String = wrap_verbatim(&hex, 65, "  ")
+        .iter()
+        .map(|row| row.trim_start_matches(' ').to_string())
+        .collect();
+    assert_eq!(rejoined, hex);
+}
+
+/// **Characters, not bytes** — the same rule the helpers already measure by, so a multi-byte
+/// value splits where the terminal grid would, and never mid-character.
+#[test]
+fn an_even_split_counts_characters_not_bytes() {
+    // Each of these is three bytes and one column's worth of `char`.
+    let text = "ねこ".repeat(10); // 20 characters, 60 bytes
+    assert_eq!(text.chars().count(), 20);
+    let rows = wrap_verbatim(&text, 10, "");
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[0].chars().count(), 10);
+    assert_eq!(rows[1].chars().count(), 10);
+    assert_eq!(
+        rows.concat(),
+        text,
+        "nothing is lost, and nothing is cut in half"
+    );
+}
+
+/// **`wrap_indented`'s hard-split is even too**, and the text around the over-long word still
+/// wraps on whitespace as it always did.
+#[test]
+fn wrap_indented_hard_splits_an_over_long_word_evenly() {
+    let word = "x".repeat(20);
+    let rows = wrap_indented(&format!("see {word} now"), 10, "");
+    // "see" on its own row, then the word in two equal halves, then "now".
+    assert_eq!(rows[0], "see");
+    assert_eq!(rows[1].chars().count(), 10);
+    assert_eq!(rows[2].chars().count(), 10);
+    assert_eq!(rows[3], "now");
+    assert_eq!(rows[1..3].concat(), word, "nothing is lost");
+}
+
+/// **An escape is never cut in half** (RFC 056 Handoff B §4 trap 2): `\uXXXX` is one piece, and
+/// a surrogate pair is one piece, because half of either reads as neither the escape nor the
+/// character it stands for.
+#[test]
+fn an_escape_at_the_split_point_stays_whole_on_one_row() {
+    // A value whose escape falls exactly where an even split would otherwise cut: eight
+    // ordinary characters, the escape, then eight more, split over two rows.
+    let escaped = format!("{}\\u202e{}", "a".repeat(8), "b".repeat(8));
+    let rows = wrap_verbatim(&escaped, 11, "");
+    assert!(rows.len() >= 2, "{rows:?}");
+    assert!(
+        rows.iter().any(|row| row.contains("\\u202e")),
+        "the escape is whole on one row: {rows:?}"
+    );
+    for row in &rows {
+        assert!(
+            !row.ends_with('\\') && !row.ends_with("\\u") && !row.ends_with("\\u2"),
+            "no row ends inside an escape: {rows:?}"
+        );
+    }
+    assert_eq!(rows.concat(), escaped, "and nothing is lost");
+
+    // A surrogate pair is one piece too: `😀` is one character's escape.
+    let pair = format!("{}\\ud83d\\ude00{}", "a".repeat(6), "b".repeat(6));
+    let rows = wrap_verbatim(&pair, 10, "");
+    assert!(
+        rows.iter().any(|row| row.contains("\\ud83d\\ude00")),
+        "the pair is whole on one row: {rows:?}"
+    );
+    assert_eq!(rows.concat(), pair);
 }

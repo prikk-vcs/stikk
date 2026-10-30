@@ -1608,7 +1608,26 @@ fn render_confirmation(
             .map(|role| role.chars().count())
             .max();
         for target in &summary.target_ids {
-            let value = Span::styled(identifier(&target.id), Style::default().fg(palette.accent));
+            // **A value too wide for the row is split, never clipped** (RFC 056 Handoff B §2).
+            // The **escaped** text is what is split, so an escape is never cut in half, and the
+            // continuation rows sit under the value's own column rather than under the label.
+            let gutter = match role_width {
+                Some(width) => 4 + width + 2,
+                None => 4,
+            };
+            let rows = crate::text::wrap_verbatim(
+                &identifier(&target.id),
+                PANEL_TEXT_WIDTH,
+                &" ".repeat(gutter),
+            );
+            let mut rows = rows.into_iter();
+            let first = rows
+                .next()
+                .unwrap_or_default()
+                .get(gutter..)
+                .unwrap_or_default()
+                .to_string();
+            let value = Span::styled(first, Style::default().fg(palette.accent));
             match (role_width, target.role) {
                 (Some(width), Some(role)) => lines.push(Line::from(vec![
                     Span::styled(
@@ -1624,6 +1643,12 @@ fn render_confirmation(
                     value,
                 ])),
                 (None, _) => lines.push(Line::from(vec![Span::raw("    "), value])),
+            }
+            for row in rows {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.accent),
+                )));
             }
         }
         // Safeguard 3 (RFC 029 Handoff B §5): directly under the targets and in warn, because it is about
@@ -1832,15 +1857,49 @@ fn render_confirmation(
             )));
         }
         Tier::ThreeTyped => {
-            let target = summary.target_name.as_deref().unwrap_or("");
-            actions.push(Line::from(Span::styled(
-                format!("  Type \"{}\" to confirm:", identifier(target)),
-                Style::default().fg(palette.dim),
-            )));
+            // **The id the reader must type back is never cut off** (RFC 056 Handoff B §2).
+            // Where the prompt fits, it is the one it has always been; where it does not, the
+            // sentence and the id separate, so the id can be split evenly beneath it.
+            let target = identifier(summary.target_name.as_deref().unwrap_or(""));
+            let inline = format!("  Type \"{target}\" to confirm:");
+            if inline.chars().count() <= PANEL_TEXT_WIDTH {
+                actions.push(Line::from(Span::styled(
+                    inline,
+                    Style::default().fg(palette.dim),
+                )));
+            } else {
+                actions.push(Line::from(Span::styled(
+                    "  Type this to confirm:",
+                    Style::default().fg(palette.dim),
+                )));
+                for row in crate::text::wrap_verbatim(&target, PANEL_TEXT_WIDTH, "    ") {
+                    actions.push(Line::from(Span::styled(
+                        row,
+                        Style::default().fg(palette.accent),
+                    )));
+                }
+            }
+            // **The echo is split too**, its continuation rows under the first typed
+            // character, so a reader can see the whole of what they have typed so far.
+            let echoed = inert(typed);
+            let mut rows =
+                crate::text::wrap_verbatim(&echoed, PANEL_TEXT_WIDTH, "    ").into_iter();
+            let first = rows
+                .next()
+                .unwrap_or_default()
+                .get(4..)
+                .unwrap_or_default()
+                .to_string();
             actions.push(Line::from(vec![
-                Span::styled("  › ", Style::default().fg(palette.accent)),
-                Span::styled(inert(typed), Style::default().fg(palette.fg)),
+                Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
+                Span::styled(first, Style::default().fg(palette.fg)),
             ]));
+            for row in rows {
+                actions.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.fg),
+                )));
+            }
         }
     }
 

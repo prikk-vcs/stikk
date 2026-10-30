@@ -100,6 +100,18 @@ fn scan_glossary_down(w: u16, h: u16, found: impl Fn(&str) -> bool) -> (Option<S
 /// turns two stacked rows into `... reporting a │ │ failure.`, and the assertion fails on content that
 /// is plainly on screen. Wrapping is the feature under test; neither it nor the frame around it should
 /// be what defeats the check.
+/// The quoted rows of a card (`  │ …`), rejoined **with no separator** — what a hard-split
+/// value reads as when the rows are put back together.
+fn quoted_rejoined(screen: &str) -> String {
+    screen
+        .lines()
+        // A quoted row carries three bars: the panel's two borders and the quote bar itself.
+        .filter(|line| line.matches('\u{2502}').count() >= 3)
+        .map(|line| line.trim_matches(|c: char| c == '\u{2502}' || c.is_whitespace()))
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 fn flattened(screen: &str) -> String {
     screen
         .chars()
@@ -4106,8 +4118,13 @@ fn capture_the_import_result_at_80x24() {
     assert!(text.contains("Imported"), "{text}");
     assert!(text.contains("received remotes/heads/main"), "{text}");
     // prikk's note is kept whole -- it is the sentence that says nothing of the reader's moved.
+    //
+    // **Rejoined without a separator**, because this is `wrap_verbatim`: it hard-splits one
+    // value at the row's width, mid-word where the width falls mid-word, and since RFC 056
+    // Handoff B it splits evenly, so where that is has moved. What must hold is that every
+    // character is still on the screen, in order.
     assert!(
-        flattened(&text).contains("no local ref was created or advanced"),
+        quoted_rejoined(&text).contains("no local ref was created or advanced"),
         "{text}"
     );
     // **stikk's own line, because prikk does not say it**: how to take this work further.
@@ -4427,19 +4444,18 @@ fn capture_the_save_results_at_80x24() {
     );
 }
 
-/// **A measurement, and a pinned finding** (RFC 056 §4 item 4): the Tier Three Typed card on its
-/// first real use.
+/// **The Tier Three Typed card holds the id whole, however long it is** — *pinned in RFC 056
+/// Handoff A, fixed in B*.
 ///
-/// With a real key id it reads correctly. **With a long one it clips**: the target row, the
-/// *"Type … to confirm:"* prompt and the echo of what was typed are each one unwrapped line, so
-/// at 80 columns a 120-character id loses its tail — and the id is exactly what the reader must
-/// type back. A remove card's id is read from prikk's own list, and prikk bounds it with
-/// nothing (`check` accepted `not-a-key-id`).
+/// A: the target row, the *"Type … to confirm:"* prompt and the echo were each one unwrapped
+/// line, so at 80 columns a 120-character id lost its tail — and the id is exactly what the
+/// reader must type back. A remove card's id comes from prikk's own list, and prikk bounds it
+/// with nothing (`check` accepted `not-a-key-id`).
 ///
-/// **This test does not assert that the behaviour is right.** It pins what it is, so the fix is
-/// decided with the case in front of it. Reported with RFC 056 Handoff A.
+/// B: a value too wide for its row is split evenly instead. With prikk's own ids nothing moves
+/// — the prompt is the sentence it always was.
 #[test]
-fn capture_rfc056_typed_confirmation_at_80_columns() {
+fn capture_rfc056_typed_confirmation_holds_a_long_id_whole_at_80_columns() {
     let id = "ed25519-6762b6359a650c0a";
     let mut card = summary(vec![id], Some(id));
     card.operation = "Adopt key".to_string();
@@ -4453,12 +4469,16 @@ fn capture_rfc056_typed_confirmation_at_80_columns() {
         error: None,
     };
     let text = draw_at(&overlay, 80, 30);
-    println!("--- RFC 056: the typed confirmation at 80 columns ---\n{text}");
-    assert!(text.contains("Type \"ed25519-6762b6359a650c0a\""), "{text}");
+    println!("--- RFC 056 B: the typed confirmation at 80 columns ---\n{text}");
+    assert!(
+        text.contains("Type \"ed25519-6762b6359a650c0a\""),
+        "an id that fits keeps the sentence it always had: {text}"
+    );
 
     // And the same card for an id a repository could hold: the remove card's id is read from
     // prikk's list, and prikk's `check` accepted `not-a-key-id`, so nothing bounds its length.
     let long = "ed25519-".to_string() + &"a1b2c3d4".repeat(14);
+    assert_eq!(long.chars().count(), 120);
     let mut card = summary(vec![&long], Some(&long));
     card.operation = "Remove key".to_string();
     card.capability = None;
@@ -4471,15 +4491,19 @@ fn capture_rfc056_typed_confirmation_at_80_columns() {
         error: None,
     };
     let text = draw_at(&overlay, 80, 30);
-    println!("--- RFC 056: the same card with a 120-character id ---\n{text}");
-    // **The finding**: neither the prompt nor the echo holds the whole id.
-    assert!(
-        !text.contains(&format!("Type \"{long}\" to confirm:")),
-        "the prompt is clipped, which is the finding: {text}"
+    println!("--- RFC 056 B: the same card with a 120-character id ---\n{text}");
+    // **The fix**: the prompt separates from the id, and the id is on the card whole — in the
+    // prompt, in the echo, and in the target row, each split across rows that rejoin exactly.
+    assert!(text.contains("Type this to confirm:"), "{text}");
+    let rejoined = flattened(&text).replace(' ', "");
+    assert_eq!(
+        rejoined.matches(&long).count(),
+        3,
+        "the id is whole three times -- target row, prompt and echo: {text}"
     );
     assert!(
-        text.contains("Type \"ed25519-a1b2c3d4"),
-        "it is clipped, not absent: {text}"
+        text.lines().all(|line| line.chars().count() <= 80),
+        "and nothing overflows the terminal: {text}"
     );
 }
 

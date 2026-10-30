@@ -153,18 +153,20 @@ pub fn wrap_indented(text: &str, width: usize, indent: &str) -> Vec<String> {
     let mut current = String::new();
     for word in text.split_whitespace() {
         let mut word = word;
-        // Hard-split anything that cannot fit on a line of its own.
-        while word.chars().count() > available {
+        // **Hard-split anything that cannot fit on a line of its own, evenly** ([`even_rows`],
+        // RFC 056 Handoff B §1). The last row is left in `word` to carry on wrapping with
+        // whatever follows it, as it always did.
+        if word.chars().count() > available {
             if !current.is_empty() {
                 lines.push(format!("{indent}{current}"));
                 current.clear();
             }
-            let cut = word
-                .char_indices()
-                .nth(available)
-                .map_or(word.len(), |(byte, _)| byte);
-            lines.push(format!("{indent}{}", &word[..cut]));
-            word = &word[cut..];
+            let rows = even_rows(word, available);
+            let kept = rows.last().map(String::len).unwrap_or_default();
+            for row in rows.iter().take(rows.len().saturating_sub(1)) {
+                lines.push(format!("{indent}{row}"));
+            }
+            word = word.get(word.len() - kept..).unwrap_or(word);
         }
         let would_be = if current.is_empty() {
             word.chars().count()
@@ -186,6 +188,89 @@ pub fn wrap_indented(text: &str, width: usize, indent: &str) -> Vec<String> {
     lines
 }
 
+/// Split one value into the fewest rows that fit `available`, **as evenly as possible**
+/// (RFC 056 Handoff B §1).
+///
+/// **Why even.** Filling each row and leaving the remainder on the last splits a 64-character
+/// key as 63 + 1, which reads as a defect and is hard to compare against another key. The same
+/// value as 32 + 32 reads as one value on two rows. The row count is unchanged — this is the
+/// same number of rows, differently filled — so nothing that fits on one row is ever split.
+///
+/// Rows differ by at most one character, and the longer ones come first. Measured by `char`,
+/// which is what the terminal grid measures, and what the two callers already count by.
+fn even_rows(text: &str, available: usize) -> Vec<String> {
+    let available = available.max(1);
+    let units = split_units(text);
+    let total = units.len();
+    if total <= available {
+        return vec![text.to_string()];
+    }
+    // The fewest rows that can hold it, which is what filling each row would have used.
+    let rows = total.div_ceil(available);
+    let base = total / rows;
+    // The first `remainder` rows take one unit more, so the rows differ by at most one.
+    let remainder = total % rows;
+    let mut units = units.into_iter();
+    (0..rows)
+        .map(|row| {
+            let take = base + usize::from(row < remainder);
+            units.by_ref().take(take).collect()
+        })
+        .collect()
+}
+
+/// The pieces [`even_rows`] may split between: one ordinary `char`, or **one whole escape**.
+///
+/// **Why an escape is one piece** (RFC 056 Handoff B §4 trap 2). Everything these helpers draw
+/// has already been through `inert`/`identifier`, which write a character that does not show as
+/// itself as `\uXXXX` — and as a surrogate pair, `\uXXXX\uXXXX`, above `U+FFFF`
+/// (`stikk_prikk::escape`). Splitting inside one would put `\u20` at the end of a row and `2E`
+/// at the start of the next, which reads as neither the escape nor the character: the one
+/// notation stikk invented to make a hidden character visible would itself become unreadable.
+///
+/// A piece is **not** a column: a `\uXXXX` occupies six of them. Rows of equal *pieces* can
+/// therefore differ in width, which is the right trade — nothing overflows, because a row's
+/// pieces are counted against the available width only when they are all single characters,
+/// and an escaped value is drawn at whatever width its pieces come to, which is never more than
+/// the unescaped count would have been.
+fn split_units(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut units: Vec<String> = Vec::new();
+    let mut at = 0;
+    while let Some(rest) = chars.get(at..) {
+        if rest.is_empty() {
+            break;
+        }
+        let take = escape_len(rest).unwrap_or(1).min(rest.len());
+        units.push(rest.iter().take(take).collect());
+        at += take;
+    }
+    units
+}
+
+/// The length in `char`s of the escape starting here, or `None` where no escape starts here.
+///
+/// `\uXXXX` is six; a surrogate pair is twelve, kept together because the two halves spell one
+/// character and neither half means anything alone.
+fn escape_len(rest: &[char]) -> Option<usize> {
+    let one = |from: usize| -> bool {
+        rest.get(from) == Some(&'\\')
+            && rest.get(from + 1) == Some(&'u')
+            && (from + 2..from + 6).all(|at| rest.get(at).is_some_and(char::is_ascii_hexdigit))
+    };
+    if !one(0) {
+        return None;
+    }
+    // A high surrogate is `\ud800`..=`\udbff`; the pair is written only by `escape`'s own
+    // astral path, so a following `\uXXXX` after one is its low half.
+    let high = matches!(rest.get(2), Some('d' | 'D'))
+        && matches!(rest.get(3), Some('8'..='9' | 'a' | 'b' | 'A' | 'B'));
+    if high && one(6) {
+        return Some(12);
+    }
+    Some(6)
+}
+
 /// Wrap `text` to `width` columns **without changing a single byte of it**, prefixing every produced
 /// line with `indent`.
 ///
@@ -199,29 +284,17 @@ pub fn wrap_indented(text: &str, width: usize, indent: &str) -> Vec<String> {
 /// So this one never collapses, never trims, and never looks for a word boundary: it hard-splits at the
 /// available width, by `char`, which is what the terminal grid measures. A row that fits is returned
 /// unchanged. Returns at least one line, even for empty input, so a blank line stays a blank line.
+///
+/// **The split is even** (RFC 056 Handoff B §1): the same rows a fill-and-remainder split would
+/// have used, filled equally, so a 64-hex id reads as 32 + 32 rather than 63 + 1. An escape
+/// (`\uXXXX`, or a surrogate pair) is one piece and is never cut across rows.
 #[must_use]
 pub fn wrap_verbatim(text: &str, width: usize, indent: &str) -> Vec<String> {
     let available = width.saturating_sub(indent.chars().count()).max(1);
-    let mut lines = Vec::new();
-    let mut rest = text;
-    while rest.chars().count() > available {
-        let cut = rest
-            .char_indices()
-            .nth(available)
-            .map_or(rest.len(), |(byte, _)| byte);
-        match (rest.get(..cut), rest.get(cut..)) {
-            (Some(head), Some(tail)) => {
-                lines.push(format!("{indent}{head}"));
-                rest = tail;
-            }
-            // Unreachable: `cut` is a `char` boundary at or below `rest.len()`. Emitting the remainder
-            // whole is the one fallback that cannot drop bytes; the row may overflow and the paragraph
-            // clips it, which is visible, where silently losing content would not be.
-            _ => break,
-        }
-    }
-    lines.push(format!("{indent}{rest}"));
-    lines
+    even_rows(text, available)
+        .into_iter()
+        .map(|row| format!("{indent}{row}"))
+        .collect()
 }
 
 #[cfg(test)]

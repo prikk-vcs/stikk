@@ -515,12 +515,24 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.20.0, not yet scoped
+## Next — 0.20.0: undo one block
 
-**No candidate is named**: 0.20.0 depends on prikk's answers to the consolidated letter, and the scope is the owner's
-to authorize.
+Scoped and authorized 2026-10-31, in delivery order:
 
-**A consolidated letter to prikk** is being drafted; the owner sends it.
+1. **Undo one block** ([RFC 058](rfcs/proposed/058-undo-one-block.md), proposed): `U` in History. stikk puts back
+   what a block changed and records the undo as a new commit, so history keeps both. It works on any single-parent
+   block of the current branch whose paths no later block changed, and refuses, writing nothing, wherever the undo
+   could overwrite work. prikk's own rollback (`FR-083`) undoes a whole branch, and prikk plans no single-block one
+   (its letter 029: *"build it if you need it"*).
+2. **The prikk 0.56.0 re-baseline**, if prikk publishes 0.56.0 before the cut. prikk calls its worktree change a
+   compatibility event, so this re-measures `commit` and `bundle import`. It also brings two visible gains: the
+   bundle card says whether each seal checks out, and a different key under a removed id is shown as a security
+   event. The cut does not wait for it.
+
+**prikk's answers to letter 023 (its 029)** place the rest. prikk **0.56.0** fixes the worktree defect our letter
+found, and refuses an invalid seal at import. prikk **0.57.0** brings `branch create --from <block id>` (going back
+to an older block in one step), the block sealers in `verify-report-v1` (counting what a key removal breaks), and
+`parent_block_ids` in `log`. Each is taken at the re-baseline that brings it.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and

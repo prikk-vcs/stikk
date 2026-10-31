@@ -36,7 +36,7 @@ breaks for a dependent all the same, which is why they are named here.
 `undo_confirm_and_execute`, `prefilled_undo_message`, `stopped_text`, `undo_unavailable`, the
 guards' sentences (`WORKTREE_HAS_CHANGES`, `WORK_IS_QUEUED`, `A_MERGE_BLOCK`, `THE_FIRST_BLOCK`,
 `DEEPER_THAN_STIKK_LOOKED`, `later_block_changed`, `in_the_way`, `ignored_at_commit`,
-`IGNORE_RULES_NOT_READ`, `IGNORE_NOT_UTF8`, `cannot_invert`, `unsafe_path`, `NOTHING_TO_UNDO`,
+`ignore_rules_not_read`, `IGNORE_NOT_UTF8`, `cannot_invert`, `unsafe_path`, `NOTHING_TO_UNDO`,
 `NOT_THE_CURRENT_BRANCH`, `INTERRUPTED`), `UNDO_HISTORY_LIMIT` and `UNDO_FROM_MINOR`; and
 `stikk_tui::App::begin_undo_block`.
 

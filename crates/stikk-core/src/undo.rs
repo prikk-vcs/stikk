@@ -229,21 +229,36 @@ pub fn ignored_at_commit(paths: &[String]) -> String {
     }
 }
 
-/// **Guard 7, where the plan itself writes a `.prikkignore` stikk has not read.**
+/// **Guard 7, where the plan itself writes a `.prikkignore` stikk has not read** -- naming the
+/// files whose fate stikk cannot tell, as [`ignored_at_commit`] names its own.
 ///
-/// Not one of the review's rules, and the one place I could not implement its wording: it asks for
-/// the parent's rules to be read in the preview *"with the seam's existing content read"*, and
-/// **the seam has no content read**. `cat --format json` is `path-content-v1`, which prikk's own
-/// guide describes as the `tree` entry's fields *"and no bytes"*; the only way to the bytes is
-/// `cat --output`, which writes a file and carries [`RequestCategory::Exchange`], so it cannot run
-/// inside a preview that must spawn nothing that writes.
+/// The one place the review's wording could not be followed: it asks for the parent's rules to be
+/// read in the preview *"with the seam's existing content read"*, and **the seam has no content
+/// read**. `cat --format json` is `path-content-v1`, which prikk's own guide describes as the
+/// `tree` entry's fields *"and no bytes"*; the only way to the bytes is `cat --output`, which
+/// writes a file and carries [`RequestCategory::Exchange`], so it cannot run inside a preview that
+/// must spawn nothing that writes.
 ///
-/// So where the undo would put a `.prikkignore` back, and would also create a file, stikk says it
-/// cannot tell rather than guessing which rule set applies. Undoing the `.prikkignore` block on
-/// its own is unaffected: with nothing to create, there is nothing a rule could hide.
-pub const IGNORE_RULES_NOT_READ: &str = "This block changed `.prikkignore`, so the undo would put back a different set of ignore \
-     rules — and stikk cannot read them from here to tell whether they would keep one of these \
-     files out of the commit. Undo the block that changed `.prikkignore` on its own first.";
+/// **It offers no step, because there is none to offer.** This block *is* the one that changed
+/// `.prikkignore`, so there is no earlier block to undo first; the sentence says what is true and
+/// stops. A block that changed **only** `.prikkignore` creates nothing, so no rule could hide
+/// anything and the undo is offered as usual.
+#[must_use]
+pub fn ignore_rules_not_read(paths: &[String]) -> String {
+    match paths {
+        [one] => format!(
+            "This block also changed `.prikkignore`, and stikk cannot read the rules the undo \
+             would put back, so it cannot tell whether they would keep `{one}` out of the commit. \
+             stikk cannot undo this block exactly."
+        ),
+        many => format!(
+            "This block also changed `.prikkignore`, and stikk cannot read the rules the undo \
+             would put back, so it cannot tell whether they would keep these out of the commit: \
+             {}. stikk cannot undo this block exactly.",
+            backticked(many)
+        ),
+    }
+}
 
 /// **Guard 7, where `.prikkignore` cannot be read as text.** prikk's own `commit` and
 /// `worktree-status` both refuse it (prikk's guide, *"A malformed file refuses"*), so this is
@@ -562,7 +577,8 @@ enum IgnoreCheck {
     Clear,
     /// These created paths are named by a rule, sorted.
     Ignored(Vec<String>),
-    /// The plan writes a `.prikkignore` whose rules the preview cannot read.
+    /// The plan writes a `.prikkignore` whose rules the preview cannot read. The paths it could
+    /// not answer for are the created ones the caller already holds, so the variant carries none.
     NotRead,
     /// The worktree's `.prikkignore` is not text.
     NotUtf8,
@@ -576,7 +592,7 @@ enum IgnoreCheck {
 /// - the plan **removes** `.prikkignore` (the block added it, or renamed something onto it): no
 ///   rules at all afterwards, so nothing can be hidden;
 /// - the plan **writes** one (the block changed, deleted or renamed it away): the parent's rules,
-///   which the preview cannot read -- [`IGNORE_RULES_NOT_READ`] says why;
+///   which the preview cannot read -- [`ignore_rules_not_read`] says why;
 /// - otherwise the worktree's own file, read here.
 ///
 /// # Errors
@@ -1070,7 +1086,7 @@ fn compute(
     match ignore_check(repo, &diff, &created)? {
         IgnoreCheck::Clear => {}
         IgnoreCheck::Ignored(paths) => return Ok(blocked(ignored_at_commit(&paths))),
-        IgnoreCheck::NotRead => return Ok(blocked(IGNORE_RULES_NOT_READ.to_string())),
+        IgnoreCheck::NotRead => return Ok(blocked(ignore_rules_not_read(&created))),
         IgnoreCheck::NotUtf8 => return Ok(blocked(IGNORE_NOT_UTF8.to_string())),
     }
 

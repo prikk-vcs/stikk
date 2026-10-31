@@ -728,7 +728,8 @@ fn guard_7_reads_the_ignore_file_the_undo_would_leave() {
     assert_eq!(preview.plan.steps.len(), 2, "no rule can hide anything");
 
     // The block **changed** it, so the undo puts the parent's version back -- which the preview
-    // cannot read (see `IGNORE_RULES_NOT_READ`).
+    // cannot read (see `ignore_rules_not_read`), and the sentence names the file whose fate
+    // stikk cannot tell.
     let written = backend().with_diff_from_to(
         PARENT,
         BLOCK,
@@ -739,7 +740,7 @@ fn guard_7_reads_the_ignore_file_the_undo_would_leave() {
     );
     assert_eq!(
         blocked_reason(preview_of(&written, worktree.path())),
-        IGNORE_RULES_NOT_READ
+        ignore_rules_not_read(&["keep.log".to_string()])
     );
 
     // **With nothing to create, there is nothing a rule could hide**, so that block undone on its
@@ -773,9 +774,11 @@ fn guard_7_reads_the_ignore_file_the_undo_would_leave() {
             plain("keep.log", "deleted"),
         ]),
     );
+    // **Both created paths are named**: putting `.prikkignore` back is itself a creation, and a
+    // rule can name that file as readily as any other.
     assert_eq!(
         blocked_reason(preview_of(&renamed_away, worktree.path())),
-        IGNORE_RULES_NOT_READ
+        ignore_rules_not_read(&[".prikkignore".to_string(), "keep.log".to_string()])
     );
 }
 

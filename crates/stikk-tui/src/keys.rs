@@ -77,6 +77,9 @@ pub enum Action {
     OpenTrust,
     /// Adopt a maintainer key, from the Trust view (RFC 056 decision 2).
     AdoptKey,
+    /// Undo the selected block: put back what it changed, as a new change (History and Block
+    /// detail; RFC 058 decision 5). **Capital `U`**, because `u` is the untracked filter.
+    UndoBlock,
     /// Save the file the cursor is on, as it was at this block (Block detail; RFC 053
     /// decision 3). **Outside the repository, and never over an existing path.**
     SaveFile,
@@ -145,6 +148,7 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         KeyCode::Char('E') => Action::Export,
         KeyCode::Char('T') => Action::OpenTrust,
         KeyCode::Char('a') => Action::AdoptKey,
+        KeyCode::Char('U') => Action::UndoBlock,
         KeyCode::Char('F') => Action::SaveFile,
         KeyCode::Char('A') => Action::SaveAll,
         KeyCode::Char(' ') => Action::ToggleSealConsent,

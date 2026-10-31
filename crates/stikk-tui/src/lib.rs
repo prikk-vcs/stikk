@@ -171,6 +171,7 @@ fn ui_loop(
                     Action::Export => app.begin_export(),
                     Action::OpenTrust => app.open_trust(),
                     Action::AdoptKey => app.begin_adopt_key(),
+                    Action::UndoBlock => app.begin_undo_block(),
                     Action::SaveFile => app.begin_save_file(),
                     Action::SaveAll => app.begin_save_all(),
                     Action::ToggleSealConsent => app.toggle_seal_consent(),

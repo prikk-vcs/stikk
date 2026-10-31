@@ -112,6 +112,53 @@ pub const UNDO_LEAD: &str =
 pub const UNDO_CONSEQUENCE: &str =
     "After this, seal as usual to make the undo part of the history.";
 
+/// **What the result says after a recorded undo** (decision 5): the undo is a commit, and a commit
+/// is not history until it is sealed. Names the key, as every other next step in stikk does.
+pub const SEAL_THE_UNDO: &str = "Seal as usual (`S`) to make the undo part of the history.";
+
+/// **What the result says after a stop** (decision 6): the worktree holds the changes and nothing
+/// was recorded, so the next thing to look at is Changes.
+pub const NOTHING_WAS_COMMITTED: &str = "Nothing was committed. Changes (`w`) shows them.";
+
+/// The message an undo is prefilled with (decision 5): `Undo: ` and the block's **first** patch
+/// message, which is prikk's text and is rendered inert like any other.
+///
+/// A block sealed entirely below prikk 0.32 carries no message at all (RFC 015 F4) -- the prompt
+/// then opens with the lead alone, for the user to finish, rather than with a sentence stikk made
+/// up about a block it cannot describe.
+#[must_use]
+pub fn prefilled_undo_message(block: &BlockRow) -> String {
+    match block.messages.first() {
+        Some(first) => format!("Undo: {}", first.message),
+        None => "Undo: ".to_string(),
+    }
+}
+
+/// **The one line a stopped undo shows of its cause** -- prikk's own words where they are prikk's,
+/// and stikk's own where the filesystem failed (`ER-02`).
+///
+/// Not [`crate::present()`]'s card: nothing was refused *to* the user here. The undo ran, stopped
+/// part-way, and this sentence sits under the paths it had already changed, where a next-step list
+/// about re-previewing would be wrong -- there is nothing to re-preview until the worktree is
+/// looked at.
+#[must_use]
+pub fn stopped_text(cause: &StikkError) -> String {
+    match cause {
+        StikkError::Refusal { message }
+        | StikkError::LockConflict { message }
+        | StikkError::CrossRef { message }
+        | StikkError::Limits { message }
+        | StikkError::IntegrityFinding { message } => message.clone(),
+        StikkError::NotReady { detail }
+        | StikkError::Internal { detail }
+        | StikkError::Declined { detail }
+        | StikkError::Environment { detail, .. } => detail.clone(),
+        // `StikkError` is `#[non_exhaustive]`, and `Stale` cannot be reached from a stop -- the
+        // token checks run before step 1. Whatever arrives here still says something true.
+        other => other.to_string(),
+    }
+}
+
 /// **Guard 5** (F3): the paths a later block changed too, named — every one, sorted.
 ///
 /// A plain inverse would overwrite that later change, and the measurement shows exactly that: with
@@ -456,7 +503,11 @@ impl UndoPreview {
             rename_note: None,
             declaration_notices: Vec::new(),
             notices: Vec::new(),
-            message_note: Some(self.message.clone()),
+            // **The message is not restated here** (decision 5's list, and commit's own card):
+            // the prompt that collected it was the step before this one, and the card's rows are
+            // the plan. Restating it cost the card four rows, which at 80x24 pushed the plan's
+            // own rows off the bottom -- measured, not assumed.
+            message_note: None,
             materializes: None,
             merge_plan: None,
             undo_plan: Some(self.plan.clone()),

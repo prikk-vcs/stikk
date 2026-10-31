@@ -492,6 +492,9 @@ pub struct App {
     /// The adopt or removal in flight (RFC 056), through the same three steps every other write
     /// takes.
     pending_trust: Option<PendingTrust>,
+    /// The undo in flight, if any (RFC 058) — the same three steps, with the message step first
+    /// as commit's is.
+    pending_undo: Option<PendingUndo>,
     /// The change token read with the last Orientation read whose token read succeeded (RFC 031 §3). A
     /// check compares against it; `None` until the first stamp, and no check is sent before it.
     stamp: Option<ChangeToken>,
@@ -720,6 +723,25 @@ enum PendingSave {
     Executing(SaveTarget),
 }
 
+/// See [`App::pending_undo`] (RFC 058 decision 5).
+///
+/// **The message step leaves nothing here.** It comes before any read, as commit's does, and the
+/// message it produced travels in the preview request and from there inside the
+/// [`stikk_core::UndoToken`], which owns the plan, the parent and the ref as well — so nothing
+/// beside the token names what will be written.
+enum PendingUndo {
+    /// `Overlay::Loading` is on the stack; a [`RequestKind::UndoPreview`] is in flight.
+    AwaitingPreview,
+    /// The preview armed; `Overlay::Confirmation` awaits an explicit yes (Tier Three).
+    Confirming {
+        /// Feed this into [`stikk_core::undo_confirm_and_execute`]. Boxed as every other armed
+        /// token here is.
+        token: Box<stikk_core::UndoToken>,
+    },
+    /// Confirm+execute is in flight.
+    Executing,
+}
+
 /// See [`App::pending_trust`] (RFC 056 decisions 2 and 3).
 enum PendingTrust {
     /// `Overlay::Loading` is on the stack; a preview is in flight.
@@ -891,6 +913,7 @@ impl App {
             pending_export: None,
             pending_save: None,
             pending_trust: None,
+            pending_undo: None,
             ref_rows: Vec::new(),
             session: None,
             stored: None,
@@ -1274,6 +1297,11 @@ impl App {
         let key_id = row.key_id.clone();
         self.start_trust_write(TrustTarget::Remove { key_id });
     }
+
+    /// **stikk's own words for `U` where there is no block** — from the palette, which lists the
+    /// command on every screen, or from a lineage with nothing under the cursor.
+    const UNDO_NEEDS_A_BLOCK: &'static str =
+        "Undo works on one block. Open History and select the block to undo.";
 
     /// stikk's own sentence below the band, or `None` in it — read from the Orientation this
     /// session already holds, so neither key handshakes (`C-T4d`).
@@ -2534,6 +2562,188 @@ impl App {
         self.pending_save = Some(PendingSave::Executing(target));
     }
 
+    /// `U` in History on the selected block, or in Block detail (RFC 058 decision 5).
+    ///
+    /// **Four answers come before anything is dispatched** (`C-T4d`), each from what this session
+    /// already holds: the AUTHOR gate commit's own key takes, the band, a History that is not
+    /// showing prikk's current branch (decision 3), and a lineage with no block under the cursor.
+    /// The seven guards are the preview's, because only its own reads know the worktree and the
+    /// queue at the moment the key was pressed.
+    pub fn begin_undo_block(&mut self) {
+        self.banner = None;
+        if !self.overlays.is_empty() {
+            return;
+        }
+        // The same gate `undo_confirm_and_execute` takes, with commit's category, so the key and
+        // the palette entry and the execution all refuse for one reason (§3.2).
+        let readiness = self.readiness();
+        if let Err(error) = stikk_core::capability_gate(
+            stikk_core::UNDO_OPERATION,
+            stikk_model::RequestCategory::QueueMutation,
+            readiness,
+        ) {
+            self.banner = Some(match error {
+                stikk_model::StikkError::NotReady { detail } => detail,
+                other => other.to_string(),
+            });
+            return;
+        }
+        if let Some(minor) = self.prikk_minor()
+            && minor < stikk_core::UNDO_FROM_MINOR
+        {
+            self.banner = Some(stikk_core::undo_unavailable(minor));
+            return;
+        }
+        let Some((reff, block)) = self.selected_block() else {
+            // **The palette can reach this key from anywhere** (RFC 007's whole point), and an
+            // undo needs a block. Saying which is better than doing nothing.
+            self.banner = Some(Self::UNDO_NEEDS_A_BLOCK.to_string());
+            return;
+        };
+        // **Decision 3**: the undo is offered on the branch the repository is on, and the ref this
+        // History is showing need not be that one. prikk's own `current branch`, from the
+        // Orientation this session already read — never `.prikk/current-branch` (`CON-1`).
+        if stikk_model::RefName::parse(&reff)
+            .ok()
+            .map(stikk_model::CurrentBranch::Branch)
+            != Some(self.current_branch())
+        {
+            self.banner = Some(stikk_core::NOT_THE_CURRENT_BRANCH.to_string());
+            return;
+        }
+        self.overlays.push(Overlay::UndoMessage {
+            block: block.block_id.clone(),
+            typed: stikk_core::prefilled_undo_message(&block),
+        });
+    }
+
+    /// The ref the current screen is showing and the block the cursor is on — History's selected
+    /// row, or Block detail's own block. `None` on any other screen, and on a History with no
+    /// block under the cursor.
+    fn selected_block(&self) -> Option<(String, stikk_prikk::BlockRow)> {
+        match self.screens.last() {
+            Some(Screen::History { view, cursor, .. }) => {
+                Some((view.reff.clone(), view.blocks.get(*cursor).cloned()?))
+            }
+            Some(Screen::BlockDetail { view, reff, .. }) => Some((reff.clone(), view.row.clone())),
+            _ => None,
+        }
+    }
+
+    /// The undo's message prompt finished (decision 5). **An empty message keeps the prompt
+    /// open**, as commit's does — prikk refuses an empty message, and the prefill is right there
+    /// to edit.
+    fn submit_undo_message(&mut self, block: String, typed: &str) {
+        let message = typed.trim().to_string();
+        if message.is_empty() {
+            return;
+        }
+        self.overlays.pop();
+        let seq = self.dispatch(RequestKind::UndoPreview { block, message });
+        self.overlays.push(Overlay::Loading {
+            what: "undo preview",
+            seq,
+        });
+        self.pending_undo = Some(PendingUndo::AwaitingPreview);
+    }
+
+    /// The confirmation step's `Enter` for a pending undo: Tier Three, so an explicit yes.
+    fn submit_undo_confirmation(&mut self, tier: Tier, typed: &str) {
+        let Some(PendingUndo::Confirming { token }) = self.pending_undo.take() else {
+            return; // no undo is actually pending
+        };
+        let evidence = match tier {
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
+            _ => stikk_core::Evidence::ExplicitYes,
+        };
+        self.overlays.pop();
+        let readiness = self.readiness();
+        let seq = self.dispatch(RequestKind::UndoConfirmExecute {
+            token,
+            readiness,
+            evidence,
+        });
+        self.overlays.push(Overlay::Loading { what: "undo", seq });
+        self.pending_undo = Some(PendingUndo::Executing);
+    }
+
+    /// Answers [`RequestKind::UndoPreview`]: the card, or stikk's own reason in a banner — a
+    /// blocked preview is not an error and never passes through `present()` (`C-T4d`).
+    fn apply_undo_preview(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::UndoPreviewOutcome>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        self.pending_undo = None;
+        match result {
+            Ok(stikk_core::UndoPreviewOutcome::Blocked(reason)) => {
+                self.overlays.remove(index);
+                self.banner = Some(reason);
+            }
+            Ok(stikk_core::UndoPreviewOutcome::Ready { token, .. }) => {
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::Confirmation {
+                        summary: Box::new(token.summary().clone()),
+                        tier: token.tier(),
+                        typed: String::new(),
+                        error: None,
+                    };
+                }
+                self.pending_undo = Some(PendingUndo::Confirming { token });
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Commit);
+            }
+        }
+    }
+
+    /// Answers [`RequestKind::UndoConfirmExecute`] — the one response that can carry a worktree
+    /// stikk itself changed.
+    ///
+    /// **Both outcomes re-read the Orientation**: a recorded undo queued a patch, and a stopped
+    /// one left the worktree changed, so neither leaves the session's own facts as they were.
+    fn apply_undo_confirm_execute(
+        &mut self,
+        seq: u64,
+        result: stikk_model::Result<stikk_core::Outcome<stikk_core::UndoResult>>,
+    ) {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
+        else {
+            return; // stale
+        };
+        self.pending_undo = None;
+        match result {
+            Ok(outcome) => {
+                let overlay = match outcome.result {
+                    stikk_core::UndoResult::Done(result) => Overlay::UndoRecorded { result },
+                    stikk_core::UndoResult::Stopped(stopped) => Overlay::UndoStopped {
+                        changed: stopped.changed,
+                        text: stikk_core::stopped_text(&stopped.cause),
+                    },
+                };
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = overlay;
+                }
+                self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
+            }
+            Err(error) => {
+                self.overlays.remove(index);
+                self.surface(&error, OperationContext::Commit);
+            }
+        }
+    }
+
     /// Answers either save preview: the card, or stikk's own reason.
     fn apply_save_preview(
         &mut self,
@@ -3043,6 +3253,10 @@ impl App {
                 let (reff, typed) = (reff.clone(), typed.clone());
                 self.submit_commit_message(reff, &typed);
             }
+            Some(Overlay::UndoMessage { block, typed }) => {
+                let (block, typed) = (block.clone(), typed.clone());
+                self.submit_undo_message(block, &typed);
+            }
             Some(Overlay::RefName {
                 kind,
                 source,
@@ -3108,6 +3322,8 @@ impl App {
                     self.submit_save_confirmation(tier, &typed);
                 } else if self.pending_trust.is_some() {
                     self.submit_trust_confirmation(tier, &typed);
+                } else if self.pending_undo.is_some() {
+                    self.submit_undo_confirmation(tier, &typed);
                 }
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
@@ -3130,6 +3346,8 @@ impl App {
                 | Overlay::ImportResult { .. }
                 | Overlay::ExportResult { .. }
                 | Overlay::SaveResult { .. }
+                | Overlay::UndoRecorded { .. }
+                | Overlay::UndoStopped { .. }
                 // **The security event takes no `Enter`** (decision 4): there is nothing on it
                 // to approve, and `Esc` is the only way out.
                 | Overlay::TrustConflict { .. }
@@ -3540,6 +3758,7 @@ impl App {
             }
             Some(
                 Overlay::CommitMessage { typed, .. }
+                | Overlay::UndoMessage { typed, .. }
                 | Overlay::RefName { typed, .. }
                 | Overlay::BundlePath { typed }
                 | Overlay::ExportPath { typed, .. }
@@ -3565,6 +3784,7 @@ impl App {
             }
             Some(
                 Overlay::CommitMessage { typed, .. }
+                | Overlay::UndoMessage { typed, .. }
                 | Overlay::RefName { typed, .. }
                 | Overlay::BundlePath { typed }
                 | Overlay::ExportPath { typed, .. }
@@ -3589,6 +3809,7 @@ impl App {
             Some(
                 Overlay::Palette { .. }
                     | Overlay::CommitMessage { .. }
+                    | Overlay::UndoMessage { .. }
                     | Overlay::RefName { .. }
                     | Overlay::BundlePath { .. }
                     | Overlay::ExportPath { .. }
@@ -3641,7 +3862,10 @@ impl App {
                 | Overlay::SwitchResult { .. }
                 | Overlay::MergeResult { .. }
                 | Overlay::ImportResult { .. }
-                | Overlay::ExportResult { .. },
+                | Overlay::ExportResult { .. }
+                | Overlay::UndoMessage { .. }
+                | Overlay::UndoRecorded { .. }
+                | Overlay::UndoStopped { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
@@ -3724,7 +3948,10 @@ impl App {
                 | Overlay::SwitchResult { .. }
                 | Overlay::MergeResult { .. }
                 | Overlay::ImportResult { .. }
-                | Overlay::ExportResult { .. },
+                | Overlay::ExportResult { .. }
+                | Overlay::UndoMessage { .. }
+                | Overlay::UndoRecorded { .. }
+                | Overlay::UndoStopped { .. },
             ) => {}
             None => match self.screens.last_mut() {
                 Some(Screen::History { view, cursor, .. }) => {
@@ -3805,6 +4032,14 @@ impl App {
                 self.pending_import = None;
                 self.pending_export = None;
             }
+            // RFC 058: and for an undo, whose message step comes before any read — as commit's
+            // does, so cancelling either step abandons the flow.
+            if matches!(
+                overlay,
+                Overlay::UndoMessage { .. } | Overlay::Confirmation { .. }
+            ) {
+                self.pending_undo = None;
+            }
             // Cancelling the consent step abandons the seal it belonged to (RFC 016 §8) — the same
             // posture, one step later in seal's own flow.
             if matches!(overlay, Overlay::SealConsent { .. }) {
@@ -3869,6 +4104,11 @@ impl App {
             ResponseKind::SaveFileConfirmExecute(r) => r.is_ok(),
             ResponseKind::SaveAllPreview(r) => r.is_ok(),
             ResponseKind::SaveAllConfirmExecute(r) => r.is_ok(),
+            // **Whether the operation ran, never whether it wrote everything it meant to.** An
+            // undo that stopped part-way is a successful request carrying a true report of a
+            // partial write (RFC 058 decision 6), the posture Verify and the bundle read take.
+            ResponseKind::UndoPreview(r) => r.is_ok(),
+            ResponseKind::UndoConfirmExecute(r) => r.is_ok(),
         };
         // A check was never recorded as an operation (RFC 031 §4), so this finds nothing for it.
         self.record_finished(seq, ok);
@@ -3884,6 +4124,10 @@ impl App {
             ResponseKind::Verify(result) => self.apply_verify(seq, result),
             ResponseKind::Compare { opened, result } => self.apply_compare(seq, opened, result),
             ResponseKind::CommitPreview(result) => self.apply_commit_preview(seq, result),
+            ResponseKind::UndoPreview(result) => self.apply_undo_preview(seq, result),
+            ResponseKind::UndoConfirmExecute(result) => {
+                self.apply_undo_confirm_execute(seq, result);
+            }
             ResponseKind::CommitConfirmExecute(result) => {
                 self.apply_commit_confirm_execute(seq, result);
             }
@@ -5181,6 +5425,7 @@ impl App {
             "view.refresh" => self.reload(),
             "session.refusals" => self.open_refusals(),
             "op.commit" => self.begin_commit(),
+            "op.undo-block" => self.begin_undo_block(),
             "op.seal" => self.begin_seal(),
             "app.quit" => self.should_quit = true,
             _ => {}

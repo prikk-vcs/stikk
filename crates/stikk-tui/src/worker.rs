@@ -168,6 +168,25 @@ pub(crate) enum RequestKind {
         /// The branch to switch to (must match the preview's).
         target: String,
     },
+    /// Build the preview for undoing one block (RFC 058 decision 5): the lineage, the two
+    /// comparisons, the worktree status and the seven guards, all read inside the preview.
+    UndoPreview {
+        /// The block to undo, as History reported it.
+        block: String,
+        /// The message the undo's commit will carry, typed in the step before this request.
+        message: String,
+    },
+    /// Confirm and execute an undo in one round trip, as commit does — and, unlike commit, the
+    /// one request on this channel that writes worktree files itself (RFC 058 decision 7).
+    UndoConfirmExecute {
+        /// The token [`RequestKind::UndoPreview`] minted. It owns the plan, the parent, the ref
+        /// and the message, so nothing beside it names what will be written.
+        token: Box<stikk_core::UndoToken>,
+        /// The session's signing readiness, read on the UI thread immediately before dispatch.
+        readiness: Readiness,
+        /// The user's confirmation evidence (an explicit yes, at Tier Three).
+        evidence: Evidence,
+    },
     /// Build the merge preview (RFC 047 decision 6): the guards, the baseline and prikk's plan,
     /// all read again, so what is confirmed is current.
     MergePreview {
@@ -365,6 +384,10 @@ pub(crate) enum ResponseKind {
     SwitchPreview(Result<stikk_core::SwitchPreview>),
     /// Answers [`RequestKind::SwitchConfirmExecute`].
     SwitchConfirmExecute(Result<Outcome<stikk_prikk::SwitchResult>>),
+    /// Answers [`RequestKind::UndoPreview`].
+    UndoPreview(Result<stikk_core::UndoPreviewOutcome>),
+    /// Answers [`RequestKind::UndoConfirmExecute`].
+    UndoConfirmExecute(Result<Outcome<stikk_core::UndoResult>>),
     /// Answers [`RequestKind::MergePlan`].
     MergePlan(Result<stikk_core::MergePlanRead>),
     /// Answers [`RequestKind::OpenBundle`].
@@ -477,6 +500,8 @@ impl RequestKind {
             Self::MergePreview { .. } => "merge preview",
             Self::MergeConfirmExecute { .. } => "merge",
             Self::SwitchConfirmExecute { .. } => "switch",
+            Self::UndoPreview { .. } => "undo preview",
+            Self::UndoConfirmExecute { .. } => "undo",
         }
     }
 }
@@ -740,6 +765,16 @@ pub(crate) fn run(
                 target,
             } => ResponseKind::SwitchConfirmExecute(stikk_core::switch_confirm_and_execute(
                 prikk, repo, *token, readiness, evidence, &target,
+            )),
+            RequestKind::UndoPreview { block, message } => {
+                ResponseKind::UndoPreview(stikk_core::undo_preview(prikk, repo, &block, &message))
+            }
+            RequestKind::UndoConfirmExecute {
+                token,
+                readiness,
+                evidence,
+            } => ResponseKind::UndoConfirmExecute(stikk_core::undo_confirm_and_execute(
+                prikk, repo, *token, readiness, evidence,
             )),
         };
         // The UI thread has quit and dropped its receiver; nothing left to deliver to.

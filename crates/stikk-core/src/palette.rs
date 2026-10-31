@@ -196,6 +196,24 @@ static COMMANDS: &[Command] = &[
         needs_focused_ref: true,
     },
     Command {
+        id: "op.undo-block",
+        name: "Undo this block",
+        binding: "U",
+        // Matches `stikk_core::undo::UNDO_OPERATION`, so a `capability_gate` message reads
+        // identically wherever it is shown.
+        operation: crate::undo::UNDO_OPERATION,
+        // **Commit's category, because commit's is the gate this operation takes** (RFC 058
+        // §3.2): the undo ends in a `commit` and needs AUTHOR signing readiness, which is what
+        // this entry must say when it greys out. The operation's *own* category is
+        // `Materialization` -- Tier Three, no key -- and that is what the card is confirmed at;
+        // it is carried by the `Intent` inside `undo_preview`, not by this field, which the
+        // palette reads only for the gate.
+        category: Some(RequestCategory::QueueMutation),
+        opens: None,
+        // The block comes from History or Block detail, which exist only for a focused ref.
+        needs_focused_ref: true,
+    },
+    Command {
         id: "view.glossary",
         name: "Glossary & Help",
         binding: "?",

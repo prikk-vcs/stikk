@@ -83,3 +83,16 @@ fn capital_q_opens_the_queue_and_lowercase_q_still_goes_back() {
     // In a text-entry overlay it types, like every other letter.
     assert_eq!(dispatch(key(KeyCode::Char('Q')), true), Action::Input('Q'));
 }
+
+/// RFC 058 decision 5: **`U` undoes a block, and `u` is still the untracked filter** — the one
+/// reason the undo took a capital letter.
+#[test]
+fn capital_u_undoes_a_block_and_lowercase_u_is_still_the_untracked_filter() {
+    assert_eq!(dispatch(key(KeyCode::Char('U')), false), Action::UndoBlock);
+    assert_eq!(
+        dispatch(key(KeyCode::Char('u')), false),
+        Action::ToggleUntracked
+    );
+    // And in a text-entry overlay it types, like every other letter (the message prompt).
+    assert_eq!(dispatch(key(KeyCode::Char('U')), true), Action::Input('U'));
+}

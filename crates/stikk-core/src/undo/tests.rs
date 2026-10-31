@@ -783,9 +783,13 @@ fn the_card_says_what_decision_5_asks_for() {
     );
     assert_eq!(summary.consequence, UNDO_CONSEQUENCE);
     assert_eq!(
-        summary.message_note.as_deref(),
-        Some("Undo: the mistake"),
-        "the message the undo will carry, restated"
+        summary.message_note, None,
+        "the message is not restated on the card: the prompt before it collected it, and \
+         commit's own card does not restate one either"
+    );
+    assert_eq!(
+        preview.message, "Undo: the mistake",
+        "the message the undo will carry travels with the preview and its token"
     );
     assert_eq!(summary.capability, Some(Capability::Author));
     assert_eq!(token.tier(), Tier::Three);

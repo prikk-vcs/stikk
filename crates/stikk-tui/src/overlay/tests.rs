@@ -177,9 +177,17 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
 /// what made it fragile the first time.
 #[test]
 fn glossary_pads_the_longest_term_without_colliding_into_its_prikk_column() {
-    let text = draw(&Overlay::Glossary {
-        offset: std::cell::Cell::new(0),
-    });
+    // **Taller than `draw`'s own roomy default**, for the reason that default exists: the Keys
+    // section above the terminology grew again (RFC 058's `U`), and at 90x45 the first term now
+    // sits one row past the bottom -- which would fail this test for the one thing it is not
+    // testing. Reachability at 80x24 is pinned by the tests further down, as review v2's C2 says.
+    let text = draw_at(
+        &Overlay::Glossary {
+            offset: std::cell::Cell::new(0),
+        },
+        90,
+        50,
+    );
     assert!(text.contains("checkout / switch branch"));
     assert!(!text.contains("branchfocused"));
 }
@@ -1292,6 +1300,15 @@ fn coverage(overlay: &Overlay) -> Coverage {
         Overlay::Confirmation { .. } => Coverage::NoSelection,
         Overlay::CommitMessage { .. } => Coverage::NoSelection,
         Overlay::CommitResult { .. } => Coverage::NoSelection,
+        // RFC 058 decision 5: a prompt, like the commit message's -- prose and one typed value,
+        // which wraps rather than being cut.
+        Overlay::UndoMessage { .. } => Coverage::NoSelection,
+        // RFC 058 decision 5: prikk's own commit lines and stikk's next step. The count is
+        // prikk's, so it grows with the undo.
+        Overlay::UndoRecorded { .. } => Coverage::NoSelection,
+        // RFC 058 decision 6: one row per path the undo changed, which grows with the block it
+        // was undoing.
+        Overlay::UndoStopped { .. } => Coverage::NoSelection,
         Overlay::SealConsent { .. } => Coverage::NoSelection,
         Overlay::SealResult { .. } => Coverage::NoSelection,
         // RFC 044 decision 5: a prompt. Its prose is fixed and its input is one row; the affordance
@@ -1613,6 +1630,53 @@ fn cases() -> Vec<Case> {
                 },
             }),
             last_row: "Enter · Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "UndoMessage",
+            // The prefill is `Undo: ` and the block's own first message, which is repository text
+            // of any length -- here one long enough to wrap the input across several rows.
+            build: Box::new(|_| Overlay::UndoMessage {
+                block: "b".repeat(64),
+                typed: format!(
+                    "Undo: {}",
+                    "a sealed message long enough that the prompt must wrap it ".repeat(4)
+                ),
+            }),
+            last_row: "Enter to continue".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "UndoRecorded",
+            build: Box::new(move |_| Overlay::UndoRecorded {
+                result: Box::new(stikk_prikk::CommitResult {
+                    baseline_ref: "heads/main".to_string(),
+                    patch_id: "a".repeat(64),
+                    wal_sequence: 1,
+                    operations: 40,
+                    referenced_blobs: 40,
+                    text_edits: 0,
+                    changes: (0..40)
+                        .map(|i| stikk_prikk::CommitChange {
+                            operation: "modified".to_string(),
+                            path: format!("src/file-{i:03}.rs"),
+                        })
+                        .collect(),
+                    notes: vec![long_note.to_string()],
+                }),
+            }),
+            last_row: "Enter \u{b7} Esc to dismiss".to_string(),
+            entry: None,
+        },
+        Case {
+            name: "UndoStopped",
+            // Thirty paths changed before the stop, with prikk's own refusal under them.
+            build: Box::new(|_| Overlay::UndoStopped {
+                changed: (0..30).map(|i| format!("src/file-{i:03}.rs")).collect(),
+                text: "refusing: precondition not met: the active WAL is owned by heads/other"
+                    .to_string(),
+            }),
+            last_row: "Enter \u{b7} Esc to dismiss".to_string(),
             entry: None,
         },
         Case {
@@ -4723,4 +4787,262 @@ fn capture_rfc057_commit_card_at_80_columns() {
         }
         other => panic!("expected Blocked, got {other:?}"),
     }
+}
+
+// ---------------------------------------------------------------- RFC 058: undoing a block
+
+/// The plan the measured block's own comparison inverts to (RFC 058 F2): a file put back, one
+/// removed, a mode put back, and a rename named on both sides.
+fn undo_plan() -> stikk_core::UndoPlan {
+    stikk_core::UndoPlan {
+        steps: vec![
+            stikk_core::UndoStep {
+                action: stikk_core::UndoAction::PutBack,
+                path: "a.txt".to_string(),
+                mode: Some(0o100_644),
+            },
+            stikk_core::UndoStep {
+                action: stikk_core::UndoAction::Remove,
+                path: "c.txt".to_string(),
+                mode: None,
+            },
+            stikk_core::UndoStep {
+                action: stikk_core::UndoAction::PutBackPermissions,
+                path: "run.sh".to_string(),
+                mode: Some(0o100_755),
+            },
+            stikk_core::UndoStep {
+                action: stikk_core::UndoAction::RenameBack {
+                    earlier: "old.txt".to_string(),
+                },
+                path: "new.txt".to_string(),
+                mode: Some(0o100_644),
+            },
+        ],
+    }
+}
+
+/// The card RFC 058 decision 5 describes, built the way `UndoPreview::summary` builds it.
+fn undo_summary() -> ConfirmationSummary {
+    stikk_core::UndoPreview {
+        block_id: "2222222222222222222222222222222222222222222222222222222222222222".to_string(),
+        parent_id: "3333333333333333333333333333333333333333333333333333333333333333".to_string(),
+        reff: "heads/main".to_string(),
+        messages: vec!["the mistake".to_string()],
+        plan: undo_plan(),
+        message: "Undo: the mistake".to_string(),
+        signing_key_id: Some("dev-author".to_string()),
+        signing_key_claim: stikk_core::KeyClaim::None,
+        signing_key_is_published_example: false,
+    }
+    .summary()
+}
+
+fn undo_card() -> Overlay {
+    Overlay::Confirmation {
+        summary: Box::new(undo_summary()),
+        tier: Tier::Three,
+        typed: String::new(),
+        error: None,
+    }
+}
+
+/// **The card's order is decision 5's order**: the two sentences, the block and its messages, the
+/// plan one line per path with its verb, then the consequence — and the confirm affordance under
+/// all of it, at 80 columns.
+#[test]
+fn the_undo_card_reads_in_decision_5s_order() {
+    let text = draw_at(&undo_card(), 80, 24);
+    let row = |needle: &str| {
+        text.lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} is not on the card:\n{text}"))
+    };
+    let lead = row("This adds a new change");
+    let block = row("222222");
+    let message = row("the mistake");
+    let plan = row("put back");
+    let consequence = row("seal as usual");
+    assert!(
+        lead < block && block <= message && message < plan && plan < consequence,
+        "the card is out of order (lead {lead}, block {block}, messages {message}, plan {plan}, \
+         consequence {consequence}):\n{text}"
+    );
+    assert!(
+        text.contains("Enter to confirm"),
+        "a Tier Three card confirms with a yes:\n{text}"
+    );
+    assert!(
+        flattened(&text).contains("Consumes: AUTHOR"),
+        "the undo ends in a commit:\n{text}"
+    );
+}
+
+/// **Every verb, and both paths of a rename** — the plan is the card's content, so no row is
+/// dropped: when the card cannot hold them all, the panel's own title says so rather than
+/// silently losing a path.
+#[test]
+fn the_undo_plan_names_every_verb_and_both_sides_of_a_rename() {
+    let text = draw_at(&undo_card(), 80, 40);
+    let flat = flattened(&text);
+    for verb in [
+        "put back",
+        "remove",
+        "put back the permissions",
+        "rename back",
+    ] {
+        assert!(
+            flat.contains(&flattened(verb)),
+            "the plan does not say {verb:?}:\n{text}"
+        );
+    }
+    assert!(
+        flat.contains(&flattened("new.txt \u{2192} old.txt")),
+        "a rename names where it goes:\n{text}"
+    );
+    // Squeezed, the card says what it could not show (the `Panel`'s own rule) rather than
+    // dropping a path in silence.
+    let squeezed = draw_at(&undo_card(), 80, 12);
+    assert!(
+        advertises_more(&squeezed),
+        "a card too short for the plan must say so:\n{squeezed}"
+    );
+}
+
+/// The message prompt opens prefilled, names the block, and keeps its footer.
+#[test]
+fn the_undo_message_prompt_shows_its_prefill_and_its_footer() {
+    let text = draw_at(
+        &Overlay::UndoMessage {
+            block: "2222222222222222222222222222222222222222222222222222222222222222".to_string(),
+            typed: "Undo: the mistake".to_string(),
+        },
+        80,
+        24,
+    );
+    assert!(text.contains("Undo block"), "{text}");
+    assert!(text.contains("222222222222"), "{text}");
+    assert!(
+        flattened(&text).contains(&flattened("Undo: the mistake")),
+        "{text}"
+    );
+    assert!(text.contains("Enter to continue"), "{text}");
+}
+
+/// **A stopped undo**: the paths it changed, then that nothing was committed and where to look,
+/// then prikk's own words verbatim (decision 6, `ER-02`).
+#[test]
+fn the_stopped_card_names_the_paths_then_prikks_words() {
+    let text = draw_at(
+        &Overlay::UndoStopped {
+            changed: vec!["new.txt".to_string(), "old.txt".to_string()],
+            text: "refusing: precondition not met: a tracked file has changes".to_string(),
+        },
+        80,
+        24,
+    );
+    let row = |needle: &str| {
+        text.lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} is not on the card:\n{text}"))
+    };
+    assert!(row("new.txt") < row("Nothing was committed"));
+    assert!(row("Nothing was committed") < row("refusing:"));
+    assert!(
+        flattened(&text).contains(&flattened("Changes (`w`) shows them.")),
+        "{text}"
+    );
+    assert!(text.contains("Esc to dismiss"), "{text}");
+}
+
+/// A recorded undo shows prikk's own commit result **and stikk's next step**, which an ordinary
+/// commit's result card does not carry.
+#[test]
+fn the_recorded_card_shows_prikks_result_and_the_seal_step() {
+    let result = stikk_prikk::CommitResult {
+        baseline_ref: "heads/main".to_string(),
+        patch_id: "c".repeat(64),
+        wal_sequence: 1,
+        operations: 4,
+        referenced_blobs: 2,
+        text_edits: 0,
+        changes: vec![stikk_prikk::CommitChange {
+            operation: "edit-text".to_string(),
+            path: "a.txt".to_string(),
+        }],
+        notes: Vec::new(),
+    };
+    let text = draw_at(
+        &Overlay::UndoRecorded {
+            result: Box::new(result.clone()),
+        },
+        80,
+        24,
+    );
+    assert!(text.contains("recorded worktree patch"), "{text}");
+    assert!(
+        flattened(&text).contains(&flattened(stikk_core::SEAL_THE_UNDO)),
+        "the next step is sealing:\n{text}"
+    );
+    // And an ordinary commit's own card does not say it.
+    let commit = draw_at(&Overlay::CommitResult { result }, 80, 24);
+    assert!(
+        !flattened(&commit).contains(&flattened(stikk_core::SEAL_THE_UNDO)),
+        "a commit is not an undo:\n{commit}"
+    );
+}
+
+/// The 80-column captures RFC 058's review request carries, printed on purpose:
+/// `cargo test -p stikk-tui --locked rfc058_captures -- --ignored --nocapture`.
+#[test]
+#[ignore = "prints the captures the review request quotes; run it on purpose"]
+fn rfc058_captures() {
+    println!("--- the card ---\n{}", draw_at(&undo_card(), 80, 24));
+    println!(
+        "--- the message prompt ---\n{}",
+        draw_at(
+            &Overlay::UndoMessage {
+                block: "2222222222222222222222222222222222222222222222222222222222222222"
+                    .to_string(),
+                typed: "Undo: the mistake".to_string(),
+            },
+            80,
+            24,
+        )
+    );
+    println!(
+        "--- a failure in step 2 ---\n{}",
+        draw_at(
+            &Overlay::UndoStopped {
+                changed: vec!["new.txt".to_string(), "old.txt".to_string()],
+                text: "stikk could not remove `c.txt` while undoing this block: No such file or \
+                       directory (os error 2)"
+                    .to_string(),
+            },
+            80,
+            24,
+        )
+    );
+    println!(
+        "--- the recorded undo ---\n{}",
+        draw_at(
+            &Overlay::UndoRecorded {
+                result: Box::new(stikk_prikk::CommitResult {
+                    baseline_ref: "heads/main".to_string(),
+                    patch_id: "c".repeat(64),
+                    wal_sequence: 1,
+                    operations: 4,
+                    referenced_blobs: 2,
+                    text_edits: 0,
+                    changes: vec![stikk_prikk::CommitChange {
+                        operation: "edit-text".to_string(),
+                        path: "a.txt".to_string(),
+                    }],
+                    notes: Vec::new(),
+                }),
+            },
+            80,
+            24,
+        )
+    );
 }

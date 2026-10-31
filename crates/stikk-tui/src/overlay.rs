@@ -202,6 +202,37 @@ pub enum Overlay {
         /// both sides of that boundary, so this copy is version-conditional, not a blanket claim.
         messages_persist: bool,
     },
+    /// RFC 058 decision 5: the message an undo's commit will carry, **prefilled** with
+    /// `Undo: <the block's first patch message>` and editable.
+    ///
+    /// Modelled on [`Self::CommitMessage`], and its own variant for the same reason that one is
+    /// not folded into [`Self::Confirmation`]: this is input the user is still composing. It
+    /// carries no ref — the undo commits to the branch the repository is on, which the preview
+    /// reads for itself (decision 3) — and no notice about whether prikk persists a message: by
+    /// 0.54, the band an undo needs, prikk does.
+    UndoMessage {
+        /// The block being undone, for the heading. Repository text, rendered as an identifier.
+        block: String,
+        /// The message so far, prefilled at open time.
+        typed: String,
+    },
+    /// RFC 058 decision 5: a recorded undo — prikk's own commit result, exactly as
+    /// [`Self::CommitResult`] shows one, with stikk's own next step under it.
+    UndoRecorded {
+        /// prikk's result, transported unchanged. Boxed to keep this enum's variants close in
+        /// size (`clippy::large_enum_variant`).
+        result: Box<stikk_prikk::CommitResult>,
+    },
+    /// RFC 058 decision 6: an undo that stopped after the worktree had changed. **Not a refusal
+    /// overlay**: the operation ran, and what the reader needs is the list of paths it changed,
+    /// not a next-step list about re-previewing.
+    UndoStopped {
+        /// Every path the undo changed before it stopped, in the order it changed them.
+        changed: Vec<String>,
+        /// The one line of the cause — prikk's words where they are prikk's (`ER-02`), stikk's
+        /// own where the filesystem failed, decided by [`stikk_core::stopped_text`].
+        text: String,
+    },
     /// `FL-05` step 4's tail: prikk's own commit result, shown verbatim (`C-T4a`/`C-T4c`) — patch id,
     /// operation counts, and every `note:` line it printed, in order (RFC 014 F4).
     CommitResult {
@@ -442,6 +473,9 @@ impl Overlay {
             Self::Confirmation { .. } => " Confirm ",
             Self::CommitMessage { .. } => " Commit message ",
             Self::CommitResult { .. } => " Commit recorded ",
+            Self::UndoMessage { .. } => " Undo message ",
+            Self::UndoRecorded { .. } => " Undo recorded ",
+            Self::UndoStopped { .. } => " Undo stopped ",
             Self::SealConsent { .. } => " Before you seal ",
             Self::SealResult { .. } => " Sealed ",
             Self::RefName {
@@ -589,7 +623,23 @@ pub fn render(
         } => {
             render_commit_message(reff, typed, *messages_persist, palette, frame, area);
         }
-        Overlay::CommitResult { result } => render_commit_result(result, palette, frame, area),
+        Overlay::CommitResult { result } => {
+            render_commit_result(result, None, " Commit recorded ", palette, frame, area);
+        }
+        Overlay::UndoMessage { block, typed } => {
+            render_undo_message(block, typed, palette, frame, area);
+        }
+        Overlay::UndoRecorded { result } => render_commit_result(
+            result,
+            Some(stikk_core::SEAL_THE_UNDO),
+            " Undo recorded ",
+            palette,
+            frame,
+            area,
+        ),
+        Overlay::UndoStopped { changed, text } => {
+            render_undo_stopped(changed, text, palette, frame, area);
+        }
         Overlay::SealConsent { reff, acknowledged } => {
             render_seal_consent(reff, *acknowledged, palette, frame, area);
         }
@@ -757,6 +807,11 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
             palette,
             "a",
             "adopt a maintainer key \u{b7} x removes one (in Trust)",
+        ),
+        key_line(
+            palette,
+            "U",
+            "undo this block \u{b7} puts back what it changed (History, Block)",
         ),
         key_line(
             palette,
@@ -1586,6 +1641,19 @@ fn render_confirmation(
         Line::from(""),
     ];
 
+    // **stikk's own words, under the heading and above the targets** (RFC 058 decision 5): what
+    // this operation is, for a card that must say that before it names what it acts on. stikk's
+    // own, so no `inert` -- the same treatment `consequence` gets at the other end of the card.
+    if let Some(preamble) = &summary.preamble {
+        for row in wrap_indented(preamble, PANEL_PROSE_WIDTH, "  ") {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.fg),
+            )));
+        }
+        lines.push(Line::from(""));
+    }
+
     if !summary.target_ids.is_empty()
         || summary.branch_notice.is_some()
         || summary.history_notice.is_some()
@@ -1932,6 +2000,15 @@ fn render_confirmation(
         let list = plan_lines(plan, available, palette);
         lines.splice(frozen_at..frozen_at, list);
     }
+    // RFC 058 decision 5: an undo's plan, in the same place as a switch's -- but **never
+    // clipped** (§4.3). It is the whole content of this card: a path dropped from it is a file the
+    // reader would not know was going back, and unlike a switch's counts there is no number above
+    // it to fall back on. A card too short for it scrolls nothing, so the plan is drawn whole and
+    // the card's own height is what gives.
+    if let Some(plan) = &summary.undo_plan {
+        let list = undo_plan_lines(plan, palette);
+        lines.splice(frozen_at..frozen_at, list);
+    }
     // RFC 047 decision 6: prikk's merge plan gives up height in the same place, by the same
     // rule, and says what it gave up.
     if let Some(plan) = &summary.merge_plan {
@@ -1949,6 +2026,63 @@ fn render_confirmation(
         style: Style::default().fg(palette.warn),
     }
     .render(frame, area);
+}
+
+/// The rows an undo's plan draws: one per path, its verb in stikk's words and the path inert
+/// (`C-T2a`), with a rename naming both of its paths (RFC 058 decision 5).
+///
+/// **Every row, always.** [`plan_lines`] gives up height because a switch's card still says
+/// *written n, deleted n* above it; this list is the card's content, and a reader who cannot see a
+/// path cannot know that file is going back.
+///
+/// **The verbs are padded to one column**, so the paths line up under each other -- the width is
+/// computed from the verbs actually present, as the target rows' labels are, so the longest verb
+/// still fits beside its path.
+fn undo_plan_lines(plan: &stikk_core::UndoPlan, palette: &Palette) -> Vec<Line<'static>> {
+    let width = plan
+        .steps
+        .iter()
+        .map(|step| step.verb().chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut out = Vec::new();
+    for step in &plan.steps {
+        let verb = step.verb();
+        let style = if matches!(step.action, stikk_core::UndoAction::Remove) {
+            Style::default().fg(palette.warn)
+        } else {
+            Style::default().fg(palette.fg)
+        };
+        let head = format!("    {verb:<width$}  ");
+        // A rename names where it goes as well as what moves, in that order: the path the block
+        // has, then the name the parent holds it under.
+        let text = match &step.action {
+            stikk_core::UndoAction::RenameBack { earlier } => {
+                format!("{} \u{2192} {}", inert(&step.path), inert(earlier))
+            }
+            _ => inert(&step.path),
+        };
+        let mut rows =
+            crate::text::wrap_verbatim(&text, PANEL_TEXT_WIDTH, &" ".repeat(head.chars().count()))
+                .into_iter();
+        let first = rows
+            .next()
+            .unwrap_or_default()
+            .get(head.len()..)
+            .unwrap_or_default()
+            .to_string();
+        out.push(Line::from(vec![
+            Span::styled(head, Style::default().fg(palette.dim)),
+            Span::styled(first, style),
+        ]));
+        for row in rows {
+            out.push(Line::from(Span::styled(row, style)));
+        }
+    }
+    if !out.is_empty() {
+        out.push(Line::from(""));
+    }
+    out
 }
 
 /// The rows naming the files a switch will write and delete, fitted to `available` rows
@@ -2269,6 +2403,8 @@ fn render_commit_message(
 /// counts prikk reported, every changed path, and every `note:` line, never summarised (`ER-02`).
 fn render_commit_result(
     result: &stikk_prikk::CommitResult,
+    next: Option<&str>,
+    title: &'static str,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -2326,9 +2462,22 @@ fn render_commit_result(
             }
         }
     }
+    // **stikk's own next step, when the commit was one half of something larger** (RFC 058
+    // decision 5): an undo is a commit, and a commit is not history until it is sealed. stikk's
+    // own words, so no `inert` -- and absent for an ordinary commit, whose own next step the
+    // Orientation and the Queue already say.
+    if let Some(next) = next {
+        lines.push(Line::from(""));
+        for row in wrap_indented(next, SEAL_PROSE_WIDTH, "  ") {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.accent),
+            )));
+        }
+    }
     lines.push(Line::from(""));
     Panel {
-        title: " Commit recorded ",
+        title,
         width: SEAL_WIDTH,
         prose: lines,
         // The dismiss hint is the only affordance here; a result card the user cannot leave is the
@@ -2338,6 +2487,146 @@ fn render_commit_result(
             Style::default().fg(palette.accent),
         ))],
         style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 058 decision 5's first step: the message the undo's commit will carry, prefilled.
+///
+/// **The prefill is prikk's text inside stikk's**, so the whole line goes through [`inert`] like
+/// every other repository string that reaches a cell (`C-T2a`) -- the same treatment the commit
+/// prompt gives what the user typed, for the same reason.
+fn render_undo_message(block: &str, typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
+    let mut prose = vec![
+        Line::from(vec![
+            Span::styled(
+                "  Undo block ",
+                Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                identifier(&stikk_core::block_short(block)),
+                Style::default().fg(palette.accent),
+            ),
+        ]),
+        Line::from(""),
+    ];
+    for line in wrap_indented(
+        "A message is required. The undo is an ordinary commit, and this is what `prikk log` will \
+         show for it.",
+        PANEL_PROSE_WIDTH,
+        "  ",
+    ) {
+        prose.push(Line::from(Span::styled(
+            line,
+            Style::default().fg(palette.dim),
+        )));
+    }
+    prose.push(Line::from(""));
+
+    // **The typed line is split, never clipped** (RFC 056 Handoff B §2's rule): the prefill is as
+    // long as the block's own first message, which is repository text and can be any length.
+    let echoed = inert(typed);
+    let mut rows = crate::text::wrap_verbatim(&echoed, PANEL_TEXT_WIDTH, "    ").into_iter();
+    let first = rows
+        .next()
+        .unwrap_or_default()
+        .get(4..)
+        .unwrap_or_default()
+        .to_string();
+    let mut actions = vec![Line::from(vec![
+        Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
+        Span::styled(first, Style::default().fg(palette.fg)),
+    ])];
+    for row in rows {
+        actions.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.fg),
+        )));
+    }
+    actions.push(Line::from(""));
+    actions.push(Line::from(Span::styled(
+        "  Enter to continue \u{b7} Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
+
+    Panel {
+        title: " Undo message ",
+        width: CONFIRM_WIDTH,
+        prose,
+        actions,
+        style: Style::default().fg(palette.fg),
+    }
+    .render(frame, area);
+}
+
+/// RFC 058 decision 6: an undo that stopped with the worktree already changed.
+///
+/// The order is the order a reader needs it in: **the paths it changed**, then that nothing was
+/// committed and where to look at them, then the cause -- prikk's words verbatim where they are
+/// prikk's. Every path is repository text and goes through [`inert`]; the two sentences are
+/// stikk's own, from `stikk-core`.
+fn render_undo_stopped(
+    changed: &[String],
+    text: &str,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut prose = vec![
+        Line::from(Span::styled(
+            "  The undo stopped part-way.",
+            Style::default()
+                .fg(palette.warn)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    if changed.is_empty() {
+        prose.push(Line::from(Span::styled(
+            "  No file had been changed yet.",
+            Style::default().fg(palette.fg),
+        )));
+    } else {
+        prose.push(Line::from(Span::styled(
+            "  Changed:",
+            Style::default().fg(palette.dim),
+        )));
+        for path in changed {
+            for row in crate::text::wrap_verbatim(&inert(path), PANEL_TEXT_WIDTH, "    ") {
+                prose.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.fg),
+                )));
+            }
+        }
+    }
+    prose.push(Line::from(""));
+    for row in wrap_indented(stikk_core::NOTHING_WAS_COMMITTED, PANEL_PROSE_WIDTH, "  ") {
+        prose.push(Line::from(Span::styled(
+            row,
+            Style::default().fg(palette.accent),
+        )));
+    }
+    if !text.is_empty() {
+        prose.push(Line::from(""));
+        for row in wrap_indented(&inert(text), PANEL_PROSE_WIDTH, "  ") {
+            prose.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.warn),
+            )));
+        }
+    }
+    prose.push(Line::from(""));
+
+    Panel {
+        title: " Undo stopped ",
+        width: SEAL_WIDTH,
+        prose,
+        actions: vec![Line::from(Span::styled(
+            "  Enter \u{b7} Esc to dismiss",
+            Style::default().fg(palette.accent),
+        ))],
+        style: Style::default().fg(palette.warn),
     }
     .render(frame, area);
 }

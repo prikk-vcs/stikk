@@ -1931,7 +1931,7 @@ fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_
     for command in stikk_core::palette::commands() {
         let expected = matches!(
             command.id,
-            "view.history" | "view.changes" | "op.commit" | "op.seal"
+            "view.history" | "view.changes" | "op.commit" | "op.seal" | "op.undo-block"
         )
         .then_some("No ref focused. Press b to pick one.");
         assert_eq!(
@@ -5711,4 +5711,442 @@ fn no_trust_surface_draws_key_material() {
             assert!(!text.contains(forbidden), "{forbidden} in {text}");
         }
     }
+}
+
+// ---------------------------------------------------------------- RFC 058: undo one block
+
+/// The block an undo's tests act on, and its parent, as prikk's `log` reports them.
+const UNDO_BLOCK: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+const UNDO_PARENT: &str = "3333333333333333333333333333333333333333333333333333333333333333";
+
+/// A 0.55 session on `heads/main` with AUTHOR readiness — the only session an undo is offered in.
+fn undo_orientation() -> stikk_core::OrientationView {
+    stikk_core::OrientationView {
+        prikk_minor: 55,
+        prikk_version: "prikk 0.55.0".to_string(),
+        validated_through: "0.55".to_string(),
+        current_branch: stikk_model::CurrentBranch::Branch(
+            stikk_model::RefName::parse("heads/main").expect("a ref name"),
+        ),
+        ..author_orientation_view()
+    }
+}
+
+/// History on `heads/main`, with `UNDO_BLOCK` as the tip and `UNDO_PARENT` below it. The tip
+/// carries a message, which is what the prompt is prefilled from.
+fn undo_history() -> HistoryView {
+    let mut tip = block_row(UNDO_BLOCK, 2, "Normal", 1);
+    tip.messages = vec![stikk_prikk::PatchMessage {
+        patch_id: "p".repeat(64),
+        message: "the mistake".to_string(),
+    }];
+    HistoryView {
+        reff: "heads/main".into(),
+        queued: 0,
+        queued_target: None,
+        blocks: vec![tip, block_row(UNDO_PARENT, 1, "Normal", 1)],
+    }
+}
+
+/// An app on History, on prikk's current branch, able to undo.
+fn undoing() -> (App, mpsc::Receiver<Request>) {
+    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()), Palette::default());
+    app.push_screen(Screen::History {
+        view: undo_history(),
+        cursor: 0,
+        refreshing: None,
+    });
+    (app, rx)
+}
+
+/// A real preview, from `stikk-core` against the scripted backend — the only way to get a
+/// `UndoToken`, which has no public constructor.
+fn undo_preview_outcome() -> stikk_core::UndoPreviewOutcome {
+    let on_main = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse("heads/main").expect("a ref name"),
+    );
+    let side = |point: &str| stikk_prikk::DiffSide {
+        point: point.to_string(),
+        target: stikk_prikk::DiffTarget::Block(UNDO_BLOCK.to_string()),
+        queued: stikk_prikk::QueuedOnSide::NotApplicable,
+    };
+    let file = stikk_prikk::DiffFile {
+        kind: "file".to_string(),
+        encoding: "text".to_string(),
+        mode: 0o100_644,
+        size: 4,
+        content_id: None,
+    };
+    let entry = |path: &str, status: &str, from_path: Option<&str>| stikk_prikk::DiffEntry {
+        path: path.to_string(),
+        status: status.to_string(),
+        from_path: from_path.map(ToString::to_string),
+        from: (status != "added").then(|| file.clone()),
+        to: Some(file.clone()),
+        minimal: true,
+        hunks: Vec::new(),
+        raw: "{}".to_string(),
+    };
+    let backend = NullBackend::supported()
+        .with_version(0, 55, 0)
+        .with_orientation(Orientation {
+            interrupted_materialization: None,
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: None,
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: on_main.clone(),
+        })
+        .with_history(stikk_prikk::History {
+            reff: "heads/main".to_string(),
+            blocks: undo_history().blocks,
+        })
+        .with_worktree_status(WorktreeStatus {
+            reff: "heads/main".to_string(),
+            clean: true,
+            tracked: 3,
+            unchanged: 3,
+            missing: 0,
+            modified: 0,
+            untracked: 0,
+            unsupported: 0,
+            refused: Some(0),
+            refused_declarations: Some(0),
+            entries: Vec::new(),
+            queued_elsewhere: None,
+            declarations: Vec::new(),
+        })
+        .with_diff_from_to(
+            UNDO_PARENT,
+            UNDO_BLOCK,
+            stikk_prikk::Diff {
+                from: side(UNDO_PARENT),
+                to: side(UNDO_BLOCK),
+                entries: vec![
+                    entry("a.txt", "modified", None),
+                    entry("c.txt", "added", None),
+                    entry("new.txt", "renamed", Some("old.txt")),
+                ],
+                unsupported_paths: Vec::new(),
+            },
+        )
+        .with_change_token(stikk_model::ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            0,
+            None,
+            &on_main,
+        ));
+    stikk_core::undo_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        UNDO_BLOCK,
+        "Undo: the mistake",
+    )
+    .expect("the reads succeed")
+}
+
+/// **`U` opens the message prompt, prefilled from the block's own first message** (RFC 058
+/// decision 5) — and nothing is dispatched until it is submitted.
+#[test]
+fn u_opens_the_message_prompt_prefilled_with_the_blocks_message() {
+    let (mut app, rx) = undoing();
+    app.begin_undo_block();
+    assert!(rx.try_recv().is_err(), "the prompt comes before any read");
+    let Some(Overlay::UndoMessage { block, typed }) = app.top_overlay() else {
+        panic!(
+            "expected the undo message prompt, got {:?}",
+            app.top_overlay()
+        );
+    };
+    assert_eq!(block, UNDO_BLOCK);
+    assert_eq!(typed, "Undo: the mistake");
+    assert!(app.wants_text_input(), "the prompt takes typing");
+}
+
+/// **An empty message keeps the prompt open**, as commit's does — prikk refuses one, and the
+/// prefill is right there to edit.
+#[test]
+fn an_empty_undo_message_keeps_the_prompt_open() {
+    let (mut app, rx) = undoing();
+    app.begin_undo_block();
+    for _ in 0.."Undo: the mistake".len() {
+        app.backspace();
+    }
+    app.select();
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::UndoMessage { .. })),
+        "the prompt stays"
+    );
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+}
+
+/// The message step dispatches the preview with the block and the message, and the card arms from
+/// it — Tier Three, with the plan and the two sentences on it.
+#[test]
+fn the_message_step_dispatches_the_preview_and_the_card_arms() {
+    let (mut app, rx) = undoing();
+    app.begin_undo_block();
+    app.input_char('!');
+    app.select();
+    let request = next_request(&rx);
+    let RequestKind::UndoPreview { block, message } = &request.kind else {
+        panic!("expected an undo preview, got {:?}", request.kind);
+    };
+    assert_eq!(block, UNDO_BLOCK);
+    assert_eq!(message, "Undo: the mistake!");
+
+    app.apply(Response {
+        seq: request.seq,
+        kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
+    });
+    let Some(Overlay::Confirmation { summary, tier, .. }) = app.top_overlay() else {
+        panic!("expected the card, got {:?}", app.top_overlay());
+    };
+    assert_eq!(*tier, Tier::Three);
+    assert_eq!(summary.operation, "Undo this block");
+    assert_eq!(summary.preamble.as_deref(), Some(stikk_core::UNDO_LEAD));
+    assert_eq!(
+        summary
+            .undo_plan
+            .as_ref()
+            .expect("the plan is on the card")
+            .steps
+            .len(),
+        3
+    );
+}
+
+/// **A blocked preview is a banner, not an error** (`C-T4d`): the reader is back where they were,
+/// with stikk's own reason and nothing armed.
+#[test]
+fn a_blocked_undo_preview_is_a_banner_with_nothing_armed() {
+    let (mut app, rx) = undoing();
+    app.begin_undo_block();
+    app.select();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::UndoPreview(Ok(stikk_core::UndoPreviewOutcome::Blocked(
+            stikk_core::WORKTREE_HAS_CHANGES.to_string(),
+        ))),
+    });
+    assert_eq!(app.banner(), Some(stikk_core::WORKTREE_HAS_CHANGES));
+    assert!(!app.has_overlay(), "nothing is armed");
+}
+
+/// Confirming dispatches confirm+execute, and a recorded undo shows prikk's own commit result.
+#[test]
+fn a_recorded_undo_shows_prikks_commit_result() {
+    let (mut app, rx) = undoing();
+    app.begin_undo_block();
+    app.select();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
+    });
+    app.select();
+    let request = next_request(&rx);
+    assert!(
+        matches!(request.kind, RequestKind::UndoConfirmExecute { .. }),
+        "expected confirm+execute, got {:?}",
+        request.kind
+    );
+    app.apply(Response {
+        seq: request.seq,
+        kind: ResponseKind::UndoConfirmExecute(Ok(Outcome {
+            operation: stikk_core::UNDO_OPERATION.to_string(),
+            result: stikk_core::UndoResult::Done(Box::new(CommitResult {
+                baseline_ref: "heads/main".to_string(),
+                patch_id: "c".repeat(64),
+                wal_sequence: 1,
+                operations: 3,
+                referenced_blobs: 1,
+                text_edits: 0,
+                changes: Vec::new(),
+                notes: Vec::new(),
+            })),
+        })),
+    });
+    let Some(Overlay::UndoRecorded { result }) = app.top_overlay() else {
+        panic!("expected the result card, got {:?}", app.top_overlay());
+    };
+    assert_eq!(result.patch_id, "c".repeat(64));
+    // The undo queued a patch, so the session's own facts are re-read.
+    assert!(matches!(next_request(&rx).kind, RequestKind::Orient));
+}
+
+/// **An undo that stopped names the paths it changed** and carries prikk's text verbatim, with
+/// nothing committed (decision 6).
+#[test]
+fn a_stopped_undo_names_what_it_changed_and_carries_prikks_words() {
+    let (mut app, rx) = undoing();
+    app.begin_undo_block();
+    app.select();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
+    });
+    app.select();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::UndoConfirmExecute(Ok(Outcome {
+            operation: stikk_core::UNDO_OPERATION.to_string(),
+            result: stikk_core::UndoResult::Stopped(stikk_core::UndoStopped {
+                changed: vec!["new.txt".to_string(), "old.txt".to_string()],
+                cause: StikkError::Refusal {
+                    message: "refusing: nothing to commit".to_string(),
+                },
+            }),
+        })),
+    });
+    let Some(Overlay::UndoStopped { changed, text }) = app.top_overlay() else {
+        panic!("expected the stopped card, got {:?}", app.top_overlay());
+    };
+    assert_eq!(changed, &["new.txt".to_string(), "old.txt".to_string()]);
+    assert_eq!(text, "refusing: nothing to commit");
+    // The worktree changed, so the session re-reads what it knows.
+    assert!(matches!(next_request(&rx).kind, RequestKind::Orient));
+}
+
+/// **Decision 3**: the undo is offered on the branch the repository is on. A History showing any
+/// other ref says so, and spawns nothing.
+#[test]
+fn a_block_on_another_branch_says_to_switch_first() {
+    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()), Palette::default());
+    app.push_screen(Screen::History {
+        view: HistoryView {
+            reff: "heads/feature".into(),
+            ..undo_history()
+        },
+        cursor: 0,
+        refreshing: None,
+    });
+    app.begin_undo_block();
+    assert_eq!(app.banner(), Some(stikk_core::NOT_THE_CURRENT_BRANCH));
+    assert!(!app.has_overlay());
+    assert!(rx.try_recv().is_err());
+}
+
+/// **Below the band**, with the band's own number, from the Orientation this session already
+/// holds — no handshake of its own (`C-T4d`).
+#[test]
+fn below_the_band_u_says_which_prikk_is_needed() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(stikk_core::OrientationView {
+            prikk_minor: 28,
+            ..undo_orientation()
+        }),
+        Palette::default(),
+    );
+    app.push_screen(Screen::History {
+        view: undo_history(),
+        cursor: 0,
+        refreshing: None,
+    });
+    app.begin_undo_block();
+    assert_eq!(
+        app.banner(),
+        Some(stikk_core::undo_unavailable(28).as_str())
+    );
+    assert!(!app.has_overlay());
+    assert!(rx.try_recv().is_err());
+}
+
+/// **The gate is commit's own** (§3.2): a session without AUTHOR readiness is told so before the
+/// prompt opens, as `C` tells it.
+#[test]
+fn without_author_readiness_u_says_so_before_the_prompt() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(stikk_core::OrientationView {
+            prikk_minor: 55,
+            current_branch: stikk_model::CurrentBranch::Branch(
+                stikk_model::RefName::parse("heads/main").expect("a ref name"),
+            ),
+            ..orientation_view(0, None, None)
+        }),
+        Palette::default(),
+    );
+    app.push_screen(Screen::History {
+        view: undo_history(),
+        cursor: 0,
+        refreshing: None,
+    });
+    app.begin_undo_block();
+    assert_eq!(
+        app.banner(),
+        Some("undo-block needs AUTHOR signing readiness")
+    );
+    assert!(!app.has_overlay());
+    assert!(rx.try_recv().is_err());
+}
+
+/// `U` from Block detail undoes the block that screen is showing.
+#[test]
+fn u_works_in_block_detail_too() {
+    let (mut app, _rx) = from_state("/repo", loaded(undo_orientation()), Palette::default());
+    let mut row = block_row(UNDO_BLOCK, 2, "Normal", 1);
+    row.messages = vec![stikk_prikk::PatchMessage {
+        patch_id: "p".repeat(64),
+        message: "the mistake".to_string(),
+    }];
+    app.push_screen(Screen::BlockDetail {
+        reff: "heads/main".into(),
+        view: BlockDetailView {
+            row,
+            is_tip: true,
+            state: stikk_core::BlockState::Unreported(30),
+            patches: BlockPatches::Listed(Vec::new()),
+        },
+        cursor: 0,
+        refreshing: None,
+    });
+    app.begin_undo_block();
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::UndoMessage { .. })
+    ));
+}
+
+/// Cancelling either step abandons the flow, so no token is left armed for the next one.
+#[test]
+fn escaping_the_prompt_or_the_card_abandons_the_undo() {
+    let (mut app, rx) = undoing();
+    app.begin_undo_block();
+    app.back();
+    assert!(!app.has_overlay());
+
+    app.begin_undo_block();
+    app.select();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
+    });
+    app.back();
+    assert!(!app.has_overlay());
+    // Nothing stays armed: a stray `Enter` on a card this flow did not open runs nothing.
+    app.push_overlay(Overlay::Confirmation {
+        summary: Box::new(confirmation_summary(None)),
+        tier: Tier::Three,
+        typed: String::new(),
+        error: None,
+    });
+    app.select();
+    assert!(rx.try_recv().is_err(), "nothing was dispatched");
+}
+
+/// **From the palette, where there is no block**, `U` says what it needs rather than doing
+/// nothing.
+#[test]
+fn u_with_no_block_under_the_cursor_says_what_it_needs() {
+    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()), Palette::default());
+    app.begin_undo_block();
+    assert_eq!(app.banner(), Some(App::UNDO_NEEDS_A_BLOCK));
+    assert!(rx.try_recv().is_err());
 }

@@ -10621,7 +10621,7 @@ fn going_back_to_an_earlier_block_through_a_tag_at_the_ceiling() {
 //
 // **The mode row is Unix only** (F5): prikk's worktree authoring on Windows never derives a
 // node's recorded mode, so a `mode` entry has no exact inverse there. The fixture leaves it out
-// on Windows, and `rfc058_leg8_*` is the leg that asserts the refusal instead.
+// on Windows, and `rfc058_leg9_*` is the leg that asserts the refusal instead.
 // =============================================================================================
 
 /// Whether this ceiling offers an undo at all.
@@ -11052,17 +11052,37 @@ fn rfc058_leg4_a_dirty_worktree_refuses_at_the_ceiling() {
     let blocks = rfc058_base(&bin, &fixture, &counting);
     let repo = fixture.repo().to_path_buf();
 
-    // **An untracked file alone does not block** (decision 4, as clarified): the preview is
-    // offered with one in the worktree, as long as it is not in the way.
+    // **An untracked file blocks too** (the review of v1, finding A): the undo's own commit would
+    // author a `create-file` for it, so the undo would carry a file that is no part of it. The
+    // worktree is otherwise exactly what the block sealed.
     rfc032_write(&repo, "notes.tmp", "mine\n");
-    let offered = stikk_core::undo_preview(&counting, &repo, &blocks[0], "Undo: it")
-        .unwrap_or_else(|e| panic!("0.{}: undo_preview: {e}", bin.minor));
-    assert!(
-        matches!(offered, stikk_core::UndoPreviewOutcome::Ready { .. }),
-        "0.{}: an untracked file elsewhere must not block, got {offered:?}",
+    let before = rfc058_worktree(&repo);
+    assert_eq!(
+        rfc058_refusal(&bin, &counting, &repo, &blocks[0]),
+        stikk_core::WORKTREE_HAS_CHANGES,
+        "0.{}: an untracked file is guard 1's case now",
         bin.minor
     );
-    // A modified tracked file does.
+    assert_eq!(
+        rfc058_worktree(&repo),
+        before,
+        "0.{}: nothing was written",
+        bin.minor
+    );
+    // And prikk itself says what makes this unclean, so the leg rests on prikk's report rather
+    // than on stikk's reading of it.
+    let status = counting
+        .worktree_status(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: worktree-status: {e}", bin.minor));
+    assert!(
+        !status.clean && status.untracked == 1,
+        "0.{}: one untracked file, nothing else: {status:?}",
+        bin.minor
+    );
+    std::fs::remove_file(repo.join("notes.tmp"))
+        .unwrap_or_else(|e| panic!("0.{}: rm notes.tmp: {e}", bin.minor));
+
+    // A modified tracked file blocks the same way.
     rfc032_write(&repo, "a.txt", "mine now\n");
     let before = rfc058_worktree(&repo);
     assert_eq!(
@@ -11204,11 +11224,16 @@ fn rfc058_leg6_a_merge_and_a_first_block_refuse_at_the_ceiling() {
     );
 }
 
-/// **Leg 7: an untracked file in the way** — guard 6, naming it, with the reader's own file
-/// untouched.
+/// **Leg 7: an ignored file where the undo would write** — guard 6, asked of the filesystem
+/// (the review of v1, finding C).
+///
+/// **This is the only state that reaches guard 6 against a real prikk.** With guard 1 now
+/// demanding a clean worktree, an *untracked* file in the way blocks at guard 1 — so what is left
+/// is a file `worktree-status` does not report at all, which is one `.prikkignore` names. prikk
+/// reports the worktree **clean** with it sitting there (measured at 0.55.0, case C).
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
-fn rfc058_leg7_an_untracked_file_in_the_way_refuses_at_the_ceiling() {
+fn rfc058_leg7_an_ignored_file_where_the_undo_would_write_refuses_at_the_ceiling() {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -11219,16 +11244,24 @@ fn rfc058_leg7_an_untracked_file_in_the_way_refuses_at_the_ceiling() {
     }
     let fixture = Fixture::build(&bin);
     let counting = CountingWrites::new(&bin);
-    let blocks = rfc058_base(&bin, &fixture, &counting);
     let repo = fixture.repo().to_path_buf();
+    let block = rfc058_ignored_deletion(&bin, &fixture, &counting);
 
-    // `b.txt` is what the block deleted, so the undo would put it back — and here it is already
-    // there, untracked and holding something else.
-    rfc032_write(&repo, "b.txt", "not the block's\n");
+    // The ignored copy, which `worktree-status` does not list.
+    rfc032_write(&repo, "debug.log", "not the block's\n");
+    let status = counting
+        .worktree_status(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: worktree-status: {e}", bin.minor));
+    assert!(
+        status.clean && status.untracked == 0,
+        "0.{}: an ignored file leaves the report clean, which is the whole point: {status:?}",
+        bin.minor
+    );
+
     let before = rfc058_worktree(&repo);
     assert_eq!(
-        rfc058_refusal(&bin, &counting, &repo, &blocks[0]),
-        stikk_core::in_the_way(&["b.txt".to_string()]),
+        rfc058_refusal(&bin, &counting, &repo, &block),
+        stikk_core::in_the_way(&["debug.log".to_string()]),
         "0.{}: guard 6's own sentence",
         bin.minor
     );
@@ -11239,15 +11272,99 @@ fn rfc058_leg7_an_untracked_file_in_the_way_refuses_at_the_ceiling() {
         bin.minor
     );
     assert_eq!(
-        std::fs::read_to_string(repo.join("b.txt"))
-            .unwrap_or_else(|e| panic!("0.{}: read b.txt: {e}", bin.minor)),
+        std::fs::read_to_string(repo.join("debug.log"))
+            .unwrap_or_else(|e| panic!("0.{}: read debug.log: {e}", bin.minor)),
         "not the block's\n",
         "0.{}: the reader's own file is untouched",
         bin.minor
     );
 }
 
-/// **Leg 8, Windows only (F5): a block with a `mode` entry has no exact inverse there**, and
+/// **Leg 8: a created path `.prikkignore` names** — guard 7 (the review of v1, finding B).
+///
+/// The same three blocks as leg 7, with **nothing** at `debug.log` on disk. prikk's own measurement
+/// is that putting the file back leaves `worktree-status` clean and `commit` exits 1 with nothing
+/// recorded — so an undo that ran would either fail at step 4 or, with other changes in the block,
+/// commit **without** that file and not be exact.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_leg8_a_created_path_the_ignore_rules_name_refuses_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let block = rfc058_ignored_deletion(&bin, &fixture, &counting);
+
+    let before = rfc058_worktree(&repo);
+    assert!(
+        !repo.join("debug.log").exists(),
+        "0.{}: the path the undo would create is free, so guard 6 is not the one answering",
+        bin.minor
+    );
+    assert_eq!(
+        rfc058_refusal(&bin, &counting, &repo, &block),
+        stikk_core::ignored_at_commit(&["debug.log".to_string()]),
+        "0.{}: guard 7's own sentence",
+        bin.minor
+    );
+    assert_eq!(
+        rfc058_worktree(&repo),
+        before,
+        "0.{}: nothing was written",
+        bin.minor
+    );
+
+    // **And prikk agrees about why**: put the file back by hand, exactly as the undo would, and
+    // prikk's own worktree-status reports clean while `commit` refuses with nothing to author.
+    rfc032_write(&repo, "debug.log", "the parent's\n");
+    let status = counting
+        .worktree_status(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: worktree-status: {e}", bin.minor));
+    assert!(
+        status.clean,
+        "0.{}: an ignored path put back leaves the report clean: {status:?}",
+        bin.minor
+    );
+    fixture.set_author_env();
+    let refused = counting.commit(&repo, "heads/main", "would the commit see it?");
+    Fixture::clear_env();
+    assert!(
+        refused.is_err(),
+        "0.{}: prikk's own commit records nothing, got {refused:?}",
+        bin.minor
+    );
+}
+
+/// Three blocks, ending in one that **deleted a path `.prikkignore` names** — the state findings B
+/// and C are both about. Returns that last block's id.
+///
+/// The order matters and is prikk's own rule (its `ignore.rs`: *"a rule can never hide an
+/// already-tracked path"*): `debug.log` is committed **before** the rule exists, or it would never
+/// have been tracked at all.
+fn rfc058_ignored_deletion(bin: &PrikkBin, fixture: &Fixture, counting: &CountingWrites) -> String {
+    let repo = fixture.repo().to_path_buf();
+    rfc032_write(&repo, "a.txt", "a1\n");
+    rfc032_write(&repo, "debug.log", "tracked before the rule\n");
+    rfc058_seal(bin, fixture, counting, "before the rule");
+    rfc032_write(&repo, ".prikkignore", "debug.log\n");
+    rfc058_seal(bin, fixture, counting, "the rule");
+    std::fs::remove_file(repo.join("debug.log"))
+        .unwrap_or_else(|e| panic!("0.{}: rm debug.log: {e}", bin.minor));
+    rfc058_seal(bin, fixture, counting, "the deletion");
+    rfc058_blocks(bin, counting, &repo)
+        .first()
+        .unwrap_or_else(|| panic!("0.{}: the deletion's block", bin.minor))
+        .clone()
+}
+
+/// **Leg 9, Windows only (F5): a block with a `mode` entry has no exact inverse there**, and
 /// stikk refuses it rather than recording a mode prikk cannot derive from the worktree.
 ///
 /// A block with no mode change is leg 1's case, and leg 1 runs on this platform too — its own
@@ -11255,7 +11372,7 @@ fn rfc058_leg7_an_untracked_file_in_the_way_refuses_at_the_ceiling() {
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 #[cfg(windows)]
-fn rfc058_leg8_a_mode_entry_refuses_on_windows_at_the_ceiling() {
+fn rfc058_leg9_a_mode_entry_refuses_on_windows_at_the_ceiling() {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);

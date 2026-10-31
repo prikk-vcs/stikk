@@ -253,15 +253,23 @@ which moves your worktree to an older block and records nothing at all.
 
 **When stikk will not do it**, each with a sentence saying what is in the way:
 
-- **your worktree has changes** — commit or remove them first, so the undo cannot overwrite your
-  own work. An untracked file somewhere else is fine;
+- **your worktree is not clean** — commit or remove your changes first. Two reasons, not one: the
+  undo must not overwrite what you are working on, **and a new file lying around would be recorded
+  as part of the undo**, because a commit here captures the whole worktree. So an untracked file
+  anywhere stops it, not only one in the way;
 - **work is waiting to be sealed** — seal it, so the undo is recorded after it;
 - **a later block changed one of the same files** — undoing this one would throw that later change
   away, so stikk names the file and stops;
 - **the block is a merge**, or **the first block on the branch** — there is nothing single to go
   back to;
-- **a file the undo would write is already there**, untracked — stikk names it rather than
-  replacing something it did not put there;
+- **something is already where the undo would put a file back** — stikk names it rather than
+  replacing something it did not put there. This looks at your folder itself, so it sees a file
+  even where `.prikkignore` hides it;
+- **a file the undo would put back is named in `.prikkignore`** — the commit would not record it,
+  so the undo would not be complete. Remove that line first;
+- **the block changed `.prikkignore` itself**, and would put files back as well — undo that block
+  on its own first, so the rules are settled before the files;
+- **the block changed no file at all** — there is nothing to put back;
 - **you are looking at another branch's history** — undo works on the branch you are on; switch to
   it first.
 

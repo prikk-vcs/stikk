@@ -21,7 +21,12 @@ use stikk_model::{ChangeToken, Readiness, Result};
 use stikk_prikk::{BlockRow, CommitResult, Prikk, SealResult};
 
 /// How many blocks the History view requests at a time (design FR-011 caps the listing).
-pub(crate) const HISTORY_LIMIT: usize = 200;
+///
+/// **It is `stikk_core::UNDO_HISTORY_LIMIT`, not a second 200** (the review of RFC 058 Handoff A
+/// v1, change 5). An undo reads the current branch's lineage to find a block and its parent, and a
+/// block a reader can select here must be one that read can find — two constants that happened to
+/// agree would stop agreeing the first time one moved.
+pub(crate) const HISTORY_LIMIT: usize = stikk_core::UNDO_HISTORY_LIMIT;
 
 /// One unit of work for the worker thread. Carries the sequence number its [`Response`] must echo, so
 /// [`crate::app::App::apply`] can discard a reply for work the user has navigated away from since it

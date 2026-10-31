@@ -1,6 +1,6 @@
 # RFC 058 — Undo one block: putting back what a block changed, as a new change
 
-**Status.** **Accepted by the project owner 2026-10-31**; [Handoff A](../handoffs/058-undo-one-block/a-undo-one-block-handoff-v1.md). **Clarified at acceptance:** the parent's mode comes from the diff entry's `from.mode`, so no `tree` read is needed (F2, decision 2); and guard 1 is defined exactly, so an untracked file elsewhere does not block an undo (decision 4). **Proposed 2026-10-31** by the architect, as 0.20.0's increment 1 (`.git-exclude/release/0-20-0-scope.md`,
+**Status.** **Done 2026-10-31**: Handoff A delivered on `main` (`30ec1fe`..`bf2c3af`); 0.20.0 candidate. **Decision 4 amended in review** to the rules as delivered, which withdraws the guard 1 clarification below. **Accepted by the project owner 2026-10-31**; [Handoff A](../handoffs/058-undo-one-block/a-undo-one-block-handoff-v1.md). **Clarified at acceptance:** the parent's mode comes from the diff entry's `from.mode`, so no `tree` read is needed (F2, decision 2); and guard 1 is defined exactly, so an untracked file elsewhere does not block an undo (decision 4). **Proposed 2026-10-31** by the architect, as 0.20.0's increment 1 (`.git-exclude/release/0-20-0-scope.md`,
 authorized 2026-10-31 with its two recommendations: the word *"Undo this block"*, and *any single-parent block whose
 paths no later block changed*). **No open question.**
 **Measured** against a real prikk **0.55.0**: `.git-exclude/reports/058-scope-0-20/` (`measure-undo.sh` →
@@ -103,25 +103,39 @@ come out exact:
    (RFC 029's `.prikk/current-branch`). On any other ref, `U` is unavailable: *"Undo works on the branch you are on.
    Switch to it first."*
 
-4. **The guards, inside `confirm::preview`, so they are taken again at confirmation.** Each one declines with
-   **nothing written**, as disabled-with-reason (`C-T4d`), in stikk's words:
-   1. **The worktree has changes**: any `missing` or `modified` file, any entry other than an untracked file, or any
-      refused declaration. **An untracked file elsewhere does not count**, because an editor's temporary file must
-      not block an undo. One that is in the way is guard 6's case. *"Undo needs a clean worktree, so it cannot
-      overwrite your work. Commit or remove your changes first."*
-   2. **Work is queued** (Orientation's queued patches > 0): *"Work is waiting to be sealed. Seal it first, so the
-      undo is recorded after it."*
-   3. **The block is a merge** (`kind: Merge`, or `parent_count` ≠ 1): *"stikk cannot undo a merge yet."*
-   4. **The block is the first in this branch's history** (F4): *"This is the first block on this branch, so there is
-      nothing before it to go back to."*
-   5. **A later block changed one of its paths** (F3). The set compared is every entry's `path` plus every rename's
-      `from_path`, against every path in `diff --from <block> --to <tip>`: *"A later block changed `a.txt` too.
-      Undoing this one would overwrite that change."* It names every such path.
-   6. **A file stikk would write is already in the worktree, untracked:** *"`b.txt` is in the way: it is not part of
-      this branch, and the undo would replace it."*
-   7. **An entry stikk cannot invert exactly:** a status it does not know (`symlink` included), any
+4. **The guards, inside `confirm::preview`, so they are taken again at confirmation.** *Amended in review (v1, v2) to
+   the rules as delivered; the acceptance clarification of guard 1 is **withdrawn**: measured
+   (`reports/058-scope-0-20/measure-untracked-at-commit.sh`), `commit --from-worktree` records every untracked file,
+   so an undo must not run beside one.* Each guard declines with **nothing written**, disabled-with-reason (`C-T4d`),
+   in stikk's words. In order, reading no comparison before guard 4:
+   - **An interrupted materialization** (added in review): its routes are prikk's, verbatim. prikk's `commit` refuses
+     while it is set, so an undo would write and then fail.
+   1. **The worktree is not fully clean**: not prikk's `clean`, or any missing, modified, untracked or unsupported
+      file, or any refused entry or declaration. *"Undo needs a clean worktree. It must not overwrite your work, and
+      its commit would also record any new file lying around. Commit or remove your changes first."*
+   2. **Work is queued**: *"Work is waiting to be sealed. Seal it first, so the undo is recorded after it."*
+   3. **The block is a merge** (`kind: Merge`, or more than one parent): *"stikk cannot undo a merge yet."*
+   4. **Nothing comes before it**: a root (no parent), or no row below it in this branch's history: *"This is the
+      first block on this branch, so there is nothing before it to go back to."* When stikk's read of the history
+      came back full, its oldest row is not knowably the first, and stikk says that instead (added in review).
+   - **The comparison is empty** (added in review): *"prikk's comparison shows this block changed no file, so there is
+     nothing to undo."*
+   5. **A later block changed one of its paths**, comparing every entry's `path` and every rename's `from_path` with
+      the later comparison's: *"A later block changed `a.txt` too. Undoing this one would overwrite that change."*,
+      naming every such path.
+   6. **Something is already where the undo would create a file**, asked of the filesystem, not of `worktree-status`,
+      because an ignored file is invisible to it: the path must not exist, and every existing ancestor must be a real
+      directory, not a file or a symlink. *"`b.txt` is in the way: there is already a file there, and the undo would
+      replace it."*
+   7. **A created path is named by `.prikkignore`** (added in review), matched by prikk's own rule (`ignore.rs`:
+      literal prefixes, whole path components). The rules are the ones the undo leaves in place. Where this block
+      itself changed `.prikkignore` and the undo creates a file, stikk cannot read the parent's rules, because the
+      seam has no content read, so it refuses that case: *"… stikk cannot undo this block exactly."*
+   8. **An entry stikk cannot invert exactly**: a status it has not measured (`symlink` included), any
       `unsupported_paths`, or on Windows a case from F5: *"stikk cannot undo this block exactly: <the reason, naming
       the path>."*
+
+   The path check (decision 6) is part of building the plan, the only place a plan exists.
 
 5. **The card: `U` in History, on the selected block.** Tier **Three**, like a switch: it writes the worktree from
    history, and every refusal writes nothing. The signing requirement is **AUTHOR**, because the undo ends in a
@@ -192,8 +206,9 @@ come out exact:
    4. a dirty worktree → guard 1, zero writes;
    5. work queued → guard 2, zero writes;
    6. a merge block, and the first block of a branch → guards 3 and 4;
-   7. an untracked file in the way → guard 6;
-   8. **on Windows:** a block with a `mode` entry → guard 7; a block with no mode change → leg 1's result.
+   7. an ignored file in the way → guard 6 (amended in review: an untracked one is guard 1's);
+   8. a path put back that `.prikkignore` names → guard 7 (added in review);
+   9. **on Windows:** a block with a `mode` entry → guard 8; a block with no mode change → leg 1's result.
 
    **At 0.28:** unavailable, with nothing spawned.
 4. **Captures at 80 columns:** the card; each refusal; the result after a failure in step 2.
@@ -204,3 +219,36 @@ come out exact:
 - **Call itself a rollback**, or use prikk's `rollback-*` commands.
 - **Write anywhere** except the worktree paths prikk's own report names.
 - **Seal.**
+
+## Delivered
+
+**One handoff, nine commits, green on `main` at `bf2c3af`**: CI, Docs, supply chain, and the real-binary suite on the
+full platform matrix (97 cases at 0.28.0 and 0.55.0 on Linux, macOS and Windows; Windows reaches 97 with its own
+mode leg, which announces where 0.55 provokes nothing).
+
+- **The seam:** `rename_path` (`prikk mv`), `QueueMutation`, stdout verbatim.
+- **The operation:** `U` in History and Block detail, a message prompt, a Tier Three card that lists every file, and
+  execution in decision 6's order. Every fetch goes into a scratch directory checked outside the repository before
+  the worktree is touched. Only the directories the undo emptied are removed, and a failure stops with nothing
+  committed and names the paths changed.
+- **The proof:** leg 1 undoes a block that did every status F2 lists, and prikk's own `tree` and `cat` find the
+  result identical to the parent in every path, mode and byte, with `verify` passing. Every refusal leg asserts zero
+  writes and an unchanged worktree.
+- **Found in review:**
+  - **The architect's acceptance clarification of guard 1 was wrong.** `commit` records untracked files. Guard 1 is
+    now a fully clean worktree.
+  - **An ignored file is invisible to `worktree-status`** in two ways: it can sit where the undo writes, and a path
+    put back can go unrecorded. Guards 6 and 7 were added for these.
+  - **The handoff's guard 3 (`parents != 1`) would have called a root a merge.** It is now `parents > 1`, and a root
+    answers guard 4.
+- **Added by the dev team:**
+  - the full-lineage case;
+  - the interrupted-materialization refusal;
+  - an empty comparison refused.
+
+## Deferred
+
+- **Reading the parent's `.prikkignore`**, so the undo of a block that changed it and also created files can be
+  offered. Either a content-read seam method (`cat` to stdout), or a read of the fetched file between steps 1 and 2.
+- **Undoing a merge**, once prikk 0.57.0 names a block's parents (`parent_block_ids`). The parent is then read from
+  it rather than from the order of `log` (F4).

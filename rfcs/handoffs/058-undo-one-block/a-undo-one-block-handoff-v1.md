@@ -1,6 +1,6 @@
 # Handoff A — RFC 058: Undo one block (v1)
 
-**Companion to:** [RFC 058](../../accepted/058-undo-one-block.md), **accepted 2026-10-31**. **Read the RFC first**:
+**Companion to:** [RFC 058](../../done/058-undo-one-block.md), **accepted 2026-10-31**. **Read the RFC first**:
 F1–F5 and decisions 1–9, including the two clarifications made at acceptance. **Covers:** all of it. **0.20.0's
 increment 1.**
 **Land it before 0.20.0's increment 2** (the prikk 0.56.0 re-baseline), which re-measures `commit`.

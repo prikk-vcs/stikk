@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 058 | [Undo one block: putting back what a block changed, as a new change](./accepted/058-undo-one-block.md) | `FR-085` (new): undoing a sealed block without rewriting history. **Accepted 2026-10-31**; 0.20.0 increment 1 | [A: undo one block](./handoffs/058-undo-one-block/a-undo-one-block-handoff-v1.md) |
+_None: RFC 058 delivered and closed 2026-10-31._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 058 | [Undo one block: putting back what a block changed, as a new change](./done/058-undo-one-block.md) | 0.20.0 candidate (on `main`) | reading the parent's `.prikkignore` (a content read); undoing a merge, once prikk names a block's parents | [A: undo one block](./handoffs/058-undo-one-block/a-undo-one-block-handoff-v1.md) |
 | 057 | [Orientation on `status --format json`](./done/057-orientation-on-status-json.md) | **0.19.0** | reading `provisional_worktree` (decision 4); the prose parser stays for the floor | [A: Orientation on JSON](./handoffs/057-orientation-on-status-json/a-orientation-json-handoff-v1.md) |
 | 056 | [Trust, adopt and remove: choosing whose keys this repository trusts](./done/056-trust-adopt-and-remove.md) | **0.18.0**; Handoff B (the typed card's layout) **0.19.0** | tag adoption, author keys, counting the blocks a removal affects; two prikk items held for a letter | [A: adopt and remove](./handoffs/056-trust-adopt-and-remove/a-adopt-and-remove-handoff-v1.md) · [B: the typed card's layout](./handoffs/056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md) |
 | 053 | [Getting files back: an earlier version, saved outside the repository](./done/053-get-files-back.md) | **0.17.0**; Handoff B (carried follow-ups) **0.18.0**; Handoff C (going back to an earlier block) **0.19.0** | saving from Patch detail, History or Compare; writing into the worktree (`FR-053`'s materialize half, `FR-054`); three small follow-ups carried to the next touch | [A: get files back](./handoffs/053-get-files-back/a-get-files-back-handoff-v1.md) · [B: carried follow-ups](./handoffs/053-get-files-back/b-carried-follow-ups-handoff-v1.md) · [C: going back to an earlier block](./handoffs/053-get-files-back/c-going-back-guide-handoff-v1.md) |

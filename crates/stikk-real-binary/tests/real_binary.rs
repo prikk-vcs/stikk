@@ -7538,6 +7538,9 @@ struct CountingWrites {
     /// How many times `mv` was spawned. **The number RFC 058's refusal legs assert is zero**: an
     /// undo that declined after moving a file would have written the worktree.
     renames: std::sync::atomic::AtomicUsize,
+    /// How many times `commit` was spawned. **Zero on every RFC 058 refusal leg too**: an undo
+    /// that declined must not have recorded anything either.
+    commits: std::sync::atomic::AtomicUsize,
 }
 
 impl CountingWrites {
@@ -7550,6 +7553,7 @@ impl CountingWrites {
             saves: std::sync::atomic::AtomicUsize::new(0),
             trust_writes: std::sync::atomic::AtomicUsize::new(0),
             renames: std::sync::atomic::AtomicUsize::new(0),
+            commits: std::sync::atomic::AtomicUsize::new(0),
             extracts: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -7630,6 +7634,8 @@ impl Prikk for CountingWrites {
         reff: &str,
         message: &str,
     ) -> stikk_model::Result<stikk_prikk::CommitResult> {
+        self.commits
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.commit(repo, reff, message)
     }
     fn seal(
@@ -10602,4 +10608,749 @@ fn going_back_to_an_earlier_block_through_a_tag_at_the_ceiling() {
         bin.minor
     );
     Fixture::clear_env();
+}
+
+// =============================================================================================
+// RFC 058 — undoing one block, against a real prikk.
+//
+// The fixture is `measure-undo.sh`'s own first scenario, which is why these legs assert the
+// shapes they do: one block that modified a text file, deleted a file, replaced a binary, added a
+// file, deleted a nested folder, changed a mode and renamed a path. Inverted, that measurement
+// gave a tip **identical to its parent — every path, every mode, every byte** — with `verify`
+// passing, at both 0.54.1 and 0.55.0.
+//
+// **The mode row is Unix only** (F5): prikk's worktree authoring on Windows never derives a
+// node's recorded mode, so a `mode` entry has no exact inverse there. The fixture leaves it out
+// on Windows, and `rfc058_leg8_*` is the leg that asserts the refusal instead.
+// =============================================================================================
+
+/// Whether this ceiling offers an undo at all.
+fn rfc058_in_band(bin: &PrikkBin) -> bool {
+    if bin.minor < stikk_core::UNDO_FROM_MINOR {
+        eprintln!(
+            "RFC 058 SKIPPED at 0.{} — an undo is banded at 0.{}. Announced rather than silent \
+             (RFC 022 §3).",
+            bin.minor,
+            stikk_core::UNDO_FROM_MINOR
+        );
+        return false;
+    }
+    true
+}
+
+/// Commit and seal `reff`, as the suite's other legs do.
+fn rfc058_seal(bin: &PrikkBin, fixture: &Fixture, counting: &CountingWrites, message: &str) {
+    let repo = fixture.repo().to_path_buf();
+    fixture.set_author_env();
+    counting
+        .commit(&repo, "heads/main", message)
+        .unwrap_or_else(|e| panic!("0.{}: commit {message}: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    counting
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal {message}: {e}", bin.minor));
+    Fixture::clear_env();
+}
+
+/// The block ids of `heads/main`, newest first.
+fn rfc058_blocks(bin: &PrikkBin, counting: &CountingWrites, repo: &std::path::Path) -> Vec<String> {
+    counting
+        .history(repo, "heads/main", 50)
+        .unwrap_or_else(|e| panic!("0.{}: history: {e}", bin.minor))
+        .blocks
+        .iter()
+        .map(|row| row.block_id.clone())
+        .collect()
+}
+
+/// Every path at `block`, with prikk's own mode, from `tree` — the first half of leg 1's identity
+/// check.
+fn rfc058_tree(
+    bin: &PrikkBin,
+    counting: &CountingWrites,
+    repo: &std::path::Path,
+    block: &str,
+) -> Vec<(String, Option<u32>)> {
+    let report = counting
+        .block_state(repo, "heads/main", block, false)
+        .unwrap_or_else(|e| panic!("0.{}: tree {block}: {e}", bin.minor));
+    let stikk_prikk::StateReport::Listed(state) = report else {
+        panic!("0.{}: tree reports in band, got {report:?}", bin.minor);
+    };
+    let mut files: Vec<(String, Option<u32>)> = state
+        .files
+        .iter()
+        .map(|file| (file.path.clone(), file.mode))
+        .collect();
+    files.sort();
+    files
+}
+
+/// One path's bytes at one block, **through prikk's own `cat`** — the second half of leg 1's
+/// check, and never through the seam the undo itself used.
+fn rfc058_bytes(
+    bin: &PrikkBin,
+    repo: &std::path::Path,
+    root: &std::path::Path,
+    block: &str,
+    path: &str,
+) -> Vec<u8> {
+    let out = root.join(format!(
+        "cat-{}-{}",
+        &block[..8],
+        path.replace(['/', '\\'], "_")
+    ));
+    prikk_ok(
+        bin,
+        repo,
+        &[
+            "cat",
+            "--path",
+            path,
+            "--ref",
+            block,
+            "--output",
+            &out.display().to_string(),
+        ],
+    );
+    std::fs::read(&out).unwrap_or_else(|e| panic!("0.{}: read {}: {e}", bin.minor, out.display()))
+}
+
+/// The whole shipped path: preview, confirm, execute — with AUTHOR readiness, which is the gate
+/// the operation takes (§3.2).
+fn rfc058_undo(
+    bin: &PrikkBin,
+    fixture: &Fixture,
+    counting: &CountingWrites,
+    block: &str,
+    message: &str,
+) -> stikk_core::UndoResult {
+    let repo = fixture.repo().to_path_buf();
+    let outcome = stikk_core::undo_preview(counting, &repo, block, message)
+        .unwrap_or_else(|e| panic!("0.{}: undo_preview: {e}", bin.minor));
+    let stikk_core::UndoPreviewOutcome::Ready { token, .. } = outcome else {
+        panic!("0.{}: expected a Ready preview, got {outcome:?}", bin.minor);
+    };
+    fixture.set_author_env();
+    let readiness = counting
+        .readiness(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+        .readiness;
+    let result = stikk_core::undo_confirm_and_execute(
+        counting,
+        &repo,
+        *token,
+        readiness,
+        stikk_core::Evidence::ExplicitYes,
+    );
+    Fixture::clear_env();
+    result
+        .unwrap_or_else(|e| panic!("0.{}: undo_confirm_and_execute: {e}", bin.minor))
+        .result
+}
+
+/// The preview's own refusal, in stikk's words — and **nothing spawned that writes**.
+fn rfc058_refusal(
+    bin: &PrikkBin,
+    counting: &CountingWrites,
+    repo: &std::path::Path,
+    block: &str,
+) -> String {
+    let before = (
+        counting.renames.load(std::sync::atomic::Ordering::SeqCst),
+        counting.saves.load(std::sync::atomic::Ordering::SeqCst),
+        counting.commits.load(std::sync::atomic::Ordering::SeqCst),
+    );
+    let outcome = stikk_core::undo_preview(counting, repo, block, "Undo: it")
+        .unwrap_or_else(|e| panic!("0.{}: undo_preview: {e}", bin.minor));
+    let after = (
+        counting.renames.load(std::sync::atomic::Ordering::SeqCst),
+        counting.saves.load(std::sync::atomic::Ordering::SeqCst),
+        counting.commits.load(std::sync::atomic::Ordering::SeqCst),
+    );
+    assert_eq!(
+        before, after,
+        "0.{}: a blocked preview spawned a write (renames, saves, commits)",
+        bin.minor
+    );
+    match outcome {
+        stikk_core::UndoPreviewOutcome::Blocked(reason) => reason,
+        stikk_core::UndoPreviewOutcome::Ready { .. } => {
+            panic!("0.{}: expected a blocked preview", bin.minor)
+        }
+    }
+}
+
+/// Every worktree path, relative and sorted — `.prikk` left out.
+fn rfc058_worktree(repo: &std::path::Path) -> Vec<String> {
+    fn walk(root: &std::path::Path, at: &std::path::Path, into: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(at) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .display()
+                .to_string()
+                .replace('\\', "/");
+            if relative == ".prikk" {
+                continue;
+            }
+            if path.is_dir() {
+                into.push(format!("{relative}/"));
+                walk(root, &path, into);
+            } else {
+                into.push(relative);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(repo, repo, &mut out);
+    out.sort();
+    out
+}
+
+/// **The fixture every leg starts from**: a parent block, then one block that does every status
+/// F2's table names. Returns the ids, newest first.
+///
+/// The `mode` row is Unix only (F5), and so is the executable bit it changes.
+fn rfc058_base(bin: &PrikkBin, fixture: &Fixture, counting: &CountingWrites) -> Vec<String> {
+    let repo = fixture.repo().to_path_buf();
+    std::fs::create_dir_all(repo.join("dir/sub"))
+        .unwrap_or_else(|e| panic!("0.{}: mkdir: {e}", bin.minor));
+    rfc032_write(&repo, "a.txt", "one\n");
+    rfc032_write(&repo, "b.txt", "two\n");
+    rfc032_write(&repo, "old.txt", "moved\n");
+    rfc032_write(&repo, "dir/sub/d.txt", "deep\n");
+    std::fs::write(repo.join("bin.dat"), [0u8, 1, 2])
+        .unwrap_or_else(|e| panic!("0.{}: write bin.dat: {e}", bin.minor));
+    rfc032_write(&repo, "run.sh", "#!/bin/sh\necho hi\n");
+    rfc058_seal(bin, fixture, counting, "the parent");
+
+    // The block to undo: every status F2 lists.
+    rfc032_write(&repo, "a.txt", "ONE\n"); // modified
+    std::fs::remove_file(repo.join("b.txt"))
+        .unwrap_or_else(|e| panic!("0.{}: rm b.txt: {e}", bin.minor)); // deleted
+    std::fs::write(repo.join("bin.dat"), [3u8, 4, 5])
+        .unwrap_or_else(|e| panic!("0.{}: write bin.dat: {e}", bin.minor)); // binary
+    rfc032_write(&repo, "c.txt", "new\n"); // added
+    std::fs::remove_file(repo.join("dir/sub/d.txt"))
+        .unwrap_or_else(|e| panic!("0.{}: rm d.txt: {e}", bin.minor)); // deleted, nested
+    std::fs::remove_dir_all(repo.join("dir"))
+        .unwrap_or_else(|e| panic!("0.{}: rmdir dir: {e}", bin.minor));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(repo.join("run.sh"), std::fs::Permissions::from_mode(0o755))
+            .unwrap_or_else(|e| panic!("0.{}: chmod: {e}", bin.minor)); // mode
+    }
+    fixture.set_author_env();
+    rfc032_mv(bin, &repo, "old.txt", "new.txt"); // renamed
+    Fixture::clear_env();
+    rfc058_seal(bin, fixture, counting, "the mistake");
+    rfc058_blocks(bin, counting, &repo)
+}
+
+/// **Leg 1: undoing the newest block gives the parent back exactly** — every path, every mode and
+/// every byte, by prikk's own `tree` and `cat`, with `verify` passing afterwards.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_leg1_the_undo_of_the_tip_is_identical_to_its_parent_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let blocks = rfc058_base(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+    let (block, parent) = (blocks[0].clone(), blocks[1].clone());
+
+    // The undo, through the shipped path, then sealed — a tip is what `tree` can be asked about.
+    let result = rfc058_undo(&bin, &fixture, &counting, &block, "Undo: the mistake");
+    match result {
+        stikk_core::UndoResult::Done(commit) => assert!(
+            commit.operations > 0,
+            "0.{}: the undo authored operations, got {commit:?}",
+            bin.minor
+        ),
+        stikk_core::UndoResult::Stopped(stopped) => {
+            panic!("0.{}: the undo stopped: {stopped:?}", bin.minor)
+        }
+    }
+    fixture.set_maintainer_env();
+    counting
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal the undo: {e}", bin.minor));
+    Fixture::clear_env();
+
+    let tip = rfc058_blocks(&bin, &counting, &repo)
+        .first()
+        .unwrap_or_else(|| panic!("0.{}: the undo's own block", bin.minor))
+        .clone();
+    assert_ne!(tip, block, "0.{}: the undo is a new block", bin.minor);
+
+    // **Every path and every mode.**
+    let theirs = rfc058_tree(&bin, &counting, &repo, &parent);
+    let ours = rfc058_tree(&bin, &counting, &repo, &tip);
+    assert_eq!(
+        ours, theirs,
+        "0.{}: the undo's tip holds the parent's own paths and modes",
+        bin.minor
+    );
+    // **Every byte.**
+    for (path, _) in &theirs {
+        assert_eq!(
+            rfc058_bytes(&bin, &repo, &root, &tip, path),
+            rfc058_bytes(&bin, &repo, &root, &parent, path),
+            "0.{}: {path} differs from the parent's own bytes",
+            bin.minor
+        );
+    }
+    // **And history keeps both** (`CON-3`), with prikk's verdict still sound.
+    let blocks = rfc058_blocks(&bin, &counting, &repo);
+    assert!(
+        blocks.contains(&block) && blocks.contains(&parent),
+        "0.{}: nothing was erased, got {blocks:?}",
+        bin.minor
+    );
+    assert!(
+        rfc056_verify_ok(&counting, &repo, bin.minor),
+        "0.{}: verify passes after an undo",
+        bin.minor
+    );
+}
+
+/// **Leg 2: an older block whose paths no later block touched** — its changes go, the later
+/// block's stay (F3).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_leg2_an_older_block_is_undone_and_the_later_one_is_kept_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+
+    // one: a.txt. two: a.txt changed, n.txt added. three: x.txt added, and nothing of two's.
+    rfc032_write(&repo, "a.txt", "a1\n");
+    rfc058_seal(&bin, &fixture, &counting, "one");
+    rfc032_write(&repo, "a.txt", "a2\n");
+    rfc032_write(&repo, "n.txt", "n\n");
+    rfc058_seal(&bin, &fixture, &counting, "two");
+    rfc032_write(&repo, "x.txt", "x2\n");
+    rfc058_seal(&bin, &fixture, &counting, "three");
+
+    let blocks = rfc058_blocks(&bin, &counting, &repo);
+    let two = blocks[1].clone();
+    let result = rfc058_undo(&bin, &fixture, &counting, &two, "Undo: two");
+    assert!(
+        matches!(result, stikk_core::UndoResult::Done(_)),
+        "0.{}: the undo was recorded, got {result:?}",
+        bin.minor
+    );
+
+    // The worktree now holds one's `a.txt`, no `n.txt`, and three's `x.txt` — the measured shape.
+    assert_eq!(
+        std::fs::read_to_string(repo.join("a.txt"))
+            .unwrap_or_else(|e| panic!("0.{}: read a.txt: {e}", bin.minor)),
+        "a1\n",
+        "0.{}: a.txt is one's again",
+        bin.minor
+    );
+    assert!(
+        !repo.join("n.txt").exists(),
+        "0.{}: n.txt is gone",
+        bin.minor
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.join("x.txt"))
+            .unwrap_or_else(|e| panic!("0.{}: read x.txt: {e}", bin.minor)),
+        "x2\n",
+        "0.{}: three's own change is kept",
+        bin.minor
+    );
+}
+
+/// **Leg 3: a later block changed the same path** — guard 5, naming it, with nothing written.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_leg3_a_later_block_that_changed_the_same_path_refuses_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+
+    rfc032_write(&repo, "a.txt", "a1\n");
+    rfc058_seal(&bin, &fixture, &counting, "one");
+    rfc032_write(&repo, "a.txt", "a2\n");
+    rfc058_seal(&bin, &fixture, &counting, "two");
+    rfc032_write(&repo, "a.txt", "a3\n");
+    rfc058_seal(&bin, &fixture, &counting, "three");
+
+    let blocks = rfc058_blocks(&bin, &counting, &repo);
+    let before = rfc058_worktree(&repo);
+    let reason = rfc058_refusal(&bin, &counting, &repo, &blocks[1]);
+    assert_eq!(
+        reason,
+        stikk_core::later_block_changed(&["a.txt".to_string()]),
+        "0.{}: guard 5's own sentence",
+        bin.minor
+    );
+    assert_eq!(
+        rfc058_worktree(&repo),
+        before,
+        "0.{}: nothing was written",
+        bin.minor
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.join("a.txt"))
+            .unwrap_or_else(|e| panic!("0.{}: read a.txt: {e}", bin.minor)),
+        "a3\n",
+        "0.{}: three's change is untouched",
+        bin.minor
+    );
+}
+
+/// **Leg 4: a dirty worktree** — guard 1, with nothing written.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_leg4_a_dirty_worktree_refuses_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let blocks = rfc058_base(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+
+    // **An untracked file alone does not block** (decision 4, as clarified): the preview is
+    // offered with one in the worktree, as long as it is not in the way.
+    rfc032_write(&repo, "notes.tmp", "mine\n");
+    let offered = stikk_core::undo_preview(&counting, &repo, &blocks[0], "Undo: it")
+        .unwrap_or_else(|e| panic!("0.{}: undo_preview: {e}", bin.minor));
+    assert!(
+        matches!(offered, stikk_core::UndoPreviewOutcome::Ready { .. }),
+        "0.{}: an untracked file elsewhere must not block, got {offered:?}",
+        bin.minor
+    );
+    // A modified tracked file does.
+    rfc032_write(&repo, "a.txt", "mine now\n");
+    let before = rfc058_worktree(&repo);
+    assert_eq!(
+        rfc058_refusal(&bin, &counting, &repo, &blocks[0]),
+        stikk_core::WORKTREE_HAS_CHANGES,
+        "0.{}: guard 1's own sentence",
+        bin.minor
+    );
+    assert_eq!(
+        rfc058_worktree(&repo),
+        before,
+        "0.{}: nothing was written",
+        bin.minor
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.join("a.txt"))
+            .unwrap_or_else(|e| panic!("0.{}: read a.txt: {e}", bin.minor)),
+        "mine now\n",
+        "0.{}: the reader's own change is untouched",
+        bin.minor
+    );
+}
+
+/// **Leg 5: work queued** — guard 2, with nothing written.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_leg5_queued_work_refuses_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let blocks = rfc058_base(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+
+    // A commit with no seal: the queue holds one patch.
+    rfc032_write(&repo, "queued.txt", "waiting\n");
+    fixture.set_author_env();
+    counting
+        .commit(&repo, "heads/main", "queued")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    Fixture::clear_env();
+
+    let before = rfc058_worktree(&repo);
+    assert_eq!(
+        rfc058_refusal(&bin, &counting, &repo, &blocks[0]),
+        stikk_core::WORK_IS_QUEUED,
+        "0.{}: guard 2's own sentence",
+        bin.minor
+    );
+    assert_eq!(
+        rfc058_worktree(&repo),
+        before,
+        "0.{}: nothing was written",
+        bin.minor
+    );
+}
+
+/// **Leg 6: a merge block, and the first block of a branch** — guards 3 and 4.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_leg6_a_merge_and_a_first_block_refuse_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+
+    rfc032_write(&repo, "a.txt", "a1\n");
+    rfc058_seal(&bin, &fixture, &counting, "the first block");
+    // **Guard 4**: the first block of this branch has nothing below it.
+    let first = rfc058_blocks(&bin, &counting, &repo)[0].clone();
+    assert_eq!(
+        rfc058_refusal(&bin, &counting, &repo, &first),
+        stikk_core::THE_FIRST_BLOCK,
+        "0.{}: guard 4's own sentence",
+        bin.minor
+    );
+
+    // **Guard 3**: a merge block **on the current branch**, which is the only place an undo is
+    // offered at all (decision 3). prikk's `merge` does not write the worktree (RFC 047 F3), and
+    // guard 1 comes before guard 3 -- so the worktree is brought to the merge's own state by hand
+    // before the guard is asked for, and the leg checks that it is clean before it asks.
+    let base = rfc058_blocks(&bin, &counting, &repo)[0].clone();
+    fixture.set_maintainer_env();
+    prikk_ok(
+        &bin,
+        &repo,
+        &["branch", "create", "heads/feature", "--from", "heads/main"],
+    );
+    prikk_ok(&bin, &repo, &["branch", "switch", "heads/feature"]);
+    Fixture::clear_env();
+    rfc032_write(&repo, "c.txt", "c\n");
+    fixture.set_author_env();
+    counting
+        .commit(&repo, "heads/feature", "feature adds c")
+        .unwrap_or_else(|e| panic!("0.{}: commit on heads/feature: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    counting
+        .seal(&repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: seal heads/feature: {e}", bin.minor));
+    prikk_ok(&bin, &repo, &["branch", "switch", "heads/main"]);
+    let merged = counting.merge(&repo, &base, "heads/main", "heads/feature");
+    Fixture::clear_env();
+    let merged = merged.unwrap_or_else(|e| panic!("0.{}: merge: {e}", bin.minor));
+    if matches!(merged, stikk_prikk::MergeResult::Unavailable) {
+        eprintln!(
+            "0.{}: merge is unavailable here, so guard 3 is not provoked at this ceiling.",
+            bin.minor
+        );
+        return;
+    }
+    rfc032_write(&repo, "c.txt", "c\n");
+    let status = counting
+        .worktree_status(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: worktree-status: {e}", bin.minor));
+    assert!(
+        status.clean,
+        "0.{}: the worktree must match the merge, or guard 1 answers first: {status:?}",
+        bin.minor
+    );
+    let tip = rfc058_blocks(&bin, &counting, &repo)[0].clone();
+    assert_eq!(
+        rfc058_refusal(&bin, &counting, &repo, &tip),
+        stikk_core::A_MERGE_BLOCK,
+        "0.{}: guard 3's own sentence",
+        bin.minor
+    );
+}
+
+/// **Leg 7: an untracked file in the way** — guard 6, naming it, with the reader's own file
+/// untouched.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_leg7_an_untracked_file_in_the_way_refuses_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let blocks = rfc058_base(&bin, &fixture, &counting);
+    let repo = fixture.repo().to_path_buf();
+
+    // `b.txt` is what the block deleted, so the undo would put it back — and here it is already
+    // there, untracked and holding something else.
+    rfc032_write(&repo, "b.txt", "not the block's\n");
+    let before = rfc058_worktree(&repo);
+    assert_eq!(
+        rfc058_refusal(&bin, &counting, &repo, &blocks[0]),
+        stikk_core::in_the_way(&["b.txt".to_string()]),
+        "0.{}: guard 6's own sentence",
+        bin.minor
+    );
+    assert_eq!(
+        rfc058_worktree(&repo),
+        before,
+        "0.{}: nothing was written",
+        bin.minor
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.join("b.txt"))
+            .unwrap_or_else(|e| panic!("0.{}: read b.txt: {e}", bin.minor)),
+        "not the block's\n",
+        "0.{}: the reader's own file is untouched",
+        bin.minor
+    );
+}
+
+/// **Leg 8, Windows only (F5): a block with a `mode` entry has no exact inverse there**, and
+/// stikk refuses it rather than recording a mode prikk cannot derive from the worktree.
+///
+/// A block with no mode change is leg 1's case, and leg 1 runs on this platform too — its own
+/// fixture leaves the mode row out here, which is why this leg has to make one of its own.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+#[cfg(windows)]
+fn rfc058_leg8_a_mode_entry_refuses_on_windows_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if !rfc058_in_band(&bin) {
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+
+    // prikk records 100644 for a file authored on Windows, so a `mode` entry cannot be made from
+    // the worktree here at all: it is made by committing the file on a ref whose recorded mode
+    // differs, which this platform cannot do either. What it can do is ask for the inverse of a
+    // comparison prikk itself reports a mode entry in — and where it cannot, the leg says so
+    // rather than asserting nothing.
+    rfc032_write(&repo, "run.sh", "#!/bin/sh\n");
+    rfc058_seal(&bin, &fixture, &counting, "the parent");
+    rfc032_write(&repo, "run.sh", "#!/bin/sh\necho hi\n");
+    rfc058_seal(&bin, &fixture, &counting, "a change");
+    let blocks = rfc058_blocks(&bin, &counting, &repo);
+    let diff = counting
+        .diff(
+            &repo,
+            &stikk_prikk::Comparison::Points {
+                from: blocks[1].clone(),
+                to: blocks[0].clone(),
+            },
+        )
+        .unwrap_or_else(|e| panic!("0.{}: diff: {e}", bin.minor));
+    let stikk_prikk::DiffReport::Listed(diff) = diff else {
+        panic!("0.{}: the comparison is in band", bin.minor);
+    };
+    if !diff.entries.iter().any(|entry| entry.status == "mode") {
+        eprintln!(
+            "0.{}: this prikk reports no mode entry on Windows, so guard 7's Windows row is not \
+             provoked here. The unit test `guard_7_windows_refuses_the_two_rows_f5_names` covers \
+             the rule itself.",
+            bin.minor
+        );
+        return;
+    }
+    let reason = rfc058_refusal(&bin, &counting, &repo, &blocks[0]);
+    assert!(
+        reason.starts_with("stikk cannot undo this block exactly:"),
+        "0.{}: guard 7's own sentence, got {reason}",
+        bin.minor
+    );
+}
+
+/// **At 0.28 an undo is unavailable, and nothing is spawned** — the seam answers from the
+/// handshake alone, and stikk's own sentence carries both numbers (`C-T4d`).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc058_below_the_band_the_undo_is_unavailable() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::floor();
+    let fixture = Fixture::build(&bin);
+    let counting = CountingWrites::new(&bin);
+    let repo = fixture.repo().to_path_buf();
+    rfc032_write(&repo, "a.txt", "a1\n");
+    rfc058_seal(&bin, &fixture, &counting, "one");
+    rfc032_write(&repo, "a.txt", "a2\n");
+    rfc058_seal(&bin, &fixture, &counting, "two");
+    let blocks = rfc058_blocks(&bin, &counting, &repo);
+
+    let reason = rfc058_refusal(&bin, &counting, &repo, &blocks[0]);
+    assert_eq!(
+        reason,
+        stikk_core::undo_unavailable(bin.minor),
+        "0.{}: stikk's own words below the band",
+        bin.minor
+    );
+    assert!(
+        reason.contains(&format!("0.{}", stikk_core::UNDO_FROM_MINOR))
+            && reason.contains(&format!("0.{}", bin.minor)),
+        "{reason}"
+    );
+    // And the seam itself answers `Unavailable` for the one new method, spawning nothing.
+    let renamed = counting
+        .rename_path(&repo, "a.txt", "b.txt")
+        .unwrap_or_else(|e| panic!("0.{}: rename_path below the band: {e}", bin.minor));
+    assert!(
+        matches!(renamed, stikk_prikk::Renamed::Unavailable),
+        "0.{}: rename_path must answer Unavailable, got {renamed:?}",
+        bin.minor
+    );
+    assert!(
+        repo.join("a.txt").exists() && !repo.join("b.txt").exists(),
+        "0.{}: nothing was moved",
+        bin.minor
+    );
+    println!("0.{}: {reason}", bin.minor);
 }

@@ -765,18 +765,29 @@ fn compute(
 
     // **Guard 3** (F4): `log` names only one parent of a merge, so there is no comparison to
     // invert.
-    if block.kind == "Merge" || block.parents != 1 {
+    //
+    // **`parents > 1`, not `!= 1`** -- the handoff's letter, corrected by the suite. A **root**
+    // block reports `parents: 0`, and decision 4's order would have answered it with *"stikk
+    // cannot undo a merge yet"*, which is not true of it and tells the reader nothing about what
+    // is actually in the way. A block with no parent at all has nothing before it, which is
+    // guard 4's own sentence, and that is where it now falls (measured at 0.55.0, leg 6).
+    if block.kind == "Merge" || block.parents > 1 {
         return Ok(blocked(A_MERGE_BLOCK.to_string()));
     }
 
-    // **Guard 4** (F4), and the truncation case the sentence would otherwise claim wrongly.
-    let Some(parent) = parent else {
-        let reason = if lineage.blocks.len() >= UNDO_HISTORY_LIMIT {
-            DEEPER_THAN_STIKK_LOOKED
-        } else {
-            THE_FIRST_BLOCK
-        };
-        return Ok(blocked(reason.to_string()));
+    // **Guard 4** (F4): nothing before it -- a root, which names no parent, or no row below it in
+    // the lineage stikk read. The truncation case is the one the RFC's sentence would claim
+    // wrongly, so it gets its own.
+    let parent = match parent {
+        Some(parent) if block.parents > 0 => parent,
+        _ => {
+            let reason = if block.parents == 0 || lineage.blocks.len() < UNDO_HISTORY_LIMIT {
+                THE_FIRST_BLOCK
+            } else {
+                DEEPER_THAN_STIKK_LOOKED
+            };
+            return Ok(blocked(reason.to_string()));
+        }
     };
 
     // **The two comparisons** (§3.1 step 2), read only now: the four guards above cost no `diff`.

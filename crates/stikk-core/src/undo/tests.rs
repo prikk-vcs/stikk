@@ -453,10 +453,32 @@ fn guard_3_a_merge_block() {
     }
 }
 
-/// **Guard 4** (F4): with no row below it there is nothing to compare against.
+/// **Guard 4** (F4): with no row below it, or with no parent of its own, there is nothing to
+/// compare against.
+///
+/// **A root block answers this, not guard 3** (leg 6, measured at 0.55.0): prikk reports a root as
+/// `parents: 0`, and decision 4's order read literally would have told the reader stikk cannot
+/// undo a merge -- which is not true of a root, and names nothing they could act on.
 #[test]
 fn guard_4_the_first_block_on_the_branch() {
-    let backend = backend().with_history(lineage(vec![row(BLOCK, "Normal", 1, &["the first"])]));
+    for block in [
+        row(BLOCK, "Normal", 1, &["the first"]),
+        row(BLOCK, "Root", 0, &["the root"]),
+    ] {
+        let backend = backend().with_history(lineage(vec![block]));
+        assert_eq!(
+            blocked_reason(preview_of(&backend, repo())),
+            THE_FIRST_BLOCK
+        );
+        wrote_nothing(&backend);
+    }
+    // And a root with a row below it -- which prikk's own `log` cannot produce, a root being the
+    // oldest block there is -- still answers guard 4, rather than inverting a comparison against
+    // a block that is not its parent.
+    let backend = backend().with_history(lineage(vec![
+        row(BLOCK, "Root", 0, &["the root"]),
+        row(PARENT, "Normal", 1, &["below a root"]),
+    ]));
     assert_eq!(
         blocked_reason(preview_of(&backend, repo())),
         THE_FIRST_BLOCK

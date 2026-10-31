@@ -131,6 +131,7 @@
   - **C-T4c Verbatim truth** (ER-02, NFR-I03): prikk's refusal/warning text is shown unmodified; stikk's gloss is additive, never a replacement, so stikk cannot soften a refusal into an apparent success.
   - **C-T4d Capability honesty** (OP-06): unavailable actions are disabled-with-reason, never hidden and never silently no-op — the user always knows why they cannot do a thing.
   - **C-T4e Confirmation restates authoritative values** (TU-09): ids and counts come from prikk, so attacker-supplied display content cannot dress up a different operation than the one that will run.
+  - **C-T4f Worktree writes are prikk's own paths** (RFC 058 decision 7): stikk writes worktree files only to undo a block, at paths prikk names, after a clean-worktree check. It fetches every earlier file outside the repository before touching the worktree, writes only bytes prikk's `cat` gave it, writes nothing under `.prikk/` and no state file, and refuses any path that is not relative and inside the worktree. `C-E2` concerns stikk's own state files and is unchanged.
 
 ---
 

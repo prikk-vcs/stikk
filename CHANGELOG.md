@@ -2,6 +2,38 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Added
+
+- **Undo one block from History (`U`).** stikk puts back what the block changed and records it as a
+  new commit, so history keeps both. It refuses when the worktree has changes, work is queued, the
+  block is a merge or the first on its branch, or a later block changed the same files. At prikk
+  ≥ 0.54.
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model`,
+`stikk-state` and the `stikk` launcher are unchanged.**
+
+| Crate | Change |
+|---|---|
+| `stikk-prikk` | **The `Prikk` trait gains one required method**, `rename_path`. Anything outside this workspace that implements the trait stops compiling until it implements it; nothing that only *calls* the trait is affected |
+| `stikk-core` | **`ConfirmationSummary` gained two fields**, `preamble` and `undo_plan`. The struct is not `#[non_exhaustive]`, so outside code that constructs one must name them |
+| `stikk-tui` | **`Overlay` gained `UndoMessage`, `UndoRecorded` and `UndoStopped`.** The enum is not `#[non_exhaustive]`, so outside code that matches it exhaustively must account for them |
+
+**`cargo public-api -p <crate> diff 0.19.0` reports `(none)` under both *Removed items* and
+*Changed items* for every crate**, and lists each of the three rows above under *Added items* — a
+required trait method, a struct field and an enum variant are additions to the API's text and
+breaks for a dependent all the same, which is why they are named here.
+
+**Additive:** `stikk_prikk::Renamed`, with `NullBackend`'s `with_rename_path`,
+`with_rename_path_refusal`, `rename_path_calls`, `with_diff_from_to`, `with_save_file_writing` and
+`calls`; `stikk_core::undo` — `UndoAction`, `UndoStep`, `UndoPlan`, `UndoPreview`,
+`UndoPreviewOutcome`, `UndoToken`, `UndoResult`, `UndoStopped`, `undo_preview`,
+`undo_confirm_and_execute`, `prefilled_undo_message`, `stopped_text`, `undo_unavailable`, the
+guards' sentences and `UNDO_FROM_MINOR`; and `stikk_tui::App::begin_undo_block`.
+
 ## 0.19.0 — 2026-10-31
 
 **stikk now reads prikk's status as structured data, never cuts off a key id you have to type, and

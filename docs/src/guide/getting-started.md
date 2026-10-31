@@ -228,6 +228,47 @@ of one does not exist — so the name you choose is the name that stays. Somethi
 **Going forward again** is the same third step: select your original branch in the ref picker and
 press `s`.
 
+**If what you want is to take a change back**, see [Undoing a block](#undoing-a-block) below. That
+one records the reversal as a new change instead of moving you to an older one.
+
+## Undoing a block
+
+You sealed something and it was a mistake. **`U` puts back what that block changed**, as a new
+change on top of it. Needs prikk 0.54 or newer.
+
+Open **History** with `Enter`, put the cursor on the block you regret, and press **`U`**. It works
+from the block's detail screen too.
+
+1. **The message.** stikk fills in `Undo: <the block's own message>`; edit it if you like. This is
+   what `prikk log` will show for the undo.
+2. **The card.** It lists every file, one line each, with what will happen to it: *put back*,
+   *remove*, *rename back*, *put back the permissions*. Read that list — it is the whole of what
+   will change. `Enter` does it; `Esc` walks away and changes nothing.
+3. **Seal it.** The undo is an ordinary commit, so press **`S`** when you are ready for it to
+   become part of the history.
+
+**Nothing is erased.** The block you undid is still there, and so is the undo — History shows
+both. That is the difference from [going back to an earlier block](#going-back-to-an-earlier-block),
+which moves your worktree to an older block and records nothing at all.
+
+**When stikk will not do it**, each with a sentence saying what is in the way:
+
+- **your worktree has changes** — commit or remove them first, so the undo cannot overwrite your
+  own work. An untracked file somewhere else is fine;
+- **work is waiting to be sealed** — seal it, so the undo is recorded after it;
+- **a later block changed one of the same files** — undoing this one would throw that later change
+  away, so stikk names the file and stops;
+- **the block is a merge**, or **the first block on the branch** — there is nothing single to go
+  back to;
+- **a file the undo would write is already there**, untracked — stikk names it rather than
+  replacing something it did not put there;
+- **you are looking at another branch's history** — undo works on the branch you are on; switch to
+  it first.
+
+If something fails part-way — prikk refuses the commit, or a file cannot be written — stikk stops
+at once, **commits nothing**, and tells you exactly which files it had already changed. `w` shows
+them, and you decide what to do next. It never tries again by itself.
+
 ## Sharing work
 
 Two people share prikk history by **bundle files**. One exports a branch to a file, sends it any

@@ -96,6 +96,12 @@ pub struct NullBackend {
     /// writes share one: a test drives one of them at a time, and the counters below say which
     /// ran.
     trust_write: Scripted<crate::TrustWritten>,
+    /// What [`Prikk::rename_path`] answers (RFC 058).
+    rename_path: Scripted<crate::Renamed>,
+    /// Every `(from, to)` [`Prikk::rename_path`] was asked for, **in order** -- an undo's
+    /// renames must run before its removals, and the order is the thing under test. Shared
+    /// across clones.
+    rename_path_calls: Arc<std::sync::Mutex<Vec<(String, String)>>>,
     /// How many times [`Prikk::trust_add`] has been asked -- the number every guard test
     /// asserts is **zero**. Shared across clones.
     trust_add_calls: Arc<AtomicUsize>,
@@ -210,6 +216,8 @@ impl NullBackend {
             bundle_preview: Ok(crate::BundlePreview::Unavailable),
             trusted_keys: Ok(crate::TrustedKeys::Unavailable),
             trust_write: Ok(crate::TrustWritten::Unavailable),
+            rename_path: Ok(crate::Renamed::Unavailable),
+            rename_path_calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             trust_add_calls: Arc::new(AtomicUsize::new(0)),
             trust_remove_calls: Arc::new(AtomicUsize::new(0)),
             file_meta: Ok(crate::FileMetaRead::Unavailable),
@@ -657,6 +665,30 @@ impl NullBackend {
         self.trust_remove_calls.load(Ordering::SeqCst)
     }
 
+    /// Answer [`Prikk::rename_path`] with prikk's printed lines (RFC 058).
+    #[must_use]
+    pub fn with_rename_path(mut self, lines: Vec<String>) -> Self {
+        self.rename_path = Ok(crate::Renamed::Done(lines));
+        self
+    }
+
+    /// Fail [`Prikk::rename_path`], so a test can show an undo stopping part-way with prikk's
+    /// refusal verbatim.
+    #[must_use]
+    pub fn with_rename_path_refusal(mut self, message: impl Into<String>) -> Self {
+        self.rename_path = Err(message.into());
+        self
+    }
+
+    /// Every rename this backend (and its clones) was asked for, **in order**.
+    #[must_use]
+    pub fn rename_path_calls(&self) -> Vec<(String, String)> {
+        self.rename_path_calls
+            .lock()
+            .map(|calls| calls.clone())
+            .unwrap_or_default()
+    }
+
     /// Answer [`Prikk::file_meta`] with one file's metadata (RFC 053).
     #[must_use]
     pub fn with_file_meta(mut self, meta: crate::FileMeta) -> Self {
@@ -1039,6 +1071,13 @@ impl Prikk for NullBackend {
     fn trust_remove(&self, _repo: &Path, _key_id: &str) -> Result<crate::TrustWritten> {
         self.trust_remove_calls.fetch_add(1, Ordering::SeqCst);
         deliver(&self.trust_write)
+    }
+
+    fn rename_path(&self, _repo: &Path, from: &str, to: &str) -> Result<crate::Renamed> {
+        if let Ok(mut calls) = self.rename_path_calls.lock() {
+            calls.push((from.to_string(), to.to_string()));
+        }
+        deliver(&self.rename_path)
     }
 
     fn file_meta(&self, _repo: &Path, _block: &str, _path: &str) -> Result<crate::FileMetaRead> {

@@ -143,6 +143,10 @@ impl Prikk for SlowOrientation {
         self.0.trust_remove(repo, key_id)
     }
 
+    fn rename_path(&self, repo: &Path, from: &str, to: &str) -> Result<stikk_prikk::Renamed> {
+        self.0.rename_path(repo, from, to)
+    }
+
     fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<stikk_prikk::FileMetaRead> {
         self.0.file_meta(repo, block, path)
     }

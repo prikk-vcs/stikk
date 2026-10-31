@@ -3783,3 +3783,66 @@ fn rfc057_orientation_reads_json_from_0_43_and_prose_below_it() {
         );
     }
 }
+
+// ---------------------------------------------------------------- RFC 058: the rename declaration
+
+/// **`mv`'s argv, exactly** (RFC 058 decision 2), and prikk's lines carried verbatim.
+#[cfg(unix)]
+#[test]
+fn rename_path_declares_the_move_and_carries_prikks_lines() {
+    let (script, argv) = fake_trust_write_prikk(
+        "mv",
+        "0.55.0",
+        "declared rename: old.txt -> new.txt\nrecorded for the next commit\n",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.rename_path(std::path::Path::new("."), "old.txt", "new.txt")
+    })
+    .expect("a rename");
+    assert_eq!(
+        out,
+        crate::Renamed::Done(vec![
+            "declared rename: old.txt -> new.txt".to_string(),
+            "recorded for the next commit".to_string(),
+        ])
+    );
+    assert_eq!(recorded_argv(&argv), vec!["mv", "old.txt", "new.txt"]);
+}
+
+/// **Below the band nothing is spawned**: the fake would record an argv if it ran.
+#[cfg(unix)]
+#[test]
+fn below_the_band_rename_path_is_unavailable_and_spawns_nothing() {
+    let (script, argv) = fake_trust_write_prikk("mvband", "0.53.0", "unreachable\n", 0);
+    let backend = CliBackend::with_program(&script);
+    assert_eq!(
+        retrying_transient_exec_busy(|| backend.rename_path(
+            std::path::Path::new("."),
+            "old.txt",
+            "new.txt"
+        ))
+        .expect("below the band is an answer, not an error"),
+        crate::Renamed::Unavailable
+    );
+    assert!(
+        !argv.exists(),
+        "below the band prikk must be asked its version and nothing else"
+    );
+}
+
+/// **A refusal is prikk's, verbatim** (`ER-02`) — an untracked source, a destination in the way.
+#[cfg(unix)]
+#[test]
+fn a_refused_rename_carries_prikks_words() {
+    let said = "error: precondition not met: old.txt is not tracked at heads/main";
+    let (script, _argv) = fake_trust_write_prikk("mvrefused", "0.55.0", said, 1);
+    let backend = CliBackend::with_program(&script);
+    let err = retrying_transient_exec_busy(|| {
+        backend.rename_path(std::path::Path::new("."), "old.txt", "new.txt")
+    })
+    .expect_err("prikk refused");
+    assert_eq!(err.class(), "refusal");
+    assert!(err.to_string().contains("is not tracked"), "{err}");
+}

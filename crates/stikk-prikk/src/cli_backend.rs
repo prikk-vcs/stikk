@@ -1176,6 +1176,21 @@ impl Prikk for CliBackend {
         Ok(crate::FileSaved::Done)
     }
 
+    fn rename_path(&self, repo: &Path, from: &str, to: &str) -> Result<crate::Renamed> {
+        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
+            return Ok(crate::Renamed::Unavailable);
+        }
+        // **`QueueMutation`, as `commit` is** (RFC 058 decision 2): `mv` declares the rename for
+        // the next commit to author, and seals nothing. prikk's lines come back verbatim; what
+        // the worktree now holds is read by `worktree_status`, never parsed out of this.
+        let out = self.run(
+            Some(repo),
+            RequestCategory::QueueMutation,
+            [OsStr::new("mv"), OsStr::new(from), OsStr::new(to)],
+        )?;
+        Ok(crate::Renamed::Done(printed_lines(&out)))
+    }
+
     fn extract_plan(&self, repo: &Path, block: &str, dir: &Path) -> Result<crate::Extracted> {
         if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
             return Ok(crate::Extracted::Unavailable);

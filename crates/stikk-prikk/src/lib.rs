@@ -1031,6 +1031,20 @@ pub enum TrustedKeys {
     Unavailable,
 }
 
+/// What `prikk mv` printed, or why stikk did not run it (RFC 058 decision 2).
+///
+/// **prikk's lines, verbatim, and stikk parses none of them.** `mv` declares the rename into the
+/// next commit rather than moving history, and its own output is the record of that -- what the
+/// repository holds afterwards is read back by `worktree_status`, which stikk already parses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Renamed {
+    /// prikk ran and exited 0. Its printed lines, for the result screen.
+    Done(Vec<String>),
+    /// Below [`crate::FILES_FROM_MINOR`], the band an undo needs for its bytes. stikk spawned
+    /// nothing and says so in its own voice (`C-T4d`).
+    Unavailable,
+}
+
 /// What a trust write printed, or why stikk did not run it (RFC 056 decision 1).
 ///
 /// **prikk's lines, verbatim, and stikk parses none of them.** Neither `trust maintainer add`
@@ -2275,6 +2289,27 @@ pub trait Prikk: Send + Sync {
     /// # Errors
     /// [`stikk_model::StikkError`]: prikk's refusal verbatim, or whatever stopped prikk running.
     fn trust_remove(&self, repo: &Path, key_id: &str) -> Result<TrustWritten>;
+
+    /// Declare a rename in the worktree (`prikk mv <from> <to>`; RFC 058 decision 2).
+    ///
+    /// **A queue mutation, not a history write.** prikk records the declaration so that the next
+    /// `commit` authors a rename rather than a delete and a create; nothing is sealed here. That
+    /// is why its category is [`stikk_model::RequestCategory::QueueMutation`], the same as
+    /// `commit`'s.
+    ///
+    /// **The one call an undo makes that moves a worktree file through prikk** rather than
+    /// through stikk's own writes (RFC 058 decision 6): a rename is undone as a rename, so the
+    /// undo block records `rename-path` and not a delete plus a create (F2, measured).
+    ///
+    /// **Banded at [`crate::FILES_FROM_MINOR`]**, with the rest of the undo: below it nothing is
+    /// spawned and the answer is [`Renamed::Unavailable`]. `mv` itself is older, but an undo
+    /// cannot be assembled without `cat --output`, so banding the two apart would offer half an
+    /// operation.
+    ///
+    /// # Errors
+    /// [`stikk_model::StikkError`]: prikk's refusal verbatim -- a path that is not tracked, a
+    /// destination already there -- or whatever stopped prikk running.
+    fn rename_path(&self, repo: &Path, from: &str, to: &str) -> Result<Renamed>;
 }
 
 /// The one line a bundle's tip is read from: `tip block: <64 lowercase hex>`, in

@@ -7535,6 +7535,9 @@ struct CountingWrites {
     /// How many times a **trust write** was spawned -- `trust_add` and `trust_remove` together,
     /// since RFC 056's guard legs assert that neither ran.
     trust_writes: std::sync::atomic::AtomicUsize,
+    /// How many times `mv` was spawned. **The number RFC 058's refusal legs assert is zero**: an
+    /// undo that declined after moving a file would have written the worktree.
+    renames: std::sync::atomic::AtomicUsize,
 }
 
 impl CountingWrites {
@@ -7546,6 +7549,7 @@ impl CountingWrites {
             exports: std::sync::atomic::AtomicUsize::new(0),
             saves: std::sync::atomic::AtomicUsize::new(0),
             trust_writes: std::sync::atomic::AtomicUsize::new(0),
+            renames: std::sync::atomic::AtomicUsize::new(0),
             extracts: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -7733,6 +7737,16 @@ impl Prikk for CountingWrites {
         self.trust_writes
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.trust_remove(repo, key_id)
+    }
+    fn rename_path(
+        &self,
+        repo: &std::path::Path,
+        from: &str,
+        to: &str,
+    ) -> stikk_model::Result<stikk_prikk::Renamed> {
+        self.renames
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.rename_path(repo, from, to)
     }
     fn file_meta(
         &self,

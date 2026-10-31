@@ -243,6 +243,11 @@ impl Prikk for Recording {
         self.inner.trust_remove(repo, key_id)
     }
 
+    fn rename_path(&self, repo: &Path, from: &str, to: &str) -> Result<stikk_prikk::Renamed> {
+        self.record("rename_path");
+        self.inner.rename_path(repo, from, to)
+    }
+
     fn file_meta(&self, repo: &Path, block: &str, path: &str) -> Result<stikk_prikk::FileMetaRead> {
         self.record("file_meta");
         self.inner.file_meta(repo, block, path)

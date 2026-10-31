@@ -403,6 +403,8 @@ fn summary(operation: &str, consequence: &str) -> ConfirmationSummary {
         message_note: None,
         materializes: None,
         merge_plan: None,
+        preamble: None,
+        undo_plan: None,
         asides: Vec::new(),
     }
 }

@@ -962,6 +962,8 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
         message_note: None,
         materializes: None,
         merge_plan: None,
+        preamble: None,
+        undo_plan: None,
         asides: Vec::new(),
     }
 }

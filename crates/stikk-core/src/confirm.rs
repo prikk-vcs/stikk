@@ -89,6 +89,16 @@ impl TargetId {
 pub struct ConfirmationSummary {
     /// The operation's human name (e.g. `"Commit"`).
     pub operation: String,
+    /// RFC 058 decision 5: stikk's own words directly under the heading, **above the targets** —
+    /// what this operation is, for an operation whose card must say that before it names the thing
+    /// it acts on. `None` for every operation that needs none.
+    ///
+    /// **Not [`Self::consequence`]**, which comes last and says what confirming makes permanent.
+    /// An undo's card opens with *what this is* ("a new change that puts back …; history keeps
+    /// both") and closes with *what follows* ("seal as usual"), and the two sentences cannot be
+    /// one field without the card drawing them in the wrong order. stikk's own words, drawn as
+    /// themselves.
+    pub preamble: Option<String>,
     /// The target ids and names involved, from prikk-authoritative values.
     pub target_ids: Vec<TargetId>,
     /// Labelled counts (e.g. `("patches", 3)`) — a label stikk authored, a number prikk reported.
@@ -190,6 +200,14 @@ pub struct ConfirmationSummary {
     /// [`unshown_paths_line`]'s words. Every path is repository text: render each inert
     /// (`C-T2a`).
     pub materializes: Option<FilePlan>,
+    /// RFC 058 decision 5: the steps an undo will take, one per path, in stikk's own words.
+    /// `None` for every other operation.
+    ///
+    /// **Not [`Self::materializes`]**, which has two marks — written and deleted — because that
+    /// is what a switch does. An undo has four verbs (*put back*, *remove*, *rename back*, *put
+    /// back the permissions*), and one of them names two paths, so a plan of pairs could not
+    /// carry it. Every path is repository text: render each inert (`C-T2a`).
+    pub undo_plan: Option<crate::undo::UndoPlan>,
     /// RFC 047 decision 6: prikk's own merge plan, verbatim, restated under the card so what is
     /// confirmed is the plan and not the idea. `None` for every other operation.
     ///

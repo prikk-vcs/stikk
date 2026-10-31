@@ -450,6 +450,8 @@ pub fn import_preview(
                 message_note: None,
                 materializes: None,
                 merge_plan: None,
+                preamble: None,
+                undo_plan: None,
                 // **Not targets** (review v1 C1). prikk's comparison is about a branch this
                 // operation does not touch, and prikk's continuity note is about the ids it
                 // sits with -- each gets a label saying which, so neither is read as a row in
@@ -597,6 +599,8 @@ fn blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
             message_note: None,
             materializes: None,
             merge_plan: None,
+            preamble: None,
+            undo_plan: None,
             asides: Vec::new(),
         },
     )
@@ -759,6 +763,8 @@ pub fn export_preview(
                 message_note: None,
                 materializes: None,
                 merge_plan: None,
+                preamble: None,
+                undo_plan: None,
                 asides: Vec::new(),
             },
         ))

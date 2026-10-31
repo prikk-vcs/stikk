@@ -1,7 +1,9 @@
 //! The operation layer — one shared operation set both frontends drive (design `stikk-04` AR-03,
 //! MOD-05).
 //!
-//! This crate owns no I/O and no widgets. It turns a user intent into a sequence of seam requests
+//! This crate owns no widgets, and no I/O but one: [`undo`] writes worktree files itself (RFC
+//! 058 decision 7), at paths prikk's own report names and after a clean-worktree check. Nothing
+//! else here touches a filesystem. It turns a user intent into a sequence of seam requests
 //! plus state reads and view-model productions, applying capability gating and (in later increments)
 //! the preview-first rule and confirmation tiers. Because both the TUI and the GUI drive *this* API
 //! and neither defines operations of its own, an operation present in one frontend and not the other
@@ -35,6 +37,7 @@ pub mod seal;
 pub mod session;
 pub mod switch;
 pub mod trust;
+pub mod undo;
 pub mod verify;
 
 pub use bundle::{
@@ -134,6 +137,13 @@ pub use trust::{
     TwoKeysOneId, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY, adopt_confirm_and_execute, adopt_preview,
     check_key_id, check_public_key, default_key_id, not_the_default_id, remove_confirm_and_execute,
     remove_preview, sealers, trust_unavailable,
+};
+pub use undo::{
+    A_MERGE_BLOCK, DEEPER_THAN_STIKK_LOOKED, INTERRUPTED, NOT_THE_CURRENT_BRANCH, THE_FIRST_BLOCK,
+    UNDO_CONSEQUENCE, UNDO_FROM_MINOR, UNDO_HISTORY_LIMIT, UNDO_LEAD, UNDO_OPERATION, UndoAction,
+    UndoPlan, UndoPreview, UndoPreviewOutcome, UndoResult, UndoStep, UndoStopped, UndoToken,
+    WORK_IS_QUEUED, WORKTREE_HAS_CHANGES, cannot_invert, in_the_way, later_block_changed,
+    undo_confirm_and_execute, undo_preview, undo_unavailable, unsafe_path,
 };
 pub use verify::{
     Checked, ConditionRow, JSON_OMITS, StageRow, VERIFY_FROM_MINOR, VerifyView, checked, verify,

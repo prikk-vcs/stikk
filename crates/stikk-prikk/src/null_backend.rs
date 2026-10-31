@@ -68,6 +68,11 @@ pub struct NullBackend {
     history_by_ref: Vec<(String, History)>,
     state: Scripted<StateReport>,
     diff: ScriptedDiff,
+    /// Comparisons scripted **per `(from, to)` pair**, consulted before [`Self::diff`]. RFC 058's
+    /// undo is the first operation that reads two comparisons in one preview -- the block against
+    /// its parent, and the block against the branch tip -- and a backend that answers both with
+    /// the same entries cannot show it either comparison's own guard.
+    diff_by_points: Vec<(String, String, ScriptedDiff)>,
     verify: Scripted<crate::VerifyReport>,
     /// What a ref write answers. One slot for all three (RFC 044): a test drives one
     /// operation at a time, and sharing it keeps the builder small.
@@ -111,9 +116,24 @@ pub struct NullBackend {
     file_meta: Scripted<crate::FileMetaRead>,
     /// What [`Prikk::save_file`] answers (RFC 053).
     save_file: Scripted<crate::FileSaved>,
+    /// Whether a successful [`Prikk::save_file`] also **writes the file** (RFC 058).
+    ///
+    /// **The one place this backend touches a filesystem**, and only when a test asks for it: an
+    /// undo fetches every earlier file and then copies what it fetched, and a fetch that wrote
+    /// nothing could not exercise the copy at all. The bytes written are the `path` asked for, so
+    /// a test can tell which file landed where.
+    save_file_writes: bool,
     /// How many times [`Prikk::save_file`] has been asked — so a test can prove a destination
     /// rule declined **without spawning it** (RFC 053 §7 trap 5). Shared across clones.
     save_file_calls: Arc<AtomicUsize>,
+    /// The seam calls an undo makes, **in order** (RFC 058 decision 6): `save-file <path>`,
+    /// `rename-path <from> -> <to>` and `commit <ref>`.
+    ///
+    /// **Per-method counters cannot show an order**, and for an undo the order *is* the safety
+    /// argument: every byte is fetched before the worktree is touched, and the renames run before
+    /// the removals. Only the three methods an undo uses record here; another operation's methods
+    /// can join them when one needs it. Shared across clones.
+    calls: Arc<std::sync::Mutex<Vec<String>>>,
     /// What [`Prikk::extract_plan`] answers (RFC 053). **Its own slot, not [`Self::extract`]'s**:
     /// the plan is read in the preview and the write runs at confirmation, and a test that shows
     /// a destination rule stopping before either needs to script the two apart.
@@ -201,6 +221,7 @@ impl NullBackend {
             }),
             // The default is the band below 0.46, matching this backend's default version.
             diff: ScriptedDiff::Ok(crate::DiffReport::Unreported),
+            diff_by_points: Vec::new(),
             // The default is the band below 0.39: a backend that has not been given a report
             // has not checked, which is not the same as finding the repository sound.
             verify: Ok(crate::VerifyReport::Unreported),
@@ -222,7 +243,9 @@ impl NullBackend {
             trust_remove_calls: Arc::new(AtomicUsize::new(0)),
             file_meta: Ok(crate::FileMetaRead::Unavailable),
             save_file: Ok(crate::FileSaved::Unavailable),
+            save_file_writes: false,
             save_file_calls: Arc::new(AtomicUsize::new(0)),
+            calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             extract_plan: Ok(crate::Extracted::Unavailable),
             extract_plan_calls: Arc::new(AtomicUsize::new(0)),
             extract: Ok(crate::Extracted::Unavailable),
@@ -481,6 +504,27 @@ impl NullBackend {
         self
     }
 
+    /// Answer `diff --from <from> --to <to>` with `diff`, and only that comparison (RFC 058).
+    ///
+    /// Consulted before [`Self::with_diff`]'s single answer, so a test can script an undo's two
+    /// comparisons apart: the block against its parent, and the block against the branch tip.
+    #[must_use]
+    pub fn with_diff_from_to(
+        mut self,
+        from: impl Into<String>,
+        to: impl Into<String>,
+        diff: crate::Diff,
+    ) -> Self {
+        let (from, to) = (from.into(), to.into());
+        // **Replaces, like every other builder.** A second answer for the same pair is a test
+        // narrowing the one it inherited from a shared fixture, not a second comparison.
+        self.diff_by_points
+            .retain(|(left, right, _)| !(left == &from && right == &to));
+        self.diff_by_points
+            .push((from, to, ScriptedDiff::Ok(crate::DiffReport::Listed(diff))));
+        self
+    }
+
     /// Answer the three ref writes with prikk's printed lines (RFC 044).
     #[must_use]
     pub fn with_ref_write(mut self, lines: Vec<String>) -> Self {
@@ -719,10 +763,39 @@ impl NullBackend {
         self
     }
 
+    /// Answer [`Prikk::save_file`] as prikk does **and write the file**, so an operation that
+    /// copies what it fetched can be exercised end to end (RFC 058).
+    ///
+    /// The bytes written are the `path` asked for, which is how a test tells which of several
+    /// fetched files landed where.
+    #[must_use]
+    pub fn with_save_file_writing(mut self) -> Self {
+        self.save_file = Ok(crate::FileSaved::Done);
+        self.save_file_writes = true;
+        self
+    }
+
     /// How many times [`Prikk::save_file`] has been asked of this backend (and its clones).
     #[must_use]
     pub fn save_file_calls(&self) -> usize {
         self.save_file_calls.load(Ordering::SeqCst)
+    }
+
+    /// Record one seam call in [`Self::calls`]. A poisoned lock drops the entry rather than
+    /// panicking a test binary that is already failing for another reason.
+    fn record(&self, call: String) {
+        if let Ok(mut calls) = self.calls.lock() {
+            calls.push(call);
+        }
+    }
+
+    /// The seam calls an undo made, in order (RFC 058) -- see [`Self::calls`]'s own field.
+    #[must_use]
+    pub fn calls(&self) -> Vec<String> {
+        self.calls
+            .lock()
+            .map(|calls| calls.clone())
+            .unwrap_or_default()
     }
 
     /// Answer [`Prikk::extract_plan`] with `report` (RFC 053).
@@ -971,8 +1044,16 @@ impl Prikk for NullBackend {
         deliver(&self.show)
     }
 
-    fn diff(&self, _repo: &Path, _comparison: &crate::Comparison) -> Result<crate::DiffReport> {
-        match self.diff.clone() {
+    fn diff(&self, _repo: &Path, comparison: &crate::Comparison) -> Result<crate::DiffReport> {
+        let scripted = match comparison {
+            crate::Comparison::Points { from, to } => self
+                .diff_by_points
+                .iter()
+                .find(|(left, right, _)| left == from && right == to)
+                .map(|(_, _, scripted)| scripted.clone()),
+            crate::Comparison::WorktreeAgainstBaseline => None,
+        };
+        match scripted.unwrap_or_else(|| self.diff.clone()) {
             ScriptedDiff::Ok(report) => Ok(report),
             ScriptedDiff::Refusal(message) => Err(StikkError::Refusal { message }),
             ScriptedDiff::LockConflict(message) => Err(StikkError::LockConflict { message }),
@@ -1077,6 +1158,7 @@ impl Prikk for NullBackend {
         if let Ok(mut calls) = self.rename_path_calls.lock() {
             calls.push((from.to_string(), to.to_string()));
         }
+        self.record(format!("rename-path {from} -> {to}"));
         deliver(&self.rename_path)
     }
 
@@ -1088,11 +1170,18 @@ impl Prikk for NullBackend {
         &self,
         _repo: &Path,
         _block: &str,
-        _path: &str,
-        _output: &Path,
+        path: &str,
+        output: &Path,
     ) -> Result<crate::FileSaved> {
         self.save_file_calls.fetch_add(1, Ordering::SeqCst);
-        deliver(&self.save_file)
+        self.record(format!("save-file {path}"));
+        let saved = deliver(&self.save_file)?;
+        if self.save_file_writes && saved == crate::FileSaved::Done {
+            std::fs::write(output, path.as_bytes()).map_err(|error| {
+                StikkError::environment("the scripted backend could not write the file", error)
+            })?;
+        }
+        Ok(saved)
     }
 
     fn extract_plan(&self, _repo: &Path, _block: &str, _dir: &Path) -> Result<crate::Extracted> {
@@ -1138,8 +1227,9 @@ impl Prikk for NullBackend {
         deliver(&self.change_token)
     }
 
-    fn commit(&self, _repo: &Path, _reff: &str, _message: &str) -> Result<CommitResult> {
+    fn commit(&self, _repo: &Path, reff: &str, _message: &str) -> Result<CommitResult> {
         self.commit_calls.fetch_add(1, Ordering::SeqCst);
+        self.record(format!("commit {reff}"));
         match self.commit.clone() {
             ScriptedCommit::Ok(result) => Ok(result),
             ScriptedCommit::Refusal(message) => Err(StikkError::Refusal { message }),

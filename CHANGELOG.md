@@ -2,16 +2,33 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.20.0 — 2026-10-31
 
-### Added
+**stikk can now undo a block: it puts back what the block changed as a new change, so nothing in
+your history is erased.** `U` on a block in History — or in its detail — asks for a message,
+prefilled with the block's own, and then shows **every file it will touch, one line each**: *put
+back*, *remove*, *rename back*, *put back the permissions*. One `Enter` does it. The undo is an
+ordinary commit, so **sealing stays the next step** (`S`), and History then holds both blocks: the
+one you regret and its reversal. stikk builds the undo from what prikk already gives — the
+comparison between the block and the one before it, the earlier bytes, a rename back — and a suite
+case undoes a block that modified a file, deleted one, replaced a binary, added one, emptied a
+nested folder, changed a mode and renamed a path, then asks prikk's own `tree` and `cat`: the
+result is **identical to the parent in every path, every mode and every byte**, with `verify`
+passing (RFC 058). Needs prikk 0.54 or newer, which is where prikk can hand back a file's earlier
+bytes; below that `U` says so and nothing else changes.
 
-- **Undo one block from History (`U`).** stikk puts back what the block changed and records it as a
-  new commit, so history keeps both. It refuses when the worktree is not clean — new files
-  included, since the commit it ends in would record them as part of the undo — when work is
-  queued, when the block is a merge or the first on its branch, when a later block changed the same
-  files, and when a file it would put back is already there or is named in `.prikkignore`. At prikk
-  ≥ 0.54.
+**It refuses rather than overwrite or record anything you did not choose**, and names what is in
+the way. Your worktree must be **fully clean, new files included** — a commit here captures the
+whole worktree, so a file lying around would be recorded as part of the undo and the undo would no
+longer be what the block changed. It also stops when work is waiting to be sealed, when the block
+is a merge or the first on its branch, when a later block changed one of the same files, when
+something is already where a file would go back, and when `.prikkignore` names a file the undo puts
+back, because the commit would then leave that file out. **Every refusal writes nothing**, and if
+anything fails part-way, stikk commits nothing and tells you exactly which files it had already
+changed.
+
+The real-binary suite drives **97 cases** against real prikk binaries at 0.28.0 and 0.55.0, on
+Linux, macOS and Windows.
 
 ### Breaking
 
@@ -34,11 +51,26 @@ breaks for a dependent all the same, which is why they are named here.
 `calls`; `stikk_core::undo` — `UndoAction`, `UndoStep`, `UndoPlan`, `UndoPreview`,
 `UndoPreviewOutcome`, `UndoToken`, `UndoResult`, `UndoStopped`, `undo_preview`,
 `undo_confirm_and_execute`, `prefilled_undo_message`, `stopped_text`, `undo_unavailable`, the
-guards' sentences (`WORKTREE_HAS_CHANGES`, `WORK_IS_QUEUED`, `A_MERGE_BLOCK`, `THE_FIRST_BLOCK`,
-`DEEPER_THAN_STIKK_LOOKED`, `later_block_changed`, `in_the_way`, `ignored_at_commit`,
-`ignore_rules_not_read`, `IGNORE_NOT_UTF8`, `cannot_invert`, `unsafe_path`, `NOTHING_TO_UNDO`,
-`NOT_THE_CURRENT_BRANCH`, `INTERRUPTED`), `UNDO_HISTORY_LIMIT` and `UNDO_FROM_MINOR`; and
+card's and the result's words (`UNDO_LEAD`, `UNDO_CONSEQUENCE`, `SEAL_THE_UNDO`,
+`NOTHING_WAS_COMMITTED`, `UNDO_OPERATION`), the guards' sentences (`WORKTREE_HAS_CHANGES`,
+`WORK_IS_QUEUED`, `A_MERGE_BLOCK`, `THE_FIRST_BLOCK`, `DEEPER_THAN_STIKK_LOOKED`,
+`later_block_changed`, `in_the_way`, `ignored_at_commit`, `ignore_rules_not_read`,
+`IGNORE_NOT_UTF8`, `cannot_invert`, `unsafe_path`, `NOTHING_TO_UNDO`, `NOT_THE_CURRENT_BRANCH`,
+`INTERRUPTED`), `UNDO_HISTORY_LIMIT` and `UNDO_FROM_MINOR`; and
 `stikk_tui::App::begin_undo_block`.
+
+### Added
+
+- **Undo one block from History (`U`).** stikk puts back what the block changed and records it as a
+  new commit, so history keeps both. It refuses when the worktree is not clean — new files
+  included, since the commit it ends in would record them as part of the undo — when work is
+  queued, when the block is a merge or the first on its branch, when a later block changed the same
+  files, and when a file it would put back is already there or is named in `.prikkignore`. At prikk
+  ≥ 0.54.
+- **The guide's *"Undoing a block"***, beside *"Going back to an earlier block"*: the three steps,
+  that history keeps both blocks, that sealing comes next, and each refusal in the words you meet.
+  The two sections link each other, because they are easy to mistake for one thing — one records a
+  reversal, the other moves you to an older block and records nothing.
 
 ## 0.19.0 — 2026-10-31
 

@@ -61,9 +61,10 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.19.x lets you choose whose keys this repository trusts, gets an earlier version of your files
-back — or a whole earlier block, the guide shows how — and installs in two plain steps on every
-platform — prikk's, then stikk's — against prikk 0.55.0.** A confirmation that asks you to type a
+**v0.20.x undoes a block, as a new change that puts back what it changed, lets you choose whose
+keys this repository trusts, gets an earlier version of your files back — or a whole earlier block,
+the guide shows how — and installs in two plain steps on every platform — prikk's, then stikk's —
+against prikk 0.55.0.** A confirmation that asks you to type a
 key id back **never cuts that id off**, however long it is. `T` lists the adopted maintainer keys with your own marked, **`a` adopts one and `x`
 removes one** — each confirmed by typing the key id, and the removal says first that it can make
 your own sealed history fail Verify until the key is adopted again. In Block detail, `F` saves one
@@ -94,7 +95,7 @@ Block detail, which lists every block's patches **and the files present at that 
 modes** (prikk ≥ 0.46), or from the Queue. `v` shows prikk's own fields instead. Around that it
 reads orientation, ref history, worktree changes and the **Queue view**, with refusal explanations
 and a glossary; the **ref picker offers the branch you are on before its first seal** (prikk ≥
-0.47). It performs thirteen mutations: **commit** (author a worktree capture into the active queue),
+0.47). It performs fourteen mutations: **commit** (author a worktree capture into the active queue),
 **seal** (freeze that queue into permanent, MAINTAINER-signed history, naming the patches it
 freezes), and — from the ref picker — **create a branch** (`n`), **create a tag** (`t`, or at any
 block from History), **close a branch** (`x`), **switch to a branch** (`s`, previewed as the
@@ -102,9 +103,11 @@ exact files it will write and delete) and **merge one branch into another** (`m`
 branch to merge from, `M` for prikk's own plan, `Enter` to run it), at prikk ≥ 0.42 and ≥ 0.46 for
 a switch — plus **import a bundle** as a received branch (`I`) and **export a branch** to a bundle
 file (`E`), at prikk ≥ 0.53, **save one file** (`F`) or **save a block's files** (`A`) as they
-were at a block, and — from the Trust view — **adopt a maintainer key** (`a`) or **remove one**
-(`x`), at prikk ≥ 0.54 — every one of them always preview-first, with tiered confirmation a
-compile error can't let you skip, and the last two confirmed by typing the key id.
+were at a block, **undo one block** (`U` in History or Block detail, which puts back what that
+block changed and records it as a new commit), and — from the Trust view — **adopt a maintainer
+key** (`a`) or **remove one** (`x`), at prikk ≥ 0.54 — every one of them always preview-first, with
+tiered confirmation a compile error can't let you skip, and the two trust writes confirmed by
+typing the key id.
 **stikk shares work as a bundle file**: `i` opens one and shows prikk's own verification and what
 prikk says importing it would change, an import creates and moves no branch of yours, and an
 export writes outside the repository and never over a file that is there.

@@ -273,6 +273,29 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk undoes a block, as a new change that keeps both (0.20.0, breaking)
+
+- **Undo one block** ([RFC 058](rfcs/done/058-undo-one-block.md), prikk ≥ 0.54): `U` in History or in Block detail.
+  stikk asks for a message, prefilled with the block's own, shows **every file it will put back, remove, rename back
+  or re-permission**, and asks once; then it writes the earlier files and records the undo as an ordinary commit, so
+  **history keeps both blocks** (`CON-3`) and sealing stays the user's own next step. It is built from what prikk
+  already gives — `diff` between the block and the one before it, `cat --output` for the earlier bytes, `mv` for a
+  rename back — and **stikk's own writes come last and only after every byte is in hand**, outside the repository:
+  a failed fetch leaves the worktree untouched, and a failure after that commits nothing and names the paths it
+  changed. It refuses, writing nothing, unless the worktree is **fully clean, new files included** — a commit here
+  captures the whole worktree, so a stray file would be recorded as part of the undo — and refuses when work is
+  queued, the block is a merge or the first on its branch, a later block changed the same paths, something is
+  already where a file would go back, or `.prikkignore` would keep a file it puts back out of the commit. prikk's own
+  rollback (`FR-083`) undoes a whole branch and stays as it is; stikk never calls this a rollback (its letter 029:
+  *"not on our plans, so build it if you need it"*). A suite case undoes a block that did every kind of change prikk
+  reports and finds the result **identical to the parent in every path, mode and byte** by prikk's own `tree` and
+  `cat`, with `verify` passing.
+- **Increment 2, the prikk 0.56.0 re-baseline, moves to 0.21.0**: prikk is still at 0.55.0, and the cut does not wait
+  for it.
+- **The validated prikk range is `>= 0.28`, through `0.55.0`** (unchanged); the real-binary suite drives 97 cases at
+  0.28.0 and 0.55.0 on Linux, macOS and Windows — the same count on each, with one leg Unix-only and one
+  Windows-only by construction.
+
 ## Shipped — stikk reads prikk as data, its typed cards fit, and the guide goes back (0.19.0, breaking)
 
 - **Orientation on `status --format json`** ([RFC 057](rfcs/done/057-orientation-on-status-json.md), prikk ≥ 0.43):
@@ -515,16 +538,11 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.20.0: undo one block
+## Next — 0.21.0, not yet scoped
 
-Scoped and authorized 2026-10-31, in delivery order:
+**The scope is the owner's to authorize.** One candidate is already named and carried from 0.20.0:
 
-1. **Undo one block — landed on `main`** ([RFC 058](rfcs/done/058-undo-one-block.md), `bf2c3af`): `U` in History. stikk puts back
-   what a block changed and records the undo as a new commit, so history keeps both. It works on any single-parent
-   block of the current branch whose paths no later block changed, and refuses, writing nothing, wherever the undo
-   could overwrite work. prikk's own rollback (`FR-083`) undoes a whole branch, and prikk plans no single-block one
-   (its letter 029: *"build it if you need it"*).
-2. **The prikk 0.56.0 re-baseline**, if prikk publishes 0.56.0 before the cut. prikk calls its worktree change a
+1. **The prikk 0.56.0 re-baseline**, if prikk publishes 0.56.0 before the cut. prikk calls its worktree change a
    compatibility event, so this re-measures `commit` and `bundle import`. It also brings two visible gains: the
    bundle card says whether each seal checks out, and a different key under a removed id is shown as a security
    event. The cut does not wait for it.
@@ -532,7 +550,8 @@ Scoped and authorized 2026-10-31, in delivery order:
 **prikk's answers to letter 023 (its 029)** place the rest. prikk **0.56.0** fixes the worktree defect our letter
 found, and refuses an invalid seal at import. prikk **0.57.0** brings `branch create --from <block id>` (going back
 to an older block in one step), the block sealers in `verify-report-v1` (counting what a key removal breaks), and
-`parent_block_ids` in `log`. Each is taken at the re-baseline that brings it.
+`parent_block_ids` in `log` — which an undo would read instead of taking the parent from the row below it. Each is
+taken at the re-baseline that brings it.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and
@@ -550,10 +569,12 @@ release waits for it.
 - **Checkout / deletion planning and materialization** (`FR-053`'s remainder, `FR-054`): a block or
   a path, not only a branch. *(Branches and tags — `FR-070`/`FR-071` — and branch switch shipped in
   0.13.0; the focused-ref model shipped in 0.4.0 and 0.11.0.)*
-- **The rollback flow** (`FR-083`). *(Merge evidence → plan → execution — `FR-080…082` — shipped
-  in 0.15.0, RFC 047: the merge refusal path is where the explanation surface earned its place,
-  with four merges declined in stikk's own words before prikk is asked and prikk's own refusal
-  shown verbatim where it is prikk's.)*
+- **The rollback flow** (`FR-083`) — prikk's own, over a whole branch. *(Undoing **one** block is
+  `FR-085`, and shipped in 0.20.0, RFC 058: a new change that puts back what that block changed,
+  which is a different operation and not a rollback. Merge evidence → plan → execution —
+  `FR-080…082` — shipped in 0.15.0, RFC 047: the merge refusal path is where the explanation
+  surface earned its place, with four merges declined in stikk's own words before prikk is asked
+  and prikk's own refusal shown verbatim where it is prikk's.)*
 - **Progressive disclosure** (`TU-12`): default vs. advanced depth. *(Session persistence —
   `FR-122`, the focused ref, view and filter — shipped in 0.14.0, and with it `C-E2`'s first
   production caller. What is left of `DM-04` is **deep restore**: Block detail, Patch detail and

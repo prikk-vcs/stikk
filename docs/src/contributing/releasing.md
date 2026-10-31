@@ -84,9 +84,9 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.19.x release is (and is not)
+## What a v0.20.x release is (and is not)
 
-v0.19.x reads orientation, history, block detail — including the files at **any** block, with their
+v0.20.x reads orientation, history, block detail — including the files at **any** block, with their
 modes, at prikk ≥ 0.46 — worktree changes, the Queue view, **Patch detail** (what one patch changed,
 from prikk's own `show` report, with content shown byte for byte), **Compare** (what changed between
 two points, from prikk's own `diff` hunks, at prikk ≥ 0.46 — two blocks, a block and the one before
@@ -95,13 +95,14 @@ with its failing conditions and every stage it ran, at prikk ≥ 0.39), **a bund
 own verification of it and what prikk says importing it would change, at prikk ≥ 0.53), **the
 maintainer keys this repository trusts** (`T`, at prikk ≥ 0.54, with your own marked and each
 recorded sealer judged against the list) and the
-refusal/glossary surfaces, and performs thirteen mutations — **commit** (author a worktree capture),
+refusal/glossary surfaces, and performs fourteen mutations — **commit** (author a worktree capture),
 **seal** (freeze the queue into signed history), **create a branch**, **create a tag**, **close
 a branch** and **merge one branch into another** (at prikk ≥ 0.42), **switch branch** (at
 prikk ≥ 0.46), **import a bundle** as a received branch and **export a branch** to a bundle
 file (at prikk ≥ 0.53), **save one file** or **save a block's files** as they were at a block,
-and — from the Trust view — **adopt a maintainer key** or **remove one** (all at prikk ≥ 0.54)
-— every one of them
+**undo one block** (putting back what it changed as a new commit, which history keeps beside the
+block itself), and — from the Trust view — **adopt a maintainer key** or **remove one** (all at
+prikk ≥ 0.54) — every one of them
 preview-first with tiered confirmation, naming the key that will sign where one signs at all. A
 confirmed commit authors only the worktree its preview showed, the seal confirmation names the
 patches it freezes, a switch's confirmation names the exact files it will write and delete, and a
@@ -123,12 +124,12 @@ prikk before any of it is shown and stored outside every repository; `STIKK_PRIV
 nothing. Sync, and checkout of a block
 or a path, remain unbuilt, and so are **adopting a received tag** and **author keys** — the Trust
 view adopts and removes maintainer keys, and nothing else — and a **doctor** or lock-inspector
-view (`doctor` has no JSON): the `Prikk` seam has thirty-two methods — `handshake`, `readiness`,
+view (`doctor` has no JSON): the `Prikk` seam has thirty-three methods — `handshake`, `readiness`,
 `orientation`, `history`, `block_state`, `refs`, `tags`, `worktree_status`, `queue`, `show`,
 `diff`, `verify`, `change_token`, `commit`, `seal`, `create_branch`, `create_tag`, `close_branch`,
 `switch_branch`, `merge_plan`, `merge`, `bundle_verify`, `bundle_preview`, `bundle_import`,
 `bundle_export`, `file_meta`, `save_file`, `extract_plan`, `extract`, `trusted_keys`,
-`trust_add` and `trust_remove` — and none for any of them.
+`trust_add`, `trust_remove` and `rename_path` — and none for any of them.
 A release also publishes **the four installer scripts** (`install.sh`, `uninstall.sh`,
 `install.ps1`, `uninstall.ps1`), each with its own `.sha256`, filled with that release's version.
 It drives the external `prikk` binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.55.0** — so the release

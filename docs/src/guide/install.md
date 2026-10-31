@@ -67,7 +67,7 @@ checks whether prikk is there and new enough, and tells you prikk's own command 
 ### What you should see
 
 ```text
-stikk-install: downloading stikk-0.14.0-x86_64-unknown-linux-musl.tar.gz (0.14.0, x86_64-unknown-linux-musl)
+stikk-install: downloading stikk-0.20.0-x86_64-unknown-linux-musl.tar.gz (0.20.0, x86_64-unknown-linux-musl)
 stikk-install: checking the download
 stikk-install: extracting
 stikk-install: installed to ~/.local/bin/stikk

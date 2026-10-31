@@ -417,18 +417,66 @@ fn guard_1_a_worktree_with_changes() {
     }
 }
 
-/// **An untracked file elsewhere does not block** (decision 4, as clarified at acceptance): an
-/// editor's temporary file must not stop an undo. One that is *in the way* is guard 6's case.
+/// **An untracked file anywhere blocks** (the review of v1, finding A, measured at 0.55.0): the
+/// undo's own `commit --from-worktree` authored a `create-file` for it, because there is no staging
+/// (`FR-050`) -- so the undo would carry a file that is no part of it.
+///
+/// This is the opposite of what RFC 058 said at acceptance, and of what v1 shipped.
 #[test]
-fn guard_1_an_untracked_file_elsewhere_does_not_block() {
+fn guard_1_an_untracked_file_anywhere_blocks() {
     let backend = backend().with_worktree_status(WorktreeStatus {
         untracked: 1,
         clean: false,
         entries: vec![untracked("notes.txt.swp")],
         ..clean()
     });
-    let (preview, _) = ready(preview_of(&backend, repo()));
-    assert_eq!(preview.plan.steps.len(), 1, "the undo is offered");
+    assert_eq!(
+        blocked_reason(preview_of(&backend, repo())),
+        WORKTREE_HAS_CHANGES
+    );
+    assert!(
+        WORKTREE_HAS_CHANGES.contains("any new file lying around"),
+        "the sentence says why an untracked file matters: {WORKTREE_HAS_CHANGES}"
+    );
+    wrote_nothing(&backend);
+}
+
+/// **prikk's own `clean` is asked first**, so a report that is not clean blocks even when every
+/// count stikk reads is zero: the counts summarise the entries, and `clean` is prikk's verdict.
+#[test]
+fn guard_1_blocks_on_prikks_own_verdict() {
+    let backend = backend().with_worktree_status(WorktreeStatus {
+        clean: false,
+        ..clean()
+    });
+    assert_eq!(
+        blocked_reason(preview_of(&backend, repo())),
+        WORKTREE_HAS_CHANGES
+    );
+    wrote_nothing(&backend);
+}
+
+/// **A reported refusal blocks, and an unreported verdict does not** (`C-T2c′`): `None` below
+/// the band is not a report of zero, and stikk refuses nothing on an absence.
+#[test]
+fn guard_1_reads_a_refusal_count_but_not_its_absence() {
+    let refused = backend().with_worktree_status(WorktreeStatus {
+        refused: Some(1),
+        ..clean()
+    });
+    assert_eq!(
+        blocked_reason(preview_of(&refused, repo())),
+        WORKTREE_HAS_CHANGES
+    );
+    wrote_nothing(&refused);
+
+    let unreported = backend().with_worktree_status(WorktreeStatus {
+        refused: None,
+        refused_declarations: None,
+        ..clean()
+    });
+    let (preview, _) = ready(preview_of(&unreported, repo()));
+    assert_eq!(preview.plan.steps.len(), 1, "an absence blocks nothing");
 }
 
 /// **Guard 2**: the undo must be recorded after what is already queued.
@@ -556,10 +604,13 @@ fn undoing_the_tip_reads_no_later_comparison() {
     assert_eq!(preview.block_id, BLOCK);
 }
 
-/// **Guard 6**: a path the undo would create is already there, untracked — a `deleted` entry's own
-/// path, or a rename's earlier name.
+/// **Guard 6 asks the filesystem** (the review of v1, finding C): a path `.prikkignore` names is
+/// not listed by `worktree-status` at all, so an undo that read the status would have overwritten
+/// it. Here the status is **clean** and the file is on disk.
 #[test]
-fn guard_6_an_untracked_file_is_in_the_way() {
+fn guard_6_something_already_where_the_undo_would_create() {
+    let worktree = Worktree::new("guard6");
+    worktree.write("b.txt", b"not the block's\n");
     let cases: Vec<(&str, Vec<DiffEntry>)> = vec![
         ("a deleted file's path", vec![plain("b.txt", "deleted")]),
         (
@@ -568,21 +619,190 @@ fn guard_6_an_untracked_file_is_in_the_way() {
         ),
     ];
     for (what, entries) in cases {
-        let backend = backend()
-            .with_diff_from_to(PARENT, BLOCK, diff(entries))
-            .with_worktree_status(WorktreeStatus {
-                untracked: 1,
-                clean: false,
-                entries: vec![untracked("b.txt")],
-                ..clean()
-            });
+        let backend = backend().with_diff_from_to(PARENT, BLOCK, diff(entries));
         assert_eq!(
-            blocked_reason(preview_of(&backend, repo())),
+            blocked_reason(preview_of(&backend, worktree.path())),
             in_the_way(&["b.txt".to_string()]),
             "{what}"
         );
         wrote_nothing(&backend);
     }
+}
+
+/// **An ancestor that is not a real directory is in the way too**: the undo's own
+/// `create_dir_all` would fail part-way, and a symlink there would write outside the worktree.
+#[test]
+fn guard_6_an_ancestor_that_is_not_a_directory_is_in_the_way() {
+    let worktree = Worktree::new("guard6-ancestor");
+    worktree.write("dir", b"a file where a directory should be\n");
+    let backend =
+        backend().with_diff_from_to(PARENT, BLOCK, diff(vec![plain("dir/sub/d.txt", "deleted")]));
+    assert_eq!(
+        blocked_reason(preview_of(&backend, worktree.path())),
+        in_the_way(&["dir/sub/d.txt".to_string()])
+    );
+    wrote_nothing(&backend);
+
+    // A real directory in the same place is not in the way.
+    std::fs::remove_file(worktree.path().join("dir")).expect("remove the file");
+    std::fs::create_dir_all(worktree.path().join("dir/sub")).expect("the directories");
+    let (preview, _) = ready(preview_of(&backend, worktree.path()));
+    assert_eq!(preview.plan.steps.len(), 1);
+}
+
+/// **A dangling symlink counts as something being there** -- `symlink_metadata`'s own rule, which
+/// is prikk's and `files::already_there`'s.
+#[cfg(unix)]
+#[test]
+fn guard_6_a_dangling_symlink_is_in_the_way() {
+    let worktree = Worktree::new("guard6-symlink");
+    std::os::unix::fs::symlink("nowhere", worktree.path().join("b.txt")).expect("a symlink");
+    let backend = backend().with_diff_from_to(PARENT, BLOCK, diff(vec![plain("b.txt", "deleted")]));
+    assert_eq!(
+        blocked_reason(preview_of(&backend, worktree.path())),
+        in_the_way(&["b.txt".to_string()])
+    );
+    wrote_nothing(&backend);
+}
+
+// ---------------------------------------------------- guard 7: what `.prikkignore` keeps out
+
+/// **A rule that names a path the undo would create blocks** (the review of v1, finding B):
+/// measured at 0.55.0, the file goes back, `worktree-status` stays clean, and `commit` records
+/// nothing -- so the undo would not be exact.
+#[test]
+fn guard_7_a_created_path_an_ignore_rule_names_blocks() {
+    let worktree = Worktree::new("ignore-named");
+    worktree.write(".prikkignore", b"keep.log\n");
+    let backend =
+        backend().with_diff_from_to(PARENT, BLOCK, diff(vec![plain("keep.log", "deleted")]));
+    assert_eq!(
+        blocked_reason(preview_of(&backend, worktree.path())),
+        ignored_at_commit(&["keep.log".to_string()])
+    );
+    wrote_nothing(&backend);
+}
+
+/// **prikk's own matching rule**, copied from its `ignore.rs`: a whole path component, a run of
+/// trailing slashes stripped, blank lines skipped -- and a differently-named sibling untouched.
+#[test]
+fn guard_7_matches_prikks_own_rule_and_no_more() {
+    let worktree = Worktree::new("ignore-rule");
+    worktree.write(".prikkignore", b"\ntarget/\n  build/output  \n");
+    let under = backend().with_diff_from_to(
+        PARENT,
+        BLOCK,
+        diff(vec![
+            plain("target/x.txt", "deleted"),
+            plain("build/output", "deleted"),
+        ]),
+    );
+    assert_eq!(
+        blocked_reason(preview_of(&under, worktree.path())),
+        ignored_at_commit(&["build/output".to_string(), "target/x.txt".to_string()]),
+        "a trailing slash is stripped, a blank line is skipped, and both paths are named"
+    );
+
+    // **`target2` is not under `target`** -- a whole component, never a string prefix.
+    let sibling =
+        backend().with_diff_from_to(PARENT, BLOCK, diff(vec![plain("target2", "deleted")]));
+    let (preview, _) = ready(preview_of(&sibling, worktree.path()));
+    assert_eq!(preview.plan.steps.len(), 1);
+}
+
+/// **The rules that matter are the ones in force after the undo.** Where the plan removes
+/// `.prikkignore`, there are none; where it writes one the preview cannot read, stikk says so
+/// rather than applying rules to a file that will not be there.
+#[test]
+fn guard_7_reads_the_ignore_file_the_undo_would_leave() {
+    let worktree = Worktree::new("ignore-plan");
+    worktree.write(".prikkignore", b"keep.log\n");
+
+    // The block **added** `.prikkignore`, so the undo removes it: no rules afterwards.
+    let removed = backend().with_diff_from_to(
+        PARENT,
+        BLOCK,
+        diff(vec![added(".prikkignore"), plain("keep.log", "deleted")]),
+    );
+    let (preview, _) = ready(preview_of(&removed, worktree.path()));
+    assert_eq!(preview.plan.steps.len(), 2, "no rule can hide anything");
+
+    // The block **changed** it, so the undo puts the parent's version back -- which the preview
+    // cannot read (see `IGNORE_RULES_NOT_READ`).
+    let written = backend().with_diff_from_to(
+        PARENT,
+        BLOCK,
+        diff(vec![
+            plain(".prikkignore", "modified"),
+            plain("keep.log", "deleted"),
+        ]),
+    );
+    assert_eq!(
+        blocked_reason(preview_of(&written, worktree.path())),
+        IGNORE_RULES_NOT_READ
+    );
+
+    // **With nothing to create, there is nothing a rule could hide**, so that block undone on its
+    // own is offered.
+    let alone =
+        backend().with_diff_from_to(PARENT, BLOCK, diff(vec![plain(".prikkignore", "modified")]));
+    let (preview, _) = ready(preview_of(&alone, worktree.path()));
+    assert_eq!(preview.plan.steps.len(), 1);
+
+    // A rename **onto** `.prikkignore` is undone by renaming it away: no rules afterwards.
+    let renamed_onto = backend().with_diff_from_to(
+        PARENT,
+        BLOCK,
+        diff(vec![
+            entry(".prikkignore", "renamed", Some("rules.txt"), Some(0o100644)),
+            plain("keep.log", "deleted"),
+        ]),
+    );
+    let (preview, _) = ready(preview_of(&renamed_onto, worktree.path()));
+    assert_eq!(preview.plan.steps.len(), 2);
+
+    // A rename **away from** it is undone by putting it back, and that content is unread. The
+    // worktree's own copy goes first: putting `.prikkignore` back is *creating* a path, so with a
+    // file already there guard 6 answers before this one does -- correctly, and tested above.
+    std::fs::remove_file(worktree.path().join(".prikkignore")).expect("remove the ignore file");
+    let renamed_away = backend().with_diff_from_to(
+        PARENT,
+        BLOCK,
+        diff(vec![
+            entry("rules.txt", "renamed", Some(".prikkignore"), Some(0o100644)),
+            plain("keep.log", "deleted"),
+        ]),
+    );
+    assert_eq!(
+        blocked_reason(preview_of(&renamed_away, worktree.path())),
+        IGNORE_RULES_NOT_READ
+    );
+}
+
+/// **A `.prikkignore` that is not text blocks**, as prikk's own commit refuses it.
+#[test]
+fn guard_7_an_ignore_file_that_is_not_text_blocks() {
+    let worktree = Worktree::new("ignore-bytes");
+    worktree.write(".prikkignore", &[0xff, 0xfe, b'\n']);
+    let backend =
+        backend().with_diff_from_to(PARENT, BLOCK, diff(vec![plain("keep.log", "deleted")]));
+    assert_eq!(
+        blocked_reason(preview_of(&backend, worktree.path())),
+        IGNORE_NOT_UTF8
+    );
+    wrote_nothing(&backend);
+}
+
+/// **A block that changed no file has no inverse**, and its commit would refuse on a clean
+/// worktree -- so the preview says so instead of reaching step 4.
+#[test]
+fn a_block_that_changed_no_file_is_not_offered() {
+    let backend = backend().with_diff_from_to(PARENT, BLOCK, diff(Vec::new()));
+    assert_eq!(
+        blocked_reason(preview_of(&backend, repo())),
+        NOTHING_TO_UNDO
+    );
+    wrote_nothing(&backend);
 }
 
 /// **Guard 7**: an entry stikk cannot invert exactly — a status it has not measured (`symlink`

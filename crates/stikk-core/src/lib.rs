@@ -139,12 +139,13 @@ pub use trust::{
     remove_preview, sealers, trust_unavailable,
 };
 pub use undo::{
-    A_MERGE_BLOCK, DEEPER_THAN_STIKK_LOOKED, INTERRUPTED, NOT_THE_CURRENT_BRANCH,
-    NOTHING_WAS_COMMITTED, SEAL_THE_UNDO, THE_FIRST_BLOCK, UNDO_CONSEQUENCE, UNDO_FROM_MINOR,
-    UNDO_HISTORY_LIMIT, UNDO_LEAD, UNDO_OPERATION, UndoAction, UndoPlan, UndoPreview,
-    UndoPreviewOutcome, UndoResult, UndoStep, UndoStopped, UndoToken, WORK_IS_QUEUED,
-    WORKTREE_HAS_CHANGES, cannot_invert, in_the_way, later_block_changed, prefilled_undo_message,
-    stopped_text, undo_confirm_and_execute, undo_preview, undo_unavailable, unsafe_path,
+    A_MERGE_BLOCK, DEEPER_THAN_STIKK_LOOKED, IGNORE_NOT_UTF8, IGNORE_RULES_NOT_READ, INTERRUPTED,
+    NOT_THE_CURRENT_BRANCH, NOTHING_TO_UNDO, NOTHING_WAS_COMMITTED, SEAL_THE_UNDO, THE_FIRST_BLOCK,
+    UNDO_CONSEQUENCE, UNDO_FROM_MINOR, UNDO_HISTORY_LIMIT, UNDO_LEAD, UNDO_OPERATION, UndoAction,
+    UndoPlan, UndoPreview, UndoPreviewOutcome, UndoResult, UndoStep, UndoStopped, UndoToken,
+    WORK_IS_QUEUED, WORKTREE_HAS_CHANGES, cannot_invert, ignored_at_commit, in_the_way,
+    later_block_changed, prefilled_undo_message, stopped_text, undo_confirm_and_execute,
+    undo_preview, undo_unavailable, unsafe_path,
 };
 pub use verify::{
     Checked, ConditionRow, JSON_OMITS, StageRow, VERIFY_FROM_MINOR, VerifyView, checked, verify,

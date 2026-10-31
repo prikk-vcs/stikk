@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 use stikk_model::{Capability, RequestCategory, Result, StikkError, Tier};
 use stikk_prikk::{BlockRow, Comparison, Diff, DiffReport, FileSaved, Prikk, Renamed};
 
-use crate::changes::{self, ChangeKind};
+use crate::changes;
 use crate::confirm::{
     self, Aside, ConfirmationSummary, Evidence, Intent, Outcome, PreviewToken, TargetId,
 };
@@ -52,9 +52,10 @@ pub use stikk_prikk::FILES_FROM_MINOR as UNDO_FROM_MINOR;
 
 /// How deep the undo reads the current branch's lineage to find the block and its parent.
 ///
-/// **The depth History's own view reads** (`stikk-tui`'s `HISTORY_LIMIT`), so a block a reader can
-/// select is a block the undo can find. The two numbers are the same number on purpose; if one
-/// moves, the other must.
+/// **The one number**: `stikk-tui`'s own `HISTORY_LIMIT` *is* this constant, so a block a reader
+/// can select in History is a block this read can find. It was two constants holding the same
+/// value until the review of Handoff A v1 (change 5), which is one value too many -- they would
+/// have stopped agreeing the first time either moved.
 pub const UNDO_HISTORY_LIMIT: usize = 200;
 
 /// **stikk's own reason, below the band** (decision 2; `C-T4d`), given the minor prikk reported.
@@ -70,9 +71,18 @@ pub fn undo_unavailable(minor: u32) -> String {
 /// **Why an undo is offered on the current branch only** (decision 3).
 pub const NOT_THE_CURRENT_BRANCH: &str = "Undo works on the branch you are on. Switch to it first.";
 
-/// **Guard 1** (decision 4): the worktree holds changes an undo could overwrite.
-pub const WORKTREE_HAS_CHANGES: &str = "Undo needs a clean worktree, so it cannot overwrite your work. Commit or remove your \
-     changes first.";
+/// **Guard 1** (decision 4, as the review of Handoff A v1 corrected it): the worktree is not
+/// clean.
+///
+/// **An untracked file anywhere blocks**, which is the opposite of what RFC 058 said at
+/// acceptance. Measured at 0.55.0
+/// (`.git-exclude/reports/058-scope-0-20/measure-untracked-at-commit-0.55.txt`, case A): with one
+/// untracked file in the worktree and one file put back, the undo's `commit --from-worktree`
+/// authored a **`create-file` for the untracked file** as well as the `edit-text` for the undo.
+/// There is no staging (`FR-050`), so every file lying around becomes part of the undo, and the
+/// undo would no longer be the parent's state.
+pub const WORKTREE_HAS_CHANGES: &str = "Undo needs a clean worktree. It must not overwrite your work, and its commit would also \
+     record any new file lying around. Commit or remove your changes first.";
 
 /// **Guard 2**: work is queued, and the undo must be recorded after it.
 pub const WORK_IS_QUEUED: &str =
@@ -177,20 +187,78 @@ pub fn later_block_changed(paths: &[String]) -> String {
     }
 }
 
-/// **Guard 6**: a file the undo would write is already in the worktree, untracked.
+/// **Guard 6**: something is already where the undo would create a file.
+///
+/// **Asked of the filesystem, not of `worktree-status`** (the review of v1, finding C): a path
+/// `.prikkignore` names is **not listed** by `worktree-status` at all — measured at 0.55.0, an
+/// ignored file sitting in the worktree leaves the report `clean` with nothing untracked — so a
+/// guard that read the status would have overwritten it. The sentence no longer claims the file is
+/// not part of this branch, because the status is no longer what said so.
 #[must_use]
 pub fn in_the_way(paths: &[String]) -> String {
     match paths {
         [one] => format!(
-            "`{one}` is in the way: it is not part of this branch, and the undo would replace it."
+            "`{one}` is in the way: there is already a file there, and the undo would replace it."
         ),
         many => format!(
-            "These are in the way: {}. They are not part of this branch, and the undo would \
-             replace them.",
+            "These are in the way: {}. There is already a file at each, and the undo would \
+             replace it.",
             backticked(many)
         ),
     }
 }
+
+/// **Guard 7** (the review of v1, finding B): a path the undo would create is named by
+/// `.prikkignore`, so the undo's own commit would not record it.
+///
+/// Measured at 0.55.0: a file a rule names, put back in the worktree, leaves `worktree-status`
+/// **clean** and `commit` exits 1 with nothing recorded. A block with other changes would commit
+/// **without that file**, and the undo would not be exact.
+#[must_use]
+pub fn ignored_at_commit(paths: &[String]) -> String {
+    match paths {
+        [one] => format!(
+            "`{one}` is named in `.prikkignore`, so the undo's commit would not record it. Remove \
+             that line first, then undo."
+        ),
+        many => format!(
+            "These are named in `.prikkignore`, so the undo's commit would not record them: {}. \
+             Remove those lines first, then undo.",
+            backticked(many)
+        ),
+    }
+}
+
+/// **Guard 7, where the plan itself writes a `.prikkignore` stikk has not read.**
+///
+/// Not one of the review's rules, and the one place I could not implement its wording: it asks for
+/// the parent's rules to be read in the preview *"with the seam's existing content read"*, and
+/// **the seam has no content read**. `cat --format json` is `path-content-v1`, which prikk's own
+/// guide describes as the `tree` entry's fields *"and no bytes"*; the only way to the bytes is
+/// `cat --output`, which writes a file and carries [`RequestCategory::Exchange`], so it cannot run
+/// inside a preview that must spawn nothing that writes.
+///
+/// So where the undo would put a `.prikkignore` back, and would also create a file, stikk says it
+/// cannot tell rather than guessing which rule set applies. Undoing the `.prikkignore` block on
+/// its own is unaffected: with nothing to create, there is nothing a rule could hide.
+pub const IGNORE_RULES_NOT_READ: &str = "This block changed `.prikkignore`, so the undo would put back a different set of ignore \
+     rules — and stikk cannot read them from here to tell whether they would keep one of these \
+     files out of the commit. Undo the block that changed `.prikkignore` on its own first.";
+
+/// **Guard 7, where `.prikkignore` cannot be read as text.** prikk's own `commit` and
+/// `worktree-status` both refuse it (prikk's guide, *"A malformed file refuses"*), so this is
+/// normally prikk's refusal arriving from the status read first; stikk says it in its own words
+/// where it is stikk's own read that cannot go on.
+pub const IGNORE_NOT_UTF8: &str = "`.prikkignore` is not valid UTF-8, so stikk cannot tell which paths its rules name. prikk's \
+     own commit refuses it too.";
+
+/// **Why stikk will not undo a block that changed no file.**
+///
+/// A comparison with no entries has no inverse: the undo would write nothing, and its `commit`
+/// would then refuse on a clean worktree — a failure at step 4 for an operation that could never
+/// have worked. Said before the card instead.
+pub const NOTHING_TO_UNDO: &str =
+    "prikk's comparison shows this block changed no file, so there is nothing to undo.";
 
 /// **Guard 7**: an entry stikk cannot invert exactly, with the reason naming the path.
 #[must_use]
@@ -448,6 +516,147 @@ fn writable_path(repo: &Path, path: &str) -> bool {
 
 /// prikk's own metadata directory, which stikk never writes into (`CON-1`, `C-E2`).
 const PRIKK_METADATA_DIR: &str = ".prikk";
+
+/// prikk's worktree ignore file: **one plain file at the repository root** (prikk's guide,
+/// *"Ignoring Worktree Paths"*; prikk's `ignore.rs` fixes the name and the location).
+const PRIKK_IGNORE_FILE: &str = ".prikkignore";
+
+/// **Guard 6, asked of the filesystem** (the review of v1, finding C): which of `created` stikk
+/// will not write over.
+///
+/// A path is in the way when **anything at all** is there -- `symlink_metadata`, so a dangling
+/// symlink counts, which is `files::already_there`'s own rule and prikk's -- or when an ancestor
+/// that exists is not a real directory: a file or a symlink there would make the undo's own
+/// `create_dir_all` fail mid-write, or follow a link out of the worktree.
+///
+/// **Not `worktree-status`**: a path `.prikkignore` names is not listed there at all (measured at
+/// 0.55.0, case C), so the status cannot answer this question.
+fn occupied_paths(repo: &Path, created: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for path in created {
+        let target = repo.join(path);
+        let taken = std::fs::symlink_metadata(&target).is_ok();
+        // Every ancestor **between the root and the file**, exclusive of both.
+        let ancestors_are_directories = Path::new(path).parent().is_none_or(|parent| {
+            parent.ancestors().all(|ancestor| {
+                ancestor.as_os_str().is_empty()
+                    || match std::fs::symlink_metadata(repo.join(ancestor)) {
+                        // Absent is fine: the undo creates it.
+                        Err(_) => true,
+                        // **`symlink_metadata`, so a symlink to a directory is not a directory**:
+                        // writing through it would leave the worktree.
+                        Ok(meta) => meta.is_dir(),
+                    }
+            })
+        });
+        if taken || !ancestors_are_directories {
+            out.push(path.clone());
+        }
+    }
+    out
+}
+
+/// What guard 7 found.
+enum IgnoreCheck {
+    /// No created path is kept out of the commit.
+    Clear,
+    /// These created paths are named by a rule, sorted.
+    Ignored(Vec<String>),
+    /// The plan writes a `.prikkignore` whose rules the preview cannot read.
+    NotRead,
+    /// The worktree's `.prikkignore` is not text.
+    NotUtf8,
+}
+
+/// **Which `.prikkignore` the undo would leave in place, and whether it hides a created path**
+/// (the review of v1, finding B).
+///
+/// The rules that matter are the ones in force **after** the undo, because its own `commit` is the
+/// last step:
+/// - the plan **removes** `.prikkignore` (the block added it, or renamed something onto it): no
+///   rules at all afterwards, so nothing can be hidden;
+/// - the plan **writes** one (the block changed, deleted or renamed it away): the parent's rules,
+///   which the preview cannot read -- [`IGNORE_RULES_NOT_READ`] says why;
+/// - otherwise the worktree's own file, read here.
+///
+/// # Errors
+/// Propagates nothing of prikk's: the only read is stikk's own, and a filesystem failure other
+/// than *absent* is an [`StikkError::Environment`] naming the file.
+fn ignore_check(repo: &Path, diff: &Diff, created: &[String]) -> Result<IgnoreCheck> {
+    if created.is_empty() {
+        return Ok(IgnoreCheck::Clear);
+    }
+    for entry in &diff.entries {
+        let names_it = entry.path == PRIKK_IGNORE_FILE
+            || entry.from_path.as_deref() == Some(PRIKK_IGNORE_FILE);
+        if !names_it {
+            continue;
+        }
+        // The undo leaves **no** `.prikkignore` exactly where it removes the one the block has:
+        // an `added` entry, or a rename *onto* that name.
+        let removed = entry.status == "added"
+            || (entry.status == "renamed" && entry.path == PRIKK_IGNORE_FILE);
+        return Ok(if removed {
+            IgnoreCheck::Clear
+        } else {
+            IgnoreCheck::NotRead
+        });
+    }
+    let rules = match std::fs::read(repo.join(PRIKK_IGNORE_FILE)) {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => ignore_rules(&text),
+            Err(_) => return Ok(IgnoreCheck::NotUtf8),
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => {
+            return Err(StikkError::environment(
+                format!(
+                    "stikk could not read `{PRIKK_IGNORE_FILE}` to see which paths its rules name"
+                ),
+                error,
+            ));
+        }
+    };
+    let hidden: Vec<String> = created
+        .iter()
+        .filter(|path| is_ignored(&rules, path))
+        .cloned()
+        .collect();
+    Ok(if hidden.is_empty() {
+        IgnoreCheck::Clear
+    } else {
+        IgnoreCheck::Ignored(hidden)
+    })
+}
+
+/// `.prikkignore`'s rules, **prikk's own parse** (`prikk-store/src/ignore.rs`): each line is
+/// trimmed, a blank one is skipped, and a run of trailing `/` is stripped.
+///
+/// **A malformed line is not stikk's to refuse.** prikk's `commit` and `worktree-status` both fail
+/// closed on one, so the `worktree-status` read this preview already made would have carried
+/// prikk's own refusal first (prikk's guide, *"A malformed file refuses"*). A line stikk cannot
+/// use as a prefix is therefore dropped here rather than classified: the question this answers is
+/// only whether a rule *hides* one of the undo's paths.
+fn ignore_rules(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.trim_end_matches('/').to_string())
+        .filter(|rule| !rule.is_empty())
+        .collect()
+}
+
+/// Whether a rule covers `path` -- **prikk's own comparison**, copied from `ignore.rs`'s
+/// `is_ignored`: equal to the rule, or nested under it **as a whole path component**, so `target`
+/// covers `target` and `target/x` and never `target2`.
+fn is_ignored(rules: &[String], path: &str) -> bool {
+    rules.iter().any(|rule| {
+        path == rule
+            || path
+                .strip_prefix(rule.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
 
 /// What an undo will do, as the card restates it (decision 5).
 ///
@@ -740,15 +949,20 @@ fn compute(
         )));
     }
 
-    // **Guard 1** — exactly as decision 4 defines it, as clarified at acceptance. An untracked
-    // file *elsewhere* does not block, because an editor's temporary file must not stop an undo;
-    // one that is in the way is guard 6's.
-    let unclean = status.missing > 0
+    // **Guard 1: a fully clean worktree, untracked files included** (the review of v1, finding A).
+    // prikk's own `clean` is the first question, and the counts and verdicts are asked beside it
+    // rather than inferred from it: `refused` and `refused_declarations` are `None` below their
+    // bands, and absent is not zero (`C-T2c′`), so only a reported count above zero blocks.
+    //
+    // **This also closes the hole v1's §6 named**: an untracked entry prikk's own verdict says
+    // `commit` would refuse no longer reaches step 4, because any untracked entry blocks here.
+    let unclean = !status.clean
+        || status.missing > 0
         || status.modified > 0
-        || status
-            .entries
-            .iter()
-            .any(|entry| entry.kind != ChangeKind::Untracked)
+        || status.untracked > 0
+        || status.unsupported > 0
+        || !status.entries.is_empty()
+        || status.refused.is_some_and(|count| count > 0)
         || status.refused_declarations.is_some_and(|count| count > 0)
         || status
             .declarations
@@ -824,27 +1038,40 @@ fn compute(
         }
     }
 
-    // **Guard 6**: a path the undo would *create* is already there, untracked.
-    let created: Vec<&str> = diff
+    // **An empty comparison has no inverse**, and its commit would refuse on a clean worktree.
+    if diff.entries.is_empty() {
+        return Ok(blocked(NOTHING_TO_UNDO.to_string()));
+    }
+
+    // Every path the undo would **create**: a `deleted` entry's own path, and a rename's earlier
+    // name. These are the paths guards 6 and 7 are about -- and, guard 5 having passed, none of
+    // them is tracked at the tip, since a later block that re-created one would have named it
+    // there. That is why neither guard consults the tracked set prikk's own `should_skip_discovery`
+    // does.
+    let mut created: Vec<String> = diff
         .entries
         .iter()
         .filter_map(|entry| match entry.status.as_str() {
-            "deleted" => Some(entry.path.as_str()),
-            "renamed" => entry.from_path.as_deref(),
+            "deleted" => Some(entry.path.clone()),
+            "renamed" => entry.from_path.clone(),
             _ => None,
         })
         .collect();
-    let mut in_the_way_paths: Vec<String> = status
-        .entries
-        .iter()
-        .filter(|entry| entry.kind == ChangeKind::Untracked)
-        .filter(|entry| created.contains(&entry.path.as_str()))
-        .map(|entry| entry.path.clone())
-        .collect();
-    in_the_way_paths.sort_unstable();
-    in_the_way_paths.dedup();
-    if !in_the_way_paths.is_empty() {
-        return Ok(blocked(in_the_way(&in_the_way_paths)));
+    created.sort_unstable();
+    created.dedup();
+
+    // **Guard 6: the filesystem, not the status** (the review of v1, finding C).
+    let occupied = occupied_paths(repo, &created);
+    if !occupied.is_empty() {
+        return Ok(blocked(in_the_way(&occupied)));
+    }
+
+    // **Guard 7: a created path `.prikkignore` would keep out of the commit** (finding B).
+    match ignore_check(repo, &diff, &created)? {
+        IgnoreCheck::Clear => {}
+        IgnoreCheck::Ignored(paths) => return Ok(blocked(ignored_at_commit(&paths))),
+        IgnoreCheck::NotRead => return Ok(blocked(IGNORE_RULES_NOT_READ.to_string())),
+        IgnoreCheck::NotUtf8 => return Ok(blocked(IGNORE_NOT_UTF8.to_string())),
     }
 
     // **Guard 7, and the path check with it** — the one place a plan is built.

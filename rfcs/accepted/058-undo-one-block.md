@@ -1,6 +1,6 @@
 # RFC 058 — Undo one block: putting back what a block changed, as a new change
 
-**Status.** **Proposed 2026-10-31** by the architect, as 0.20.0's increment 1 (`.git-exclude/release/0-20-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-10-31**; [Handoff A](../handoffs/058-undo-one-block/a-undo-one-block-handoff-v1.md). **Clarified at acceptance:** the parent's mode comes from the diff entry's `from.mode`, so no `tree` read is needed (F2, decision 2); and guard 1 is defined exactly, so an untracked file elsewhere does not block an undo (decision 4). **Proposed 2026-10-31** by the architect, as 0.20.0's increment 1 (`.git-exclude/release/0-20-0-scope.md`,
 authorized 2026-10-31 with its two recommendations: the word *"Undo this block"*, and *any single-parent block whose
 paths no later block changed*). **No open question.**
 **Measured** against a real prikk **0.55.0**: `.git-exclude/reports/058-scope-0-20/` (`measure-undo.sh` →
@@ -52,7 +52,8 @@ folder, created one, changed a mode, renamed a file, and renamed and edited anot
 `replace-binary`, `edit-text`, `rename-path`), so a rename is undone as a rename.
 
 `cat --output` does not keep a file's mode at 0.55 (letter 023 §3.5; prikk applies it from 0.57.0). So stikk applies
-the mode itself, from `tree --ref <parent> --format json`. That is harmless to keep once prikk applies it too.
+the mode itself. The value is the diff entry's own `from.mode`: the measurement read it from `tree`, which gives the
+same value, and stikk needs no second read. Applying it is harmless to keep once prikk applies it too.
 
 ### F3 — an older block can be undone when no later block touched its paths, and stikk can tell when one did
 
@@ -91,8 +92,7 @@ come out exact:
    the declaration is authored into the next commit. `Renamed` carries prikk's stdout **verbatim**, and stikk parses
    none of it. Everything else is a method stikk already has:
    - `history`, for the block's place and its parent (F4);
-   - `diff`, for both comparisons (F1, F3);
-   - `tree`, for the parent's modes;
+   - `diff`, for both comparisons (F1, F3), and for the parent's modes (`from.mode`);
    - `save_file`, for the bytes;
    - `orientation` and `worktree_status`, for the guards;
    - `commit`.
@@ -105,7 +105,9 @@ come out exact:
 
 4. **The guards, inside `confirm::preview`, so they are taken again at confirmation.** Each one declines with
    **nothing written**, as disabled-with-reason (`C-T4d`), in stikk's words:
-   1. **The worktree has changes** (`worktree_status` is not clean): *"Undo needs a clean worktree, so it cannot
+   1. **The worktree has changes**: any `missing` or `modified` file, any entry other than an untracked file, or any
+      refused declaration. **An untracked file elsewhere does not count**, because an editor's temporary file must
+      not block an undo. One that is in the way is guard 6's case. *"Undo needs a clean worktree, so it cannot
       overwrite your work. Commit or remove your changes first."*
    2. **Work is queued** (Orientation's queued patches > 0): *"Work is waiting to be sealed. Seal it first, so the
       undo is recorded after it."*

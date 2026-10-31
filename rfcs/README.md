@@ -25,12 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 058 | [Undo one block: putting back what a block changed, as a new change](./proposed/058-undo-one-block.md) | `FR-085` (new): undoing a sealed block without rewriting history; 0.20.0 increment 1 |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 057 delivered and closed 2026-10-30._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 058 | [Undo one block: putting back what a block changed, as a new change](./accepted/058-undo-one-block.md) | `FR-085` (new): undoing a sealed block without rewriting history. **Accepted 2026-10-31**; 0.20.0 increment 1 | [A: undo one block](./handoffs/058-undo-one-block/a-undo-one-block-handoff-v1.md) |
 
 ## Done (implemented)
 

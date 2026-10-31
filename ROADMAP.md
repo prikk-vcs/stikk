@@ -519,7 +519,7 @@ a fabricated worktree entry was fixed.
 
 Scoped and authorized 2026-10-31, in delivery order:
 
-1. **Undo one block** ([RFC 058](rfcs/proposed/058-undo-one-block.md), proposed): `U` in History. stikk puts back
+1. **Undo one block** ([RFC 058](rfcs/accepted/058-undo-one-block.md), accepted): `U` in History. stikk puts back
    what a block changed and records the undo as a new commit, so history keeps both. It works on any single-parent
    block of the current branch whose paths no later block changed, and refuses, writing nothing, wherever the undo
    could overwrite work. prikk's own rollback (`FR-083`) undoes a whole branch, and prikk plans no single-block one

@@ -555,9 +555,9 @@ taken at the re-baseline that brings it.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and
-token (RFC 048 Handoff C), and can join any release when they exist. **The AUR packages** publish by a dispatch of
-`aur.yml`, for the latest release, the day the AUR grants the adoption of the restored `stikk` and `stikk-bin`; no
-release waits for it.
+token (RFC 048 Handoff C), and can join any release when they exist. **The AUR packages are published**: the AUR returned
+`stikk` and `stikk-bin` to the owner, 0.20.0 was pushed to both by a dispatch of `aur.yml` on 2026-11-02, and every
+release's own run now pushes them.
 
 ## Later — verification, merge, session, exchange, trust, and the GUI
 

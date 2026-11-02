@@ -100,10 +100,6 @@ Press `?` inside stikk for help, and `q` to leave.
 
 ## Arch Linux
 
-> **Not published yet.** stikk's two AUR packages are registered but still placeholders; this
-> section describes them so it is ready the day they go up. Until then, use Step 2 above. *(This
-> paragraph is removed by the release that first publishes them.)*
-
 On Arch Linux and its derivatives, stikk is on the AUR as two packages. Pick one:
 
 - **`stikk-bin`** — the prebuilt binary from the release, the same file Step 2 installs. Nothing

@@ -72,9 +72,9 @@ file as it was at that block and `A` saves every file at it into a new folder, a
 repository and never over anything already there; a bundle card says which adopted key each
 recorded sealer's id names (prikk ≥ 0.54). `i` opens a bundle and shows prikk's
 verification and what importing would change, `I` imports it as a received branch, and `E` writes
-a branch out to a file outside the repository. **Its AUR packages are on the way**: the
-[install page](https://prikk-vcs.github.io/stikk/guide/install.html#arch-linux) says when they are
-published. **Each program installs itself**: one line installs stikk —
+a branch out to a file outside the repository. **It is on the AUR** as `stikk` and `stikk-bin`:
+the [install page](https://prikk-vcs.github.io/stikk/guide/install.html#arch-linux) says which to
+pick. **Each program installs itself**: one line installs stikk —
 `curl … install.sh | sh`, or `irm … install.ps1 | iex` on Windows — checking the download against
 the checksum published beside it, installing where you own it, and printing **prikk's own install
 command** when prikk is missing or too old, rather than installing prikk itself; `cargo binstall

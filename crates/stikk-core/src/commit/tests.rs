@@ -657,6 +657,11 @@ fn a_current_branch_moved_alone_is_stale_repository_before_any_re_read() {
 
 /// RFC 029 Handoff B §5, safeguard 3: commit's notice in each row of the table, byte-exact, computed
 /// from the preview's own Orientation read.
+///
+/// **This runs below prikk 0.42** — `NullBackend::supported()`'s own default — which is now
+/// load-bearing: from 0.42 a commit to a branch that is not the current one is **blocked** rather
+/// than noticed (RFC 063 decision 4), and the next test is that rule. The notice is what the rows
+/// below 0.42 still get, and what `Unresolved` gets at every version.
 #[test]
 fn commits_branch_notice_follows_each_row_of_safeguard_three_exactly() {
     use stikk_model::{CurrentBranch, RefName};
@@ -1060,5 +1065,113 @@ fn the_card_carries_prikks_content_words_for_a_resolved_rename() {
     assert_eq!(
         summary.rename_note.as_deref(),
         Some(crate::changes::RENAMES_ALSO_COUNTED)
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 063 decision 4: a commit goes to prikk's current branch, and nowhere else.
+// ---------------------------------------------------------------------------------------------
+
+/// **Blocked when the branches differ, from 0.42** (F4), and the sentence names both of them and
+/// the keys that get the reader to the other one.
+///
+/// **Nothing is read past the orientation**: the worktree read is scripted to refuse, so reaching
+/// it would return that refusal instead of this block — which is also why no token can exist for
+/// this outcome.
+#[test]
+fn a_commit_to_another_branch_is_blocked_from_0_42_and_reads_no_worktree() {
+    use stikk_model::{CurrentBranch, RefName};
+    for minor in [42, 55, 56, 58] {
+        let backend = ready_backend()
+            .with_version(0, minor, 0)
+            .with_worktree_status_refusal("the worktree must not be read")
+            .with_orientation(Orientation {
+                interrupted_materialization: None,
+                current_branch: CurrentBranch::Branch(RefName::parse("heads/dev").unwrap()),
+                ..orientation(0, None)
+            });
+        match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads")
+        {
+            CommitPreviewOutcome::Blocked(reason) => {
+                assert_eq!(
+                    reason,
+                    "This commits the files in your folder, and your folder is on heads/dev. To \
+                     commit to heads/main, switch to it first: b, then the branch, then s.",
+                    "0.{minor}"
+                );
+                assert_eq!(
+                    reason,
+                    commits_to_the_current_branch("heads/dev", "heads/main"),
+                    "0.{minor}: the sentence is the one function's"
+                );
+            }
+            other => panic!("0.{minor}: expected a block, got {other:?}"),
+        }
+    }
+}
+
+/// **Allowed when they match**, which is the ordinary case: the commit's files are the files prikk
+/// last wrote into the folder.
+#[test]
+fn a_commit_to_the_current_branch_is_offered() {
+    use stikk_model::{CurrentBranch, RefName};
+    for minor in [42, 58] {
+        let backend = ready_backend()
+            .with_version(0, minor, 0)
+            .with_orientation(Orientation {
+                interrupted_materialization: None,
+                current_branch: CurrentBranch::Branch(RefName::parse("heads/main").unwrap()),
+                ..orientation(0, None)
+            });
+        match commit_preview(&backend, std::path::Path::new("/repo"), "heads/main").expect("reads")
+        {
+            CommitPreviewOutcome::Ready { token, .. } => assert_eq!(
+                token.summary().branch_notice,
+                None,
+                "0.{minor}: nothing to say about a branch you are on"
+            ),
+            other => panic!("0.{minor}: expected Ready, got {other:?}"),
+        }
+    }
+}
+
+/// **`Unresolved` and below 0.42 are allowed, with today's notice** (decision 4): stikk infers no
+/// current branch prikk did not name (`C-T2c′`), and below 0.42 prikk names none at all.
+#[test]
+fn an_unnamed_current_branch_keeps_the_notice_rather_than_blocking() {
+    use stikk_model::{CurrentBranch, RefName};
+    let unresolved = ready_backend()
+        .with_version(0, 58, 0)
+        .with_orientation(Orientation {
+            interrupted_materialization: None,
+            current_branch: CurrentBranch::Unresolved(
+                "<unresolved; run `prikk doctor`>".to_string(),
+            ),
+            ..orientation(0, None)
+        });
+    match commit_preview(&unresolved, std::path::Path::new("/repo"), "heads/main").expect("reads") {
+        CommitPreviewOutcome::Ready { token, .. } => assert_eq!(
+            token.summary().branch_notice.as_deref(),
+            Some(
+                "This targets heads/main. prikk's current branch is <unresolved; run `prikk doctor`>."
+            ),
+        ),
+        other => panic!("expected Ready, got {other:?}"),
+    }
+
+    // Below 0.42 prikk reports a branch nowhere, and a scripted one is not stikk's to act on.
+    let old = ready_backend()
+        .with_version(0, 41, 0)
+        .with_orientation(Orientation {
+            interrupted_materialization: None,
+            current_branch: CurrentBranch::Branch(RefName::parse("heads/dev").unwrap()),
+            ..orientation(0, None)
+        });
+    assert!(
+        matches!(
+            commit_preview(&old, std::path::Path::new("/repo"), "heads/main").expect("reads"),
+            CommitPreviewOutcome::Ready { .. }
+        ),
+        "below 0.42 the commit is offered"
     );
 }

@@ -28,6 +28,30 @@ use crate::confirm::{self, ConfirmationSummary, Evidence, Intent, Outcome, Previ
 /// [`stikk_model::StikkError::Declined`] messages (never prikk's words) and as the palette/`Intent` operation id.
 pub const COMMIT_OPERATION: &str = "commit";
 
+/// **Why stikk commits only to prikk's current branch** (RFC 063 decision 4, F4).
+///
+/// A commit here is the whole worktree (`UD-06`: there is no staging), so the files it authors are
+/// the files prikk last wrote into the folder — which is the current branch's. From prikk **0.56** a
+/// commit to another ref is refused when that ref's files differ from the folder's; when they match,
+/// it goes through, and the current branch's next commit is refused instead. Before 0.56 nothing was
+/// refused: the commit went through, and the current branch's next commit **silently carried the
+/// same files** into it as well (measured at 0.55 and 0.58,
+/// `.git-exclude/reports/rebaseline-0-58/commit-off-current-branch-*.txt`).
+///
+/// **So the rule is the same at every version from 0.42**, where prikk first reports a current
+/// branch: stikk does not offer it, and the sentence names the switch instead. The keys are the ref
+/// picker's own — `b` opens it, and `s` switches — so a reader who wants that branch's files has
+/// one route and it is the route that works.
+///
+/// Both names are repository text and reach the terminal through `inert` (`C-T2a`).
+#[must_use]
+pub fn commits_to_the_current_branch(current: &str, target: &str) -> String {
+    format!(
+        "This commits the files in your folder, and your folder is on {current}. To commit to \
+         {target}, switch to it first: b, then the branch, then s."
+    )
+}
+
 /// The commit preview (design `FL-05` step 3; RFC 014 F3) — the Changes view, **labelled as stikk's own
 /// derivation**, since prikk has no commit dry-run. Well-founded, not a guess: prikk's own guide states
 /// `worktree-status` "answers 'what would the next commit author?', not merely 'what differs from the
@@ -237,6 +261,26 @@ fn compute(
              first, or choose {target} to continue its queue"
         );
         return Ok((CommitReadView::Blocked(reason), placeholder_summary()));
+    }
+
+    // **RFC 063 decision 4: a commit goes to prikk's current branch, and nowhere else** (F4).
+    //
+    // Before the worktree is read at all, and before any token exists: a refusal after the
+    // confirmation would tell the reader too late, and prikk's own refusal at 0.56 arrives after
+    // they have typed a message. The focused ref is stikk's own (`app.rs`'s `require_focus`), and
+    // picking another ref in the ref picker focuses it — so this is one keypress away.
+    //
+    // **`Unresolved` and `NotReported` are allowed through**, with `branch_notice`'s own words:
+    // stikk infers no current branch prikk did not name (`C-T2c′`), and below 0.42 prikk names
+    // none at all.
+    if handshake.version.minor >= stikk_prikk::CURRENT_BRANCH_FROM_MINOR
+        && let stikk_model::CurrentBranch::Branch(current) = &orientation.current_branch
+        && current.as_str() != reff
+    {
+        return Ok((
+            CommitReadView::Blocked(commits_to_the_current_branch(current.as_str(), reff)),
+            placeholder_summary(),
+        ));
     }
 
     // RFC 034 §7.2: a checkout or branch switch that stopped part-way leaves the worktree unverified,

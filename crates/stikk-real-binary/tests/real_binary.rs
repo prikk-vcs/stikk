@@ -2241,15 +2241,27 @@ fn rfc030_a_rename_declared_between_preview_and_confirmation_is_stale_then_a_fre
 // RFC 029 Handoff B: stikk follows prikk's current branch, and names it on both confirmations.
 // ---------------------------------------------------------------------------------------------
 
-/// **RFC 029 Handoff B at both ends: prikk's current branch, as the confirmations see it.**
+/// **RFC 029 Handoff B at both ends: prikk's current branch, as the confirmations see it** —
+/// rewritten for RFC 063 decision 4, which took commit's half of it away.
 ///
-/// **At 0.42.** Seal `heads/main`, create `heads/dev` from it, and run a raw `prikk branch switch
-/// heads/dev`. `orient()` reports the branch. A commit previewed for `heads/main` is `Ready` and carries
-/// §5's first-row notice byte for byte; confirming it is legitimate and succeeds. A seal previewed for
-/// `heads/main` then carries the same notice. **And the notice's own claim is re-measured**: after that
-/// seal, a raw `prikk commit` with no `--ref` queues for `heads/dev` (`C-T2b`).
+/// **At 0.42 and above.** Seal `heads/main`, create `heads/dev` from it, and run a raw `prikk branch
+/// switch heads/dev`. `orient()` reports the branch. Then:
+/// - **a commit previewed for `heads/main` is now blocked**, with decision 4's sentence naming both
+///   branches and the keys that reach the other one. It used to be `Ready` with §5's notice and a
+///   legitimate confirmation — and at 0.55 that confirmation silently carried the worktree's files
+///   into `heads/main` as well, leaving the next commit on `heads/dev` refused for the mismatch
+///   (RFC 063 F4). **`status` before and after proves nothing was spawned past the reads.**
+/// - **a seal previewed for `heads/main` still carries the notice**, which is what seal keeps
+///   (decision 4: seal acts on what is already queued, and sealing is prikk's own way out of every
+///   state F3, F4 and F8 describe). The queue it needs can no longer be made through stikk, and
+///   prikk refuses a switch away from a branch with work queued for it (`measure063.sh` §H), so it
+///   is made with a **raw** `prikk commit --from-worktree --ref heads/main` while `heads/dev` is
+///   current and nothing is sealed on it yet — so their files match (§C's own setup).
+/// - **the notice's own claim is re-measured** on `heads/dev`, with no stikk commit to another
+///   branch before it: a raw `prikk commit` with no `--ref` queues for `heads/dev` (`C-T2b`).
 ///
-/// **At 0.28.** prikk reports no current branch, and neither preview carries a notice.
+/// **At 0.28.** prikk reports no current branch, so the guard cannot apply: the commit previews
+/// `Ready` with no notice, confirms, and the seal previews with no notice either.
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn rfc029b_prikks_current_branch_is_reported_and_named_on_both_confirmations() {
@@ -2305,66 +2317,96 @@ fn rfc029b_prikks_current_branch_is_reported_and_named_on_both_confirmations() {
         // Commit, previewed for heads/main.
         std::fs::write(repo.join("note.txt"), "a note\n")
             .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
-        fixture.set_author_env();
-        let outcome = stikk_core::commit_preview(&backend, &repo, "heads/main")
-            .unwrap_or_else(|e| panic!("0.{}: commit_preview: {e}", bin.minor));
-        let readiness = backend
-            .readiness(&repo)
-            .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
-            .readiness;
-        let stikk_core::CommitPreviewOutcome::Ready { token, .. } = outcome else {
-            panic!(
-                "0.{}: expected a Ready commit preview, got {outcome:?}",
+        let status_text = || -> String {
+            String::from_utf8_lossy(&prikk_ok(&bin, &repo, &["status"]).stdout).into_owned()
+        };
+        if at_42 {
+            // **Blocked, from 0.42** (RFC 063 decision 4): the folder is on `heads/dev`, so its
+            // files are `heads/dev`'s, and a commit to `heads/main` is not offered at all.
+            let before = status_text();
+            fixture.set_author_env();
+            let outcome = stikk_core::commit_preview(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("0.{}: commit_preview: {e}", bin.minor));
+            Fixture::clear_env();
+            match &outcome {
+                stikk_core::CommitPreviewOutcome::Blocked(reason) => {
+                    println!(
+                        "0.{}: commit for heads/main is blocked: {reason}",
+                        bin.minor
+                    );
+                    assert_eq!(
+                        reason,
+                        &stikk_core::commits_to_the_current_branch("heads/dev", "heads/main"),
+                        "0.{}: decision 4's sentence, naming both branches",
+                        bin.minor
+                    );
+                }
+                other => panic!(
+                    "0.{}: a commit to a branch that is not the current one must be blocked, got \
+                     {other:?}",
+                    bin.minor
+                ),
+            }
+            // **Nothing was spawned past the reads**, by prikk's own report.
+            assert_eq!(
+                before,
+                status_text(),
+                "0.{}: the blocked preview changed nothing",
                 bin.minor
             );
-        };
-        println!(
-            "0.{}: commit preview for heads/main, notice: {:?}",
-            bin.minor,
-            token.summary().branch_notice
-        );
-        assert_eq!(
-            token.summary().branch_notice.as_deref(),
-            expected_notice,
-            "0.{}: commit's notice",
-            bin.minor
-        );
-        // Legitimate: committing to a ref other than prikk's current branch is allowed.
-        stikk_core::commit_confirm_and_execute(
-            &backend,
-            &repo,
-            *token,
-            readiness,
-            stikk_core::Evidence::ExplicitYes,
-            "committed to heads/main while prikk's current branch is elsewhere",
-        )
-        .unwrap_or_else(|e| panic!("0.{}: the confirmed commit: {e}", bin.minor));
-        Fixture::clear_env();
-
-        // Seal, previewed for heads/main.
-        fixture.set_maintainer_env();
-        let outcome = stikk_core::seal_preview(&backend, &repo, "heads/main")
-            .unwrap_or_else(|e| panic!("0.{}: seal_preview: {e}", bin.minor));
-        let stikk_core::SealPreviewOutcome::Ready { token } = outcome else {
-            panic!("0.{}: expected a Ready seal preview", bin.minor);
-        };
-        println!(
-            "0.{}: seal preview for heads/main, notice: {:?}",
-            bin.minor,
-            token.summary().branch_notice
-        );
-        assert_eq!(
-            token.summary().branch_notice.as_deref(),
-            expected_notice,
-            "0.{}: seal's notice",
-            bin.minor
-        );
-        backend
-            .seal(&repo, "heads/main")
-            .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
-        Fixture::clear_env();
+        } else {
+            // **Below 0.42 prikk names no current branch**, so the guard cannot apply and the
+            // commit is offered with no notice at all.
+            fixture.set_author_env();
+            let outcome = stikk_core::commit_preview(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("0.{}: commit_preview: {e}", bin.minor));
+            let readiness = backend
+                .readiness(&repo)
+                .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+                .readiness;
+            let stikk_core::CommitPreviewOutcome::Ready { token, .. } = outcome else {
+                panic!(
+                    "0.{}: expected a Ready commit preview, got {outcome:?}",
+                    bin.minor
+                );
+            };
+            assert_eq!(
+                token.summary().branch_notice.as_deref(),
+                expected_notice,
+                "0.{}: commit's notice",
+                bin.minor
+            );
+            stikk_core::commit_confirm_and_execute(
+                &backend,
+                &repo,
+                *token,
+                readiness,
+                stikk_core::Evidence::ExplicitYes,
+                "committed to heads/main, where prikk names no current branch",
+            )
+            .unwrap_or_else(|e| panic!("0.{}: the confirmed commit: {e}", bin.minor));
+            Fixture::clear_env();
+        }
 
         if !at_42 {
+            // **Below 0.42: today's path, unchanged.** The commit above went through, so there is
+            // a queue to seal, and neither preview has a current branch to name.
+            fixture.set_maintainer_env();
+            let outcome = stikk_core::seal_preview(&backend, &repo, "heads/main")
+                .unwrap_or_else(|e| panic!("0.{}: seal_preview: {e}", bin.minor));
+            let stikk_core::SealPreviewOutcome::Ready { token } = outcome else {
+                panic!("0.{}: expected a Ready seal preview", bin.minor);
+            };
+            assert_eq!(
+                token.summary().branch_notice.as_deref(),
+                expected_notice,
+                "0.{}: seal's notice",
+                bin.minor
+            );
+            backend
+                .seal(&repo, "heads/main")
+                .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+            Fixture::clear_env();
             eprintln!(
                 "RFC 029 B: the `--ref` default re-measurement SKIPPED at 0.{} — there is no current \
                  branch below 0.42, so a raw commit without `--ref` has nothing to default to. \
@@ -2374,9 +2416,12 @@ fn rfc029b_prikks_current_branch_is_reported_and_named_on_both_confirmations() {
             continue;
         }
 
-        // The notice says prikk uses its current branch when no --ref is given. Measure it.
-        std::fs::write(repo.join("second.txt"), "second\n")
-            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        // ── the notice's own claim, on the branch that has been current all along ─────────────
+        //
+        // **This comes first, and nothing has been committed to another branch yet** (RFC 063
+        // §4): from 0.56 a commit to another ref moves what the worktree was last written from,
+        // and `heads/dev`'s next commit is then refused for the mismatch (F4). Measured here, the
+        // default is still the plain one the notice describes.
         fixture.set_author_env();
         let raw = prikk_ok(&bin, &repo, &["commit", "-m", "no --ref given"]);
         Fixture::clear_env();
@@ -2398,6 +2443,82 @@ fn rfc029b_prikks_current_branch_is_reported_and_named_on_both_confirmations() {
             "0.{}: a raw commit with no --ref must queue for prikk's current branch",
             bin.minor
         );
+        // Seal it through stikk, which is the ordinary path and leaves the queue free.
+        fixture.set_maintainer_env();
+        let outcome = stikk_core::seal_preview(&backend, &repo, "heads/dev")
+            .unwrap_or_else(|e| panic!("0.{}: seal_preview heads/dev: {e}", bin.minor));
+        let stikk_core::SealPreviewOutcome::Ready { token } = outcome else {
+            panic!(
+                "0.{}: expected a Ready seal preview for heads/dev",
+                bin.minor
+            );
+        };
+        assert_eq!(
+            token.summary().branch_notice,
+            None,
+            "0.{}: sealing the branch you are on has nothing to say about it",
+            bin.minor
+        );
+        backend
+            .seal(&repo, "heads/dev")
+            .unwrap_or_else(|e| panic!("0.{}: seal heads/dev: {e}", bin.minor));
+
+        // ── seal's own notice: a queue for a branch that is not the current one ───────────────
+        //
+        // **stikk can no longer make this queue** (decision 4), and prikk refuses a switch away
+        // from a branch that has one (`measure063.sh` §H), so it is made with a raw commit to a
+        // branch **freshly created from the tip the worktree was last written from** — the one
+        // arrangement 0.56 accepts (F4, §C's own setup). `heads/main` is behind that tip by now,
+        // which is why this is not `heads/main`.
+        prikk_ok(
+            &bin,
+            &repo,
+            &["branch", "create", "heads/queued", "--from", "heads/dev"],
+        );
+        Fixture::clear_env();
+        std::fs::write(repo.join("third.txt"), "third\n")
+            .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+        fixture.set_author_env();
+        prikk_ok(
+            &bin,
+            &repo,
+            &[
+                "commit",
+                "--from-worktree",
+                "--ref",
+                "heads/queued",
+                "-m",
+                "queued for a branch that is not current",
+            ],
+        );
+        Fixture::clear_env();
+        fixture.set_maintainer_env();
+        let outcome = stikk_core::seal_preview(&backend, &repo, "heads/queued")
+            .unwrap_or_else(|e| panic!("0.{}: seal_preview heads/queued: {e}", bin.minor));
+        let stikk_core::SealPreviewOutcome::Ready { token } = outcome else {
+            panic!(
+                "0.{}: expected a Ready seal preview for heads/queued",
+                bin.minor
+            );
+        };
+        println!(
+            "0.{}: seal preview for heads/queued, notice: {:?}",
+            bin.minor,
+            token.summary().branch_notice
+        );
+        assert_eq!(
+            token.summary().branch_notice.as_deref(),
+            Some(
+                "This targets heads/queued. prikk's current branch is heads/dev, the ref prikk \
+                 uses when no --ref is given."
+            ),
+            "0.{}: seal keeps its notice (decision 4)",
+            bin.minor
+        );
+        backend
+            .seal(&repo, "heads/queued")
+            .unwrap_or_else(|e| panic!("0.{}: seal heads/queued: {e}", bin.minor));
+        Fixture::clear_env();
     }
 }
 

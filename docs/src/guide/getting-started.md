@@ -53,7 +53,8 @@ History and Changes keep working.
 choose another ref the status bar shows prikk's default beside it. Below 0.42, or when prikk reports its
 current branch unresolved, stikk opens on `heads/main` if that is published, and otherwise with no ref
 focused and the ref picker open. Choosing a ref in stikk never moves prikk's current branch and never
-touches the worktree.
+touches the worktree. `C` commits to prikk's current branch, because that is where your folder's files
+belong; to commit to another branch, switch to it first (`b`, then the branch, then `s`).
 
 Key reference: `Enter` opens History and drills into a block; `b` chooses which ref to view; `w` opens
 Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; `Q` opens the Queue view,

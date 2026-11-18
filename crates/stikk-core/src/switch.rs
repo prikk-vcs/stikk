@@ -50,11 +50,18 @@ pub const ALREADY_THE_CURRENT_BRANCH: &str = "this is already the current branch
 ///
 /// Measured at 0.52.0: prikk allows it and writes the target's **sealed** files only. The queued
 /// files are then absent from the worktree, `worktree-status` reports them missing, and the next
-/// `commit --from-worktree` would queue their deletion. Nothing is lost yet, but the picture is
-/// wrong, and stikk can reach this case by itself -- it commits to its focused ref, which may
-/// differ from prikk's current branch (`FR-055`).
-pub const WORK_IS_QUEUED_FOR_THIS_BRANCH: &str =
-    "work is queued for this branch; seal it first, or the worktree would not show it.";
+/// `commit --from-worktree` would queue their deletion.
+///
+/// **Re-measured at 0.58** (RFC 063 F3, decision 3), where it is sharper: prikk reports
+/// `files deleted: 1` and the queued file is **gone from the worktree**, `worktree-status` then
+/// says the worktree is behind the target, and the next commit is refused. Nothing is lost —
+/// sealing puts the work into the block — but the reader watches their own file vanish, so the
+/// guard stays at every version and its words say what a switch would do rather than what the
+/// report would show.
+///
+/// The words hold below 0.56 too, where the work was simply absent from the target's sealed files.
+pub const WORK_IS_QUEUED_FOR_THIS_BRANCH: &str = "work is queued for this branch; seal it first. A switch now would take those files out of \
+     your folder until they are sealed.";
 
 /// **Why stikk will not switch without a file plan** (decision 6).
 ///

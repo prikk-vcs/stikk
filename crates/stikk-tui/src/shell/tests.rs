@@ -514,7 +514,9 @@ fn capture_rfc045_work_queued_for_the_target_at_80_columns() {
     println!("--- work queued for the target, refused (80 columns) ---\n{text}");
     assert!(text.contains("work is queued for this branch"), "{text}");
     // The tail wraps onto the next row, so the fragment checked here must not cross the wrap.
-    assert!(text.contains("the worktree would not show"), "{text}");
+    // **RFC 063 decision 3's words**: what a switch would *do*, not what the report would show.
+    assert!(text.contains("seal it first"), "{text}");
+    assert!(text.contains("out of"), "{text}");
     assert!(
         !text.contains("switched from heads/main"),
         "nothing ran: {text}"

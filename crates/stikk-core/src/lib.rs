@@ -61,7 +61,8 @@ pub use changes::{
 };
 pub use commit::{
     COMMIT_OPERATION, CommitPreview, CommitPreviewOutcome, CommitToken, RefusedDeclaration,
-    RefusedPath, commit_confirm_and_execute, commit_preview, would_refuse_next_steps,
+    RefusedPath, commit_confirm_and_execute, commit_preview, commits_to_the_current_branch,
+    would_refuse_next_steps,
 };
 pub use compare::{
     COMPARE_FROM_MINOR, CompareView, Compared, ComparedEntry, ComparedSide, HunkRow, compare,

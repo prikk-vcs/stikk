@@ -558,3 +558,113 @@ fn capture_the_two_bundle_refusals_at_80x24() {
         );
     }
 }
+
+/// **RFC 063 decision 4's capture: `C` on a branch that is not the one your folder is on**, driven
+/// end to end through the real preview — so the sentence on screen is the one `stikk-core` decided,
+/// and the commit never reaches prikk. At both sizes and both themes the evidence plan names.
+///
+/// Reproduce with `cargo test -p stikk-tui --lib capture_ -- --nocapture`.
+#[test]
+fn capture_rfc063_a_commit_off_the_current_branch_at_both_sizes_and_themes() {
+    let current = stikk_model::CurrentBranch::Branch(
+        stikk_model::RefName::parse("heads/dev").expect("a ref name"),
+    );
+    let backend = NullBackend::supported()
+        .with_version(0, 58, 0)
+        .with_orientation(Orientation {
+            interrupted_materialization: None,
+            queued_patches: 0,
+            queued_target: None,
+            main_ref_state: Some("e".repeat(64)),
+            trailing_partial_wal_bytes: 0,
+            active_patch_warning: None,
+            current_branch: current.clone(),
+        })
+        .with_change_token(stikk_model::ChangeToken::compose(
+            [("heads/main", "0".repeat(64).as_str())],
+            0,
+            None,
+            &current,
+        ))
+        .with_refs(vec![
+            stikk_prikk::RefEntry {
+                name: "heads/main".to_string(),
+                id: "e".repeat(64),
+                closed: false,
+                received: false,
+            },
+            stikk_prikk::RefEntry {
+                name: "heads/dev".to_string(),
+                id: "f".repeat(64),
+                closed: false,
+                received: false,
+            },
+        ])
+        // A commit needs AUTHOR readiness before the preview is ever asked for, and at 0.58 prikk
+        // answers `binding` — so this is `Known`, not the `Unknown` of the ≤ 0.39 band.
+        .with_readiness(stikk_prikk::ReadinessReport {
+            readiness: stikk_model::Readiness {
+                author: stikk_model::RoleReadiness::Known(stikk_model::Binding::Matches),
+                maintainer: stikk_model::RoleReadiness::Known(stikk_model::Binding::Matches),
+                read_only: false,
+            },
+            author: stikk_prikk::RoleDetail::default(),
+            maintainer: stikk_prikk::RoleDetail::default(),
+        });
+    for (theme, name) in [
+        (stikk_state::config::Theme::Dark, "dark"),
+        (stikk_state::config::Theme::Light, "light"),
+    ] {
+        let config = Config {
+            theme,
+            ..Config::default()
+        };
+        for (w, h) in [(80, 24), (120, 40)] {
+            let (mut app, rx) = open("/repo", &config);
+            drain(&mut app, &rx, &backend);
+            // Focus `heads/main` through the picker, which is the one keypress F4 describes: the
+            // cursor opens on the branch the repository is on (`heads/dev`), so `↑` is what moves
+            // the reader to the other branch — and this capture is of what happens next.
+            app.open_ref_picker();
+            drain(&mut app, &rx, &backend);
+            app.nav_up();
+            app.select();
+            drain(&mut app, &rx, &backend);
+            assert_eq!(
+                app.focused_ref(),
+                Some("heads/main"),
+                "the picker focused it"
+            );
+            app.begin_commit();
+            drain(&mut app, &rx, &backend);
+            // The message prompt comes first, and needs a message: `UD-01` refuses an empty one,
+            // so an empty `Enter` would dispatch nothing and capture an unrefused screen.
+            for c in "a note".chars() {
+                app.input_char(c);
+            }
+            app.select();
+            drain(&mut app, &rx, &backend);
+            let text = draw(&app, w, h);
+            println!("--- a commit off the current branch, {w}×{h}, {name}\n{text}");
+            let flat = text
+                .lines()
+                .map(|line| line.trim_matches(|c: char| c == '│' || c.is_whitespace()))
+                .collect::<Vec<_>>()
+                .join(" ");
+            for fragment in [
+                "your folder is on heads/dev",
+                "To commit to heads/main, switch to it first",
+                "b, then the branch, then s",
+            ] {
+                assert!(
+                    flat.contains(fragment),
+                    "{w}×{h} {name}: {fragment:?} is not whole on screen:\n{text}"
+                );
+            }
+            assert!(
+                !text.contains("Commit worktree changes"),
+                "{w}×{h} {name}: no card was armed:\n{text}"
+            );
+        }
+    }
+}

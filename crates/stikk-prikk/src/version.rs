@@ -287,6 +287,17 @@ pub const FILES_FROM_MINOR: u32 = 54;
 /// worktree was not clean — the state RFC 047 F3 measured and this guard was written for.
 pub const MERGE_INTO_CURRENT_FROM_MINOR: u32 = 56;
 
+/// The first prikk minor that **says an interrupted seal is one**: prikk 0.58 (RFC 063 F8).
+///
+/// The state is a `seal` that published its block and was stopped before it emptied the queue. At
+/// 0.55 `status --format json` **exited 1** with an integrity error, so stikk could not read the
+/// queue at all; at 0.58 it exits 0 and the queue carries `already_sealed: {"block_id", "route"}`.
+///
+/// stikk reads that field from here and says what Seal will do — finish the block that is already
+/// there, and add no new one. Below the band the exit-1 refusal stays as it is: there is nothing to
+/// read, and prikk's own words are what the reader gets.
+pub const ALREADY_SEALED_FROM_MINOR: u32 = 58;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

@@ -19,6 +19,22 @@ use stikk_prikk::{
 /// The first prikk minor whose queued patches carry a message (prikk 0.42).
 const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
 
+/// **What an interrupted seal says**, in the Queue view's head and on the seal card (RFC 063
+/// decision 9, F8).
+///
+/// The state: a `seal` published its block and was stopped before it emptied the queue. The files
+/// are in history already, so showing these patches as ordinary queued work would be *true to the
+/// files and false about what Seal does* — Seal adds no block here, it finishes the one that is
+/// there. The block is named in the short form the Queue view names every id in.
+#[must_use]
+pub fn already_sealed_line(block: &str) -> String {
+    format!(
+        "These changes are already sealed, in block {}. A seal was interrupted before it finished \
+         tidying up. Seal (S) finishes it, and adds no new block.",
+        crate::files::block_short(block)
+    )
+}
+
 /// The Queue screen, as lines in stikk's words (RFC 028 Handoff A §6).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueueView {
@@ -32,6 +48,14 @@ pub struct QueueView {
     /// The one line at the foot, when one applies: what this prikk does not report, or, below 0.39, that it
     /// does not list queued patches. `None` for an empty queue.
     pub foot: Option<String>,
+    /// The one line **above the list** when these patches are already sealed and a seal was
+    /// interrupted before it tidied up (RFC 063 decision 9, prikk ≥
+    /// [`stikk_prikk::ALREADY_SEALED_FROM_MINOR`]).
+    ///
+    /// **It is a head, not a foot**, because it changes what the list below it means: these are not
+    /// patches waiting to become history — they are already in it, and Seal finishes the block
+    /// rather than making another. `None` wherever prikk reports no such block.
+    pub head: Option<String>,
 }
 
 /// One queued patch, as lines.
@@ -67,6 +91,8 @@ fn view(report: QueueReport, prikk_minor: u32) -> QueueView {
         QueueReport::Listed(queue) if queue.count == 0 => nothing_queued(),
         // Below 0.39: the heading, then one line saying the list is not reported — never an empty list.
         QueueReport::Unreported { count, target } => QueueView {
+            // Below 0.39 there is no `queue` object to carry it, let alone the field.
+            head: None,
             heading: match target {
                 Some(target) => format!("{count} patch(es) queued for {target}"),
                 // The prose form does not tell prikk's missing and malformed sentinels apart.
@@ -79,6 +105,7 @@ fn view(report: QueueReport, prikk_minor: u32) -> QueueView {
             )),
         },
         QueueReport::Listed(queue) => QueueView {
+            head: queue.already_sealed_in.as_deref().map(already_sealed_line),
             heading: heading(queue.count, &queue.target),
             thresholds: queue.threshold.map(thresholds).unwrap_or_default(),
             patches: queue.patches.into_iter().map(patch).collect(),
@@ -102,6 +129,9 @@ fn view(report: QueueReport, prikk_minor: u32) -> QueueView {
 /// An empty queue: the heading, and nothing else below it.
 fn nothing_queued() -> QueueView {
     QueueView {
+        // An empty queue has nothing sealed-but-untidied in it: prikk reports `already_sealed:
+        // null` beside `count: 0` (measured at 0.58, `measure063-0.58.txt` §A4).
+        head: None,
         heading: "Nothing is queued.".to_string(),
         thresholds: Vec::new(),
         patches: Vec::new(),

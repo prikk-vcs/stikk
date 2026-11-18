@@ -126,6 +126,20 @@ fn queue_lines<'a>(
         }
     }
 
+    // **The head, above everything** (RFC 063 decision 9): an interrupted seal changes what the
+    // list below means — these patches are already in history, and Seal finishes the block rather
+    // than making another. In `warn`, because it is a state to act on, and on its own rows so the
+    // heading below it still reads as the heading.
+    if let Some(head) = &view.head {
+        push(
+            &mut lines,
+            width,
+            head,
+            TOP,
+            Style::default().fg(palette.warn),
+        );
+        push(&mut lines, width, "", TOP, Style::default());
+    }
     push(
         &mut lines,
         width,

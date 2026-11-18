@@ -11873,3 +11873,170 @@ fn rfc058_below_the_band_the_undo_is_unavailable() {
     );
     println!("0.{}: {reason}", bin.minor);
 }
+
+// =============================================================================================
+// RFC 063 — what prikk 0.56–0.58 changed, against a real prikk.
+// =============================================================================================
+
+/// **An interrupted seal is read as one, and stikk's Seal finishes it** (RFC 063 F8, decision 9).
+///
+/// The state is a `seal` that published its block and was stopped before it emptied the queue. It
+/// is built the way `measure063.sh` §A builds it: commit, copy `.prikk/active/default/` aside,
+/// seal, copy it back. At 0.55 that state made `status --format json` **exit 1** with an integrity
+/// error, so stikk could not read the queue at all; at 0.58 prikk reports it.
+///
+/// **The leg asserts prikk's own report first.** `.prikk/active/default/` is prikk's internal
+/// layout, and this is the one leg that writes into it — so if that layout moves, this fails as a
+/// **harness** failure naming it, never as a quiet pass (RFC 063 §Tests).
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc063_an_interrupted_seal_is_read_as_one_and_stikks_seal_finishes_it() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_prikk::ALREADY_SEALED_FROM_MINOR {
+        eprintln!(
+            "RFC 063's interrupted seal SKIPPED at 0.{} — prikk reports it from 0.{}; below that \
+             the same state exits 1 with an integrity error. Announced rather than silent (RFC 022 \
+             §3).",
+            bin.minor,
+            stikk_prikk::ALREADY_SEALED_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let backend = CliBackend::with_program(&bin.path);
+    let repo = fixture.repo().to_path_buf();
+    let active = repo.join(".prikk/active/default");
+    let aside = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .join("active-default-aside");
+
+    // One queued patch, then its seal — with the queue's own files copied aside in between.
+    std::fs::write(repo.join("one.txt"), "one\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "one")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    Fixture::clear_env();
+    if !active.is_dir() {
+        stikk_real_binary::support::harness_fail(&format!(
+            "0.{}: prikk's active WAL directory is not at {} — the layout this leg restores has \
+             moved, so the state it builds is not the one RFC 063 F8 measured",
+            bin.minor,
+            active.display()
+        ));
+    }
+    copy_tree(&active, &aside);
+    fixture.set_maintainer_env();
+    let sealed = backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+    let stikk_prikk::SealResult { block_id, .. } = sealed;
+    copy_tree(&aside, &active);
+
+    // **prikk's own report, first.** If prikk does not call this an interrupted seal, the state
+    // was not built — a harness failure, not a product one.
+    let raw = std::process::Command::new(&bin.path)
+        .args(["status", "--format", "json"])
+        .current_dir(&repo)
+        .output()
+        .unwrap_or_else(|e| panic!("0.{}: spawn status: {e}", bin.minor));
+    let document = String::from_utf8_lossy(&raw.stdout);
+    if !raw.status.success() || !document.contains("\"already_sealed\": {") {
+        stikk_real_binary::support::harness_fail(&format!(
+            "0.{}: prikk does not report this state as an interrupted seal (exit {:?}); the \
+             restored WAL did not reproduce RFC 063 F8's state:\n{document}",
+            bin.minor,
+            raw.status.code()
+        ));
+    }
+    println!(
+        "0.{}: prikk's own already_sealed report:\n{document}",
+        bin.minor
+    );
+
+    // **stikk reads the block prikk named**, and the Queue view says what Seal will do.
+    let queue = backend
+        .queue(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: queue: {e}", bin.minor));
+    let stikk_prikk::QueueReport::Listed(listed) = &queue else {
+        panic!(
+            "0.{}: the queue is listed at this version: {queue:?}",
+            bin.minor
+        );
+    };
+    assert_eq!(
+        listed.already_sealed_in.as_deref(),
+        Some(block_id.as_str()),
+        "0.{}: the block prikk named is the one it just sealed",
+        bin.minor
+    );
+    let view = stikk_core::queue_view(&backend, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: queue_view: {e}", bin.minor));
+    assert_eq!(
+        view.head.as_deref(),
+        Some(stikk_core::already_sealed_line(&block_id).as_str()),
+        "0.{}: the Queue view heads its list with it",
+        bin.minor
+    );
+
+    // **And stikk's own Seal finishes it**: the card says so, and afterwards the queue is empty
+    // and the branch tip is still that block — no new block was made.
+    fixture.set_maintainer_env();
+    let outcome = stikk_core::seal_preview(&backend, &repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal_preview: {e}", bin.minor));
+    let stikk_core::SealPreviewOutcome::Ready { token } = outcome else {
+        panic!(
+            "0.{}: expected a Ready seal preview, got {outcome:?}",
+            bin.minor
+        );
+    };
+    assert_eq!(
+        token.summary().notices,
+        vec![stikk_core::already_sealed_line(&block_id)],
+        "0.{}: the card says it once",
+        bin.minor
+    );
+    let readiness = backend
+        .readiness(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+        .readiness;
+    stikk_core::seal_confirm_and_execute(
+        &backend,
+        &repo,
+        *token,
+        readiness,
+        stikk_core::Evidence::ExplicitYes,
+        "heads/main",
+    )
+    .unwrap_or_else(|e| panic!("0.{}: the confirmed seal: {e}", bin.minor));
+    Fixture::clear_env();
+
+    let after = backend
+        .orientation(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor));
+    assert_eq!(
+        after.queued_patches, 0,
+        "0.{}: the queue is tidied up",
+        bin.minor
+    );
+    let tip = backend
+        .history(&repo, "heads/main", 1)
+        .unwrap_or_else(|e| panic!("0.{}: log: {e}", bin.minor))
+        .blocks
+        .first()
+        .unwrap_or_else(|| panic!("0.{}: heads/main has a tip", bin.minor))
+        .block_id
+        .clone();
+    assert_eq!(
+        tip, block_id,
+        "0.{}: Seal finished the block that was there, and added none",
+        bin.minor
+    );
+}

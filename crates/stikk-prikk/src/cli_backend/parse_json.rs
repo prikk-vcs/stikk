@@ -1136,7 +1136,37 @@ pub(super) fn queue(text: &str, prikk_minor: u32) -> Result<Queue> {
         target,
         threshold,
         patches,
+        already_sealed_in: already_sealed(queue, prikk_minor)?,
     })
+}
+
+/// `queue.already_sealed`, from prikk ≥ [`crate::ALREADY_SEALED_FROM_MINOR`] (RFC 063 F8,
+/// decision 9).
+///
+/// **Required at or above the band, and `null` is a value there** — prikk writes the key for every
+/// queue, so a missing one is a shape stikk has not measured rather than "no block" (`UD-02`).
+/// Below the band the field is **not looked for**: at 0.57 and earlier the state it describes made
+/// `status --format json` exit 1, so there is no report to read it from.
+///
+/// An object must carry a `block_id` that is a real object id. `route` is prikk's own next step and
+/// is deliberately not read: it names `prikk seal --allow-no-audit`, which is stikk's own Seal.
+fn already_sealed(queue: &Json, prikk_minor: u32) -> Result<Option<String>> {
+    if prikk_minor < crate::ALREADY_SEALED_FROM_MINOR {
+        return Ok(None);
+    }
+    match queue.get("already_sealed") {
+        None => Err(queue_rule(format!(
+            "missing field `already_sealed`, which prikk reports from 0.{}",
+            crate::ALREADY_SEALED_FROM_MINOR
+        ))),
+        Some(Json::Null) => Ok(None),
+        Some(already @ Json::Object(_)) => {
+            Ok(Some(object_id_field(already, "block_id")?.to_string()))
+        }
+        Some(_) => Err(queue_rule(
+            "`already_sealed` should be an object or null".to_string(),
+        )),
+    }
 }
 
 fn queue_target(queue: &Json) -> Result<QueueTarget> {

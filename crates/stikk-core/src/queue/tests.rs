@@ -58,6 +58,7 @@ fn two_patches(message: impl Fn(&str) -> QueuedMessage) -> Queue {
                 }],
             },
         ],
+        already_sealed_in: None,
     }
 }
 
@@ -90,6 +91,7 @@ fn at_0_42_each_patch_shows_its_message_and_operations_and_the_foot_names_patch_
                 },
             ],
             foot: Some("Enter opens a patch's operations.".to_string()),
+            head: None,
         }
     );
 }
@@ -188,12 +190,14 @@ fn an_empty_queue_says_nothing_is_queued_and_nothing_else() {
         thresholds: Vec::new(),
         patches: Vec::new(),
         foot: None,
+        head: None,
     };
     let listed = QueueReport::Listed(Queue {
         count: 0,
         target: QueueTarget::NotReported,
         threshold: None,
         patches: Vec::new(),
+        already_sealed_in: None,
     });
     assert_eq!(view_at(42, listed), nothing);
     assert_eq!(
@@ -224,6 +228,7 @@ fn below_0_39_the_list_is_unreported_never_empty() {
             thresholds: Vec::new(),
             patches: Vec::new(),
             foot: Some("prikk 0.28 does not list queued patches.".to_string()),
+            head: None,
         }
     );
     let no_target = view_at(

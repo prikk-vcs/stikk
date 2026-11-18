@@ -179,7 +179,19 @@ fn compute(
         history_notice: None,
         rename_note: None,
         declaration_notices: Vec::new(),
-        notices: Vec::new(),
+        // **An interrupted seal, said once on the card** (RFC 063 decision 9): read from the same
+        // queue read the count and the frozen list come from, so the card and the token describe
+        // one instant. It is a caution about what confirming will produce — Seal finishes the block
+        // that is already there and adds none — which is what `notices` is for.
+        notices: match &queue {
+            QueueReport::Listed(listed) => listed
+                .already_sealed_in
+                .as_deref()
+                .map(crate::already_sealed_line)
+                .into_iter()
+                .collect(),
+            QueueReport::Unreported { .. } => Vec::new(),
+        },
         message_note: None,
         materializes: None,
         merge_plan: None,

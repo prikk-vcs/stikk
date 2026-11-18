@@ -25,10 +25,10 @@ pub mod version;
 pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
 pub use version::{
-    CURRENT_BRANCH_FROM_MINOR, DIFF_FROM_MINOR, EXCHANGE_FROM_MINOR, FILES_FROM_MINOR,
-    JSON_REPORTS_FROM_MINOR, MERGE_INTO_CURRENT_FROM_MINOR, ORIENTATION_JSON_FROM_MINOR,
-    PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR, UNPUBLISHED_BRANCH_FROM_MINOR, Version,
-    validated_ceiling_display,
+    ALREADY_SEALED_FROM_MINOR, CURRENT_BRANCH_FROM_MINOR, DIFF_FROM_MINOR, EXCHANGE_FROM_MINOR,
+    FILES_FROM_MINOR, JSON_REPORTS_FROM_MINOR, MERGE_INTO_CURRENT_FROM_MINOR,
+    ORIENTATION_JSON_FROM_MINOR, PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR,
+    UNPUBLISHED_BRANCH_FROM_MINOR, Version, validated_ceiling_display,
 };
 
 use std::path::Path;
@@ -155,6 +155,18 @@ pub struct Queue {
     pub threshold: Option<QueueThreshold>,
     /// Each queued patch, in prikk's order.
     pub patches: Vec<QueuedPatch>,
+    /// The block these patches are **already sealed in**, when a seal published and was stopped
+    /// before it emptied the queue (`queue.already_sealed.block_id`, prikk ≥
+    /// [`crate::ALREADY_SEALED_FROM_MINOR`]; RFC 063 F8).
+    ///
+    /// **`None` is two different facts, and neither is a claim stikk invents**: below the band
+    /// stikk does not look for the field, and at or above it `null` is prikk saying there is no
+    /// such block. What a reader needs is the same either way — nothing extra is said — and the
+    /// field is read only where prikk reports it (`C-T2c′`).
+    ///
+    /// prikk's own `route` beside it is **not read**: it names `prikk seal --allow-no-audit`, which
+    /// is what stikk's own Seal runs.
+    pub already_sealed_in: Option<String>,
 }
 
 /// `target_ref` with `target_ref_status`, as one state.

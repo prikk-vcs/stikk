@@ -391,6 +391,7 @@ fn listed(minor: u32, target: &str) -> stikk_prikk::QueueReport {
                 operations: Vec::new(),
             },
         ],
+        already_sealed_in: None,
     })
 }
 
@@ -494,4 +495,47 @@ fn the_remainder_lines_words_are_exact() {
         crate::confirm::unshown_patches_line(12, 12),
         "none shown here — the Queue view lists all 12"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 063 decision 9: the seal card says when the queue it seals is already sealed.
+// ---------------------------------------------------------------------------------------------
+
+/// **One line on the card, from the same queue read the count and the frozen list come from**, so
+/// the card and the token describe one instant (RFC 063 decision 9).
+#[test]
+fn at_0_58_an_interrupted_seal_is_said_once_on_the_card() {
+    let block = "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a";
+    let stikk_prikk::QueueReport::Listed(mut queue) = listed(58, "heads/main") else {
+        panic!("the fixture lists its queue");
+    };
+    queue.already_sealed_in = Some(block.to_string());
+    let backend = ready_backend()
+        .with_version(0, 58, 0)
+        .with_queue(stikk_prikk::QueueReport::Listed(queue));
+    let summary = ready_summary(&backend);
+    assert_eq!(
+        summary.notices,
+        vec![crate::already_sealed_line(block)],
+        "the card says it once"
+    );
+    assert!(
+        summary
+            .notices
+            .first()
+            .is_some_and(|line| line.contains("adds no new block")),
+        "{:?}",
+        summary.notices
+    );
+    // The patches it freezes are still named, because they are still what is in the queue.
+    assert_eq!(summary.counts, vec![("patches", 2)]);
+}
+
+/// **Nothing extra where prikk reports no such block** — the ordinary seal, at the same version.
+#[test]
+fn at_0_58_an_ordinary_seal_says_nothing_extra() {
+    let backend = ready_backend()
+        .with_version(0, 58, 0)
+        .with_queue(listed(58, "heads/main"));
+    assert!(ready_summary(&backend).notices.is_empty());
 }

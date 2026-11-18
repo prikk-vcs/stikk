@@ -4406,3 +4406,103 @@ fn rfc057_a_report_of_another_schema_is_refused() {
     assert_eq!(err.class(), "environment");
     assert!(err.to_string().contains("status-report-v1"), "{err}");
 }
+
+// ------------------------------------------------- RFC 063: an interrupted seal, from prikk 0.58
+
+/// prikk 0.58.0's own report for the state, from `measure063-0.58.txt` §A1: a seal published its
+/// block and was stopped before it emptied the queue, reproduced on disk by restoring
+/// `.prikk/active/default/` after a seal. At 0.55 the same state made this command **exit 1** with
+/// an integrity error, so there was no report to read at all (RFC 063 F8).
+const STATUS_ALREADY_SEALED_0_58: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/tmp/repo/.prikk",
+  "active_wal_records": 1,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "20444fe9438c81bffa57c9b1ddf7b59f6a1bb57ea18f2d0833d019f7e0a9fb29",
+  "current_branch": "heads/main",
+  "provisional_worktree": null,
+  "interrupted_materialization": null,
+  "queue": {
+    "count": 1,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "already_sealed": {"block_id": "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a", "route": "prikk seal --allow-no-audit"},
+    "patches": [
+      {"patch_id": "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478", "message": "one", "operations": [
+        {"kind": "create-file", "paths": [{"path": "one.txt"}]}
+      ]}
+    ]
+  }
+}
+"#;
+
+/// **The block id, and nothing else from the object** (RFC 063 decision 9): `route` is prikk's own
+/// next step, and it names `prikk seal --allow-no-audit`, which is what stikk's Seal runs.
+#[test]
+fn an_interrupted_seal_is_read_as_its_block_at_0_58() {
+    let q = queue_at(STATUS_ALREADY_SEALED_0_58, 58);
+    assert_eq!(
+        q.already_sealed_in.as_deref(),
+        Some("493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a")
+    );
+    assert_eq!(q.count, 1, "the queue is still listed as prikk listed it");
+}
+
+/// **`null` is a value, not an absence** — prikk writes the key for every queue at 0.58, and this
+/// is the ordinary case (§A4's own report, after the seal finished).
+#[test]
+fn a_null_already_sealed_is_no_block_at_0_58() {
+    let text = STATUS_ALREADY_SEALED_0_58.replace(
+        r#""already_sealed": {"block_id": "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a", "route": "prikk seal --allow-no-audit"},"#,
+        r#""already_sealed": null,"#,
+    );
+    assert_eq!(queue_at(&text, 58).already_sealed_in, None);
+}
+
+/// **A missing field is a shape error at 0.58**, naming it: prikk reports it for every queue, so an
+/// absence is a report stikk has not measured rather than "no block" (`UD-02`).
+#[test]
+fn a_missing_already_sealed_is_refused_at_0_58() {
+    let text = STATUS_ALREADY_SEALED_0_58.replace(
+        r#""already_sealed": {"block_id": "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a", "route": "prikk seal --allow-no-audit"},"#,
+        "",
+    );
+    let err = queue_rule_error(&text, 58);
+    assert!(err.contains("already_sealed"), "{err}");
+    assert!(err.contains("0.58"), "the band is named: {err}");
+}
+
+/// **A wrong type, and a `block_id` that is not an object id**, each refused where it is found.
+#[test]
+fn an_already_sealed_of_the_wrong_shape_is_refused_at_0_58() {
+    let not_an_object =
+        STATUS_ALREADY_SEALED_0_58.replace(r#"{"block_id": "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a", "route": "prikk seal --allow-no-audit"}"#, r#""493e5816""#);
+    let err = queue_rule_error(&not_an_object, 58);
+    assert!(err.contains("already_sealed"), "{err}");
+
+    let bad_id = STATUS_ALREADY_SEALED_0_58.replace(
+        "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a\", \"route",
+        "not-an-id\", \"route",
+    );
+    let err = queue(&bad_id, 58).expect_err("a block id must be one");
+    assert!(err.to_string().contains("block_id"), "{err}");
+}
+
+/// **At 0.57 the field is not looked for, and its absence is accepted** — the state it describes
+/// made `status --format json` exit 1 there, so there is no report to read it from (F8).
+#[test]
+fn below_the_band_already_sealed_is_not_read() {
+    assert_eq!(
+        queue_at(STATUS_QUEUE_TWO_PATCH_0_42, 57).already_sealed_in,
+        None
+    );
+    // Even when a prikk below the band does report one, stikk at that version does not read it:
+    // the band is the one place this is decided.
+    assert_eq!(
+        queue_at(STATUS_ALREADY_SEALED_0_58, 57).already_sealed_in,
+        None
+    );
+}

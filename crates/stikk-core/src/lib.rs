@@ -112,7 +112,7 @@ pub use present::{
     NextStep, NextTarget, OperationContext, Presentation, RefusalCard, Target, present,
     stale_gloss, stale_headline,
 };
-pub use queue::{QueueView, QueuedPatchView, queue_view};
+pub use queue::{QueueView, QueuedPatchView, already_sealed_line, queue_view};
 pub use refs::{
     CLOSE_BRANCH_OPERATION, CLOSING_THE_CURRENT_BRANCH, CREATE_BRANCH_OPERATION,
     CREATE_TAG_OPERATION, NewTag, REF_WRITES_FROM_MINOR, RefWritePreview,

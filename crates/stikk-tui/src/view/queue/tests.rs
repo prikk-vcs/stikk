@@ -59,7 +59,8 @@ fn capture(label: &str, view: &QueueView) -> String {
     let text = draw(view);
     println!("--- Queue, {label}, 80×24\n{text}");
     let screen = joined(&text);
-    let mut expected = vec![view.heading.clone()];
+    let mut expected: Vec<String> = view.head.iter().cloned().collect();
+    expected.push(view.heading.clone());
     expected.extend(view.thresholds.iter().cloned());
     for patch in &view.patches {
         expected.push(patch.id.clone());
@@ -120,6 +121,7 @@ fn two_patch(ids: [&str; 2], message: impl Fn(&str) -> QueuedMessage) -> QueueRe
                 )],
             },
         ],
+        already_sealed_in: None,
     })
 }
 
@@ -195,6 +197,7 @@ fn the_six_queue_captures_render_whole_at_80_columns() {
                         operations: vec![op("delete-node", vec![path("doc.txt")], None)],
                     },
                 ],
+                already_sealed_in: None,
             }),
         ),
     );
@@ -214,6 +217,7 @@ fn the_six_queue_captures_render_whole_at_80_columns() {
                     message: QueuedMessage::Text("one patch".to_string()),
                     operations: vec![op("create-file", vec![path("w.txt")], None)],
                 }],
+                already_sealed_in: None,
             }),
         ),
     );
@@ -245,6 +249,7 @@ fn the_six_queue_captures_render_whole_at_80_columns() {
                 target: QueueTarget::NotReported,
                 threshold: None,
                 patches: Vec::new(),
+                already_sealed_in: None,
             }),
         ),
     );
@@ -267,6 +272,7 @@ fn a_hostile_message_is_rendered_inert() {
             operations: Vec::new(),
         }],
         foot: None,
+        head: None,
     };
     let text = draw(&view);
     assert!(!text.contains('\u{1b}'), "{text:?}");
@@ -293,6 +299,7 @@ fn tall_queue() -> QueueView {
             target: QueueTarget::Ref("heads/main".to_string()),
             threshold: threshold(ThresholdStatus::None, 800),
             patches,
+            already_sealed_in: None,
         }),
     )
 }
@@ -439,6 +446,7 @@ fn a_message_keeps_its_quotes_and_loses_only_the_invisible() {
             operations: Vec::new(),
         }],
         foot: None,
+        head: None,
     };
     let text = draw(&view);
     println!("--- RFC 036: a message is prose\n{text}");
@@ -478,4 +486,87 @@ fn the_queue_title_is_whole_at_80_columns_with_the_scroll_indicator() {
     let offset = std::cell::Cell::new(0);
     let top = draw_at(&view, &offset, 0);
     assert_title_is_whole(&top, "of 53 ");
+}
+
+// ------------------------------------------------- RFC 063: an interrupted seal, from prikk 0.58
+
+/// prikk 0.58's own §A1 state, as the reader produces it: one queued patch that is **already
+/// sealed**, in the block prikk names.
+fn already_sealed(block: &str) -> QueueReport {
+    QueueReport::Listed(Queue {
+        count: 1,
+        target: QueueTarget::Ref("heads/main".to_string()),
+        threshold: threshold(ThresholdStatus::None, 800),
+        patches: vec![QueuedPatch {
+            patch_id: "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478"
+                .to_string(),
+            message: QueuedMessage::Text("one".to_string()),
+            operations: vec![op("create-file", vec![path("one.txt")], None)],
+        }],
+        already_sealed_in: Some(block.to_string()),
+    })
+}
+
+/// **The head is above the list, and says what Seal will do** (RFC 063 decision 9) — at the two
+/// sizes and both themes the evidence plan names, with every line whole.
+#[test]
+fn an_interrupted_seal_heads_the_queue_at_both_sizes_and_themes() {
+    let block = "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a";
+    let view = view_at(58, already_sealed(block));
+    let head = view
+        .head
+        .clone()
+        .expect("prikk named the block these patches are already sealed in");
+    assert_eq!(head, stikk_core::already_sealed_line(block));
+    // The short id the Queue view names every id in, not the whole 64 characters.
+    assert!(head.contains("493e58168d77"), "{head}");
+    assert!(!head.contains(block), "the head shortens it: {head}");
+
+    for (w, h) in [(80, 24), (120, 40)] {
+        for (theme, palette) in [("dark", Palette::default()), ("light", Palette::light())] {
+            let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+            terminal
+                .draw(|f| {
+                    render(&view, &std::cell::Cell::new(0), 0, &palette, f, f.area());
+                })
+                .unwrap();
+            let text = buffer_text(terminal.backend().buffer());
+            println!("--- Queue, an interrupted seal, {w}×{h}, {theme}\n{text}");
+            let screen = joined(&text);
+            assert!(
+                screen.contains(&head),
+                "{w}×{h} {theme}: the head is not whole:\n{text}"
+            );
+            // And it sits **above** the heading, which still reads as the heading.
+            let head_row = text
+                .lines()
+                .position(|line| line.contains("already sealed"))
+                .unwrap_or_else(|| panic!("{w}×{h} {theme}: no head:\n{text}"));
+            let heading_row = text
+                .lines()
+                .position(|line| line.contains("queued for heads/main"))
+                .unwrap_or_else(|| panic!("{w}×{h} {theme}: no heading:\n{text}"));
+            assert!(
+                head_row < heading_row,
+                "{w}×{h} {theme}: the head belongs above the list:\n{text}"
+            );
+        }
+    }
+}
+
+/// **No head where prikk reports none**, which is every ordinary queue.
+#[test]
+fn an_ordinary_queue_has_no_head() {
+    let view = view_at(
+        58,
+        two_patch(
+            [
+                "493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a",
+                "71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478",
+            ],
+            |m| QueuedMessage::Text(m.to_string()),
+        ),
+    );
+    assert_eq!(view.head, None);
+    assert!(!joined(&draw(&view)).contains("already sealed"));
 }

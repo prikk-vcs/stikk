@@ -160,7 +160,12 @@ static HARNESS_ALREADY_FAILED: AtomicBool = AtomicBool::new(false);
 /// kind it is; and only the **first** carries the detail — every later one says the harness is already
 /// known broken and that this test never reached stikk at all, so a reader looks at one wall of text
 /// rather than N identical ones.
-fn harness_fail(what: &str) -> ! {
+///
+/// **Public since RFC 063**, for the one leg that builds a state out of prikk's *internal* layout:
+/// an interrupted seal, made by restoring `.prikk/active/default/` after a seal (F8). If that layout
+/// moves, the leg has not built the state it asserts about — which is this function's own case, not
+/// a product failure, and the leg must never pass quietly instead.
+pub fn harness_fail(what: &str) -> ! {
     if HARNESS_ALREADY_FAILED.swap(true, Ordering::SeqCst) {
         panic!(
             "HARNESS FAILURE (already reported above): fixture construction is broken, so this test \

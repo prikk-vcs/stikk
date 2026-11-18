@@ -2028,6 +2028,7 @@ fn queue_view_with(heading: &str) -> stikk_core::QueueView {
             })
             .collect(),
         foot: None,
+        head: None,
     }
 }
 

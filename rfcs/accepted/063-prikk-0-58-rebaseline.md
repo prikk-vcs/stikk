@@ -1,6 +1,6 @@
 # RFC 063 — The prikk 0.58 re-baseline
 
-**Status.** **Proposed 2026-11-18** by the architect, as 0.21.0's increment 1 (`.git-exclude/release/0-21-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-11-18**; [Handoff A](../handoffs/063-prikk-0-58-rebaseline/a-what-0-56-changed-handoff-v1.md) (decisions 1–5, 9–11) · [Handoff B](../handoffs/063-prikk-0-58-rebaseline/b-what-prikk-now-checks-handoff-v1.md) (decisions 6–8, after A). **Proposed 2026-11-18** by the architect, as 0.21.0's increment 1 (`.git-exclude/release/0-21-0-scope.md`,
 amended and authorized by the project owner 2026-11-18). prikk **0.56.0** (2026-11-08), **0.57.0** (2026-11-14) and
 **0.58.0** (2026-11-18) are released, in prikk's letters 030 and 031. **No open question.**
 **Measured** against the pinned real prikk binaries **0.28.0**, **0.55.0**, **0.57.0** and **0.58.0**. All the evidence
@@ -104,7 +104,8 @@ and seals it. The next commit on `heads/dev`:
 **How a stikk user gets there.** Commit (`C`) and seal (`S`) act on the **focused ref** (`app.rs:1563`, `:1633`,
 `require_focus` at `:5488`). Picking another ref in the ref picker focuses it (`app.rs:3190-3209`). From there, `C`
 commits the folder's files to that ref, after the notice *"This targets heads/main. prikk's current branch is
-heads/dev …"* (`confirm.rs:450-465`). **So the flow is one keypress away.** Before 0.56 it mixed two branches' work
+heads/dev …"* (`confirm.rs:450-465`). A queue for a branch that is not current can only come from such a commit: prikk refuses a switch away from a
+branch with work queued for it, at 0.55 and 0.58 alike (`measure063.sh` §H). **So the flow is one keypress away.** Before 0.56 it mixed two branches' work
 silently; from 0.56 it leaves a refusal for later. `rfc029b` fails on that later refusal.
 
 ### F5 — imports refuse a seal that fails against an adopted key

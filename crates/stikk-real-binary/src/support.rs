@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// One resolved, real `prikk` binary this suite drives, at a known minor version.
 pub struct PrikkBin {
@@ -85,12 +85,28 @@ impl PrikkBin {
     }
 }
 
-/// The fixed AUTHOR/MAINTAINER key ids this suite always uses — `prikk setup`'s own choice at ≥ 0.33
-/// (not configurable there), reused for consistency at < 0.33 where the manual path is free to choose
-/// any string (`trust maintainer add --key-id` takes an arbitrary label; AUTHOR needs no registration
-/// at all, presence-only, `stikk-prikk::env`).
-const AUTHOR_KEY_ID: &str = "author";
-const MAINTAINER_KEY_ID: &str = "maintainer";
+/// The role words every fixture's key ids are built from — `prikk setup`'s own choice at ≥ 0.33
+/// (not configurable there), kept at < 0.33 where the manual path is free to choose any string
+/// (`trust maintainer add --key-id` takes an arbitrary label; AUTHOR needs no registration at all,
+/// presence-only, `stikk-prikk::env`).
+///
+/// **They are prefixes, not the ids** (RFC 063 F5, decision 5). Every fixture used to configure the
+/// bare words, so a sender and a receiver built as two fixtures shared the id `maintainer` under two
+/// different keys — and from prikk **0.56** an import is refused for exactly that: the bundle is
+/// sealed under an adopted id by a key the receiver did not adopt
+/// (`forged-publication-signature`). That broke four cases at 0.58 and hid the one case that wants
+/// the clash. Each fixture now appends [`NEXT_FIXTURE`]'s count, and the clash is written on purpose
+/// by [`Fixture::build_with_maintainer_id`].
+///
+/// **This is not only a fixture artefact.** prikk 0.45 gave *new* keys distinct default ids, but an
+/// existing key keeps the role word, so two people whose keys predate 0.45 meet the same refusal.
+const AUTHOR_KEY_ID_PREFIX: &str = "author";
+const MAINTAINER_KEY_ID_PREFIX: &str = "maintainer";
+
+/// The count the next fixture's key ids carry, so no two fixtures in one process share an id
+/// (RFC 063 decision 5). Shared across threads because the suite runs single-threaded by convention
+/// but is not forced to.
+static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(1);
 
 /// The fixed 16-byte PKCS#8 `OneAsymmetricKey` prefix for an Ed25519 private key (RFC 8410) — identical
 /// for every Ed25519 key that has ever existed; nothing here is derived from or depends on any seed.
@@ -165,12 +181,42 @@ impl Fixture {
     /// Build a fresh repository against `bin`, with `readme.txt` already present in the worktree so the
     /// first commit has something to author.
     ///
+    /// **Its key ids are its own** — `author-N` and `maintainer-N` for this fixture's own `N`
+    /// (RFC 063 decision 5), so two fixtures in one test are two different people, which is what a
+    /// sender and a receiver are. Read them from [`Fixture::author_key_id`] and
+    /// [`Fixture::maintainer_key_id`]; never write one into an assertion.
+    ///
     /// # Panics
     /// If any step of building the repository, generating keys, or trusting the maintainer key fails —
     /// there is no degraded fixture to fall back to; a broken fixture would make every test built on it
     /// meaningless.
     #[must_use]
     pub fn build(bin: &PrikkBin) -> Self {
+        let n = NEXT_FIXTURE.fetch_add(1, Ordering::SeqCst);
+        Self::build_inner(bin, &format!("{MAINTAINER_KEY_ID_PREFIX}-{n}"), n)
+    }
+
+    /// Build a fixture whose MAINTAINER key id is **given**, so a test can make two repositories
+    /// share one id under two different keys (RFC 063 F5).
+    ///
+    /// **The only way to build that clash**, and it exists because the clash is a real case, not a
+    /// harness accident: a key that predates prikk 0.45 keeps the role word as its id, so two people
+    /// can each hold `maintainer` for their own key. From prikk 0.56 an import of the other's bundle
+    /// is refused as `forged-publication-signature`, and `rfc054`'s second case is written to meet
+    /// that refusal rather than to stumble into it.
+    ///
+    /// The AUTHOR id stays this fixture's own: AUTHOR is presence-only and nothing compares it.
+    ///
+    /// # Panics
+    /// As [`Fixture::build`].
+    #[must_use]
+    pub fn build_with_maintainer_id(bin: &PrikkBin, maintainer_key_id: &str) -> Self {
+        let n = NEXT_FIXTURE.fetch_add(1, Ordering::SeqCst);
+        Self::build_inner(bin, maintainer_key_id, n)
+    }
+
+    fn build_inner(bin: &PrikkBin, maintainer_key_id: &str, n: usize) -> Self {
+        let author_key_id = format!("{AUTHOR_KEY_ID_PREFIX}-{n}");
         let mut root = env::temp_dir();
         root.push(format!(
             "stikk-real-binary-{}-{}-{:?}",
@@ -199,9 +245,9 @@ impl Fixture {
         }
 
         let (author_seed, maintainer_seed) = if bin.minor >= 33 {
-            Self::setup_via_prikk_key(bin, &repo, &keys_dir)
+            Self::setup_via_prikk_key(bin, &repo, &keys_dir, maintainer_key_id)
         } else {
-            Self::setup_manually(bin, &repo, &keys_dir)
+            Self::setup_manually(bin, &repo, &keys_dir, maintainer_key_id)
         };
 
         // RFC 026 §2: at ≥ 0.40 prikk no longer reads `PRIKK_*_SEED`, so the harness configures it with
@@ -220,10 +266,10 @@ impl Fixture {
             root,
             repo,
             minor: bin.minor,
-            author_key_id: AUTHOR_KEY_ID.to_string(),
+            author_key_id,
             author_seed,
             author_seed_file,
-            maintainer_key_id: MAINTAINER_KEY_ID.to_string(),
+            maintainer_key_id: maintainer_key_id.to_string(),
             maintainer_seed,
             maintainer_seed_file,
         }
@@ -260,7 +306,12 @@ impl Fixture {
     /// **Two forms, because `--out` is refused on Windows by design** (found by the first full-matrix
     /// run, 2026-09-12 — see [`Self::generate_key`]). Both yield the same pair; they differ only in
     /// where the seed travels.
-    fn setup_via_prikk_key(bin: &PrikkBin, repo: &Path, keys_dir: &Path) -> (String, String) {
+    fn setup_via_prikk_key(
+        bin: &PrikkBin,
+        repo: &Path,
+        keys_dir: &Path,
+        maintainer_key_id: &str,
+    ) -> (String, String) {
         let (author_seed, _) = Self::generate_key(bin, keys_dir, "author");
         let (maintainer_seed, maintainer_pubkey) = Self::generate_key(bin, keys_dir, "maintainer");
 
@@ -270,7 +321,7 @@ impl Fixture {
                 "maintainer",
                 "add",
                 "--key-id",
-                MAINTAINER_KEY_ID,
+                maintainer_key_id,
                 "--public-key",
             ])
             .arg(&maintainer_pubkey)
@@ -375,7 +426,12 @@ impl Fixture {
     /// technique this project has used since RFC 014's own manual verification), and trust it — the
     /// caller already ran `prikk init` before this. The AUTHOR key needs no derivation or registration
     /// at all: presence-only, never checked against anything (`stikk-prikk::env`).
-    fn setup_manually(bin: &PrikkBin, repo: &Path, keys_dir: &Path) -> (String, String) {
+    fn setup_manually(
+        bin: &PrikkBin,
+        repo: &Path,
+        keys_dir: &Path,
+        maintainer_key_id: &str,
+    ) -> (String, String) {
         let author_seed = Self::random_seed_hex();
         let maintainer_seed = Self::random_seed_hex();
         let maintainer_pubkey = Self::derive_pubkey_via_openssl(&maintainer_seed, keys_dir);
@@ -386,7 +442,7 @@ impl Fixture {
                 "maintainer",
                 "add",
                 "--key-id",
-                MAINTAINER_KEY_ID,
+                maintainer_key_id,
                 "--public-key",
             ])
             .arg(&maintainer_pubkey)

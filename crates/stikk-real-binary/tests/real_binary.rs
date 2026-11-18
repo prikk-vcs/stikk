@@ -6473,17 +6473,30 @@ fn rfc045_the_preview_is_what_the_switch_does_at_the_ceiling() {
 
     // ── 4. work queued for the target is not offered, and nothing is spawned ────────────────
     //
-    // **F5**: prikk allows this and writes the target's sealed files only, leaving the queued
-    // work absent from the worktree. The proof that stikk spawned nothing is that the current
-    // branch is unchanged afterwards, by prikk's own report.
-    write("queued.txt", "for feature\n");
+    // **RFC 045 F5, re-measured at 0.58 as RFC 063 F3**: prikk allows this switch, and from 0.56
+    // it *deletes* the queued file from the worktree — `files deleted: 1`, and the next commit is
+    // then refused. Nothing is lost, because sealing puts the work into the block, but the user
+    // watches their file vanish. stikk's guard stays at every version.
+    //
+    // **The queue is made on a branch whose files match the worktree's** (`measure063.sh` §C): a
+    // fresh branch off the current tip, committed to before anything is sealed on it. From 0.56
+    // prikk refuses a commit to a ref whose files differ from those the worktree was last written
+    // from (F4), so queueing onto `heads/feature` — which this leg has already moved — is a
+    // refusal rather than the setup this step needs.
+    fixture.set_maintainer_env();
+    prikk_ok(
+        &bin,
+        &repo,
+        &["branch", "create", "heads/queued", "--from", "heads/main"],
+    );
+    Fixture::clear_env();
+    write("queued.txt", "for the queued branch\n");
     fixture.set_author_env();
     backend
-        .commit(&repo, "heads/feature", "queued for feature")
-        .unwrap_or_else(|e| panic!("0.{}: commit onto heads/feature: {e}", bin.minor));
+        .commit(&repo, "heads/queued", "queued for heads/queued")
+        .unwrap_or_else(|e| panic!("0.{}: commit onto heads/queued: {e}", bin.minor));
     Fixture::clear_env();
-    std::fs::remove_file(repo.join("queued.txt")).expect("remove queued.txt");
-    let blocked = stikk_core::switch_preview(&backend, &repo, "heads/feature")
+    let blocked = stikk_core::switch_preview(&backend, &repo, "heads/queued")
         .unwrap_or_else(|e| panic!("0.{}: switch_preview: {e}", bin.minor));
     match blocked {
         stikk_core::SwitchPreview::Blocked(reason) => assert_eq!(
@@ -9397,13 +9410,19 @@ fn rfc054_a_bundles_sealer_becomes_trusted_when_the_key_is_adopted_at_the_ceilin
 /// holds the key. The card therefore says the id **names** an adopted key, and carries
 /// [`stikk_core::NAMES_BUT_DOES_NOT_PROVE`] beneath the rows.
 ///
-/// **Where the shared id comes from here: the harness, not prikk.** `support.rs`'s
-/// `MAINTAINER_KEY_ID` puts every fixture's key under `maintainer`, so two fixtures hold
-/// *different* keys under the *same* id. (Since prikk 0.45.0 a key made by `setup` or
-/// `key generate --out` gets `ed25519-<16 hex of its public key>`, so two strangers do not
-/// normally collide by accident — a sender who wants to can still choose the id.) The shape
-/// is the same either way, and it is the architect's measured spoof at 0.55.0:
-/// `.git-exclude/reports/054-trust-read/spoof054-0.55.txt`.
+/// **Where the shared id comes from here: this leg, on purpose.** Every fixture used to put its
+/// key under the bare id `maintainer`, so any two fixtures collided; from RFC 063 decision 5 each
+/// fixture has its own id, and this leg builds its receiver with
+/// [`Fixture::build_with_maintainer_id`] under the **sender's** id. (Since prikk 0.45.0 a key made
+/// by `setup` or `key generate --out` gets `ed25519-<16 hex of its public key>`, so two strangers
+/// do not normally collide by accident — but an older key keeps the role word, so two people whose
+/// keys predate 0.45 do.) The shape is the same either way, and it is the architect's measured spoof
+/// at 0.55.0: `.git-exclude/reports/054-trust-read/spoof054-0.55.txt`.
+///
+/// **What prikk 0.56 changed** (RFC 063 F5): the import itself is now refused, as
+/// `forged-publication-signature`, so the reader never reaches the `verify` this leg was written
+/// around. Both ends are asserted — prikk's refusal from 0.56, and the post-import `verify` below
+/// it — because the sentence the card shows is still the one stikk owns at 0.55.
 ///
 /// **This leg is the evidence for the sentence stikk shows.** If prikk ever stops catching
 /// this at `verify`, it goes red.
@@ -9455,8 +9474,10 @@ fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() 
         ],
     );
 
-    // A receiver with its own `setup` key — a *different* key under the *same* id.
-    let receiver = Fixture::build(&bin);
+    // A receiver with its own `setup` key — a *different* key under the *same* id, which is now
+    // written here rather than inherited from a shared harness constant (RFC 063 decision 5).
+    let receiver = Fixture::build_with_maintainer_id(&bin, sender.maintainer_key_id());
+    let shared_id = sender.maintainer_key_id().to_string();
     let opened = stikk_core::open_bundle(&backend, receiver.repo(), &bundle)
         .unwrap_or_else(|e| panic!("0.{}: open_bundle: {e}", bin.minor));
     let stikk_core::BundleOpened::Read(view) = opened else {
@@ -9470,8 +9491,8 @@ fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() 
         bin.minor
     );
     assert_eq!(
-        judged[0].key_id, "maintainer",
-        "0.{}: the harness's id, shared by both fixtures",
+        judged[0].key_id, shared_id,
+        "0.{}: the id both fixtures hold a key under",
         bin.minor
     );
     // **`NamesATrustedKey`, not `NamesYourKey`**, and the environment is the reason: the keys
@@ -9505,11 +9526,11 @@ fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() 
     let aside = summary
         .asides
         .iter()
-        .find(|aside| aside.body.iter().any(|line| line.contains("maintainer")))
+        .find(|aside| aside.body.iter().any(|line| line.contains(&shared_id)))
         .unwrap_or_else(|| panic!("0.{}: the sealer aside: {summary:?}", bin.minor));
     assert_eq!(
         aside.body.first().map(String::as_str),
-        Some("maintainer — names a key this repository trusts"),
+        Some(format!("{shared_id} — names a key this repository trusts").as_str()),
         "0.{}: the row: {:?}",
         bin.minor,
         aside.body
@@ -9522,8 +9543,8 @@ fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() 
         aside.body
     );
 
-    // **Import, and then ask prikk.** This is the step the sentence sends the reader to.
-    stikk_core::import_confirm_and_execute(
+    // **Import, and then ask prikk** — or, from 0.56, meet prikk's refusal at the import itself.
+    let imported = stikk_core::import_confirm_and_execute(
         &backend,
         receiver.repo(),
         *token,
@@ -9536,8 +9557,60 @@ fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() 
             path: bundle.clone(),
             received: "remotes/heads/main".to_string(),
         },
-    )
-    .unwrap_or_else(|e| panic!("0.{}: import: {e}", bin.minor));
+    );
+
+    if bin.minor >= 56 {
+        // **prikk refuses the import** (RFC 063 F5). stikk shows that refusal verbatim, and the
+        // `verify` below is never reached by a reader at this version.
+        let error = imported
+            .err()
+            .unwrap_or_else(|| panic!("0.{}: the import must be refused", bin.minor));
+        let stikk_model::StikkError::Refusal { message } = &error else {
+            panic!("0.{}: prikk's own refusal, got {error:?}", bin.minor);
+        };
+        assert!(
+            message.contains("does not verify"),
+            "0.{}: prikk's words: {message}",
+            bin.minor
+        );
+        // **prikk's own id for it, from prikk's own document**, read beside stikk's call rather
+        // than parsed out of the sentence.
+        let raw = std::process::Command::new(&bin.path)
+            .args([
+                "bundle",
+                "import",
+                "--input",
+                &bundle.display().to_string(),
+                "--format",
+                "json",
+            ])
+            .current_dir(receiver.repo())
+            .output()
+            .unwrap_or_else(|e| panic!("0.{}: spawn bundle import: {e}", bin.minor));
+        let document = String::from_utf8_lossy(&raw.stdout);
+        assert!(
+            document.contains("\"schema_version\": \"refusal-v1\"")
+                && document.contains("\"refusal\": \"forged-publication-signature\""),
+            "0.{}: prikk's refusal document: {document}",
+            bin.minor
+        );
+        // **Nothing landed**, by prikk's own ref list.
+        let refs = stikk_core::list_refs(&backend, receiver.repo())
+            .unwrap_or_else(|e| panic!("0.{}: list_refs: {e}", bin.minor));
+        assert!(
+            !refs
+                .refs
+                .iter()
+                .any(|entry| entry.name.starts_with("remotes/")),
+            "0.{}: no received ref: {:?}",
+            bin.minor,
+            refs.refs.iter().map(|r| &r.name).collect::<Vec<_>>()
+        );
+        Fixture::clear_env();
+        return;
+    }
+
+    imported.unwrap_or_else(|e| panic!("0.{}: import: {e}", bin.minor));
 
     let stikk_core::VerifyView::Checked(checked) = stikk_core::verify(&backend, receiver.repo())
         .unwrap_or_else(|e| panic!("0.{}: verify: {e}", bin.minor))
@@ -9881,9 +9954,17 @@ fn rfc056_removing_shrinks_the_list_and_a_removed_id_is_prikks_refusal_at_the_ce
         &mine.public_key,
     )
     .expect_err("prikk refuses a removed id under a different key");
+    // **prikk's own words, and they changed at 0.56** as stikk's letter asked (RFC 063 F7): the
+    // refusal now says the id was *removed* and stays bound to the key it was first adopted with.
+    // Handoff B reads prikk's typed `refusal-v1` id for this and opens the *Two keys, one id* card;
+    // here the assertion is still on prikk's sentence, at whichever version is under test.
+    let expected = if bin.minor >= 56 {
+        "is not currently adopted (it was removed)"
+    } else {
+        "already adopted with a different public key"
+    };
     assert!(
-        err.to_string()
-            .contains("already adopted with a different public key"),
+        err.to_string().contains(expected),
         "0.{}: prikk's words, verbatim: {err}",
         bin.minor
     );

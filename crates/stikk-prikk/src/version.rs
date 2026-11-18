@@ -89,8 +89,8 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
 /// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, to 38 by RFC 021, to 41 by RFC 026,
 /// to 42 by RFC 029, to 46 by RFC 034, to 51 by RFC 035, to 52 by RFC 043, to 53 by RFC 049, to 54
-/// by RFC 052, then to **55 by RFC 055** — each only after empirical re-verification against a
-/// real released binary, never a changelog). RFC 017's re-verification found no output-shape
+/// by RFC 052, to 55 by RFC 055, then to **58 by RFC 063** — each only after empirical
+/// re-verification against a real released binary, never a changelog). RFC 017's re-verification found no output-shape
 /// drift; it found the classifier's own provenance gap instead (`classify.rs`'s module doc). A
 /// prikk above this still runs; [`Version::is_validated`] tells the caller to say so.
 ///
@@ -104,7 +104,35 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// the order held for the same reason: the suite would not have run `show` at 0.51 at all until this
 /// constant named it.
 ///
-/// **55 means prikk 0.55.0.** Two of 0.55's changes come anywhere near stikk, and neither cost a
+/// **58 means prikk 0.58.0**, and it is the first raise whose cost was not zero (RFC 063). With only
+/// this constant moved, **8 of the suite's 97 cases failed** (F1) — not from output drift, but
+/// because prikk 0.56 made the worktree follow the current branch, which is what stikk's own letter
+/// 023 asked for. One paragraph per release:
+///
+/// **0.56** made three things true at once (F2, F4, F5). A **merge into the current branch now
+/// writes the worktree**, so stikk's refusal of that merge was lifted from this version
+/// ([`MERGE_INTO_CURRENT_FROM_MINOR`]) and prikk's own dirty-worktree refusal reaches the user
+/// instead. A **commit to a ref whose files differ from the worktree's is refused**, which is why
+/// stikk now commits only to prikk's current branch and names the switch for any other
+/// (`stikk_core::commit`). And an **import is refused when a bundle is sealed under an adopted key
+/// id by a different key** — a real case for anyone whose key predates prikk 0.45, and the reason
+/// the suite's fixtures stopped sharing the id `maintainer`.
+///
+/// **0.57** brought `cat --output` keeping the recorded mode, which stikk's *save a copy* gets for
+/// free, and a partial `import_refusals` on the bundle preview, which stikk does not read: RFC 063
+/// Handoff B reads it from 0.58, where it is the import's whole first-pass decision.
+///
+/// **0.58** reports an **interrupted seal** as what it is (`queue.already_sealed`, F8): at 0.55 the
+/// same state made `status --format json` exit 1 with an integrity error. stikk reads the field
+/// from this version ([`ALREADY_SEALED_FROM_MINOR`]) and says Seal finishes the old block rather
+/// than making a new one. 0.58 also words its publication refusals precisely, and stikk glosses
+/// them (RFC 063 decision 10).
+///
+/// **Unlike every raise before it, this one changed the suite's fixtures and four of its legs.**
+/// RFC 055's own note below — *"green with only this constant moved and no leg changed"* — is what
+/// stopped being true here, and the eight failures are each explained in RFC 063 F2–F6.
+///
+/// The band before it: **55 meant prikk 0.55.0.** Two of 0.55's changes come anywhere near stikk, and neither cost a
 /// leg (RFC 055 F2). `extract` now refuses a destination **inside** the repository, and so does
 /// stikk — in its own words, before prikk is asked at all (RFC 053 decision 4), which is why
 /// prikk's refusal is a second line of defence here rather than the first. A damaged bundle's
@@ -120,7 +148,7 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// machines, so only 0.54.1 was ever run (RFC 052 F3). What 0.54 changed that stikk shows is prikk's
 /// own fix: `show <block-id>` no longer refuses after consecutive text edits of one file, so Block
 /// and Patch detail open where 0.53 showed prikk's refusal verbatim.
-const VALIDATED_MAX_MINOR: u32 = 55;
+const VALIDATED_MAX_MINOR: u32 = 58;
 
 /// The first prikk minor whose reports stikk reads as **JSON** (prikk 0.39, where `log`, `branch` and
 /// `tag` gained `--format json`; RFC 026 §6).

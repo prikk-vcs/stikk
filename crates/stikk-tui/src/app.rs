@@ -2115,10 +2115,16 @@ impl App {
         }
         // **F3 and F4, and only about `into`.** Both are facts about the branch being merged
         // *into*; the branch merged *from* is read, not moved, and neither applies to it.
-        if stikk_model::RefName::parse(&into)
-            .ok()
-            .map(stikk_model::CurrentBranch::Branch)
-            == Some(self.current_branch())
+        //
+        // **The version gate is core's own** (RFC 063 decision 2): from prikk 0.56 that merge
+        // writes this worktree, which is what the guard protected against, so it is offered. The
+        // answer comes from `stikk_core::into_current_branch` rather than being decided again
+        // here — this copy of the guard is the one that would drift.
+        if stikk_core::into_current_branch(
+            self.prikk_minor().unwrap_or_default(),
+            &into,
+            &self.current_branch(),
+        ) == stikk_core::IntoCurrentBranch::LeavesTheWorktreeBehind
         {
             self.banner = Some(stikk_core::INTO_THE_CURRENT_BRANCH.to_string());
             return None;

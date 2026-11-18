@@ -272,6 +272,21 @@ pub const EXCHANGE_FROM_MINOR: u32 = 53;
 /// spawned**.
 pub const FILES_FROM_MINOR: u32 = 54;
 
+/// The first prikk minor that **writes the worktree when it merges into the current branch**:
+/// prikk 0.56 (RFC 063 F2).
+///
+/// At or above it, `merge --into <the current branch>` materializes the merged files — prikk prints
+/// `materialized into the worktree: files written: N` — and refuses the merge outright when the
+/// worktree is not clean, naming the paths. So the merge stikk refused is the merge a reader
+/// wants, and [`stikk_core`'s own guard](../../stikk_core/merge/constant.INTO_THE_CURRENT_BRANCH.html)
+/// is lifted from here.
+///
+/// **Below it the guard stays, word for word.** At 0.55 that merge wrote no file and left the
+/// worktree behind the branch's new tip: `worktree-status` reported the adopted file **missing**,
+/// the next commit would have queued its deletion, and `branch switch` refused because the
+/// worktree was not clean — the state RFC 047 F3 measured and this guard was written for.
+pub const MERGE_INTO_CURRENT_FROM_MINOR: u32 = 56;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

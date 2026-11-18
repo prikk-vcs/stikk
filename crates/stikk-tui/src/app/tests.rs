@@ -4126,6 +4126,47 @@ fn m_declines_each_guard_without_dispatching() {
     }
 }
 
+/// **The picker's own copy of the guard follows core's version gate** (RFC 063 decision 2): at
+/// 0.55 `M` into the branch the repository is on declines and dispatches nothing; from 0.56 it
+/// opens the plan like any other pair, because prikk writes the merged files into the worktree.
+///
+/// The answer is `stikk_core::into_current_branch`'s, not a second rule written here — this copy
+/// of the check is the one that would drift.
+#[test]
+fn m_into_the_current_branch_declines_below_0_56_and_opens_the_plan_from_it() {
+    let (mut app, rx) = merge_picker(
+        merge_view(55, "heads/main", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    assert!(
+        app.banner()
+            .is_some_and(|b| b.contains("would leave the worktree without the merged files")),
+        "0.55: got {:?}",
+        app.banner()
+    );
+    assert!(rx.try_recv().is_err(), "0.55: nothing dispatched");
+
+    let (mut app, rx) = merge_picker(
+        merge_view(56, "heads/main", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    assert_eq!(app.banner(), None, "0.56: nothing to say");
+    let request = next_request(&rx);
+    match &request.kind {
+        RequestKind::MergePlan { into, from, .. } => {
+            assert_eq!(
+                (into.as_str(), from.as_str()),
+                ("heads/main", "heads/feature")
+            );
+        }
+        other => panic!("0.56: expected the merge plan, got {other:?}"),
+    }
+}
+
 /// The unpublished current branch has no tip, so `M` declines it with the words `n`, `t`, `x`
 /// and `s` all use (RFC 037 B).
 #[test]

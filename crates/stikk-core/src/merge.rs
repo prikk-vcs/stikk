@@ -162,6 +162,52 @@ pub enum MergePlanRead {
 pub const INTO_THE_CURRENT_BRANCH: &str = "merging into the branch you are on would leave the worktree without the merged files, and \
      prikk would then refuse a switch. Switch to another branch first.";
 
+/// What `into` being prikk's current branch means **at this prikk** (RFC 063 decision 2).
+///
+/// **One answer, read by all three callers**: the preview's guard, the ref picker's own check
+/// before it dispatches, and the card. They disagreed once already — the picker's copy of the
+/// guard is why RFC 047 Handoff A had to state the rule twice — and a version gate is exactly the
+/// kind of thing that drifts when it is written twice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntoCurrentBranch {
+    /// `into` is another branch, or prikk reports no current branch (below 0.42, or unresolved).
+    No,
+    /// `into` **is** the current branch, and this prikk writes the merged files into the worktree
+    /// (prikk ≥ [`stikk_prikk::MERGE_INTO_CURRENT_FROM_MINOR`], RFC 063 F2). The merge is offered,
+    /// and the card says so; prikk refuses it itself when the worktree is not clean, naming the
+    /// paths.
+    WritesTheWorktree,
+    /// `into` **is** the current branch, and this prikk would leave the worktree behind its new
+    /// tip (RFC 047 F3). stikk does not offer it: [`INTO_THE_CURRENT_BRANCH`].
+    LeavesTheWorktreeBehind,
+}
+
+/// Which of [`IntoCurrentBranch`]'s three cases this is, from the handshake's minor and prikk's
+/// own current branch.
+#[must_use]
+pub fn into_current_branch(minor: u32, into: &str, current: &CurrentBranch) -> IntoCurrentBranch {
+    let CurrentBranch::Branch(name) = current else {
+        return IntoCurrentBranch::No;
+    };
+    if name.as_str() != into {
+        return IntoCurrentBranch::No;
+    }
+    if minor >= stikk_prikk::MERGE_INTO_CURRENT_FROM_MINOR {
+        IntoCurrentBranch::WritesTheWorktree
+    } else {
+        IntoCurrentBranch::LeavesTheWorktreeBehind
+    }
+}
+
+/// **The line the card gains when the merge writes this worktree** (RFC 063 decision 2), drawn
+/// after prikk's plan.
+///
+/// It replaces [`CONSEQUENCE`]'s *"Nothing is written to the worktree"* clause rather than sitting
+/// beside it: from prikk 0.56 that clause is false for this one case, and a card that said both
+/// would contradict itself in two adjacent sentences.
+pub const MERGE_WRITES_THIS_WORKTREE: &str =
+    "Your folder is on this branch, so the merged files are written into it.";
+
 /// **Why stikk will not merge into a branch with work queued** (decision 5, F4).
 ///
 /// Measured: `merge-plan` judges the branch's **sealed** tip and the merge succeeds, after which
@@ -319,7 +365,11 @@ pub fn merge_preview(
         operation: MERGE_OPERATION,
     };
     let (view, token): (ReadView, _) = confirm::preview(prikk, repo, intent, || {
-        if let Some(reason) = blocked_reason(prikk, repo, &into, &from)? {
+        // **The handshake, read once beside the guards** (RFC 063 decision 2): one of them is a
+        // version gate now, and the card's own line is the same answer.
+        let minor = prikk.handshake()?.version.minor;
+        let guarded = blocked_reason(prikk, repo, &into, &from, minor)?;
+        if let Some(reason) = guarded.declined {
             return Ok(blocked(&reason));
         }
         let plan = match merge_plan_view(prikk, repo, &into, &from, limit)? {
@@ -357,7 +407,7 @@ pub fn merge_preview(
                 target_ids,
                 counts: Vec::new(),
                 capability: Some(stikk_model::Capability::Maintainer),
-                consequence: CONSEQUENCE.to_string(),
+                consequence: consequence(guarded.into_current),
                 target_name: None,
                 signing_key_id: None,
                 signing_key_claim: confirm::KeyClaim::None,
@@ -396,6 +446,26 @@ const CONSEQUENCE: &str = "prikk's plan reports the two sides confluent from thi
      the branch merged into, adopting the other side's patches. Nothing is written to the \
      worktree: switch to that branch afterwards to have its files. prikk merges only what it has \
      proven confluent, and a refusal writes nothing.";
+
+/// [`CONSEQUENCE`], with its worktree clause answered for **this** merge (RFC 063 decision 2).
+///
+/// The clause *"Nothing is written to the worktree"* is still true of every merge into another
+/// branch, at every prikk. It stopped being true at prikk 0.56 for a merge into the branch the
+/// repository is on — that merge now materializes the files — so for that one case the clause is
+/// replaced by [`MERGE_WRITES_THIS_WORKTREE`], rather than a second sentence being added beside
+/// a sentence that contradicts it.
+fn consequence(into_current: IntoCurrentBranch) -> String {
+    const NOTHING_IS_WRITTEN: &str =
+        "Nothing is written to the worktree: switch to that branch afterwards to have its files.";
+    match into_current {
+        IntoCurrentBranch::WritesTheWorktree => {
+            CONSEQUENCE.replace(NOTHING_IS_WRITTEN, MERGE_WRITES_THIS_WORKTREE)
+        }
+        IntoCurrentBranch::No | IntoCurrentBranch::LeavesTheWorktreeBehind => {
+            CONSEQUENCE.to_string()
+        }
+    }
+}
 
 /// The three names a merge is run with, kept together.
 ///
@@ -447,9 +517,10 @@ fn blocked_reason(
     repo: &Path,
     into: &str,
     from: &str,
-) -> Result<Option<String>> {
+    minor: u32,
+) -> Result<Guarded> {
     if into == from {
-        return Ok(Some(THE_SAME_BRANCH_TWICE.to_string()));
+        return Ok(Guarded::declined(THE_SAME_BRANCH_TWICE));
     }
     let refs = prikk.refs(repo)?;
     for name in [into, from] {
@@ -459,23 +530,48 @@ fn blocked_reason(
             .find(|entry| entry.name == name)
             .map_or((false, false), |entry| (entry.is_tag(), entry.closed))
         {
-            (true, _) => return Ok(Some(TAGS_ARE_NOT_MERGED.to_string())),
-            (_, true) => return Ok(Some(CLOSED_IS_NOT_MERGED.to_string())),
+            (true, _) => return Ok(Guarded::declined(TAGS_ARE_NOT_MERGED)),
+            (_, true) => return Ok(Guarded::declined(CLOSED_IS_NOT_MERGED)),
             _ => {}
         }
     }
     let orientation = prikk.orientation(repo)?;
     // **F3 and F4, and only about `into`.** Both are facts about the branch merged *into*; the
     // branch merged *from* is read, not moved, and neither applies to it.
-    if let CurrentBranch::Branch(current) = &orientation.current_branch
-        && current.as_str() == into
-    {
-        return Ok(Some(INTO_THE_CURRENT_BRANCH.to_string()));
+    //
+    // **F3 holds only below prikk 0.56** (RFC 063 decision 2): from there the merge writes this
+    // worktree, which is what the guard existed to protect, so the answer carries the fact on to
+    // the card instead of declining.
+    let into_current = into_current_branch(minor, into, &orientation.current_branch);
+    if into_current == IntoCurrentBranch::LeavesTheWorktreeBehind {
+        return Ok(Guarded::declined(INTO_THE_CURRENT_BRANCH));
     }
     if orientation.queued_patches > 0 && orientation.queued_target.as_deref() == Some(into) {
-        return Ok(Some(WORK_IS_QUEUED_FOR_INTO.to_string()));
+        return Ok(Guarded::declined(WORK_IS_QUEUED_FOR_INTO));
     }
-    Ok(None)
+    Ok(Guarded {
+        declined: None,
+        into_current,
+    })
+}
+
+/// What [`blocked_reason`] found: a reason to decline, or the one fact the card needs from the
+/// same reads.
+struct Guarded {
+    /// `Some` when stikk will not offer this merge, in stikk's own words.
+    declined: Option<String>,
+    /// Whether this merge writes the reader's own worktree (RFC 063 decision 2). Meaningful only
+    /// when `declined` is `None`.
+    into_current: IntoCurrentBranch,
+}
+
+impl Guarded {
+    fn declined(reason: &str) -> Self {
+        Self {
+            declined: Some(reason.to_string()),
+            into_current: IntoCurrentBranch::No,
+        }
+    }
 }
 
 /// The two shapes the read can produce -- never exposed; [`merge_preview`] unwraps it, attaching

@@ -89,12 +89,13 @@ pub use history::{
     history_view, list_refs,
 };
 pub use merge::{
-    CLOSED_IS_NOT_MERGED, INTO_THE_CURRENT_BRANCH, LINEAGE_TRUNCATED, MERGE_FROM_MINOR,
-    MERGE_LINEAGE_LIMIT, MERGE_OPERATION, MERGED_ALREADY, MergeBaseline, MergePlanRead,
-    MergePlanView, MergePreview, MergeTarget, NO_SHARED_BLOCK, PLAN_UNAVAILABLE,
-    SWITCH_TO_SEE_THE_FILES, TAGS_ARE_NOT_MERGED, THE_BASELINE_MOVED, THE_SAME_BRANCH_TWICE,
-    WORK_IS_QUEUED_FOR_INTO, merge_baseline, merge_confirm_and_execute, merge_plan_view,
-    merge_preview, merge_unavailable, not_confluent,
+    CLOSED_IS_NOT_MERGED, INTO_THE_CURRENT_BRANCH, IntoCurrentBranch, LINEAGE_TRUNCATED,
+    MERGE_FROM_MINOR, MERGE_LINEAGE_LIMIT, MERGE_OPERATION, MERGE_WRITES_THIS_WORKTREE,
+    MERGED_ALREADY, MergeBaseline, MergePlanRead, MergePlanView, MergePreview, MergeTarget,
+    NO_SHARED_BLOCK, PLAN_UNAVAILABLE, SWITCH_TO_SEE_THE_FILES, TAGS_ARE_NOT_MERGED,
+    THE_BASELINE_MOVED, THE_SAME_BRANCH_TWICE, WORK_IS_QUEUED_FOR_INTO, into_current_branch,
+    merge_baseline, merge_confirm_and_execute, merge_plan_view, merge_preview, merge_unavailable,
+    not_confluent,
 };
 pub use orient::{
     INTERRUPTED_MATERIALIZATION, OrientationView, active_patch_sentence, interrupted_sentence,

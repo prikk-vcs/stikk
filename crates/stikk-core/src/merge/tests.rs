@@ -678,3 +678,112 @@ fn the_view_keeps_prikks_full_baseline_and_shortens_only_for_the_reader() {
     // … and the short one only where a reader looks at it.
     assert_eq!(view.baseline_short(), "88f34150e099");
 }
+
+// ---------------------------------------------------- RFC 063: a merge into the current branch
+
+/// **The guard is a version gate now** (RFC 063 decision 2, F2). At 0.55 a merge into the branch
+/// the repository is on left the worktree behind its new tip, and stikk refused it; at 0.56 prikk
+/// materializes the merged files, so the merge a reader asked for is the merge they get.
+#[test]
+fn merging_into_the_current_branch_is_refused_below_0_56_and_offered_from_it() {
+    let on_main = |minor: u32| {
+        mergeable()
+            .with_version(0, minor, 0)
+            .with_orientation(orientation("heads/main", 0, None))
+    };
+    assert_eq!(
+        blocked_for(&on_main(55), "88f34150"),
+        INTO_THE_CURRENT_BRANCH,
+        "at 0.55 the merged files would not be in the worktree (RFC 047 F3)"
+    );
+    let MergePreview::Ready { token } = preview(&on_main(56), "88f34150") else {
+        panic!("from 0.56 the merge is offered")
+    };
+    // **And the card says what it will do to the reader's own folder.**
+    assert!(
+        token
+            .summary()
+            .consequence
+            .contains(MERGE_WRITES_THIS_WORKTREE),
+        "{}",
+        token.summary().consequence
+    );
+    // The clause it replaces is gone: a card that said both would contradict itself.
+    assert!(
+        !token
+            .summary()
+            .consequence
+            .contains("Nothing is written to the worktree"),
+        "{}",
+        token.summary().consequence
+    );
+}
+
+/// **The line is only for that one case.** A merge into another branch writes no file at any
+/// version, and its card still says so.
+#[test]
+fn the_worktree_line_is_absent_for_a_merge_into_another_branch() {
+    for minor in [55, 56, 58] {
+        let backend = mergeable().with_version(0, minor, 0);
+        let MergePreview::Ready { token } = preview(&backend, "88f34150") else {
+            panic!("0.{minor}: the merge is offered")
+        };
+        let consequence = &token.summary().consequence;
+        assert!(
+            !consequence.contains(MERGE_WRITES_THIS_WORKTREE),
+            "0.{minor}: {consequence}"
+        );
+        assert!(
+            consequence.contains("Nothing is written to the worktree"),
+            "0.{minor}: {consequence}"
+        );
+    }
+}
+
+/// **Work queued for the branch merged into still declines, at every version** (RFC 063 decision
+/// 2's last line): it is a different fact from F3, and 0.56 changed nothing about it.
+#[test]
+fn work_queued_for_into_declines_at_every_version() {
+    for minor in [55, 56, 58] {
+        let backend = mergeable()
+            .with_version(0, minor, 0)
+            .with_orientation(orientation("heads/other", 2, Some("heads/main")));
+        assert_eq!(
+            blocked_for(&backend, "88f34150"),
+            WORK_IS_QUEUED_FOR_INTO,
+            "0.{minor}"
+        );
+    }
+}
+
+/// The helper both the preview and the ref picker read, over its three answers — including the two
+/// states prikk can report instead of a branch.
+#[test]
+fn into_current_branch_answers_the_three_cases() {
+    let on = |name: &str| {
+        stikk_model::CurrentBranch::Branch(stikk_model::RefName::parse(name).expect("a ref name"))
+    };
+    assert_eq!(
+        into_current_branch(56, "heads/main", &on("heads/main")),
+        IntoCurrentBranch::WritesTheWorktree
+    );
+    assert_eq!(
+        into_current_branch(55, "heads/main", &on("heads/main")),
+        IntoCurrentBranch::LeavesTheWorktreeBehind
+    );
+    assert_eq!(
+        into_current_branch(58, "heads/main", &on("heads/other")),
+        IntoCurrentBranch::No,
+        "another branch is not this question"
+    );
+    for reported in [
+        stikk_model::CurrentBranch::NotReported,
+        stikk_model::CurrentBranch::Unresolved("detached".to_string()),
+    ] {
+        assert_eq!(
+            into_current_branch(58, "heads/main", &reported),
+            IntoCurrentBranch::No,
+            "prikk names no branch: {reported:?}"
+        );
+    }
+}

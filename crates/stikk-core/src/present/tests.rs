@@ -852,3 +852,99 @@ fn a_refused_queue_read_explains_itself_and_offers_refresh() {
         other => panic!("expected RefusalOverlay, got {other:?}"),
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 063 decision 10: the right words for prikk's publication sentences.
+// ---------------------------------------------------------------------------------------------
+
+/// prikk 0.58's own sentences, read at its tag and measured where a measurement was possible
+/// (RFC 063 F8, F9). The generic one and the stopped-seal one **open with the same words**, and the
+/// punctuation after them is the whole difference.
+const GENERIC_PUBLICATION: &str = "error: precondition not met: repository mutation is blocked by incomplete ref publication; run \
+     verify/doctor and use signer-backed seal retry";
+const STOPPED_SEAL: &str = "error: precondition not met: repository mutation is blocked by incomplete ref publication: a seal \
+     stopped after it published, before it cleaned the queue (the queued patches are already sealed \
+     in block 493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a); run `prikk seal \
+     --allow-no-audit`";
+const ANOTHER_PUBLISHING: &str = "error: precondition not met: another command is publishing heads/main (pid 4812, from its lock); \
+     run this command again when it finishes";
+
+fn gloss_for(message: &str) -> String {
+    let err = StikkError::Refusal {
+        message: message.to_string(),
+    };
+    match present(&err, OperationContext::Commit, Some(58)) {
+        Presentation::RefusalOverlay(card) => {
+            assert_eq!(card.verbatim, message, "prikk's words, verbatim (`ER-02`)");
+            card.gloss.unwrap_or_default()
+        }
+        other => panic!("expected RefusalOverlay, got {other:?}"),
+    }
+}
+
+/// **The generic sentence is not shown as damage** (prikk's letter 031 §4), and it claims neither
+/// of its two causes.
+#[test]
+fn the_generic_publication_refusal_says_it_is_not_damage() {
+    let gloss = gloss_for(GENERIC_PUBLICATION);
+    assert!(gloss.contains("it is not damage"), "{gloss}");
+    assert!(gloss.contains("Verify (V)"), "{gloss}");
+    // It does not claim the seal case, which is the other sentence's.
+    assert!(!gloss.contains("Seal (S) finishes it"), "{gloss}");
+}
+
+/// **The stopped-seal sentence gets its own gloss, not the generic one** — the semicolon is the
+/// point (F9): this sentence opens with the same words and then a colon.
+#[test]
+fn the_stopped_seal_refusal_gets_the_second_gloss_not_the_first() {
+    let gloss = gloss_for(STOPPED_SEAL);
+    assert_eq!(
+        gloss, "A seal was interrupted after it published. Seal (S) finishes it.",
+        "the second gloss, keyed on the colon form"
+    );
+    assert!(!gloss.contains("it is not damage"), "{gloss}");
+    // And the generic sentence does **not** collect this one's gloss either way.
+    assert!(
+        !gloss_for(GENERIC_PUBLICATION).contains("Seal (S)"),
+        "the two are keyed apart"
+    );
+}
+
+/// **An in-flight publication is another writer, and nothing was changed.**
+#[test]
+fn an_in_flight_publication_refusal_says_nothing_was_changed() {
+    let gloss = gloss_for(ANOTHER_PUBLISHING);
+    assert!(gloss.contains("Nothing was changed"), "{gloss}");
+    assert!(gloss.contains("when it finishes"), "{gloss}");
+}
+
+/// **The moved-directory and history-replay sentences get no gloss** (RFC 063 decision 10): each
+/// already names its own next step, so stikk adds nothing — under **both** class words, in
+/// `classify/tests.rs`'s own loop form.
+#[test]
+fn the_moved_directory_and_replay_sentences_degrade_verbatim() {
+    for tail in [
+        "the directory /tmp/repo was moved or replaced while this command ran, so nothing was \
+         published; run the command again, and `prikk verify` to see what it left behind",
+        "the history does not replay cleanly at block \
+         493e58168d7759ee72dd98f21f428a6b3f82023e519830a1ad9fa76f684c1a1a (unknown parent); run \
+         `prikk verify`",
+    ] {
+        for prefix in ["error: lock conflict: ", "error: precondition not met: "] {
+            let message = format!("{prefix}{tail}");
+            let err = StikkError::Refusal {
+                message: message.clone(),
+            };
+            let card = match present(&err, OperationContext::Other, Some(58)) {
+                Presentation::RefusalOverlay(card) => card,
+                other => panic!("expected RefusalOverlay for {message:?}, got {other:?}"),
+            };
+            assert_eq!(card.verbatim, message, "prikk's words, verbatim");
+            assert_eq!(
+                card.gloss, None,
+                "stikk adds nothing to {message:?}: {:?}",
+                card.gloss
+            );
+        }
+    }
+}

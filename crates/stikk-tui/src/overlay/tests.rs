@@ -952,17 +952,21 @@ fn scrolling_past_the_end_parks_rather_than_banking_presses() {
 }
 
 /// A terminal tall enough for everything cannot scroll at all, and says so by not offering to.
+///
+/// **The height is "taller than the panel", not a number with meaning.** The Glossary grows with
+/// every entry — RFC 063's three publication entries took it past 200 rows, which is what this
+/// test was drawn at — so it is set well clear of the content rather than just above it.
 #[test]
 fn a_tall_terminal_does_not_scroll_and_does_not_advertise_scrolling() {
     let overlay = Overlay::Glossary {
         offset: std::cell::Cell::new(0),
     };
-    let text = draw_at(&overlay, 90, 200);
+    let text = draw_at(&overlay, 90, 400);
     assert!(!text.contains("to scroll"), "nothing to scroll to:\n{text}");
     if let Overlay::Glossary { offset } = &overlay {
         offset.set(5);
     }
-    let after = draw_at(&overlay, 90, 200);
+    let after = draw_at(&overlay, 90, 400);
     if let Overlay::Glossary { offset } = &overlay {
         assert_eq!(
             offset.get(),

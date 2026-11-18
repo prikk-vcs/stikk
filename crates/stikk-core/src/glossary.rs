@@ -149,6 +149,35 @@ pub(crate) const TRUST_REFUSAL_CODE: &str = "maintainer signer";
 /// the offending path, which varies.
 pub(crate) const BACKSLASH_PATH_CODE: &str = "backslashes are not allowed in repository paths";
 
+/// prikk's **generic** incomplete-publication refusal (`refs.rs`, read at the 0.58.0 tag; RFC 063
+/// F9), matched **with its semicolon**.
+///
+/// The semicolon is the whole of the distinction: 0.58's stopped-seal refusal opens with the same
+/// words and then a **colon**, and the two need opposite glosses — one says *this is not damage,
+/// try again*, the other says *Seal finishes it*. Matching the words without the punctuation would
+/// give the stopped seal the wrong one.
+///
+/// prikk asks outright that this not be shown as damage (its letter 031 §4): it can reach a healthy
+/// repository while another command is publishing a tag. It still also comes from an interrupted
+/// publication (`in_flight.rs`), which is why the gloss sends a reader who keeps meeting it to
+/// Verify rather than claiming either cause.
+pub(crate) const INCOMPLETE_PUBLICATION_CODE: &str =
+    "repository mutation is blocked by incomplete ref publication;";
+
+/// prikk's **stopped-seal** refusal (0.58; RFC 063 F8, measured in `measure063-0.58.txt` §A2).
+///
+/// The same state the Queue view heads its list for: a seal published its block and was stopped
+/// before it emptied the queue. prikk names the block and the way out, and stikk's own Seal **is**
+/// that way out — so the gloss says which key, and nothing else.
+pub(crate) const STOPPED_SEAL_CODE: &str =
+    "a seal stopped after it published, before it cleaned the queue";
+
+/// prikk's in-flight publication refusal (`in_flight.rs`, read at the 0.58.0 tag; RFC 063 F9) — a
+/// `Precondition`, not a lock, so it reaches the reader as an ordinary refusal (RFC 017 §3).
+///
+/// Deliberately not the pid or the ref, which vary.
+pub(crate) const ANOTHER_COMMAND_PUBLISHING_CODE: &str = "another command is publishing";
+
 /// Code entries (witness/finding). A representative sample now; the full sets land with FR-080/FR-100.
 static CODE_ENTRIES: &[GlossaryEntry] = &[
     GlossaryEntry {
@@ -214,6 +243,37 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
                       Anywhere else, a file in the worktree really does have a backslash in its \
                       name; rename it outside stikk (`CON-1`: stikk never edits a repository file), \
                       then retry.",
+        see_also: &[],
+    },
+    GlossaryEntry {
+        code: INCOMPLETE_PUBLICATION_CODE,
+        title: "A publication that did not finish — or one happening right now",
+        explanation: "prikk writes a ref in two steps, and refuses to change the repository while \
+                      one of them is outstanding. Two different things produce this sentence, and \
+                      prikk asks that neither be read as damage (its letter 031): another prikk \
+                      command may be publishing at this moment — a tag, for instance — in which \
+                      case trying again once it finishes is all that is needed; or a publication \
+                      stopped part-way and left the repository waiting for someone to finish it. \
+                      Verify (V) tells the two apart: it names an interrupted publication where \
+                      there is one.",
+        see_also: &[STOPPED_SEAL_CODE],
+    },
+    GlossaryEntry {
+        code: STOPPED_SEAL_CODE,
+        title: "A seal was interrupted after it published",
+        explanation: "The seal did its lasting work — the block is in the history already — and was \
+                      stopped before it emptied the queue. Nothing is lost and nothing is damaged: \
+                      what is left is the tidying up. Seal (S) finishes it, and adds no new block; \
+                      the Queue view says the same above the patches it lists (prikk ≥ 0.58).",
+        see_also: &[INCOMPLETE_PUBLICATION_CODE],
+    },
+    GlossaryEntry {
+        code: ANOTHER_COMMAND_PUBLISHING_CODE,
+        title: "Another prikk command is publishing",
+        explanation: "prikk holds a ref's publication against one writer at a time, and names the \
+                      process that holds it. Nothing was changed by the command that was refused. \
+                      Try again when the other one finishes — this is prikk keeping two writers out \
+                      of one ref, not a fault in either.",
         see_also: &[],
     },
     GlossaryEntry {

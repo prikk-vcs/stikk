@@ -237,6 +237,13 @@ pub fn present(error: &StikkError, op: OperationContext, prikk_minor: Option<u32
             // sentence stikk adds differs — and prikk's words are verbatim beside it either way
             // (`ER-02`).
             let is_backslash_path = message.contains(glossary::BACKSLASH_PATH_CODE);
+            // **RFC 063 decision 10's three publication sentences** (F8, F9), in the handoff's own
+            // order. The first is matched **with its semicolon**: 0.58's stopped-seal sentence
+            // opens with the same words and then a colon, and the two need opposite glosses. None
+            // of them is a lock, so the classifier is untouched and each arrives here (RFC 017 §3).
+            let is_incomplete_publication = message.contains(glossary::INCOMPLETE_PUBLICATION_CODE);
+            let is_stopped_seal = message.contains(glossary::STOPPED_SEAL_CODE);
+            let is_another_publishing = message.contains(glossary::ANOTHER_COMMAND_PUBLISHING_CODE);
             Presentation::RefusalOverlay(RefusalCard {
                 verbatim: message.clone(),
                 gloss: if is_schema_skew {
@@ -251,6 +258,12 @@ pub fn present(error: &StikkError, op: OperationContext, prikk_minor: Option<u32
                             .gloss
                             .to_string(),
                     )
+                } else if is_incomplete_publication {
+                    Some(INCOMPLETE_PUBLICATION_GLOSS.to_string())
+                } else if is_stopped_seal {
+                    Some(STOPPED_SEAL_GLOSS.to_string())
+                } else if is_another_publishing {
+                    Some(ANOTHER_COMMAND_PUBLISHING_GLOSS.to_string())
                 } else {
                     refusal_gloss(op)
                 },
@@ -439,6 +452,25 @@ const BUNDLE_DECODE_SKEW_GLOSS: &str = "This bundle was written by a newer prikk
 /// active; prikk's own words beside this gloss already say what to do.
 const FULL_QUEUE_GLOSS: &str = "Nothing is locked and no other writer is involved: the active queue \
      already holds as many patches as it is configured to allow. Seal the queue before trying again.";
+
+/// The gloss for prikk's **generic** incomplete-publication refusal (RFC 063 decision 10, F9).
+///
+/// prikk asks outright that this not be shown as damage: it can reach a healthy repository while
+/// another command publishes a tag (its letter 031 §4). It can also come from a publication that
+/// stopped part-way — so the gloss claims neither cause, and sends a reader who keeps meeting it to
+/// the one surface that tells them apart.
+const INCOMPLETE_PUBLICATION_GLOSS: &str = "This can happen while another prikk command is publishing, and it is not damage. Try again. If \
+     it keeps happening, open Verify (V).";
+
+/// The gloss for prikk's **stopped-seal** refusal (RFC 063 decision 10, F8).
+///
+/// Two sentences, because there is nothing else to say: the block is already in the history, and
+/// stikk's own Seal is the route prikk names.
+const STOPPED_SEAL_GLOSS: &str = "A seal was interrupted after it published. Seal (S) finishes it.";
+
+/// The gloss for prikk's in-flight publication refusal (RFC 063 decision 10, F9).
+const ANOTHER_COMMAND_PUBLISHING_GLOSS: &str = "Another prikk command is publishing right now. Nothing was changed. Try again when it \
+     finishes.";
 
 /// The gloss for prikk's backslash-path refusal **on Windows** (RFC 023 F1).
 ///

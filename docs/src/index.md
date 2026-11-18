@@ -23,7 +23,7 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 **0.20.x undoes a block, as a new change that puts back what it changed, chooses whose keys a
 repository trusts, gets an earlier version of your files back — or a whole earlier block, the guide
 shows how — and installs in two plain steps on every platform — prikk's, then stikk's — against
-prikk 0.55.0.** A confirmation that asks you to type a key id back
+prikk 0.58.0.** A confirmation that asks you to type a key id back
 **never cuts that id off**, however long it is. It is
 on the AUR as `stikk` and `stikk-bin`: [Install](./guide/install.md#arch-linux) says which to pick.
 Each program installs itself: one line installs stikk, and it prints prikk's own install command
@@ -57,7 +57,7 @@ than shown against a baseline it does not have (RFC 032). **A declaration's fate
 verdict at prikk ≥ 0.44** rather than stikk's inference, one prikk would refuse makes commit
 unavailable, a checkout that stopped part-way is shown, and a ref with no published history reads
 again on prikk 0.45 and 0.46, where prikk refused it by name (RFC 034). Piped/CI invocation keeps the
-one-shot orientation. stikk targets prikk **≥ 0.28**, validated through **0.55.0**, and on prikk 0.42
+one-shot orientation. stikk targets prikk **≥ 0.28**, validated through **0.58.0**, and on prikk 0.42
 opens on prikk's current branch (RFC 029). **Patch detail** (`FR-030`) is built at prikk ≥ 0.39
 (RFC 035): Block detail lists a block's patches and the Queue lists the queued ones, and either opens
 one patch's operations — a text edit's spans, a create's content and mode, a delete's preimage, a

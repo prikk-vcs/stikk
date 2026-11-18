@@ -278,8 +278,7 @@ pub const FILES_FROM_MINOR: u32 = 54;
 /// At or above it, `merge --into <the current branch>` materializes the merged files — prikk prints
 /// `materialized into the worktree: files written: N` — and refuses the merge outright when the
 /// worktree is not clean, naming the paths. So the merge stikk refused is the merge a reader
-/// wants, and [`stikk_core`'s own guard](../../stikk_core/merge/constant.INTO_THE_CURRENT_BRANCH.html)
-/// is lifted from here.
+/// wants, and `stikk_core::merge`'s own `INTO_THE_CURRENT_BRANCH` guard is lifted from here.
 ///
 /// **Below it the guard stays, word for word.** At 0.55 that merge wrote no file and left the
 /// worktree behind the branch's new tip: `worktree-status` reported the adopted file **missing**,

@@ -132,7 +132,7 @@ view (`doctor` has no JSON): the `Prikk` seam has thirty-three methods — `hand
 `trust_add`, `trust_remove` and `rename_path` — and none for any of them.
 A release also publishes **the four installer scripts** (`install.sh`, `uninstall.sh`,
 `install.ps1`, `uninstall.ps1`), each with its own `.sha256`, filled with that release's version.
-It drives the external `prikk` binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.55.0** — so the release
+It drives the external `prikk` binary at runtime (not a Cargo dependency), validated against prikk **>= 0.28, through 0.58.0** — so the release
 notes must state which prikk version it was validated against and how to install it — a
 `cargo install stikk` with no `prikk` on `PATH` will open and then explain that prikk is missing, by
 design.

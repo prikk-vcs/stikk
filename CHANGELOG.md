@@ -2,6 +2,35 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Changed
+
+- **Validated through prikk 0.58.0** (from 0.55.0). prikk 0.56 made the worktree follow the current
+  branch, which is what stikk's own letter asked for, and that changes three things below.
+- **A commit goes to prikk's current branch.** stikk commits the files in your folder, and your
+  folder is on one branch — so a commit to another one is not offered, and stikk names the switch
+  that gets you there (`b`, then the branch, then `s`). On prikk 0.55 that commit went through, and
+  your next commit on the current branch quietly carried the same files into it as well; from 0.56
+  prikk refuses one commit or the other.
+- **Merging into the branch you are on is offered from prikk 0.56**, where prikk writes the merged
+  files into your folder and the card says so. Below 0.56 it stays refused: there the merge wrote
+  no file and left your folder behind the branch.
+- **A switch with work queued for the branch you are switching to** says what it would do:
+  *"seal it first. A switch now would take those files out of your folder until they are sealed."*
+  From prikk 0.56 that switch really does take them out until the queue is sealed; nothing is lost,
+  but you would watch the file go.
+- **prikk's refusals about publishing read as what they are**: a publication happening right now is
+  not damage and says to try again; an interrupted one says so; and a seal that stopped after it
+  published says that Seal finishes it.
+
+### Added
+
+- **An interrupted seal is shown as one** (prikk ≥ 0.58). When a seal published its block and was
+  stopped before it tidied up, the Queue view says so above the list — these changes are already
+  sealed, in that block — and Seal finishes it rather than adding another block. The seal card says
+  the same.
+
 ## 0.20.0 — 2026-10-31
 
 **stikk can now undo a block: it puts back what the block changed as a new change, so nothing in

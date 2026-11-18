@@ -45,7 +45,7 @@ and on Windows in one line too
 stikk's own installers install stikk and nothing else; they check for
 prikk and print prikk's command when it is missing.
 This release requires prikk **≥ 0.28** and is validated
-through **0.55.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
+through **0.58.0**; a newer prikk still runs, but stikk says its output shapes have not been checked
 against it rather than silently assuming they have. If `prikk` is missing, stikk opens and then
 explains that — by design.
 
@@ -64,7 +64,7 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 **v0.20.x undoes a block, as a new change that puts back what it changed, lets you choose whose
 keys this repository trusts, gets an earlier version of your files back — or a whole earlier block,
 the guide shows how — and installs in two plain steps on every platform — prikk's, then stikk's —
-against prikk 0.55.0.** A confirmation that asks you to type a
+against prikk 0.58.0.** A confirmation that asks you to type a
 key id back **never cuts that id off**, however long it is. `T` lists the adopted maintainer keys with your own marked, **`a` adopts one and `x`
 removes one** — each confirmed by typing the key id, and the removal says first that it can make
 your own sealed history fail Verify until the key is adopted again. In Block detail, `F` saves one

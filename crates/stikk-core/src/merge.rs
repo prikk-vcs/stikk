@@ -202,7 +202,7 @@ pub fn into_current_branch(minor: u32, into: &str, current: &CurrentBranch) -> I
 /// **The line the card gains when the merge writes this worktree** (RFC 063 decision 2), drawn
 /// after prikk's plan.
 ///
-/// It replaces [`CONSEQUENCE`]'s *"Nothing is written to the worktree"* clause rather than sitting
+/// It replaces the card's own *"Nothing is written to the worktree"* clause rather than sitting
 /// beside it: from prikk 0.56 that clause is false for this one case, and a card that said both
 /// would contradict itself in two adjacent sentences.
 pub const MERGE_WRITES_THIS_WORKTREE: &str =

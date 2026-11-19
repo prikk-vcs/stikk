@@ -26,6 +26,16 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Added
 
+- **The bundle card says whether each seal checks out** (prikk ≥ 0.56). Before, stikk could only
+  say that a bundle *named* a sealer, because that is all a bundle records; prikk now checks each
+  signature against the keys your repository trusts and says what it found, so the card says it
+  too.
+- **An import prikk would refuse is not offered** (prikk ≥ 0.58, and from 0.56 for a seal that
+  does not check out). The card lists prikk's own reasons and does not offer `I`, instead of
+  letting you confirm an import that cannot land.
+- **A seal that does not match the key you trust under its id is shown as the security event it
+  is**, in the same card as two keys sharing an id — and so is a **removed** id offered a
+  different key, which stikk could not see before, because a removed id is not in the list.
 - **An interrupted seal is shown as one** (prikk ≥ 0.58). When a seal published its block and was
   stopped before it tidied up, the Queue view says so above the list — these changes are already
   sealed, in that block — and Seal finishes it rather than adding another block. The seal card says

@@ -9665,10 +9665,17 @@ fn rfc054_a_bundles_sealer_becomes_trusted_when_the_key_is_adopted_at_the_ceilin
         "0.{}: the bundle records a sealer",
         bin.minor
     );
+    // **Two answers to one question, by band** (RFC 063 F6). Below 0.56 stikk matched the id
+    // against the receiver's list and found nothing. From 0.56 prikk checked the signature and
+    // says `unverifiable`, which is the same fact in prikk's own words: this repository trusts
+    // no key under that id, so there is nothing to check it against.
+    let want = if bin.minor >= stikk_prikk::SEAL_OUTCOMES_FROM_MINOR {
+        stikk_core::SealerTrust::Checked(stikk_prikk::SealVerdict::Unverifiable)
+    } else {
+        stikk_core::SealerTrust::NotTrusted
+    };
     assert!(
-        judged
-            .iter()
-            .all(|s| s.trust == stikk_core::SealerTrust::NotTrusted),
+        judged.iter().all(|s| s.trust == want),
         "0.{}: the receiver adopted nothing of the sender's: {judged:?}",
         bin.minor
     );
@@ -9711,14 +9718,55 @@ fn rfc054_a_bundles_sealer_becomes_trusted_when_the_key_is_adopted_at_the_ceilin
     let stikk_core::BundleOpened::Read(view) = opened else {
         panic!("0.{}: the bundle still verifies", bin.minor);
     };
+    // **And once the key is adopted, prikk says the signature checks out** — the same
+    // progression, now answered by prikk rather than inferred from a name (RFC 063 F6, §D3).
+    let want = if bin.minor >= stikk_prikk::SEAL_OUTCOMES_FROM_MINOR {
+        stikk_core::SealerTrust::Checked(stikk_prikk::SealVerdict::Sound)
+    } else {
+        stikk_core::SealerTrust::NamesATrustedKey
+    };
     assert!(
-        view.sealers
-            .judged()
-            .iter()
-            .all(|s| s.trust == stikk_core::SealerTrust::NamesATrustedKey),
+        view.sealers.judged().iter().all(|s| s.trust == want),
         "0.{}: adopted, and not yours: {:?}",
         bin.minor,
         view.sealers
+    );
+}
+
+/// **prikk's own refusal of the import, and its document** (RFC 063 F5), asked of prikk directly
+/// rather than through stikk — because from 0.56 stikk's own preview withholds the import, so
+/// nothing of stikk's reaches prikk's refusal any more.
+///
+/// Two separate claims, and both matter: stikk did not spawn the import, and prikk would have
+/// refused it. The refusal is read by its **id**, out of prikk's `refusal-v1` document.
+fn rfc054_prikk_refuses_the_import(
+    bin: &PrikkBin,
+    repo: &std::path::Path,
+    bundle: &std::path::Path,
+) {
+    let raw = std::process::Command::new(&bin.path)
+        .args([
+            "bundle",
+            "import",
+            "--input",
+            &bundle.display().to_string(),
+            "--format",
+            "json",
+        ])
+        .current_dir(repo)
+        .output()
+        .unwrap_or_else(|e| panic!("0.{}: spawn bundle import: {e}", bin.minor));
+    assert!(
+        !raw.status.success(),
+        "0.{}: prikk refuses this import from 0.56",
+        bin.minor
+    );
+    let document = String::from_utf8_lossy(&raw.stdout);
+    assert!(
+        document.contains("\"schema_version\": \"refusal-v1\"")
+            && document.contains("\"refusal\": \"forged-publication-signature\""),
+        "0.{}: prikk's refusal document: {document}",
+        bin.minor
     );
 }
 
@@ -9740,13 +9788,20 @@ fn rfc054_a_bundles_sealer_becomes_trusted_when_the_key_is_adopted_at_the_ceilin
 /// keys predate 0.45 do.) The shape is the same either way, and it is the architect's measured spoof
 /// at 0.55.0: `.git-exclude/reports/054-trust-read/spoof054-0.55.txt`.
 ///
-/// **What prikk 0.56 changed** (RFC 063 F5): the import itself is now refused, as
-/// `forged-publication-signature`, so the reader never reaches the `verify` this leg was written
-/// around. Both ends are asserted — prikk's refusal from 0.56, and the post-import `verify` below
-/// it — because the sentence the card shows is still the one stikk owns at 0.55.
+/// **Which half runs at which band** (RFC 063 F5, F6; and the review of Handoff A asked for this
+/// to be said here):
+/// - **below 0.56** — the card says the id *names* an adopted key and carries
+///   [`stikk_core::NAMES_BUT_DOES_NOT_PROVE`]; the import **lands**; and `verify` afterwards is
+///   what fails it (`publication-trust`). That is the half this leg was written around, and the
+///   evidence for the sentence stikk owns at 0.55;
+/// - **0.56 and 0.57** — prikk checks each seal in the preview, so the row is `invalid` and
+///   stikk's own import preview withholds with the security warning. prikk also refuses the
+///   import itself, so the `verify` half is never reached by a reader;
+/// - **0.58** — prikk additionally says, before the import, that it would refuse it, and
+///   stikk's preview carries prikk's own refusal id. **Nothing is spawned.**
 ///
-/// **This leg is the evidence for the sentence stikk shows.** If prikk ever stops catching
-/// this at `verify`, it goes red.
+/// If prikk ever stops catching this — at the preview below 0.58, or at `verify` below 0.56 — it
+/// goes red.
 #[test]
 #[ignore = "needs two real prikk binaries; see this file's module doc"]
 fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() {
@@ -9816,32 +9871,108 @@ fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() 
         "0.{}: the id both fixtures hold a key under",
         bin.minor
     );
-    // **`NamesATrustedKey`, not `NamesYourKey`**, and the environment is the reason: the keys
-    // are cleared above, so `key status` resolves no key of the reader's own and no row in the
-    // Trust view is marked *yours*. The id is adopted here all the same — by the receiver's own
-    // key, which is not the one that sealed this bundle, and that is exactly the case the
-    // sentence beneath the rows is for.
-    assert_eq!(
-        judged[0].trust,
-        stikk_core::SealerTrust::NamesATrustedKey,
-        "0.{}: the id names an adopted key, and the card says no more than that",
-        bin.minor
-    );
+    if bin.minor >= stikk_prikk::SEAL_OUTCOMES_FROM_MINOR {
+        // **From 0.56 prikk checked it, and the answer is `invalid`** (RFC 063 F6): a key *is*
+        // trusted under this id, and this signature is not that key's.
+        assert_eq!(
+            judged[0].trust,
+            stikk_core::SealerTrust::Checked(stikk_prikk::SealVerdict::Invalid),
+            "0.{}: prikk's own verdict on the seal",
+            bin.minor
+        );
+        // **The name sentence is not owed any more**, because no name is being taken for a
+        // proof: prikk checked the signature.
+        assert!(
+            !view.sealers.names_an_adopted_key(),
+            "0.{}: prikk checked it, so that sentence would say nothing true",
+            bin.minor
+        );
+        let warning = view
+            .warning
+            .as_ref()
+            .unwrap_or_else(|| panic!("0.{}: the security warning", bin.minor));
+        assert_eq!(warning.heading, stikk_core::INVALID_SEAL_HEADING);
 
-    // **The sentence is on the card**, beneath the rows and above prikk's own note.
-    assert!(
-        view.sealers.names_an_adopted_key(),
-        "0.{}: the sentence is owed here",
-        bin.minor
-    );
-    let stikk_core::ImportPreview::Ready { token } = stikk_core::import_preview(
+        // **stikk's own preview withholds the import, before anything is spawned** (§5.2).
+        let withheld = stikk_core::import_preview(
+            &backend,
+            receiver.repo(),
+            &bundle,
+            stikk_core::BUNDLE_LINEAGE_LIMIT,
+        )
+        .unwrap_or_else(|e| panic!("0.{}: import_preview: {e}", bin.minor));
+        if bin.minor >= stikk_prikk::IMPORT_REFUSALS_FROM_MINOR {
+            // At 0.58 prikk says what it would refuse, by id.
+            let stikk_core::ImportPreview::WouldRefuse(refusals) = withheld else {
+                panic!("0.{}: prikk's own refusal, got {withheld:?}", bin.minor);
+            };
+            assert!(
+                refusals
+                    .iter()
+                    .any(|refusal| refusal.id == "forged-publication-signature"),
+                "0.{}: prikk's id for it: {refusals:?}",
+                bin.minor
+            );
+        } else {
+            // At 0.56–0.57 the list is partial and unread, and the `invalid` outcome is enough.
+            assert!(
+                matches!(withheld, stikk_core::ImportPreview::InvalidSeal(_)),
+                "0.{}: withheld by the outcome, got {withheld:?}",
+                bin.minor
+            );
+        }
+        // **Nothing landed, because nothing was spawned.**
+        let refs = stikk_core::list_refs(&backend, receiver.repo())
+            .unwrap_or_else(|e| panic!("0.{}: list_refs: {e}", bin.minor));
+        assert!(
+            !refs
+                .refs
+                .iter()
+                .any(|entry| entry.name.starts_with("remotes/")),
+            "0.{}: no received ref: {:?}",
+            bin.minor,
+            refs.refs.iter().map(|r| &r.name).collect::<Vec<_>>()
+        );
+    } else {
+        // **`NamesATrustedKey`, not `NamesYourKey`**, and the environment is the reason: the
+        // keys are cleared above, so `key status` resolves no key of the reader's own and no row
+        // in the Trust view is marked *yours*. The id is adopted here all the same — by the
+        // receiver's own key, which is not the one that sealed this bundle, and that is exactly
+        // the case the sentence beneath the rows is for.
+        assert_eq!(
+            judged[0].trust,
+            stikk_core::SealerTrust::NamesATrustedKey,
+            "0.{}: the id names an adopted key, and the card says no more than that",
+            bin.minor
+        );
+        // **The sentence is on the card**, beneath the rows and above prikk's own note.
+        assert!(
+            view.sealers.names_an_adopted_key(),
+            "0.{}: the sentence is owed here",
+            bin.minor
+        );
+    }
+
+    // **The import path itself, as prikk still answers it.** Below 0.56 this is where the leg's
+    // own evidence is; from 0.56 it is prikk's refusal, asserted beside stikk's withholding
+    // above, because the two are separate claims: stikk did not spawn it, and prikk would have
+    // refused it.
+    let preview = stikk_core::import_preview(
         &backend,
         receiver.repo(),
         &bundle,
         stikk_core::BUNDLE_LINEAGE_LIMIT,
     )
-    .unwrap_or_else(|e| panic!("0.{}: import_preview: {e}", bin.minor)) else {
-        panic!("0.{}: the bundle imports", bin.minor);
+    .unwrap_or_else(|e| panic!("0.{}: import_preview: {e}", bin.minor));
+    if bin.minor >= stikk_prikk::SEAL_OUTCOMES_FROM_MINOR {
+        // The preview is withheld, so there is no token to confirm. prikk's own refusal and its
+        // document are asserted below, by asking prikk directly.
+        rfc054_prikk_refuses_the_import(&bin, receiver.repo(), &bundle);
+        Fixture::clear_env();
+        return;
+    }
+    let stikk_core::ImportPreview::Ready { token } = preview else {
+        panic!("0.{}: the bundle imports below 0.56", bin.minor);
     };
     let summary = token.summary();
     let aside = summary
@@ -9879,57 +10010,6 @@ fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() 
             received: "remotes/heads/main".to_string(),
         },
     );
-
-    if bin.minor >= 56 {
-        // **prikk refuses the import** (RFC 063 F5). stikk shows that refusal verbatim, and the
-        // `verify` below is never reached by a reader at this version.
-        let error = imported
-            .err()
-            .unwrap_or_else(|| panic!("0.{}: the import must be refused", bin.minor));
-        let stikk_model::StikkError::Refusal { message } = &error else {
-            panic!("0.{}: prikk's own refusal, got {error:?}", bin.minor);
-        };
-        assert!(
-            message.contains("does not verify"),
-            "0.{}: prikk's words: {message}",
-            bin.minor
-        );
-        // **prikk's own id for it, from prikk's own document**, read beside stikk's call rather
-        // than parsed out of the sentence.
-        let raw = std::process::Command::new(&bin.path)
-            .args([
-                "bundle",
-                "import",
-                "--input",
-                &bundle.display().to_string(),
-                "--format",
-                "json",
-            ])
-            .current_dir(receiver.repo())
-            .output()
-            .unwrap_or_else(|e| panic!("0.{}: spawn bundle import: {e}", bin.minor));
-        let document = String::from_utf8_lossy(&raw.stdout);
-        assert!(
-            document.contains("\"schema_version\": \"refusal-v1\"")
-                && document.contains("\"refusal\": \"forged-publication-signature\""),
-            "0.{}: prikk's refusal document: {document}",
-            bin.minor
-        );
-        // **Nothing landed**, by prikk's own ref list.
-        let refs = stikk_core::list_refs(&backend, receiver.repo())
-            .unwrap_or_else(|e| panic!("0.{}: list_refs: {e}", bin.minor));
-        assert!(
-            !refs
-                .refs
-                .iter()
-                .any(|entry| entry.name.starts_with("remotes/")),
-            "0.{}: no received ref: {:?}",
-            bin.minor,
-            refs.refs.iter().map(|r| &r.name).collect::<Vec<_>>()
-        );
-        Fixture::clear_env();
-        return;
-    }
 
     imported.unwrap_or_else(|e| panic!("0.{}: import: {e}", bin.minor));
 
@@ -10285,7 +10365,7 @@ fn rfc056_removing_shrinks_the_list_and_a_removed_id_is_prikks_refusal_at_the_ce
             bin.minor
         );
     };
-    let err = stikk_core::adopt_confirm_and_execute(
+    let adopted = stikk_core::adopt_confirm_and_execute(
         &counting,
         &repo,
         *token,
@@ -10293,22 +10373,55 @@ fn rfc056_removing_shrinks_the_list_and_a_removed_id_is_prikks_refusal_at_the_ce
         stikk_core::Evidence::TypedName(their_id.clone()),
         &their_id,
         &mine.public_key,
-    )
-    .expect_err("prikk refuses a removed id under a different key");
-    // **prikk's own words, and they changed at 0.56** as stikk's letter asked (RFC 063 F7): the
-    // refusal now says the id was *removed* and stays bound to the key it was first adopted with.
-    // Handoff B reads prikk's typed `refusal-v1` id for this and opens the *Two keys, one id* card;
-    // here the assertion is still on prikk's sentence, at whichever version is under test.
-    let expected = if bin.minor >= 56 {
-        "is not currently adopted (it was removed)"
-    } else {
-        "already adopted with a different public key"
-    };
-    assert!(
-        err.to_string().contains(expected),
-        "0.{}: prikk's words, verbatim: {err}",
-        bin.minor
     );
+    // **prikk's own words, and they changed at 0.56** as stikk's letter asked (RFC 063 F7): the
+    // refusal now says the id was *removed* and stays bound to the key it was first adopted
+    // with. **From 0.56 stikk reads prikk's typed `refusal-v1` id** and answers with the *Two
+    // keys, one id* card instead of an error, which is why the two bands are read differently
+    // here (RFC 063 decision 7).
+    if bin.minor >= stikk_prikk::TRUST_ADD_JSON_FROM_MINOR {
+        let outcome = adopted
+            .unwrap_or_else(|e| panic!("0.{}: a typed refusal is an answer: {e}", bin.minor));
+        let warning = outcome
+            .result
+            .warning
+            .as_deref()
+            .unwrap_or_else(|| panic!("0.{}: the security warning", bin.minor));
+        assert_eq!(warning.heading, stikk_core::TWO_KEYS_ONE_ID_HEADING);
+        // **The removed-id line, which is the whole difference between prikk's two conflicts**:
+        // this id is not in the list the reader just looked at.
+        assert!(
+            warning.body.contains(&stikk_core::ID_REMOVED_BUT_BOUND),
+            "0.{}: the removed-id line: {:?}",
+            bin.minor,
+            warning.body
+        );
+        // prikk's own sentence travels as the card's detail, verbatim.
+        let detail = warning
+            .detail
+            .as_deref()
+            .unwrap_or_else(|| panic!("0.{}: prikk's own sentence", bin.minor));
+        assert!(
+            detail.contains("is not currently adopted (it was removed)"),
+            "0.{}: prikk's words, verbatim: {detail}",
+            bin.minor
+        );
+        // **And the list is unchanged**: nothing was adopted.
+        let rows = rfc056_list(&counting, &repo, bin.minor);
+        assert!(
+            !rows.iter().any(|row| row.key_id == their_id),
+            "0.{}: the removed id is still not adopted: {rows:?}",
+            bin.minor
+        );
+    } else {
+        let err = adopted.expect_err("prikk refuses a removed id under a different key");
+        assert!(
+            err.to_string()
+                .contains("already adopted with a different public key"),
+            "0.{}: prikk's words, verbatim: {err}",
+            bin.minor
+        );
+    }
 
     // **Leg 6.** A list of one: stikk declines before prikk is asked, and says what to do.
     let rows = rfc056_list(&counting, &repo, bin.minor);
@@ -12059,4 +12172,237 @@ fn rfc063_an_interrupted_seal_is_read_as_one_and_stikks_seal_finishes_it() {
         "0.{}: Seal finished the block that was there, and added none",
         bin.minor
     );
+}
+
+// ---------------------------------------------------------------- RFC 063 Handoff B: the bundle card
+
+/// **The three ways a receiver can stand towards a sender's key, through stikk's own
+/// `open_bundle`** (RFC 063 decision 6, F6; `measure063-0.58.txt` §D1–D3).
+///
+/// prikk 0.56 began checking each seal in the bundle preview, against the keys the *receiver*
+/// trusts. This leg builds §D's three receivers with real binaries and reads each through
+/// stikk, so what the card would say is what prikk actually answered:
+/// - **the clash** (§D1) — the receiver holds a *different* key under the sender's id: `invalid`,
+///   and at 0.58 Import is withheld by prikk's `forged-publication-signature`. **Nothing is
+///   imported**, asserted on the ref list;
+/// - **not adopted** (§D2) — the receiver trusts no key under that id: `unverifiable`, which is
+///   not a warning, and the import goes through stikk and lands;
+/// - **adopted** (§D3) — the receiver adopted the sender's own key under the sender's id:
+///   `sound`, and the import lands.
+///
+/// The clash is built with [`Fixture::build_with_maintainer_id`] (RFC 063 decision 5), which is
+/// the one way to write a shared id now that each fixture has its own.
+#[test]
+#[ignore = "needs two real prikk binaries; see this file's module doc"]
+fn rfc063_the_bundle_card_reads_each_seal_as_prikk_checked_it() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_prikk::SEAL_OUTCOMES_FROM_MINOR {
+        eprintln!(
+            "RFC 063's bundle-card leg SKIPPED at 0.{} — prikk checks each seal from 0.{}.",
+            bin.minor,
+            stikk_prikk::SEAL_OUTCOMES_FROM_MINOR
+        );
+        return;
+    }
+    let backend = CliBackend::with_program(&bin.path);
+
+    // **One sender, sealing under its own id**, and three receivers reading its bundle.
+    let sender = Fixture::build(&bin);
+    let repo = sender.repo().to_path_buf();
+    let root = repo
+        .parent()
+        .unwrap_or_else(|| panic!("0.{}: the fixture root", bin.minor))
+        .to_path_buf();
+    std::fs::write(repo.join("a.txt"), "a\n")
+        .unwrap_or_else(|e| panic!("0.{}: write: {e}", bin.minor));
+    sender.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit: {e}", bin.minor));
+    sender.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal: {e}", bin.minor));
+    Fixture::clear_env();
+    let sender_id = sender.maintainer_key_id().to_string();
+    let sender_key = rfc056_list(&backend, &repo, bin.minor)
+        .into_iter()
+        .find(|row| row.key_id == sender_id)
+        .map(|row| row.public_key)
+        .unwrap_or_else(|| panic!("0.{}: the sender lists its own key", bin.minor));
+
+    let bundle = root.join("three-ways.bundle");
+    prikk_ok(
+        &bin,
+        &repo,
+        &[
+            "bundle",
+            "export",
+            "--ref",
+            "heads/main",
+            "--output",
+            &bundle.display().to_string(),
+        ],
+    );
+
+    // ---- §D1: the clash. A receiver whose own key sits under the sender's id.
+    let clash = Fixture::build_with_maintainer_id(&bin, &sender_id);
+    let opened = stikk_core::open_bundle(&backend, clash.repo(), &bundle)
+        .unwrap_or_else(|e| panic!("0.{}: open_bundle (clash): {e}", bin.minor));
+    let stikk_core::BundleOpened::Read(view) = opened else {
+        panic!("0.{}: the bundle verifies (clash)", bin.minor);
+    };
+    assert_eq!(
+        view.sealers.judged().first().map(|s| s.trust),
+        Some(stikk_core::SealerTrust::Checked(
+            stikk_prikk::SealVerdict::Invalid
+        )),
+        "0.{}: §D1: a key is trusted under this id, and the signature is not that key's: {:?}",
+        bin.minor,
+        view.sealers
+    );
+    // **The card carries the security warning**, naming the key trusted here.
+    let warning = view
+        .warning
+        .as_ref()
+        .unwrap_or_else(|| panic!("0.{}: §D1: the security warning", bin.minor));
+    assert_eq!(warning.heading, stikk_core::INVALID_SEAL_HEADING);
+    assert!(
+        warning
+            .rows
+            .iter()
+            .any(|row| row.label == "trusted here" && !row.value.is_empty()),
+        "0.{}: §D1: the key the signature was checked against: {:?}",
+        bin.minor,
+        warning.rows
+    );
+    // **Import is withheld**, and from 0.58 by prikk's own refusal id.
+    let withheld = stikk_core::import_preview(
+        &backend,
+        clash.repo(),
+        &bundle,
+        stikk_core::BUNDLE_LINEAGE_LIMIT,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: import_preview (clash): {e}", bin.minor));
+    if bin.minor >= stikk_prikk::IMPORT_REFUSALS_FROM_MINOR {
+        let stikk_core::ImportPreview::WouldRefuse(refusals) = &withheld else {
+            panic!(
+                "0.{}: §D1: expected prikk's refusal, got {withheld:?}",
+                bin.minor
+            );
+        };
+        assert!(
+            refusals
+                .iter()
+                .any(|refusal| refusal.id == "forged-publication-signature"),
+            "0.{}: §D1: prikk's own id for it: {refusals:?}",
+            bin.minor
+        );
+    } else {
+        assert!(
+            matches!(withheld, stikk_core::ImportPreview::InvalidSeal(_)),
+            "0.{}: §D1: withheld by the outcome, got {withheld:?}",
+            bin.minor
+        );
+    }
+    // **Nothing is imported**: no received ref exists.
+    let refs = stikk_core::list_refs(&backend, clash.repo())
+        .unwrap_or_else(|e| panic!("0.{}: list_refs (clash): {e}", bin.minor));
+    assert!(
+        !refs
+            .refs
+            .iter()
+            .any(|entry| entry.name.starts_with("remotes/")),
+        "0.{}: §D1: nothing landed: {:?}",
+        bin.minor,
+        refs.refs.iter().map(|r| &r.name).collect::<Vec<_>>()
+    );
+
+    // ---- §D2 and §D3: distinct ids. The sender's key not adopted, then adopted.
+    //
+    // **A fresh receiver for each**, as `measure063.sh` §D builds them: the first case imports
+    // the bundle, and a receiver that already holds it would decline the second import as
+    // already received — stikk's own guard, answering a different question than this leg asks.
+    for (what, adopt, want) in [
+        (
+            "§D2: not adopted",
+            false,
+            stikk_prikk::SealVerdict::Unverifiable,
+        ),
+        ("§D3: adopted", true, stikk_prikk::SealVerdict::Sound),
+    ] {
+        let receiver = Fixture::build(&bin);
+        if adopt {
+            prikk_ok(
+                &bin,
+                receiver.repo(),
+                &[
+                    "trust",
+                    "maintainer",
+                    "add",
+                    "--key-id",
+                    &sender_id,
+                    "--public-key",
+                    &sender_key,
+                ],
+            );
+        }
+        let opened = stikk_core::open_bundle(&backend, receiver.repo(), &bundle)
+            .unwrap_or_else(|e| panic!("0.{}: open_bundle ({what}): {e}", bin.minor));
+        let stikk_core::BundleOpened::Read(view) = opened else {
+            panic!("0.{}: the bundle verifies ({what})", bin.minor);
+        };
+        assert_eq!(
+            view.sealers.judged().first().map(|s| s.trust),
+            Some(stikk_core::SealerTrust::Checked(want)),
+            "0.{}: {what}: {:?}",
+            bin.minor,
+            view.sealers
+        );
+        assert_eq!(
+            view.warning, None,
+            "0.{}: {what}: this is not the security event",
+            bin.minor
+        );
+        // **The import goes through stikk and lands** — `unverifiable` withholds nothing.
+        let stikk_core::ImportPreview::Ready { token } = stikk_core::import_preview(
+            &backend,
+            receiver.repo(),
+            &bundle,
+            stikk_core::BUNDLE_LINEAGE_LIMIT,
+        )
+        .unwrap_or_else(|e| panic!("0.{}: import_preview ({what}): {e}", bin.minor)) else {
+            panic!("0.{}: {what}: the import is offered", bin.minor);
+        };
+        stikk_core::import_confirm_and_execute(
+            &backend,
+            receiver.repo(),
+            *token,
+            backend
+                .readiness(receiver.repo())
+                .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+                .readiness,
+            stikk_core::Evidence::ExplicitYes,
+            &stikk_core::ImportTarget {
+                path: bundle.clone(),
+                received: "remotes/heads/main".to_string(),
+            },
+        )
+        .unwrap_or_else(|e| panic!("0.{}: {what}: import: {e}", bin.minor));
+        let refs = stikk_core::list_refs(&backend, receiver.repo())
+            .unwrap_or_else(|e| panic!("0.{}: list_refs ({what}): {e}", bin.minor));
+        assert!(
+            refs.refs
+                .iter()
+                .any(|entry| entry.name == "remotes/heads/main"),
+            "0.{}: {what}: it landed: {:?}",
+            bin.minor,
+            refs.refs.iter().map(|r| &r.name).collect::<Vec<_>>()
+        );
+    }
+    Fixture::clear_env();
 }

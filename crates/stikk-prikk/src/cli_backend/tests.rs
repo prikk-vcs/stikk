@@ -3846,3 +3846,125 @@ fn a_refused_rename_carries_prikks_words() {
     assert_eq!(err.class(), "refusal");
     assert!(err.to_string().contains("is not tracked"), "{err}");
 }
+
+/// **From prikk 0.56 `add` passes `--format json`, and the success document is what is read**
+/// (RFC 063 decision 7, F7 §E0). Below 0.56 the flag is still never passed — the test above pins
+/// that at 0.55, and this one pins the other side of the same band.
+#[cfg(unix)]
+#[test]
+fn trust_add_passes_format_json_from_0_56_and_reads_the_document() {
+    let (script, argv) = fake_trust_write_prikk(
+        "add-json",
+        "0.56.0",
+        "{\"schema_version\": \"trust-add-v1\", \"key_id\": \"friend\", \"public_key\": \"31f369d3abb7f64cd2cf70be31158181e361f25444d8de122cdff59389e7e946\", \"newly_added\": true, \"adopted_count\": 2}",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let out = retrying_transient_exec_busy(|| {
+        backend.trust_add(std::path::Path::new("."), "friend", FAKE_PUBLIC_KEY)
+    })
+    .expect("an adopt");
+    assert_eq!(
+        out,
+        crate::TrustWritten::Adopted(crate::TrustAdded {
+            key_id: "friend".to_string(),
+            public_key: FAKE_PUBLIC_KEY.to_string(),
+            newly_added: true,
+            adopted_count: 2,
+        })
+    );
+    assert_eq!(
+        recorded_argv(&argv),
+        vec![
+            "trust",
+            "maintainer",
+            "add",
+            "--key-id",
+            "friend",
+            "--public-key",
+            FAKE_PUBLIC_KEY,
+            "--format",
+            "json",
+        ],
+        "the flag is the last pair, and nothing else changed"
+    );
+}
+
+/// **A key-id conflict comes back typed, by prikk's refusal id** (F7 §E1) — the document is on
+/// **stdout** at exit 1, which is why this path catches the exit itself rather than handing it to
+/// the classifier.
+#[cfg(unix)]
+#[test]
+fn a_key_id_conflict_at_0_56_is_typed_and_carries_prikks_message() {
+    for (id, want) in [
+        (
+            "maintainer-key-id-bound-to-removed-key",
+            crate::KeyIdConflict::BoundToRemovedKey,
+        ),
+        (
+            "maintainer-key-id-adopted-with-different-key",
+            crate::KeyIdConflict::AdoptedWithDifferentKey,
+        ),
+    ] {
+        let doc = format!(
+            "{{\"schema_version\": \"refusal-v1\", \"command\": \"trust-maintainer-add\", \"refusal\": \"{id}\", \"reason\": null, \"message\": \"precondition not met: maintainer key id friend is not currently adopted (it was removed), but it stays bound to the public key it was first adopted with\"}}"
+        );
+        let (script, _argv) = fake_trust_write_prikk("add-conflict", "0.56.0", &doc, 1);
+        let backend = CliBackend::with_program(&script);
+        let out = retrying_transient_exec_busy(|| {
+            backend.trust_add(std::path::Path::new("."), "friend", FAKE_PUBLIC_KEY)
+        })
+        .expect("a refusal prikk typed is an answer, not an error");
+        match out {
+            crate::TrustWritten::KeyIdConflict { conflict, message } => {
+                assert_eq!(conflict, want);
+                assert_eq!(conflict.as_id(), id);
+                assert!(
+                    message.contains("stays bound to the public key"),
+                    "{message}"
+                );
+            }
+            other => panic!("{id}: expected a typed conflict, got {other:?}"),
+        }
+    }
+}
+
+/// **Every other refusal keeps the classifier's path** (F7): the id is prikk's, and stikk routes
+/// only the two it knows.
+#[cfg(unix)]
+#[test]
+fn another_refusal_id_at_0_56_still_reaches_the_classifier() {
+    let doc = "{\"schema_version\": \"refusal-v1\", \"command\": \"trust-maintainer-add\", \"refusal\": \"some-other-refusal\", \"reason\": null, \"message\": \"precondition not met: something else entirely\"}";
+    let (script, _argv) = fake_trust_write_prikk("add-other", "0.56.0", doc, 1);
+    let backend = CliBackend::with_program(&script);
+    let err = retrying_transient_exec_busy(|| {
+        backend.trust_add(std::path::Path::new("."), "friend", FAKE_PUBLIC_KEY)
+    })
+    .expect_err("prikk refused");
+    assert_eq!(err.class(), "refusal");
+    assert!(err.to_string().contains("something else entirely"), "{err}");
+}
+
+/// **`remove` is untouched by the JSON band**: it keeps its prose path and its argv at 0.56.
+#[cfg(unix)]
+#[test]
+fn trust_remove_still_passes_no_format_flag_at_0_56() {
+    let (script, argv) = fake_trust_write_prikk(
+        "remove-0-56",
+        "0.56.0",
+        "maintainer key no longer trusted: friend\n",
+        0,
+    );
+    let backend = CliBackend::with_program(&script);
+    let out =
+        retrying_transient_exec_busy(|| backend.trust_remove(std::path::Path::new("."), "friend"))
+            .expect("a removal");
+    assert_eq!(
+        out,
+        crate::TrustWritten::Done(vec!["maintainer key no longer trusted: friend".to_string()])
+    );
+    assert_eq!(
+        recorded_argv(&argv),
+        vec!["trust", "maintainer", "remove", "--key-id", "friend"]
+    );
+}

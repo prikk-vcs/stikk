@@ -44,11 +44,11 @@ use crate::{
     ActiveSessions, Authoring, BinaryBlob, BlockRow, BundleConflict, BundleEffect,
     BundlePreviewRead, Comparison, Connectivity, DeclarationResolution, Diff, DiffEntry, DiffFile,
     DiffSide, DiffTarget, EffectKind, ExtractReport, FailedCondition, FileContent, FileMeta,
-    History, OperationContent, Orientation, PatchMessage, PatchOperation, Queue, QueueTarget,
-    QueueThreshold, QueuedElsewhere, QueuedMessage, QueuedOnSide, QueuedOperation, QueuedPatch,
-    QueuedPath, RefEntry, RenameDeclaration, ShownPatch, StageStatus, StateFile, StateFiles,
-    ThresholdStatus, TrustedKey, UnpublishedBranch, UnsupportedPath, Verdict, Verification,
-    VerifyStage, WorktreeEntry, WorktreeStatus,
+    History, ImportRefusal, OperationContent, Orientation, PatchMessage, PatchOperation, Queue,
+    QueueTarget, QueueThreshold, QueuedElsewhere, QueuedMessage, QueuedOnSide, QueuedOperation,
+    QueuedPatch, QueuedPath, RefEntry, RenameDeclaration, SealOutcome, SealVerdict, ShownPatch,
+    StageStatus, StateFile, StateFiles, ThresholdStatus, TrustAdded, TrustedKey, UnpublishedBranch,
+    UnsupportedPath, Verdict, Verification, VerifyStage, WorktreeEntry, WorktreeStatus,
 };
 
 type Result<T> = std::result::Result<T, StikkError>;
@@ -66,6 +66,7 @@ const BUNDLE_PREVIEW_SCHEMA: &str = "bundle-preview-v1";
 const PATH_CONTENT_SCHEMA: &str = "path-content-v1";
 const EXTRACT_REPORT_SCHEMA: &str = "extract-report-v1";
 const TRUST_LIST_SCHEMA: &str = "trust-list-v1";
+const TRUST_ADD_SCHEMA: &str = "trust-add-v1";
 /// prikk's own refusal document, which `extract --format json` prints on **stdout** at
 /// exit 1 (RFC 053 F1). Recognized by this and nothing else — never by its prose.
 pub(super) const REFUSAL_SCHEMA: &str = "refusal-v1";
@@ -1573,7 +1574,7 @@ fn bundle_effect(entry: &Json) -> Result<BundleEffect> {
 /// # Errors
 /// [`StikkError::Environment`] if the text is not JSON, announces another schema, is missing a
 /// field this shape requires, or carries a word outside one of the three vocabularies.
-pub(super) fn bundle_preview(text: &str) -> Result<BundlePreviewRead> {
+pub(super) fn bundle_preview(text: &str, prikk_minor: u32) -> Result<BundlePreviewRead> {
     let value = report(text, BUNDLE_PREVIEW_SCHEMA)?;
     let word = value.str_field("connectivity")?;
     let connectivity = Connectivity::parse(word).ok_or_else(|| {
@@ -1616,9 +1617,75 @@ pub(super) fn bundle_preview(text: &str) -> Result<BundlePreviewRead> {
         conflict_detail: bundle_nullable_str(&value, "conflict_detail")?.map(str::to_string),
         sealed_by,
         sealed_by_note: value.str_field("sealed_by_note")?.to_string(),
+        seal_outcomes: seal_outcomes(&value, prikk_minor)?,
+        import_refusals: import_refusals(&value, prikk_minor)?,
         effects,
         rename_note: value.str_field("rename_note")?.to_string(),
     })
+}
+
+/// `sealed_by_signatures[]` (prikk ≥ [`crate::SEAL_OUTCOMES_FROM_MINOR`]; RFC 063 F6, §D1–D3).
+///
+/// **Required at the band, and `None` below it.** prikk writes the field for every preview from
+/// 0.56, so a missing one is a shape stikk has not measured — not *"nothing was checked"*. The
+/// difference decides whether the card says prikk checked each seal or says it cannot.
+///
+/// An outcome word stikk does not know is a shape error, as everywhere in this reader: a verdict
+/// invented here would decide whether a reader is warned that a seal may be forged.
+fn seal_outcomes(value: &Json, prikk_minor: u32) -> Result<Option<Vec<SealOutcome>>> {
+    if prikk_minor < crate::SEAL_OUTCOMES_FROM_MINOR {
+        return Ok(None);
+    }
+    let Some(entries) = value.get("sealed_by_signatures") else {
+        return Err(bundle_rule(format!(
+            "missing field `sealed_by_signatures`, which prikk reports from 0.{}",
+            crate::SEAL_OUTCOMES_FROM_MINOR
+        )));
+    };
+    let Json::Array(entries) = entries else {
+        return Err(bundle_rule("`sealed_by_signatures` should be an array"));
+    };
+    let mut out = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let key_id = entry.str_field("key_id")?.to_string();
+        let word = entry.str_field("outcome")?;
+        let outcome = SealVerdict::parse(word).ok_or_else(|| {
+            bundle_rule(format!(
+                "`outcome` is `{word}`, which is not one of prikk's three (sound, unverifiable, \
+                 invalid) — stikk does not guess at a verdict on a signature"
+            ))
+        })?;
+        out.push(SealOutcome { key_id, outcome });
+    }
+    Ok(Some(out))
+}
+
+/// `import_refusals[]` (prikk ≥ [`crate::IMPORT_REFUSALS_FROM_MINOR`]; RFC 063 F6, §D1).
+///
+/// **Not read at 0.57, where the list is partial** — a list that is sometimes complete would make
+/// an empty one mean two different things. At the band it is required, and `id` and `message` are
+/// the only fields read: stikk keys on the id and shows the message verbatim.
+fn import_refusals(value: &Json, prikk_minor: u32) -> Result<Option<Vec<ImportRefusal>>> {
+    if prikk_minor < crate::IMPORT_REFUSALS_FROM_MINOR {
+        return Ok(None);
+    }
+    let Some(entries) = value.get("import_refusals") else {
+        return Err(bundle_rule(format!(
+            "missing field `import_refusals`, which prikk reports in full from 0.{}",
+            crate::IMPORT_REFUSALS_FROM_MINOR
+        )));
+    };
+    let Json::Array(entries) = entries else {
+        return Err(bundle_rule("`import_refusals` should be an array"));
+    };
+    let mut out = Vec::with_capacity(entries.len());
+    for entry in entries {
+        out.push(ImportRefusal {
+            id: entry.str_field("id")?.to_string(),
+            message: entry.str_field("message")?.to_string(),
+        });
+    }
+    Ok(Some(out))
 }
 
 fn files_rule(detail: impl std::fmt::Display) -> StikkError {
@@ -1699,6 +1766,50 @@ pub(super) fn refusal_message(text: &str) -> Result<Option<String>> {
             .str_field("message")
             .map_err(|_| files_rule("a `refusal-v1` document with no string `message`"))?
             .to_string(),
+    ))
+}
+
+/// `prikk trust maintainer add --format json`'s success document (`trust-add-v1`), prikk ≥
+/// [`crate::TRUST_ADD_JSON_FROM_MINOR`] (RFC 063 F7, measured in §E0).
+///
+/// **All four fields are required.** `adopted_count` reaches the result screen as a number, and a
+/// count stikk invented would tell the reader how many keys their repository trusts (`UD-02`).
+pub(super) fn trust_added(text: &str) -> Result<TrustAdded> {
+    let value = report(text, TRUST_ADD_SCHEMA)?;
+    Ok(TrustAdded {
+        key_id: value.str_field("key_id")?.to_string(),
+        public_key: value.str_field("public_key")?.to_string(),
+        newly_added: value.bool_field("newly_added")?,
+        adopted_count: value.u64_field("adopted_count")?,
+    })
+}
+
+/// A `refusal-v1` document's **id and message**, for a caller that routes by the id (RFC 063 F7).
+///
+/// `None` when stdout is not a refusal document at all — then the caller falls through to the
+/// classifier, exactly as [`refusal_message`]'s callers do.
+pub(super) fn refusal_id_and_message(text: &str) -> Result<Option<(String, String)>> {
+    let Ok(value) = json::parse(text) else {
+        return Ok(None);
+    };
+    if value.str_field("schema_version").ok() != Some(REFUSAL_SCHEMA) {
+        return Ok(None);
+    }
+    let id = value
+        .str_field("refusal")
+        .map_err(|_| trust_rule("a `refusal-v1` document with no string `refusal` id"))?
+        .to_string();
+    let message = value
+        .str_field("message")
+        .map_err(|_| trust_rule("a `refusal-v1` document with no string `message`"))?
+        .to_string();
+    Ok(Some((id, message)))
+}
+
+/// A rule the trust readers enforce, broken — an **environment** error, as everywhere here.
+fn trust_rule(detail: impl std::fmt::Display) -> StikkError {
+    StikkError::environment_msg(format!(
+        "prikk's trust report is not the shape stikk reads: {detail}"
     ))
 }
 

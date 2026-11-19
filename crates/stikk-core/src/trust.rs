@@ -712,6 +712,18 @@ pub fn adopt_confirm_and_execute(
     written(prikk, repo, outcome, None)
 }
 
+/// What an adopt prikk answered in JSON says to the reader (RFC 063 decision 7, §E0).
+///
+/// **The count is prikk's**, read from `trust-add-v1` rather than counted by stikk: the list is
+/// re-read right after, and two numbers from two sources would eventually disagree on screen.
+#[must_use]
+pub fn adopted_line(added: &stikk_prikk::TrustAdded) -> String {
+    format!(
+        "Adopted {}. This repository now trusts {} maintainer keys.",
+        added.key_id, added.adopted_count
+    )
+}
+
 /// Remove the key this token was previewed for, then re-read the list (decision 3).
 ///
 /// # Errors
@@ -739,6 +751,16 @@ fn written(
 ) -> Result<Outcome<TrustWriteResult>> {
     let printed = match outcome.result {
         stikk_prikk::TrustWritten::Done(lines) => lines,
+        // **From prikk 0.56 an adopt answers in JSON** (RFC 063 decision 7), so there are no
+        // printed lines to carry: the result says what prikk counted.
+        stikk_prikk::TrustWritten::Adopted(added) => vec![adopted_line(&added)],
+        // **The two key-id conflicts** (RFC 063 F7). The warning card this builds is RFC 063
+        // Handoff B's own commit; until it lands, the typed outcome is turned back into prikk's
+        // refusal, which is **exactly** what reached the reader before the seam was typed -- so
+        // this commit changes no behaviour here, and the next one replaces this arm.
+        stikk_prikk::TrustWritten::KeyIdConflict { message, .. } => {
+            return Err(stikk_model::StikkError::Refusal { message });
+        }
         // Unreachable in practice -- the preview is banded -- and said rather than guessed.
         stikk_prikk::TrustWritten::Unavailable => {
             vec![trust_unavailable(prikk.handshake()?.version.minor)]

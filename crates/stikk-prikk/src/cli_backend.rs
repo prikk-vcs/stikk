@@ -348,7 +348,9 @@ impl CliBackend {
     /// **Banded first, like every other write**: below the band nothing is spawned, not even the
     /// readiness read. **No key is asked for**: `Trust` requires `ReadWrite` and nothing more
     /// (`category.rs`), which is what prikk measured -- both commands run with no key material
-    /// at all (F1). **No `--format`**, which prikk refuses as an unknown argument.
+    /// at all (F1). **No `--format`**, which prikk refuses as an unknown argument -- **true only
+    /// below 0.56** (RFC 063 F7): from there `add` answers in JSON and has its own path in
+    /// [`Self::trust_add`], and this helper serves `remove`, plus `add` below that band.
     fn trust_write(&self, repo: &Path, args: &[&OsStr], what: &str) -> Result<crate::TrustWritten> {
         if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
             return Ok(crate::TrustWritten::Unavailable);
@@ -1072,7 +1074,10 @@ impl Prikk for CliBackend {
         args.push(OsString::from("--format"));
         args.push(OsString::from("json"));
         let out = self.run(Some(repo), RequestCategory::ReadState, args)?;
-        parse_json::bundle_preview(&out).map(|read| crate::BundlePreview::Read(Box::new(read)))
+        // The two newest fields are version-banded (RFC 063 F6); the handshake is cached.
+        let prikk_minor = Prikk::handshake(self)?.version.minor;
+        parse_json::bundle_preview(&out, prikk_minor)
+            .map(|read| crate::BundlePreview::Read(Box::new(read)))
     }
 
     fn bundle_import(&self, repo: &Path, path: &Path) -> Result<crate::BundleImport> {
@@ -1259,19 +1264,49 @@ impl Prikk for CliBackend {
         key_id: &str,
         public_key: &str,
     ) -> Result<crate::TrustWritten> {
-        self.trust_write(
-            repo,
-            &[
-                OsStr::new("trust"),
-                OsStr::new("maintainer"),
-                OsStr::new("add"),
-                OsStr::new("--key-id"),
-                OsStr::new(key_id),
-                OsStr::new("--public-key"),
-                OsStr::new(public_key),
-            ],
-            "adopting a maintainer key",
-        )
+        let argv = [
+            OsStr::new("trust"),
+            OsStr::new("maintainer"),
+            OsStr::new("add"),
+            OsStr::new("--key-id"),
+            OsStr::new(key_id),
+            OsStr::new("--public-key"),
+            OsStr::new(public_key),
+        ];
+        // **Below the JSON band, prose, exactly as today** (RFC 063 F7): at 0.55 `--format` is an
+        // unknown argument here, so passing it would turn an adopt into a usage error.
+        if Prikk::handshake(self)?.version.minor < crate::TRUST_ADD_JSON_FROM_MINOR {
+            return self.trust_write(repo, &argv, "adopting a maintainer key");
+        }
+        // The same two guards `trust_write` applies, in the same order, for the same reasons: the
+        // version band first, so nothing is spawned below it, then read-only.
+        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
+            return Ok(crate::TrustWritten::Unavailable);
+        }
+        if !Prikk::readiness(self, repo)?.readiness.may_operate() {
+            return Err(StikkError::NotReady {
+                detail: "adopting a maintainer key is not available in read-only mode".to_string(),
+            });
+        }
+        let mut args: Vec<&OsStr> = argv.to_vec();
+        args.push(OsStr::new("--format"));
+        args.push(OsStr::new("json"));
+        // **Both streams, and the exit caught here** — like `extract_report` and for the same
+        // reason: prikk answers a refusal as a **document on stdout** and exits 1, and the
+        // classifier reads prose, which is exactly what that document is not.
+        let (stdout, stderr, ok) = self.run_capturing(Some(repo), args)?;
+        if !ok {
+            if let Some((id, message)) = parse_json::refusal_id_and_message(&stdout)?
+                && let Some(conflict) = crate::KeyIdConflict::parse(&id)
+            {
+                return Ok(crate::TrustWritten::KeyIdConflict { conflict, message });
+            }
+            // Every other refusal id, and a non-zero exit with no document, keeps today's path.
+            return Err(classify::classify(&stdout, &stderr, RequestCategory::Trust));
+        }
+        Ok(crate::TrustWritten::Adopted(parse_json::trust_added(
+            &stdout,
+        )?))
     }
 
     fn trust_remove(&self, repo: &Path, key_id: &str) -> Result<crate::TrustWritten> {

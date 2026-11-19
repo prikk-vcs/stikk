@@ -65,6 +65,9 @@ fn opened(
         sealed_by_note: SEALED_NOTE.to_string(),
         effects,
         rename_note: RENAME_NOTE.to_string(),
+        // pre-0.56: prikk checked no seal and listed no refusal (RFC 063 F6).
+        seal_outcomes: None,
+        import_refusals: None,
     };
     let sentence = sentence_for(connectivity, conflict).expect("a measured pair has a sentence");
     // **The sealers as a repository that has adopted nothing would judge them** (RFC 054):

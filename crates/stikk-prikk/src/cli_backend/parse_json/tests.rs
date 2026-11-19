@@ -4506,3 +4506,290 @@ fn below_the_band_already_sealed_is_not_read() {
         None
     );
 }
+
+use crate::KeyIdConflict;
+
+// ---------------------------------------------------------------------------------------------
+// RFC 063 Handoff B: what prikk now checks for you (F6, F7).
+//
+// Every document below is **prikk 0.58's own**, copied from
+// `.git-exclude/reports/063-prikk-0-58-rebaseline/measure063-0.58.txt` §D and §E, with only the
+// ids shortened. Nothing here is transcribed from prikk's sources or from the RFC's prose.
+// ---------------------------------------------------------------------------------------------
+
+/// §D1: the receiver adopted its own key under the sender's id — the pre-0.45 default-id clash.
+/// `outcome: invalid`, and the refusal prikk would give the import.
+const PREVIEW_CLASH_0_58: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "does-not-connect",
+  "class": "does-not-connect",
+  "ref_state_chain": "unrelated",
+  "import_class": "no-local-history",
+  "import_ref_state_chain": null,
+  "import_refusals": [
+    {"id": "forged-publication-signature", "message": "precondition not met: ref-state <id> carries a MAINTAINER signature by adopted key shared that does not verify: invalid signature: signature verification failed: signature error -- a forgery, or another maintainer using the same key id; if it is the latter, that maintainer should sign under a distinct id next time -- a key made by `prikk key generate --out <path>` has one (point PRIKK_MAINTAINER_SEED_FILE at it), or set PRIKK_MAINTAINER_KEY_ID -- and you adopt it under that id with `prikk trust maintainer add --key-id <that id> --public-key <its public key>`; refusing before admitting it", "object_type": "ref-state", "object_id": "<id>"}
+  ],
+  "import_adoption": null,
+  "conflict": null,
+  "conflict_detail": null,
+  "sealed_by": ["shared"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "sealed_by_signatures": [
+    {"key_id": "shared", "outcome": "invalid"}
+  ],
+  "effects": [],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 8, "tool_version": "0.58.0"}
+}
+"#;
+
+/// §D2: distinct ids, the sender's key not adopted. `unverifiable`, and **no refusal**: this is
+/// the ordinary first exchange, and the import lands.
+const PREVIEW_NOT_ADOPTED_0_58: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "does-not-connect",
+  "class": "does-not-connect",
+  "ref_state_chain": "unrelated",
+  "import_class": "no-local-history",
+  "import_ref_state_chain": null,
+  "import_refusals": [],
+  "import_adoption": null,
+  "conflict": null,
+  "conflict_detail": null,
+  "sealed_by": ["shared"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "sealed_by_signatures": [
+    {"key_id": "shared", "outcome": "unverifiable"}
+  ],
+  "effects": [],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 8, "tool_version": "0.58.0"}
+}
+"#;
+
+/// §D3: the sender's key adopted under the sender's id. `sound`, and no refusal.
+const PREVIEW_ADOPTED_0_58: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "does-not-connect",
+  "class": "does-not-connect",
+  "ref_state_chain": "unrelated",
+  "import_class": "no-local-history",
+  "import_ref_state_chain": null,
+  "import_refusals": [],
+  "import_adoption": null,
+  "conflict": null,
+  "conflict_detail": null,
+  "sealed_by": ["shared"],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "sealed_by_signatures": [
+    {"key_id": "shared", "outcome": "sound"}
+  ],
+  "effects": [],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {"repository_format": 8, "tool_version": "0.58.0"}
+}
+"#;
+
+#[test]
+fn the_three_seal_outcomes_are_read_at_0_58() {
+    for (text, want_key, want_outcome) in [
+        (PREVIEW_CLASH_0_58, "shared", SealVerdict::Invalid),
+        (
+            PREVIEW_NOT_ADOPTED_0_58,
+            "shared",
+            SealVerdict::Unverifiable,
+        ),
+        (PREVIEW_ADOPTED_0_58, "shared", SealVerdict::Sound),
+    ] {
+        let read = super::bundle_preview(text, 58).expect("prikk 0.58's own preview reads");
+        assert_eq!(
+            read.seal_outcomes,
+            Some(vec![SealOutcome {
+                key_id: want_key.to_string(),
+                outcome: want_outcome,
+            }]),
+            "{want_outcome:?}"
+        );
+        // The ids are still read as ids, beside the outcomes, because they answer different
+        // questions and a card shows both.
+        assert_eq!(read.sealed_by, vec![want_key.to_string()]);
+    }
+}
+
+/// **The refusal is read by its id, and its message is prikk's own** (§D1). Only the clash has
+/// one; the other two carry an empty list, which is prikk saying *nothing refused on this pass*.
+#[test]
+fn import_refusals_are_read_at_0_58_and_an_empty_list_is_an_answer() {
+    let clash = super::bundle_preview(PREVIEW_CLASH_0_58, 58).expect("reads");
+    let refusals = clash.import_refusals.expect("read at the band");
+    assert_eq!(refusals.len(), 1);
+    assert_eq!(refusals[0].id, "forged-publication-signature");
+    // prikk's own sentence, verbatim and parsed by nothing.
+    assert!(
+        refusals[0]
+            .message
+            .contains("another maintainer using the same key id"),
+        "{}",
+        refusals[0].message
+    );
+    for text in [PREVIEW_NOT_ADOPTED_0_58, PREVIEW_ADOPTED_0_58] {
+        let read = super::bundle_preview(text, 58).expect("reads");
+        assert_eq!(
+            read.import_refusals,
+            Some(Vec::new()),
+            "an empty list is prikk's answer, not a missing field"
+        );
+    }
+}
+
+/// **Each band at its edge** (F6): the outcomes from 0.56, the refusals from 0.58 — and below
+/// each, the field is not looked for even when prikk sends it.
+#[test]
+fn the_two_bundle_bands_read_at_their_edges_and_not_below() {
+    // 0.55: neither field is read, so a 0.58 document is read as a 0.55 one.
+    let at_55 = super::bundle_preview(PREVIEW_CLASH_0_58, 55).expect("reads below both bands");
+    assert_eq!(at_55.seal_outcomes, None, "0.55 checks no seal");
+    assert_eq!(at_55.import_refusals, None, "0.55 lists no refusal");
+
+    // 0.56 and 0.57: the outcomes are read, the refusals are not — at 0.57 the list is partial,
+    // which is the whole reason for the second band.
+    for minor in [56, 57] {
+        let read = super::bundle_preview(PREVIEW_CLASH_0_58, minor).expect("reads");
+        assert!(read.seal_outcomes.is_some(), "0.{minor} checks each seal");
+        assert_eq!(
+            read.import_refusals, None,
+            "0.{minor}: a partial list is not read"
+        );
+    }
+
+    // 0.58: both.
+    let at_58 = super::bundle_preview(PREVIEW_CLASH_0_58, 58).expect("reads");
+    assert!(at_58.seal_outcomes.is_some());
+    assert!(at_58.import_refusals.is_some());
+}
+
+/// **A missing field at the band is a shape error, naming the band** — not "nothing was checked".
+/// prikk writes both for every preview from their versions, so an absence is a prikk stikk has
+/// not measured.
+#[test]
+fn a_missing_bundle_field_is_refused_at_its_band() {
+    let without_outcomes =
+        PREVIEW_CLASH_0_58.replace("\"sealed_by_signatures\"", "\"was_sealed_by_signatures\"");
+    let err = super::bundle_preview(&without_outcomes, 56).expect_err("the band requires it");
+    assert!(
+        err.to_string().contains("sealed_by_signatures") && err.to_string().contains("from 0.56"),
+        "{err}"
+    );
+    // ...and it is not required below the band.
+    super::bundle_preview(&without_outcomes, 55).expect("0.55 does not look for it");
+
+    let without_refusals =
+        PREVIEW_CLASH_0_58.replace("\"import_refusals\"", "\"was_import_refusals\"");
+    let err = super::bundle_preview(&without_refusals, 58).expect_err("the band requires it");
+    assert!(
+        err.to_string().contains("import_refusals") && err.to_string().contains("from 0.58"),
+        "{err}"
+    );
+    super::bundle_preview(&without_refusals, 57).expect("0.57 does not look for it");
+}
+
+/// **A wrong shape in either list is refused, and an unknown outcome word is not a fourth case.**
+/// A verdict stikk invented would decide whether a reader is warned that a seal may be forged.
+#[test]
+fn a_wrong_shape_in_either_bundle_list_is_refused() {
+    for (needle, replacement, want) in [
+        (
+            "\"outcome\": \"invalid\"",
+            "\"outcome\": \"probably-fine\"",
+            "probably-fine",
+        ),
+        ("\"outcome\": \"invalid\"", "\"outcome\": 3", "outcome"),
+        ("\"key_id\": \"shared\"", "\"key_id\": null", "key_id"),
+    ] {
+        let text = PREVIEW_CLASH_0_58.replace(needle, replacement);
+        let err = super::bundle_preview(&text, 58).expect_err("a shape error");
+        assert!(err.to_string().contains(want), "{want}: {err}");
+    }
+    // The whole field, not an array.
+    let text = PREVIEW_CLASH_0_58.replace(
+        "\"sealed_by_signatures\": [",
+        "\"sealed_by_signatures\": {\"x\": [",
+    );
+    assert!(super::bundle_preview(&text, 58).is_err());
+    // A refusal entry with no `id`.
+    let text = PREVIEW_CLASH_0_58.replace("\"id\": \"forged-publication-signature\", ", "");
+    let err = super::bundle_preview(&text, 58).expect_err("a shape error");
+    assert!(err.to_string().contains("id"), "{err}");
+}
+
+/// §E0: `trust maintainer add --format json` on success.
+const TRUST_ADD_OK_0_58: &str = r#"{
+  "schema_version": "trust-add-v1",
+  "key_id": "friend",
+  "public_key": "<id>",
+  "newly_added": true,
+  "adopted_count": 2
+}
+"#;
+
+/// §E1: the removed id re-adopted with a different key — prikk's refusal document, on **stdout**,
+/// at exit 1.
+const TRUST_ADD_REMOVED_ID_0_58: &str = r#"{"schema_version": "refusal-v1", "command": "trust-maintainer-add", "refusal": "maintainer-key-id-bound-to-removed-key", "reason": null, "message": "precondition not met: maintainer key id friend is not currently adopted (it was removed), but it stays bound to the public key it was first adopted with, and a different public key is refused: removing an id takes it out of the adopted set, not out of the record of which key it belongs to. Re-adopting friend with its original public key still works. A key id travels in every signature, so adopting this key under another local id would match none of its blocks: its maintainer must sign under a distinct id -- a key made by `prikk key generate --out <path>` has one (point PRIKK_MAINTAINER_SEED_FILE at it), or set PRIKK_MAINTAINER_KEY_ID -- and you adopt it under that id with `prikk trust maintainer add --key-id <that id> --public-key <its public key>`"}
+"#;
+
+#[test]
+fn a_successful_adopt_is_read_from_trust_add_v1() {
+    let added = super::trust_added(TRUST_ADD_OK_0_58).expect("prikk 0.58's own document reads");
+    assert_eq!(added.key_id, "friend");
+    assert!(added.newly_added);
+    assert_eq!(added.adopted_count, 2);
+    assert!(!added.public_key.is_empty());
+}
+
+/// **All four fields are required**: a count stikk invented would tell a reader how many keys
+/// their repository trusts.
+#[test]
+fn a_trust_add_document_missing_a_field_is_refused() {
+    for field in ["key_id", "public_key", "newly_added", "adopted_count"] {
+        let text = TRUST_ADD_OK_0_58.replace(&format!("\"{field}\""), "\"gone\"");
+        let err = super::trust_added(&text).expect_err("required");
+        assert!(err.to_string().contains(field), "{field}: {err}");
+    }
+    // A different schema is not read as this one.
+    let text = TRUST_ADD_OK_0_58.replace("trust-add-v1", "trust-add-v2");
+    assert!(super::trust_added(&text).is_err());
+}
+
+/// **The refusal is recognized by its id**, and both of prikk's key-id conflicts map to the one
+/// typed outcome (F7).
+#[test]
+fn a_refused_adopt_is_read_as_its_id_and_message() {
+    let (id, message) = super::refusal_id_and_message(TRUST_ADD_REMOVED_ID_0_58)
+        .expect("a document")
+        .expect("a refusal document");
+    assert_eq!(id, "maintainer-key-id-bound-to-removed-key");
+    assert_eq!(
+        KeyIdConflict::parse(&id),
+        Some(KeyIdConflict::BoundToRemovedKey)
+    );
+    assert!(message.contains("it was removed"), "{message}");
+
+    // The other conflict, and a refusal that is neither.
+    assert_eq!(
+        KeyIdConflict::parse("maintainer-key-id-adopted-with-different-key"),
+        Some(KeyIdConflict::AdoptedWithDifferentKey)
+    );
+    assert_eq!(KeyIdConflict::parse("forged-publication-signature"), None);
+
+    // Not a document at all: the caller falls through to the classifier.
+    assert_eq!(
+        super::refusal_id_and_message("error: precondition not met: something prose").expect("ok"),
+        None
+    );
+}

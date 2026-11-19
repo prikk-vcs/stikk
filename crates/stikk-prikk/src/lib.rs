@@ -26,8 +26,9 @@ pub use cli_backend::CliBackend;
 pub use null_backend::NullBackend;
 pub use version::{
     ALREADY_SEALED_FROM_MINOR, CURRENT_BRANCH_FROM_MINOR, DIFF_FROM_MINOR, EXCHANGE_FROM_MINOR,
-    FILES_FROM_MINOR, JSON_REPORTS_FROM_MINOR, MERGE_INTO_CURRENT_FROM_MINOR,
-    ORIENTATION_JSON_FROM_MINOR, PATCH_PATH_AT_PATCH_FROM_MINOR, TREE_FROM_MINOR,
+    FILES_FROM_MINOR, IMPORT_REFUSALS_FROM_MINOR, JSON_REPORTS_FROM_MINOR,
+    MERGE_INTO_CURRENT_FROM_MINOR, ORIENTATION_JSON_FROM_MINOR, PATCH_PATH_AT_PATCH_FROM_MINOR,
+    SEAL_OUTCOMES_FROM_MINOR, TREE_FROM_MINOR, TRUST_ADD_JSON_FROM_MINOR,
     UNPUBLISHED_BRANCH_FROM_MINOR, Version, validated_ceiling_display,
 };
 
@@ -900,6 +901,75 @@ pub enum BundlePreview {
     Unavailable,
 }
 
+/// What prikk made of **one recorded seal** in a bundle, from `sealed_by_signatures[]`
+/// (prikk ≥ [`SEAL_OUTCOMES_FROM_MINOR`]; RFC 063 F6).
+///
+/// **prikk's answer, not a name match.** Below the band stikk compared the recorded id with the
+/// trust list itself and could say no more than *who* sealed; from 0.56 prikk checks the signature
+/// against the key adopted under that id and says whether it verifies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SealOutcome {
+    /// The key id recorded in the signature, as prikk reported it. Repository text (`C-T2a`).
+    pub key_id: String,
+    /// prikk's verdict on that signature.
+    pub outcome: SealVerdict,
+}
+
+/// prikk's three verdicts on a recorded seal (RFC 063 F6, measured at 0.58 in §D1–D3).
+///
+/// **An unknown word is a shape error, never a fourth case.** A verdict stikk invented would
+/// decide whether a reader is warned that a seal may be forged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SealVerdict {
+    /// Signed by a key this repository trusts under that id, and the signature verifies (§D3).
+    Sound,
+    /// This repository trusts no key under that id, so there is nothing to check it against
+    /// (§D2). **The ordinary case for a first exchange** — not a warning, and not a reason to
+    /// withhold anything.
+    Unverifiable,
+    /// A key *is* trusted under that id, and the signature does not verify against it (§D1):
+    /// a forgery, or another person signing under the same id. The security event.
+    Invalid,
+}
+
+impl SealVerdict {
+    /// prikk's own word for this verdict, as `sealed_by_signatures[].outcome` spells it.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sound => "sound",
+            Self::Unverifiable => "unverifiable",
+            Self::Invalid => "invalid",
+        }
+    }
+
+    /// Parse prikk's word, or `None` for one stikk has not measured.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "sound" => Some(Self::Sound),
+            "unverifiable" => Some(Self::Unverifiable),
+            "invalid" => Some(Self::Invalid),
+            _ => None,
+        }
+    }
+}
+
+/// One refusal prikk says an import **would** hit, from `import_refusals[]`
+/// (prikk ≥ [`IMPORT_REFUSALS_FROM_MINOR`]; RFC 063 F6).
+///
+/// **Two fields read of several.** The `id` is what stikk keys on — never the message — and the
+/// message is what the reader is shown, verbatim (`ER-02`). prikk's own `object_type` and
+/// `object_id` are deliberately not read: nothing in stikk decides anything by them, and a field
+/// read is a field stikk must keep reading.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportRefusal {
+    /// prikk's stable refusal id, for example `forged-publication-signature`.
+    pub id: String,
+    /// prikk's sentence, shown as prikk wrote it.
+    pub message: String,
+}
+
 /// The report `bundle preview --format json` returned.
 ///
 /// **Boxed inside [`BundlePreview`]** because it is much larger than the other variant, and a
@@ -925,6 +995,18 @@ pub struct BundlePreviewRead {
     pub sealed_by: Vec<String>,
     /// prikk's continuity note for [`Self::sealed_by`], **verbatim**.
     pub sealed_by_note: String,
+    /// What prikk made of each recorded seal, or `None` below [`SEAL_OUTCOMES_FROM_MINOR`], where
+    /// prikk checked nothing and the field does not exist (RFC 063 F6).
+    ///
+    /// `Some(empty)` would mean *prikk checked and found no seals*; `None` means *this prikk does
+    /// not check*. The card says different things for the two, so they are different values.
+    pub seal_outcomes: Option<Vec<SealOutcome>>,
+    /// What prikk says an import of this bundle would refuse, or `None` below
+    /// [`IMPORT_REFUSALS_FROM_MINOR`], where the list was partial and stikk does not read it.
+    ///
+    /// `Some(empty)` is prikk's own *nothing refused on this pass* — and still not a promise the
+    /// import lands, by prikk's note.
+    pub import_refusals: Option<Vec<ImportRefusal>>,
     /// What importing would do, path by path.
     pub effects: Vec<BundleEffect>,
     /// prikk's note that a move is not yet distinguishable from a delete plus a create,
@@ -1072,9 +1154,77 @@ pub enum TrustWritten {
     /// *"maintainer key was not trusted: ID"* both exit 0 (F1). stikk's guards answer those
     /// before prikk is asked; prikk's own line is still shown where one reaches here.
     Done(Vec<String>),
+    /// An **adopt** that prikk answered in JSON (`trust-add-v1`, prikk ≥
+    /// [`crate::TRUST_ADD_JSON_FROM_MINOR`]; RFC 063 F7).
+    ///
+    /// The counted answer, rather than a printed line to show: it is what lets the result say how
+    /// many keys this repository now trusts.
+    Adopted(TrustAdded),
+    /// An adopt prikk refused with one of its **two key-id conflicts** (`refusal-v1`, prikk ≥
+    /// [`crate::TRUST_ADD_JSON_FROM_MINOR`]; RFC 063 F7).
+    ///
+    /// **Typed, because it is a security event, not an error to print.** stikk recognizes it by
+    /// prikk's refusal **id** and carries prikk's own sentence for the card's detail. Every other
+    /// refusal id, and a non-zero exit with no document, keeps the classifier's path.
+    KeyIdConflict {
+        /// Which of the two conflicts prikk named.
+        conflict: KeyIdConflict,
+        /// prikk's sentence, shown verbatim as the warning's detail (`ER-02`).
+        message: String,
+    },
     /// Below [`crate::FILES_FROM_MINOR`]. stikk spawned nothing and says so in its own voice
     /// (`C-T4d`).
     Unavailable,
+}
+
+/// `trust maintainer add --format json`'s success document (`trust-add-v1`; RFC 063 F7, §E0).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustAdded {
+    /// The id prikk adopted the key under.
+    pub key_id: String,
+    /// The public key, as prikk echoed it.
+    pub public_key: String,
+    /// Whether this call is what added it — `false` when the id was already adopted with the same
+    /// key, which prikk treats as success.
+    pub newly_added: bool,
+    /// How many maintainer keys this repository trusts now, by prikk's own count.
+    pub adopted_count: u64,
+}
+
+/// prikk's two key-id conflicts on an adopt (RFC 063 F7, §E1).
+///
+/// **Keyed by prikk's refusal id, never by its words.** Both are the same security event for a
+/// reader — an id that names one key being offered another — and they differ in what happened to
+/// the first key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyIdConflict {
+    /// `maintainer-key-id-adopted-with-different-key`: the id is adopted now, under another key.
+    AdoptedWithDifferentKey,
+    /// `maintainer-key-id-bound-to-removed-key`: the id was removed, and stays bound to the key it
+    /// was first adopted with — so a different key is refused even though the id is not in the
+    /// list.
+    BoundToRemovedKey,
+}
+
+impl KeyIdConflict {
+    /// prikk's refusal id for this conflict.
+    #[must_use]
+    pub fn as_id(self) -> &'static str {
+        match self {
+            Self::AdoptedWithDifferentKey => "maintainer-key-id-adopted-with-different-key",
+            Self::BoundToRemovedKey => "maintainer-key-id-bound-to-removed-key",
+        }
+    }
+
+    /// Recognize prikk's refusal id, or `None` for a refusal that is not one of these two.
+    #[must_use]
+    pub fn parse(id: &str) -> Option<Self> {
+        match id {
+            "maintainer-key-id-adopted-with-different-key" => Some(Self::AdoptedWithDifferentKey),
+            "maintainer-key-id-bound-to-removed-key" => Some(Self::BoundToRemovedKey),
+            _ => None,
+        }
+    }
 }
 
 /// What `branch switch` printed, or why stikk did not run it (RFC 045 decision 1).

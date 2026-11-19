@@ -4130,6 +4130,9 @@ fn import_summary() -> stikk_core::ConfirmationSummary {
                 .to_string(),
             effects: Vec::new(),
             rename_note: "a moved path is not yet distinguishable".to_string(),
+            // pre-0.56: prikk checked no seal and listed no refusal (RFC 063 F6).
+            seal_outcomes: None,
+            import_refusals: None,
         })
         .with_refs(Vec::new());
     let preview = stikk_core::import_preview(

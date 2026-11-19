@@ -60,6 +60,10 @@ fn preview(
         conflict_detail: conflict_detail.map(ToString::to_string),
         sealed_by: vec!["z-maint".to_string()],
         sealed_by_note: SEALED_NOTE.to_string(),
+        // The pre-0.56 shape: prikk checked no seal and listed no refusal. The tests that want
+        // either build it from here (RFC 063 F6).
+        seal_outcomes: None,
+        import_refusals: None,
         effects,
         rename_note: RENAME_NOTE.to_string(),
     }

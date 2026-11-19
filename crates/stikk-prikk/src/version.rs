@@ -297,6 +297,39 @@ pub const MERGE_INTO_CURRENT_FROM_MINOR: u32 = 56;
 /// read, and prikk's own words are what the reader gets.
 pub const ALREADY_SEALED_FROM_MINOR: u32 = 58;
 
+/// The first prikk minor whose **bundle preview checks each seal against this repository's trusted
+/// keys**: prikk 0.56 (RFC 063 F6, measured at 0.58 in `measure063-0.58.txt` §D).
+///
+/// From here the preview carries `sealed_by_signatures[]`, each `{key_id, outcome}` with `outcome`
+/// one of `sound`, `unverifiable` or `invalid` — prikk's own answer, not a name match. Below it the
+/// preview says who sealed and nothing about whether it checks out, which is why stikk's own card
+/// said *"a bundle names its sealer but does not prove it"*: true at 0.55, false from 0.56.
+///
+/// **`sealed_by` is still read at every version.** The ids are what a card lists; the outcomes say
+/// what prikk made of them, and the two are separate fields because they answer separate questions.
+pub const SEAL_OUTCOMES_FROM_MINOR: u32 = 56;
+
+/// The first prikk minor whose bundle preview carries **the import's whole first-pass decision**:
+/// prikk 0.58 (RFC 063 F6).
+///
+/// `import_refusals[]` exists at 0.57 too, but **partially** — so stikk does not read it there. A
+/// list that is sometimes complete is worse than no list: a card that said *"prikk would refuse
+/// this import"* from a partial answer would also, silently, say *"it would not"* when the answer
+/// was merely absent. From 0.58 an empty list is prikk's own *no refusal on this pass*.
+///
+/// **Still not the last word**, by prikk's own note: a second pass, or a writer in between, can
+/// refuse an import this list did not. The import's own refusal path is untouched.
+pub const IMPORT_REFUSALS_FROM_MINOR: u32 = 58;
+
+/// The first prikk minor whose `trust maintainer add` **answers in JSON**: prikk 0.56 (RFC 063 F7,
+/// measured in `measure063-0.58.txt` §E).
+///
+/// At 0.55 `--format` is an unknown argument there, so stikk passes it only from here. At or above
+/// it, success is `trust-add-v1` (`key_id`, `public_key`, `newly_added`, `adopted_count`) and a
+/// refusal is `refusal-v1` on stdout, whose **id** stikk reads — never its words — so the two
+/// key-id conflicts become a typed outcome and everything else keeps the path it has today.
+pub const TRUST_ADD_JSON_FROM_MINOR: u32 = 56;
+
 /// A parsed semantic version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {

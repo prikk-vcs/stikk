@@ -4853,6 +4853,9 @@ fn bundle_screen(app: &mut App, rx: &mpsc::Receiver<Request>, tip: Option<&str>)
             .to_string(),
         effects: Vec::new(),
         rename_note: "a moved path is not yet distinguishable".to_string(),
+        // pre-0.56: prikk checked no seal and listed no refusal (RFC 063 F6).
+        seal_outcomes: None,
+        import_refusals: None,
     };
     app.begin_open_bundle();
     type_in(app, "/tmp/v1.bundle");
@@ -4945,6 +4948,9 @@ fn rfc050_a_landed_import_moves_focus_to_the_received_branch() {
                 sealed_by_note: "n".to_string(),
                 effects: Vec::new(),
                 rename_note: "r".to_string(),
+                // pre-0.56: prikk checked no seal and listed no refusal (RFC 063 F6).
+                seal_outcomes: None,
+                import_refusals: None,
             })
             .with_refs(Vec::new()),
         std::path::Path::new("/repo"),

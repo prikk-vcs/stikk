@@ -261,7 +261,22 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
     // same `received_branch()` answers both, so a bundle whose tip line stikk could not read
     // shows no key rather than a key whose preview would only block.
     lines.push(Line::from(""));
-    if let Some(received) = view.received_branch() {
+    let refusals = view.preview.import_refusals.as_deref().unwrap_or_default();
+    if !refusals.is_empty() {
+        // **prikk says it would refuse this, so the key is not offered** (RFC 063 decision 6).
+        // The section below says so and lists prikk's own sentences; a key advertised here
+        // would be a key whose preview could only withhold.
+        for row in wrap_indented(
+            "stikk does not offer to import this: prikk says it would refuse it, below.",
+            width,
+            TOP,
+        ) {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.warn),
+            )));
+        }
+    } else if let Some(received) = view.received_branch() {
         for row in crate::view::wrap_hanging(
             &format!(
                 "I imports this as {}, after a confirmation.",
@@ -334,9 +349,16 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
                         Style::default().fg(palette.accent),
                     )));
                 }
+                // **`invalid` is the only one of prikk's three that warns** (RFC 063 §7 trap
+                // 2): `unverifiable` means this repository trusts no key under that id, which
+                // is the ordinary case for a first exchange and a plain statement of fact.
                 let colour = match sealer.trust {
                     stikk_core::SealerTrust::NamesATrustedKey
-                    | stikk_core::SealerTrust::NamesYourKey => palette.fg,
+                    | stikk_core::SealerTrust::NamesYourKey
+                    | stikk_core::SealerTrust::Checked(stikk_prikk::SealVerdict::Sound)
+                    | stikk_core::SealerTrust::Checked(stikk_prikk::SealVerdict::Unverifiable) => {
+                        palette.fg
+                    }
                     _ => palette.warn,
                 };
                 for row in wrap_indented(
@@ -366,6 +388,28 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
                 row,
                 Style::default().fg(palette.dim),
             )));
+        }
+    }
+
+    // ---- what prikk would refuse (RFC 063 decision 6), from prikk 0.58.
+    //
+    // **Each message verbatim, wrapped, never clipped** (`ER-02`, RFC 024): these are the
+    // reason the key above is not offered, and a sentence cut mid-clause would leave a reader
+    // with a refusal they cannot act on. The refusal **ids** are not drawn: they are prikk's
+    // vocabulary, and stikk keyed on them rather than showing them.
+    if !refusals.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            format!("{TOP}prikk would refuse this import"),
+            Style::default().fg(palette.warn),
+        )));
+        for refusal in refusals {
+            for row in wrap_indented(&inert(&refusal.message), width, QUOTED) {
+                lines.push(Line::from(Span::styled(
+                    row,
+                    Style::default().fg(palette.fg),
+                )));
+            }
         }
     }
 

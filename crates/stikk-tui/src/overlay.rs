@@ -3150,15 +3150,20 @@ fn render_trust_conflict(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            format!("  {}", warning.heading),
-            Style::default()
-                .fg(palette.warn)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    // **The heading wraps**, because decision 8's is longer than RFC 056's and a clipped
+    // heading on this card would cut the one sentence that says what the event is.
+    let mut prose: Vec<Line> = wrap_indented(warning.heading, PANEL_PROSE_WIDTH, "  ")
+        .into_iter()
+        .map(|row| {
+            Line::from(Span::styled(
+                row,
+                Style::default()
+                    .fg(palette.warn)
+                    .add_modifier(Modifier::BOLD),
+            ))
+        })
+        .collect();
+    prose.push(Line::from(""));
     // **The first row is the id, inline; the rest are keys, on their own lines.** A 64-character
     // public key does not fit beside a label at this width, and it is the one value a reader may
     // compare character by character, so it is wrapped rather than clipped.
@@ -3202,7 +3207,9 @@ fn render_trust_conflict(
             "  prikk refused \u{2014}",
             Style::default().fg(palette.dim),
         )));
-        for row in crate::text::wrap_verbatim(&identifier(detail), PANEL_PROSE_WIDTH, "  ") {
+        // **Wrapped on whitespace, like every other prikk sentence** (`render_refusal`'s own
+        // call): this is prose, not a key, and hard-splitting it broke words mid-letter.
+        for row in wrap_indented(&inert(detail), PANEL_PROSE_WIDTH, "  ") {
             prose.push(Line::from(Span::styled(
                 row,
                 Style::default().fg(palette.fg),

@@ -2193,6 +2193,17 @@ impl App {
         let Some(received) = view.received_branch() else {
             return;
         };
+        // **The key does nothing where prikk says the import would be refused** (RFC 063
+        // decision 6): the card says so and lists prikk's own sentences, and the view and the
+        // key agree, as they already do for a bundle whose tip stikk could not read.
+        if view
+            .preview
+            .import_refusals
+            .as_deref()
+            .is_some_and(|refusals| !refusals.is_empty())
+        {
+            return;
+        }
         let target = stikk_core::ImportTarget {
             path: std::path::PathBuf::from(&view.path),
             received,
@@ -4662,11 +4673,25 @@ impl App {
         };
         match result {
             Ok(opened) => {
+                // **A seal that does not match the key trusted under its id opens the warning
+                // over the card** (RFC 063 decision 6): a reader who opened this bundle to
+                // decide whether to import it is told the one thing that decides it, before
+                // they read anything else. `Esc` dismisses the card and leaves the bundle
+                // beneath, still listing what prikk would refuse.
+                let warning = match &opened {
+                    stikk_core::BundleOpened::Read(view) => view.warning.clone(),
+                    _ => None,
+                };
                 if let Some(slot) = self.screens.get_mut(index) {
                     *slot = Screen::Bundle {
                         view: Box::new(opened),
                         offset: std::cell::Cell::new(0),
                     };
+                }
+                if let Some(warning) = warning {
+                    self.overlays.push(Overlay::TrustConflict {
+                        warning: Box::new(warning),
+                    });
                 }
             }
             Err(error) => {

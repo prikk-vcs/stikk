@@ -6200,3 +6200,192 @@ fn u_with_no_block_under_the_cursor_says_what_it_needs() {
     assert_eq!(app.banner(), Some(App::UNDO_NEEDS_A_BLOCK));
     assert!(rx.try_recv().is_err());
 }
+
+// =============================================================================================
+// RFC 063 Handoff B — what prikk checked, and the import it would refuse (decisions 6 and 8).
+// =============================================================================================
+
+/// The Bundle view as prikk 0.58 reads it, with an `invalid` seal and prikk's own refusal.
+fn bundle_screen_at_0_58(app: &mut App, rx: &mpsc::Receiver<Request>, refused: bool) {
+    let verified: Vec<String> = vec![
+        "bundle verifies: heads/main".to_string(),
+        format!("tip block: {TIP}"),
+    ];
+    let mut preview = stikk_prikk::BundlePreviewRead {
+        bundle_ref: "heads/main".to_string(),
+        local_ref: "heads/main".to_string(),
+        connectivity: stikk_prikk::Connectivity::FastForward,
+        conflict: Some(stikk_prikk::BundleConflict::AppliesCleanly),
+        conflict_detail: None,
+        sealed_by: vec!["shared".to_string()],
+        sealed_by_note: "recorded signer identity, continuity only -- not a trust decision"
+            .to_string(),
+        effects: Vec::new(),
+        rename_note: "a moved path is not yet distinguishable".to_string(),
+        seal_outcomes: Some(vec![stikk_prikk::SealOutcome {
+            key_id: "shared".to_string(),
+            outcome: if refused {
+                stikk_prikk::SealVerdict::Invalid
+            } else {
+                stikk_prikk::SealVerdict::Sound
+            },
+        }]),
+        import_refusals: Some(Vec::new()),
+    };
+    if refused {
+        preview.import_refusals = Some(vec![stikk_prikk::ImportRefusal {
+            id: "forged-publication-signature".to_string(),
+            message: "precondition not met: ref-state carries a MAINTAINER signature by adopted \
+                      key shared that does not verify"
+                .to_string(),
+        }]);
+    }
+    let warning =
+        refused.then(|| stikk_core::invalid_seal_warning("shared", Some(&"e".repeat(64))));
+    app.begin_open_bundle();
+    type_in(app, "/tmp/v1.bundle");
+    app.select();
+    let req = next_request(rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::OpenBundle(Ok(stikk_core::BundleOpened::Read(Box::new(
+            stikk_core::BundleView {
+                path: "/tmp/v1.bundle".to_string(),
+                verified,
+                preview,
+                sentence: stikk_core::WOULD_BRING_FORWARD,
+                sealers: stikk_core::SealerTrustRead::Judged(vec![stikk_core::Sealer {
+                    key_id: "shared".to_string(),
+                    trust: stikk_core::SealerTrust::Checked(if refused {
+                        stikk_prikk::SealVerdict::Invalid
+                    } else {
+                        stikk_prikk::SealVerdict::Sound
+                    }),
+                    trusted_here: Some("e".repeat(64)),
+                }]),
+                warning,
+            },
+        )))),
+    });
+}
+
+/// **The warning opens over the card, and `Esc` returns to the card** — which still lists what
+/// prikk would refuse (RFC 063 decision 6).
+#[test]
+fn rfc063_an_invalid_seal_opens_the_warning_over_the_bundle_card() {
+    let (mut app, rx) = bundle_app(58);
+    bundle_screen_at_0_58(&mut app, &rx, true);
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::TrustConflict { .. })),
+        "the security event is the first thing the reader meets"
+    );
+    app.close_overlay();
+    assert!(!app.has_overlay(), "Esc leaves the card beneath");
+    // The card beneath, drawn tall enough to hold all of it.
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 60)).unwrap();
+    terminal.draw(|f| crate::shell::render(&app, f)).unwrap();
+    let text = crate::test_util::buffer_text(terminal.backend().buffer());
+    assert!(
+        flattened(&text).contains("prikk would refuse this import"),
+        "and the card still says why: {text}"
+    );
+}
+
+/// **`I` does nothing where prikk says the import would be refused**: no request is dispatched,
+/// so nothing is spawned, and the card is what answers.
+#[test]
+fn rfc063_the_import_key_does_nothing_when_prikk_would_refuse() {
+    let (mut app, rx) = bundle_app(58);
+    bundle_screen_at_0_58(&mut app, &rx, true);
+    app.close_overlay();
+    app.begin_import();
+    assert!(
+        rx.try_recv().is_err(),
+        "no preview was dispatched, so nothing was spawned"
+    );
+    assert!(!app.has_overlay(), "and no loading overlay was opened");
+}
+
+/// **A sound seal with an empty refusal list imports as before**: `I` dispatches the preview.
+#[test]
+fn rfc063_a_sound_seal_still_imports() {
+    let (mut app, rx) = bundle_app(58);
+    bundle_screen_at_0_58(&mut app, &rx, false);
+    assert!(!app.has_overlay(), "nothing is wrong, so no warning");
+    app.begin_import();
+    let req = next_request(&rx);
+    assert!(matches!(req.kind, RequestKind::ImportPreview { .. }));
+}
+
+/// **prikk's own key-id conflict opens the security warning, not the generic gloss** (RFC 063
+/// decision 7) — including for a **removed** id, which stikk's own guard cannot see, so the
+/// preview is armed and prikk is the one who refuses.
+#[test]
+fn rfc063_a_refused_adopt_opens_the_warning_card() {
+    let (mut app, rx) = on_trust();
+    // Arm the adopt the way the removal test arms its own: a real preview, from a backend whose
+    // list does not hold this id -- which is exactly the removed-id case.
+    let backend = NullBackend::supported()
+        .with_version(0, 56, 0)
+        .with_trusted_keys(vec![stikk_prikk::TrustedKey {
+            key_id: RFC056_MINE.to_string(),
+            public_key: RFC056_MINE_KEY.to_string(),
+        }]);
+    let stikk_core::AdoptPreview::Ready { token } = stikk_core::adopt_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        Readiness {
+            read_only: false,
+            ..Readiness::none()
+        },
+        RFC056_NEW_ID,
+        RFC056_NEW_KEY,
+    )
+    .expect("the preview answers") else {
+        panic!("expected an armed adopt: the id is not in the list");
+    };
+    app.begin_adopt_key();
+    type_in(&mut app, RFC056_NEW_KEY);
+    app.select();
+    app.select();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::TrustAdoptPreview(Ok(stikk_core::AdoptPreview::Ready { token })),
+    });
+    type_in(&mut app, RFC056_NEW_ID);
+    app.select();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::TrustWrite(Ok(Outcome {
+            operation: stikk_core::ADOPT_OPERATION.to_string(),
+            result: stikk_core::TrustWriteResult {
+                printed: Vec::new(),
+                view: stikk_core::TrustView::Listed {
+                    rows: vec![trust_row(RFC056_MINE, RFC056_MINE_KEY, true)],
+                    own_key_unknown: None,
+                },
+                see_verify: None,
+                warning: Some(Box::new(stikk_core::key_id_conflict_warning(
+                    stikk_prikk::KeyIdConflict::BoundToRemovedKey,
+                    RFC056_NEW_ID,
+                    RFC056_NEW_KEY,
+                    "precondition not met: maintainer key id is not currently adopted (it was \
+                     removed), but it stays bound to the public key it was first adopted with"
+                        .to_string(),
+                ))),
+            },
+        })),
+    });
+    let text = flattened(&top_overlay_text(&app));
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::TrustConflict { .. })),
+        "the security event, not the generic gloss: {text}"
+    );
+    assert!(
+        text.contains(stikk_core::ID_REMOVED_BUT_BOUND),
+        "and it says why the id is not in the list: {text}"
+    );
+    assert!(text.contains("prikk refused"), "prikk's own words: {text}");
+}

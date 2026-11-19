@@ -5053,3 +5053,101 @@ fn rfc058_captures() {
         )
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 063 Handoff B: one security-warning card, three callers (decision 8).
+// ---------------------------------------------------------------------------------------------
+
+/// **Capture: the warning from each caller**, at both sizes and both themes, with every sentence
+/// and every key whole — one renderer, so a reader meets the same card wherever it comes from.
+#[test]
+fn capture_rfc063_the_security_warning_from_each_caller() {
+    let their_key = "6762b6359a650c0a5acaa723a5fc2ad78b354fcac296495b9cbf46c0d32a3f7f";
+    let new_key = "4c46ed9cd17cb36cef3eb8e26cc23695ddab013a0ddc15d908ae68915521905d";
+    let prikk_said = "precondition not met: maintainer key id friend is not currently adopted (it \
+                      was removed), but it stays bound to the public key it was first adopted \
+                      with, and a different public key is refused";
+    let cases: Vec<(&str, stikk_core::SecurityWarning, Vec<&str>)> = vec![
+        (
+            "stikk's own guard, from the trust list",
+            stikk_core::two_keys_warning(&stikk_core::TwoKeysOneId {
+                key_id: "friend".to_string(),
+                adopted: their_key.to_string(),
+                given: new_key.to_string(),
+            }),
+            vec![
+                stikk_core::TWO_KEYS_ONE_ID_HEADING,
+                "already trusted",
+                "offered now",
+            ],
+        ),
+        (
+            "prikk's removed-id conflict",
+            stikk_core::key_id_conflict_warning(
+                stikk_prikk::KeyIdConflict::BoundToRemovedKey,
+                "friend",
+                new_key,
+                prikk_said.to_string(),
+            ),
+            vec![
+                stikk_core::TWO_KEYS_ONE_ID_HEADING,
+                stikk_core::ID_REMOVED_BUT_BOUND,
+                "prikk refused",
+            ],
+        ),
+        (
+            "a bundle's seal that does not verify",
+            stikk_core::invalid_seal_warning("shared", Some(their_key)),
+            vec![stikk_core::INVALID_SEAL_HEADING, "trusted here"],
+        ),
+    ];
+    for (name, warning, wanted) in cases {
+        let overlay = Overlay::TrustConflict {
+            warning: Box::new(warning),
+        };
+        for (w, h) in [(80, 24), (120, 40)] {
+            for (theme, palette) in [("dark", Palette::default()), ("light", Palette::light())] {
+                let backend = TestBackend::new(w, h);
+                let mut terminal = Terminal::new(backend).unwrap();
+                terminal
+                    .draw(|f| render(&overlay, None, &palette, f, f.area()))
+                    .unwrap();
+                let text = buffer_text(terminal.backend().buffer());
+                println!("--- RFC 063: {name}, {w}×{h}, {theme}\n{text}");
+                let flat = text
+                    .chars()
+                    .filter(|c| !matches!(c, '│' | '┌' | '┐' | '└' | '┘' | '─'))
+                    .collect::<String>()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                for fragment in &wanted {
+                    let fragment: String =
+                        fragment.split_whitespace().collect::<Vec<_>>().join(" ");
+                    assert!(
+                        flat.contains(&fragment),
+                        "{name} at {w}×{h} {theme}: {fragment:?} is not whole:\n{text}"
+                    );
+                }
+                // **The same title and the same way out, from every caller.**
+                assert!(
+                    text.contains("Two keys, one id"),
+                    "{name} at {w}×{h} {theme}: one card:\n{text}"
+                );
+                assert!(
+                    flat.contains("Esc to dismiss"),
+                    "{name} at {w}×{h} {theme}: Esc only:\n{text}"
+                );
+                assert!(
+                    !flat.contains("to confirm"),
+                    "{name} at {w}×{h} {theme}: there is nothing to approve:\n{text}"
+                );
+                // The id is always the first row, drawn beside its label.
+                assert!(
+                    flat.contains("key id friend") || flat.contains("key id shared"),
+                    "{name} at {w}×{h} {theme}: the id leads:\n{text}"
+                );
+            }
+        }
+    }
+}

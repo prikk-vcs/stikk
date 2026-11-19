@@ -561,3 +561,204 @@ fn a_sealer_id_made_of_escapes_still_fits_and_shows_its_answer_at_80_columns() {
         "and every zero-width space: {text}"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// RFC 063 Handoff B: what prikk checked, on the card (decisions 6 and 8).
+// ---------------------------------------------------------------------------------------------
+
+/// prikk's own `forged-publication-signature` message, from `measure063-0.58.txt` §D1 — long,
+/// because the whole point of the assertions below is that it is never clipped.
+const FORGED: &str = "precondition not met: ref-state carries a MAINTAINER signature by adopted key shared that \
+     does not verify: invalid signature: signature verification failed: signature error -- a \
+     forgery, or another maintainer using the same key id; if it is the latter, that maintainer \
+     should sign under a distinct id next time";
+
+/// A bundle at prikk 0.58, with prikk's verdicts and refusals as given.
+fn opened_at_0_58(
+    verdicts: Vec<(&str, stikk_prikk::SealVerdict)>,
+    refusals: Vec<&str>,
+) -> BundleOpened {
+    let BundleOpened::Read(mut view) = fast_forward() else {
+        panic!("the fixture reads");
+    };
+    view.preview.sealed_by = verdicts.iter().map(|(id, _)| (*id).to_string()).collect();
+    view.preview.seal_outcomes = Some(
+        verdicts
+            .iter()
+            .map(|(id, outcome)| stikk_prikk::SealOutcome {
+                key_id: (*id).to_string(),
+                outcome: *outcome,
+            })
+            .collect(),
+    );
+    view.preview.import_refusals = Some(
+        refusals
+            .iter()
+            .map(|id| stikk_prikk::ImportRefusal {
+                id: (*id).to_string(),
+                message: FORGED.to_string(),
+            })
+            .collect(),
+    );
+    view.sealers = stikk_core::SealerTrustRead::Judged(
+        verdicts
+            .iter()
+            .map(|(id, outcome)| stikk_core::Sealer {
+                key_id: (*id).to_string(),
+                trust: stikk_core::SealerTrust::Checked(*outcome),
+                trusted_here: Some("e".repeat(64)),
+            })
+            .collect(),
+    );
+    view.warning = verdicts
+        .iter()
+        .find(|(_, outcome)| *outcome == stikk_prikk::SealVerdict::Invalid)
+        .map(|(id, _)| stikk_core::invalid_seal_warning(id, Some(&"e".repeat(64))));
+    BundleOpened::Read(view)
+}
+
+/// Draw the card at `width`, tall enough to hold all of it, in `palette`.
+///
+/// **Why a tall terminal.** Wrapping — the thing these captures are about — is a function of
+/// **width** alone; the height only decides how much of the card is on screen at once, and this
+/// card has scrolled since RFC 050. The two heights the evidence plan names are captured too, by
+/// `the_card_scrolls_rather_than_clipping_at_the_plans_two_sizes`, which is where "does it fit"
+/// is actually answered.
+fn drawn_whole(view: &BundleOpened, width: u16, palette: &Palette) -> String {
+    let backend = TestBackend::new(width, 60);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let offset = std::cell::Cell::new(0);
+    terminal
+        .draw(|f| render(view, &offset, palette, f, f.area()))
+        .unwrap();
+    buffer_text(terminal.backend().buffer())
+}
+
+/// **Capture: each seal as prikk checked it**, at both widths and both themes, with every
+/// sentence whole — and `NAMES_BUT_DOES_NOT_PROVE` gone, because prikk checked the signature
+/// rather than stikk matching a name.
+#[test]
+fn capture_rfc063_the_card_says_what_prikk_made_of_each_seal() {
+    let view = opened_at_0_58(
+        vec![
+            ("maintainer-1", stikk_prikk::SealVerdict::Sound),
+            ("stranger", stikk_prikk::SealVerdict::Unverifiable),
+        ],
+        Vec::new(),
+    );
+    for (w, h) in [(80, 24), (120, 40)] {
+        for (theme, palette) in [("dark", Palette::default()), ("light", Palette::light())] {
+            let text = drawn_whole(&view, w, &palette);
+            println!("--- RFC 063: prikk's own check, width {w}, {theme}\n{text}");
+            let flat = flattened(&text);
+            assert!(
+                flat.contains(
+                    "signed by a key this repository trusts, and the signature checks out"
+                ),
+                "width {w} {theme}: the sound row is whole:\n{text}"
+            );
+            assert!(
+                flat.contains(
+                    "this repository trusts no key under this id, so the signature cannot be \
+                     checked here"
+                ),
+                "width {w} {theme}: the unverifiable row is whole:\n{text}"
+            );
+            assert!(
+                !flat.contains("does not prove it"),
+                "width {w} {theme}: prikk checked it, so that sentence is not owed:\n{text}"
+            );
+            assert!(
+                flat.contains("I imports this as"),
+                "width {w} {theme}: nothing is withheld here:\n{text}"
+            );
+            let _ = h;
+        }
+    }
+}
+
+/// **The plan's two sizes, captured as the reader meets them**: the card is longer than either,
+/// and it says so in its own title rather than clipping — which is what "does it fit" means for
+/// a view that scrolls.
+#[test]
+fn capture_rfc063_the_card_scrolls_rather_than_clipping_at_the_plans_two_sizes() {
+    let view = opened_at_0_58(
+        vec![("shared", stikk_prikk::SealVerdict::Invalid)],
+        vec!["forged-publication-signature"],
+    );
+    for (w, h) in [(80, 24), (120, 40)] {
+        for (theme, palette) in [("dark", Palette::default()), ("light", Palette::light())] {
+            let backend = TestBackend::new(w, h);
+            let mut terminal = Terminal::new(backend).unwrap();
+            let offset = std::cell::Cell::new(0);
+            terminal
+                .draw(|f| render(&view, &offset, &palette, f, f.area()))
+                .unwrap();
+            let text = buffer_text(terminal.backend().buffer());
+            println!("--- RFC 063: {w}×{h}, {theme}\n{text}");
+            // **Either it fits, or it says there is more.** At 120×40 this card fits whole; at
+            // 80×24 it does not, and then the title counts the lines. What must never happen is
+            // the third case: a card longer than the terminal that says nothing about it.
+            let fits = flattened(&text).contains("prikk would refuse this import");
+            assert!(
+                fits || text.contains("lines 1"),
+                "{w}×{h} {theme}: a card longer than the screen must say so:\n{text}"
+            );
+            // Scrolled to the end, prikk's refusals are on screen either way.
+            let backend = TestBackend::new(w, h);
+            let mut terminal = Terminal::new(backend).unwrap();
+            let offset = std::cell::Cell::new(200);
+            terminal
+                .draw(|f| render(&view, &offset, &palette, f, f.area()))
+                .unwrap();
+            let end = buffer_text(terminal.backend().buffer());
+            println!("--- RFC 063: {w}×{h}, {theme}, scrolled to the end\n{end}");
+            assert!(
+                flattened(&end).contains("prikk would refuse this import"),
+                "{w}×{h} {theme}: the refusals are reachable:\n{end}"
+            );
+        }
+    }
+}
+
+/// **Capture: prikk would refuse this import.** The section lists prikk's message verbatim and
+/// whole, and the `I` key is **not** advertised.
+#[test]
+fn capture_rfc063_the_card_lists_what_prikk_would_refuse_and_offers_no_import() {
+    let view = opened_at_0_58(
+        vec![("shared", stikk_prikk::SealVerdict::Invalid)],
+        vec!["forged-publication-signature"],
+    );
+    for w in [80, 120] {
+        for (theme, palette) in [("dark", Palette::default()), ("light", Palette::light())] {
+            let text = drawn_whole(&view, w, &palette);
+            println!("--- RFC 063: prikk would refuse, width {w}, {theme}\n{text}");
+            let flat = flattened(&text);
+            assert!(
+                flat.contains("prikk would refuse this import"),
+                "width {w} {theme}: the heading:\n{text}"
+            );
+            // prikk's whole sentence, whitespace-normalised the way it is wrapped.
+            let wanted: String = FORGED.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(
+                flat.contains(&wanted),
+                "width {w} {theme}: prikk's message is whole, not clipped:\n{text}"
+            );
+            assert!(
+                !flat.contains("I imports this as"),
+                "width {w} {theme}: Import is not offered:\n{text}"
+            );
+            assert!(
+                flat.contains(
+                    "a key is trusted under this id, and this signature is not that key's"
+                ),
+                "width {w} {theme}: the invalid row says what it is:\n{text}"
+            );
+            // The refusal **id** is prikk's vocabulary and is not drawn.
+            assert!(
+                !flat.contains("forged-publication-signature"),
+                "width {w} {theme}: the id is what stikk keyed on, not what it shows:\n{text}"
+            );
+        }
+    }
+}

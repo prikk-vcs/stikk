@@ -144,7 +144,7 @@ fn a_refused_list_carries_prikks_message_verbatim() {
 
 fn judged(backend: &NullBackend, ids: &[&str]) -> Vec<Sealer> {
     let ids: Vec<String> = ids.iter().map(ToString::to_string).collect();
-    match sealers(backend, Path::new("/repo"), &ids) {
+    match sealers(backend, Path::new("/repo"), &ids, None) {
         SealerTrustRead::Judged(sealers) => sealers,
         other => panic!("expected judged sealers, got {other:?}"),
     }
@@ -188,7 +188,7 @@ fn below_the_band_the_sealer_row_is_0_16_0s() {
     let backend = NullBackend::supported().with_version(0, 53, 0);
     let ids = vec![MINE_ID.to_string()];
     assert_eq!(
-        sealers(&backend, Path::new("/repo"), &ids),
+        sealers(&backend, Path::new("/repo"), &ids, None),
         SealerTrustRead::Unavailable
     );
     assert!(
@@ -229,7 +229,7 @@ fn the_sentence_follows_the_rows_that_name_an_adopted_key() {
     ] {
         let ids: Vec<String> = ids.iter().map(ToString::to_string).collect();
         assert_eq!(
-            sealers(&backend, Path::new("/repo"), &ids).names_an_adopted_key(),
+            sealers(&backend, Path::new("/repo"), &ids, None).names_an_adopted_key(),
             want,
             "{tag}"
         );
@@ -240,7 +240,7 @@ fn the_sentence_follows_the_rows_that_name_an_adopted_key() {
         .with_version(0, 55, 0)
         .with_trusted_keys_refusal("integrity error: the trust store is unreadable");
     let ids = vec![MINE_ID.to_string()];
-    assert!(!sealers(&refused, Path::new("/repo"), &ids).names_an_adopted_key());
+    assert!(!sealers(&refused, Path::new("/repo"), &ids, None).names_an_adopted_key());
     // The sentence itself names no repository text, and says where the check happens.
     assert!(NAMES_BUT_DOES_NOT_PROVE.contains("Verify"));
 }
@@ -379,6 +379,11 @@ fn adopting_a_key_this_repository_already_trusts_is_declined_without_writing() {
     assert_eq!(backend.trust_add_calls(), 0);
 }
 
+/// The shared card's heading for a key-id conflict, named rather than transcribed.
+fn stikk_core_two_keys_heading() -> &'static str {
+    super::TWO_KEYS_ONE_ID_HEADING
+}
+
 /// **An id adopted with a *different* key is the security event** (decision 4), carrying both
 /// public keys so a reader can see they differ — and it is **not a confirmation**: no token
 /// comes back, and no `add` was spawned.
@@ -386,14 +391,26 @@ fn adopting_a_key_this_repository_already_trusts_is_declined_without_writing() {
 fn a_different_key_under_a_known_id_is_the_security_event_with_both_keys() {
     let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
     match adopt(&backend, THEIRS_ID, NEW_KEY) {
-        AdoptPreview::TwoKeys(conflict) => {
-            assert_eq!(conflict.key_id, THEIRS_ID);
-            assert_eq!(conflict.adopted, THEIRS_KEY, "what this repository holds");
-            assert_eq!(conflict.given, NEW_KEY, "what was offered for the same id");
-            assert_ne!(
-                conflict.adopted, conflict.given,
-                "the whole point of the card"
+        AdoptPreview::TwoKeys(warning) => {
+            // **The shared card's rows** (RFC 063 decision 8), which this caller is the only
+            // one able to fill with both public keys.
+            assert_eq!(warning.heading, stikk_core_two_keys_heading());
+            let rows: Vec<(&str, &str)> = warning
+                .rows
+                .iter()
+                .map(|row| (row.label, row.value.as_str()))
+                .collect();
+            assert_eq!(
+                rows,
+                vec![
+                    ("key id", THEIRS_ID),
+                    ("already trusted", THEIRS_KEY),
+                    ("offered now", NEW_KEY),
+                ]
             );
+            assert_ne!(THEIRS_KEY, NEW_KEY, "the whole point of the card");
+            assert_eq!(warning.body, vec![TWO_KEYS_ONE_ID]);
+            assert_eq!(warning.detail, None, "stikk answered this one itself");
         }
         other => panic!("expected the security event, got {other:?}"),
     }
@@ -724,4 +741,137 @@ fn no_card_carries_a_seed_or_a_path() {
             assert!(!text.contains(forbidden), "{forbidden} in {text}");
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 063 Handoff B: prikk's own answers on an adopt (decisions 7 and 8).
+// ---------------------------------------------------------------------------------------------
+
+/// **From 0.56 the adopt result is prikk's counted answer**, not printed lines: a JSON reply has
+/// none to carry (RFC 063 decision 7, §E0).
+#[test]
+fn an_adopt_at_0_56_says_what_prikk_counted() {
+    let backend = trusting(vec![key(MINE_ID, MINE_KEY)])
+        .with_version(0, 56, 0)
+        .with_trust_added(stikk_prikk::TrustAdded {
+            key_id: NEW_ID.to_string(),
+            public_key: NEW_KEY.to_string(),
+            newly_added: true,
+            adopted_count: 2,
+        });
+    let token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+    let outcome = adopt_confirm_and_execute(
+        &backend,
+        Path::new("/repo"),
+        token,
+        operator(),
+        Evidence::TypedName(NEW_ID.to_string()),
+        NEW_ID,
+        NEW_KEY,
+    )
+    .expect("the adopt runs");
+    assert_eq!(
+        outcome.result.printed,
+        vec![format!(
+            "Adopted {NEW_ID}. This repository now trusts 2 maintainer keys."
+        )]
+    );
+    assert_eq!(outcome.result.warning, None, "nothing is wrong here");
+}
+
+/// **Both of prikk's key-id conflicts come back as the security warning** (decision 7), with
+/// prikk's own sentence as the card's detail — and the removed-id one adds the line that says
+/// why the id is not in the list the reader just looked at.
+#[test]
+fn prikks_key_id_conflicts_become_the_security_warning() {
+    for (conflict, extra_line) in [
+        (stikk_prikk::KeyIdConflict::AdoptedWithDifferentKey, false),
+        (stikk_prikk::KeyIdConflict::BoundToRemovedKey, true),
+    ] {
+        let said = "precondition not met: maintainer key id friend is not currently adopted (it \
+                    was removed), but it stays bound to the public key it was first adopted with";
+        let backend = trusting(vec![key(MINE_ID, MINE_KEY)])
+            .with_version(0, 56, 0)
+            .with_trust_write_conflict(conflict, said);
+        let token = armed_adopt(&backend, NEW_ID, NEW_KEY);
+        let outcome = adopt_confirm_and_execute(
+            &backend,
+            Path::new("/repo"),
+            token,
+            operator(),
+            Evidence::TypedName(NEW_ID.to_string()),
+            NEW_ID,
+            NEW_KEY,
+        )
+        .expect("a refusal prikk typed is an answer");
+        let warning = outcome
+            .result
+            .warning
+            .as_deref()
+            .unwrap_or_else(|| panic!("{conflict:?}: expected the warning"));
+        assert_eq!(warning.heading, TWO_KEYS_ONE_ID_HEADING);
+        let rows: Vec<(&str, &str)> = warning
+            .rows
+            .iter()
+            .map(|row| (row.label, row.value.as_str()))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![("key id", NEW_ID), ("offered now", NEW_KEY)],
+            "{conflict:?}: two rows -- a removed id's trusted key is not in the list to show"
+        );
+        assert_eq!(
+            warning.detail.as_deref(),
+            Some(said),
+            "prikk's own sentence"
+        );
+        assert_eq!(
+            warning.body.contains(&ID_REMOVED_BUT_BOUND),
+            extra_line,
+            "{conflict:?}: the removed-id line belongs to one of the two"
+        );
+        assert!(warning.body.contains(&TWO_KEYS_ONE_ID));
+        assert!(
+            outcome.result.printed.is_empty(),
+            "nothing was written, so there is nothing to print"
+        );
+    }
+}
+
+/// **One renderer, three callers** (decision 8): every warning has a heading, labelled rows and
+/// a body, and only prikk's own refusal carries a detail.
+#[test]
+fn the_three_warnings_share_one_shape() {
+    let from_the_list = two_keys_warning(&TwoKeysOneId {
+        key_id: THEIRS_ID.to_string(),
+        adopted: THEIRS_KEY.to_string(),
+        given: NEW_KEY.to_string(),
+    });
+    let from_prikk = key_id_conflict_warning(
+        stikk_prikk::KeyIdConflict::AdoptedWithDifferentKey,
+        THEIRS_ID,
+        NEW_KEY,
+        "precondition not met: something prikk said".to_string(),
+    );
+    let from_a_bundle = invalid_seal_warning(THEIRS_ID, Some(THEIRS_KEY));
+    for warning in [&from_the_list, &from_prikk, &from_a_bundle] {
+        assert!(!warning.heading.is_empty());
+        assert!(!warning.rows.is_empty());
+        assert!(!warning.body.is_empty());
+        assert_eq!(warning.rows[0].label, "key id", "the id is always first");
+        assert_eq!(warning.rows[0].value, THEIRS_ID);
+    }
+    assert_eq!(
+        from_the_list.rows.len(),
+        3,
+        "the only caller with both keys"
+    );
+    assert_eq!(from_prikk.rows.len(), 2);
+    assert_eq!(from_a_bundle.rows.len(), 2);
+    assert!(from_prikk.detail.is_some(), "prikk's words travel with it");
+    assert_eq!(from_the_list.detail, None);
+    assert_eq!(from_a_bundle.detail, None);
+    assert_eq!(from_a_bundle.heading, INVALID_SEAL_HEADING);
+    // **A list that was never read leaves the row out** rather than inventing one.
+    assert_eq!(invalid_seal_warning(THEIRS_ID, None).rows.len(), 1);
 }

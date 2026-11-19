@@ -142,7 +142,17 @@ pub struct BundleView {
     /// read, so a card says what it does not know rather than implying *not trusted*. A row
     /// that names an adopted key is **not** a verdict on the signature, and a frontend drawing
     /// these rows owes the reader [`crate::trust::NAMES_BUT_DOES_NOT_PROVE`] beneath them.
+    ///
+    /// **From prikk 0.56 these rows are prikk's own check**, not stikk's name match (RFC 063
+    /// decision 6), and `NAMES_BUT_DOES_NOT_PROVE` is then **not** owed: it exists because a
+    /// name is not a proof, and there is no name being taken for one here.
     pub sealers: crate::trust::SealerTrustRead,
+    /// The security warning this bundle carries, if any (RFC 063 decisions 6 and 8): a seal
+    /// whose signature does not verify against the key trusted under its id.
+    ///
+    /// **On the view, not on a keypress**: the card opens it, and the card underneath still
+    /// lists what prikk would refuse, which is what a reader returns to on Esc.
+    pub warning: Option<crate::trust::SecurityWarning>,
 }
 
 impl BundleView {
@@ -244,13 +254,23 @@ pub fn open_bundle(prikk: &impl Prikk, repo: &Path, path: &Path) -> Result<Bundl
     let sentence = sentence_for(preview.connectivity, preview.conflict)?;
     // **One read for every sealer** (RFC 054 decision 3), made with this one so the view holds
     // a single answer rather than asking again per row.
-    let sealers = crate::trust::sealers(prikk, repo, &preview.sealed_by);
+    let sealers = crate::trust::sealers(
+        prikk,
+        repo,
+        &preview.sealed_by,
+        preview.seal_outcomes.as_deref(),
+    );
+    // **The security warning belongs to the view, not to the keypress** (RFC 063 decision 6):
+    // the card opens it, and a card that still lists prikk's refusals underneath is what the
+    // reader comes back to on Esc.
+    let warning = invalid_seal(&sealers);
     Ok(BundleOpened::Read(Box::new(BundleView {
         path: shown,
         verified,
         preview,
         sentence,
         sealers,
+        warning,
     })))
 }
 
@@ -338,6 +358,19 @@ pub enum ImportPreview {
     /// stikk will not run it, and says why in its own voice — or prikk's, where prikk refused
     /// to read the file at all.
     Blocked(String),
+    /// **prikk says this import would be refused** (prikk ≥
+    /// [`stikk_prikk::IMPORT_REFUSALS_FROM_MINOR`]; RFC 063 decision 6).
+    ///
+    /// The refusals themselves rather than a sentence: each carries prikk's **id**, which is
+    /// what stikk keyed on, and prikk's message, which is what the reader is shown. **No
+    /// token** — nothing is armed, and nothing was spawned.
+    WouldRefuse(Vec<stikk_prikk::ImportRefusal>),
+    /// **A seal does not verify against the key trusted under its id**, at prikk 0.56–0.57,
+    /// where prikk refuses this import but does not yet list its refusals in full (decision 6).
+    ///
+    /// The same security warning the bundle card carries, so the reader meets one card for one
+    /// event. **No token.**
+    InvalidSeal(Box<crate::trust::SecurityWarning>),
     /// Ready to confirm.
     Ready {
         /// The confirmation token.
@@ -420,6 +453,38 @@ pub fn import_preview(
         {
             return Ok(blocked(&reason));
         }
+        // 5. **What prikk says it would refuse** (RFC 063 decision 6), after stikk's own guards
+        //    and before a token exists.
+        //
+        //    **After, not before** — and this is a judgment call the handoff did not make.
+        //    prikk's list is wider than the seal case the RFC measured: at 0.58 an older bundle
+        //    comes back as `rollback`, which is the very case stikk already declines in its own
+        //    words (`WOULD_MOVE_THE_RECEIVED_BRANCH_BACK`, RFC 050 F2). Reading the list first
+        //    would replace stikk's sentence for that with prikk's prose about pointers and
+        //    `--allow-non-fast-forward` — a worse sentence for a case stikk understands. So
+        //    stikk speaks for what it knows, and prikk's list answers everything else.
+        //
+        //    **Keyed by id and outcome, never by words** (§7 trap 1). At ≥ 0.58 the list is the
+        //    import's whole first-pass decision. At 0.56–0.57 it is partial and not read, but an
+        //    `invalid` outcome says the same thing on its own: prikk refuses an import whose
+        //    seal does not verify against the key adopted under its id, from 0.56 (F5).
+        //
+        //    **`unverifiable` withholds nothing** (§7 trap 2): it is the ordinary first
+        //    exchange, where this repository trusts no key under that id.
+        if let Some(refusals) = preview.import_refusals.as_deref()
+            && !refusals.is_empty()
+        {
+            return Ok(would_refuse(refusals.to_vec()));
+        }
+        let sealers = crate::trust::sealers(
+            prikk,
+            repo,
+            &preview.sealed_by,
+            preview.seal_outcomes.as_deref(),
+        );
+        if let Some(warning) = invalid_seal(&sealers) {
+            return Ok(invalid_seal_view(warning));
+        }
         Ok((
             ReadView::Ready,
             ConfirmationSummary {
@@ -470,10 +535,15 @@ pub fn import_preview(
                         // **One line per sealer, then prikk's note** (RFC 054 decision 3).
                         // The read is inside `confirm::preview`, so it is re-taken at
                         // confirmation like every other fact on this card.
-                        body: sealer_lines(prikk, repo, &preview.sealed_by)
-                            .into_iter()
-                            .chain(std::iter::once(preview.sealed_by_note.clone()))
-                            .collect(),
+                        body: sealer_lines(
+                            prikk,
+                            repo,
+                            &preview.sealed_by,
+                            preview.seal_outcomes.as_deref(),
+                        )
+                        .into_iter()
+                        .chain(std::iter::once(preview.sealed_by_note.clone()))
+                        .collect(),
                     },
                 ],
             },
@@ -481,6 +551,8 @@ pub fn import_preview(
     })?;
     Ok(match view {
         ReadView::Blocked(reason) => ImportPreview::Blocked(reason),
+        ReadView::WouldRefuse(refusals) => ImportPreview::WouldRefuse(refusals),
+        ReadView::InvalidSeal(warning) => ImportPreview::InvalidSeal(warning),
         ReadView::Ready => ImportPreview::Ready {
             token: Box::new(token),
         },
@@ -547,8 +619,13 @@ pub fn import_confirm_and_execute(
 /// Where any row names an adopted key, [`crate::trust::NAMES_BUT_DOES_NOT_PROVE`] follows the
 /// rows — and the caller puts prikk's own note after that, so the order on the card is: the
 /// rows, what a name is worth, then prikk's continuity note.
-fn sealer_lines(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> Vec<String> {
-    let read = crate::trust::sealers(prikk, repo, sealed_by);
+fn sealer_lines(
+    prikk: &impl Prikk,
+    repo: &Path,
+    sealed_by: &[String],
+    outcomes: Option<&[stikk_prikk::SealOutcome]>,
+) -> Vec<String> {
+    let read = crate::trust::sealers(prikk, repo, sealed_by, outcomes);
     read.judged()
         .iter()
         .map(|sealer| format!("{} — {}", sealer.key_id, sealer.trust.sentence()))
@@ -557,6 +634,37 @@ fn sealer_lines(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> Vec<St
                 .then(|| crate::trust::NAMES_BUT_DOES_NOT_PROVE.to_string()),
         )
         .collect()
+}
+
+/// **What a reader is told when prikk says the import would be refused** (RFC 063 decision 6).
+///
+/// stikk's own lead, then prikk's sentences verbatim and in prikk's order (`ER-02`). The ids are
+/// what stikk keyed on and are deliberately **not** shown: they are prikk's vocabulary, and the
+/// message beside each one is the part written for a person.
+#[must_use]
+pub fn would_refuse_the_import(refusals: &[stikk_prikk::ImportRefusal]) -> String {
+    let mut said = "prikk would refuse this import.".to_string();
+    for refusal in refusals {
+        said.push(' ');
+        said.push_str(&refusal.message);
+    }
+    said
+}
+
+/// The security warning a set of judged sealers carries, if any (RFC 063 decisions 6 and 8).
+///
+/// **The first `invalid` row, and only that kind.** `unverifiable` is not a warning — it is the
+/// ordinary case for a first exchange, where this repository trusts no key under that id and
+/// there is nothing to check against (§7 trap 2). One card per bundle: a second warning behind
+/// the first would be dismissed unread.
+fn invalid_seal(sealers: &crate::trust::SealerTrustRead) -> Option<crate::trust::SecurityWarning> {
+    sealers
+        .judged()
+        .iter()
+        .find(|sealer| sealer.trust.is_the_security_event())
+        .map(|sealer| {
+            crate::trust::invalid_seal_warning(&sealer.key_id, sealer.trusted_here.as_deref())
+        })
 }
 
 /// An object id, shortened the way History, seal and every preview already shorten one.
@@ -573,7 +681,23 @@ pub(crate) fn short_id(id: &str) -> String {
 /// What a preview decided, before it becomes a token or a sentence.
 enum ReadView {
     Blocked(String),
+    /// prikk's own refusals for this import, read by id (RFC 063 decision 6).
+    WouldRefuse(Vec<stikk_prikk::ImportRefusal>),
+    /// The 0.56–0.57 case: an `invalid` seal, and no refusal list to show.
+    InvalidSeal(Box<crate::trust::SecurityWarning>),
     Ready,
+}
+
+/// As [`blocked`], for prikk's own refusal list (RFC 063 decision 6).
+fn would_refuse(refusals: Vec<stikk_prikk::ImportRefusal>) -> (ReadView, ConfirmationSummary) {
+    let (_, summary) = blocked("");
+    (ReadView::WouldRefuse(refusals), summary)
+}
+
+/// As [`blocked`], for the 0.56–0.57 `invalid` seal (RFC 063 decisions 6 and 8).
+fn invalid_seal_view(warning: crate::trust::SecurityWarning) -> (ReadView, ConfirmationSummary) {
+    let (_, summary) = blocked("");
+    (ReadView::InvalidSeal(Box::new(warning)), summary)
 }
 
 /// A blocked preview still needs a summary for the token; nothing shows it.
@@ -771,6 +895,14 @@ pub fn export_preview(
     })?;
     Ok(match view {
         ReadView::Blocked(reason) => ExportPreview::Blocked(reason),
+        // **An export reaches neither** (RFC 063 decision 6): both are the import path's, built
+        // from a bundle's own preview, and an export has no bundle to preview yet. Said rather
+        // than left to a wildcard, so a third withheld outcome has to be routed here too.
+        ReadView::WouldRefuse(_) | ReadView::InvalidSeal(_) => ExportPreview::Blocked(
+            "stikk did not export: an import's own refusal reached the export path, which cannot \
+             happen — please report this"
+                .to_string(),
+        ),
         ReadView::Ready => ExportPreview::Ready {
             token: Box::new(token),
         },

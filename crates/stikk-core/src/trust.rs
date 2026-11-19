@@ -216,6 +216,10 @@ pub enum SealerTrust {
     NotTrusted,
     /// The list could not be read. Said plainly rather than guessed either way.
     Unknown,
+    /// **prikk checked this signature itself** (prikk ≥ `SEAL_OUTCOMES_FROM_MINOR`; RFC 063
+    /// decision 6). Not a name match at all: the id is compared with nothing here, because
+    /// prikk compared the signature with the key adopted under that id and answered.
+    Checked(stikk_prikk::SealVerdict),
 }
 
 impl SealerTrust {
@@ -227,13 +231,37 @@ impl SealerTrust {
             Self::NamesYourKey => "names your key",
             Self::NotTrusted => "not trusted by this repository",
             Self::Unknown => "whether this repository trusts it could not be read",
+            // **RFC 063 decision 6's words**, one per verdict. Each says what prikk did, in the
+            // order a reader needs it: whether it checks out, and against what.
+            Self::Checked(stikk_prikk::SealVerdict::Sound) => {
+                "signed by a key this repository trusts, and the signature checks out"
+            }
+            Self::Checked(stikk_prikk::SealVerdict::Unverifiable) => {
+                "this repository trusts no key under this id, so the signature cannot be checked \
+                 here"
+            }
+            Self::Checked(stikk_prikk::SealVerdict::Invalid) => {
+                "a key is trusted under this id, and this signature is not that key's"
+            }
         }
     }
 
     /// Whether this answer is one that [`NAMES_BUT_DOES_NOT_PROVE`] must accompany.
+    ///
+    /// **False for [`Self::Checked`]** (RFC 063 decision 6): that sentence exists because a name
+    /// is not a proof, and where prikk checked the signature itself there is no name being taken
+    /// for one. Keeping it would tell the reader to import and run Verify for an answer the card
+    /// above it already gives.
     #[must_use]
     pub const fn names_an_adopted_key(self) -> bool {
         matches!(self, Self::NamesATrustedKey | Self::NamesYourKey)
+    }
+
+    /// Whether this row is the security event (RFC 063 decision 6): a key *is* trusted under the
+    /// id, and the signature does not verify against it.
+    #[must_use]
+    pub const fn is_the_security_event(self) -> bool {
+        matches!(self, Self::Checked(stikk_prikk::SealVerdict::Invalid))
     }
 }
 
@@ -244,6 +272,12 @@ pub struct Sealer {
     pub key_id: String,
     /// What this repository says about it.
     pub trust: SealerTrust,
+    /// The public key adopted **here** under this id, where stikk read the list and found one.
+    ///
+    /// Read for one thing (RFC 063 decision 8): the security warning for an `invalid` seal shows
+    /// the key this repository trusts beside the id, so a reader can see what the signature was
+    /// checked against. `None` wherever the list was not read, or the id is not in it.
+    pub trusted_here: Option<String>,
 }
 
 /// What a card can say about its sealers.
@@ -299,7 +333,12 @@ impl SealerTrustRead {
 /// clean import (measured — see [`NAMES_BUT_DOES_NOT_PROVE`]). **Verify after import is where
 /// prikk checks it.**
 #[must_use]
-pub fn sealers(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> SealerTrustRead {
+pub fn sealers(
+    prikk: &impl Prikk,
+    repo: &Path,
+    sealed_by: &[String],
+    outcomes: Option<&[stikk_prikk::SealOutcome]>,
+) -> SealerTrustRead {
     let unknown = || {
         SealerTrustRead::Judged(
             sealed_by
@@ -307,6 +346,7 @@ pub fn sealers(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> SealerT
                 .map(|key_id| Sealer {
                     key_id: key_id.clone(),
                     trust: SealerTrust::Unknown,
+                    trusted_here: None,
                 })
                 .collect(),
         )
@@ -317,6 +357,28 @@ pub fn sealers(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> SealerT
         // Refused, or the handshake itself failed: stikk tried and does not know.
         Ok(TrustView::Failed(_)) | Err(_) => return unknown(),
     };
+    let adopted_key = |key_id: &str| {
+        rows.iter()
+            .find(|row| row.key_id == key_id)
+            .map(|row| row.public_key.clone())
+    };
+    // **prikk's answer wins wherever prikk gave one** (RFC 063 decision 6). From 0.56 the
+    // preview checks each signature against the key adopted under its id, so stikk's own name
+    // match is not consulted at all — it answers a weaker question, and two answers on one row
+    // would eventually disagree. The ids come from prikk's own outcome entries, in prikk's
+    // order, for the same reason.
+    if let Some(outcomes) = outcomes {
+        return SealerTrustRead::Judged(
+            outcomes
+                .iter()
+                .map(|outcome| Sealer {
+                    key_id: outcome.key_id.clone(),
+                    trust: SealerTrust::Checked(outcome.outcome),
+                    trusted_here: adopted_key(&outcome.key_id),
+                })
+                .collect(),
+        );
+    }
     SealerTrustRead::Judged(
         sealed_by
             .iter()
@@ -327,6 +389,7 @@ pub fn sealers(prikk: &impl Prikk, repo: &Path, sealed_by: &[String]) -> SealerT
                     Some(_) => SealerTrust::NamesATrustedKey,
                     None => SealerTrust::NotTrusted,
                 },
+                trusted_here: adopted_key(key_id),
             })
             .collect(),
     )
@@ -470,6 +533,149 @@ pub struct TwoKeysOneId {
     pub given: String,
 }
 
+/// The heading today's two-keys card carries (RFC 056 decision 4), now one of two headings the
+/// same card renders (RFC 063 decision 8).
+pub const TWO_KEYS_ONE_ID_HEADING: &str =
+    "This repository already trusts a different key under that id";
+
+/// The line a **removed** id's conflict adds beneath [`TWO_KEYS_ONE_ID`] (RFC 063 decision 7).
+///
+/// It is the whole difference between prikk's two conflicts: the id is not in the trust list, and
+/// a reader who just looked at that list would otherwise have no way to make sense of the
+/// refusal.
+pub const ID_REMOVED_BUT_BOUND: &str =
+    "This id was removed here, but stays bound to the key it was first adopted with.";
+
+/// The heading for a seal that does not verify against the key trusted under its id (RFC 063
+/// decision 8).
+pub const INVALID_SEAL_HEADING: &str =
+    "A seal in this bundle does not match the key you trust under its id";
+
+/// The body beneath [`INVALID_SEAL_HEADING`] (RFC 063 decision 8), continuing its sentence.
+pub const INVALID_SEAL: &str = "it may be forged, or another person signs under the same id. Do not import it until you have \
+     asked the sender. If it is theirs, they must sign under a distinct id, and you adopt that \
+     one.";
+
+/// One labelled row of a [`SecurityWarning`]: stikk's label, and repository text beside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WarningRow {
+    /// stikk's own label — never repository text.
+    pub label: &'static str,
+    /// The value, which **is** repository text and reaches the terminal through `inert`
+    /// (`C-T2a`).
+    pub value: String,
+}
+
+/// **A security warning's content: one type, three callers** (RFC 063 decision 8).
+///
+/// *"Security warning" means this card's form* — its title, its heading, its labelled rows and
+/// its **Esc-only** actions. There is deliberately no second overlay that looks the same: a twin
+/// would drift, and the one thing every caller here needs is that the card looks identical
+/// wherever it comes from, because that is what makes it recognizable as the event it is.
+///
+/// Its three callers:
+/// - stikk's own guard, from the trust list, for an id adopted under a different key (RFC 056
+///   decision 4) — the only one that can show **both** public keys;
+/// - prikk's two typed key-id conflicts on an adopt (RFC 063 decision 7), where prikk's own
+///   sentence travels as [`Self::detail`];
+/// - a bundle whose seal does not verify against the key trusted under its id (decision 6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecurityWarning {
+    /// The heading, in stikk's own words.
+    pub heading: &'static str,
+    /// Labelled rows, in the order they are drawn.
+    pub rows: Vec<WarningRow>,
+    /// The body, as paragraphs in stikk's own words.
+    pub body: Vec<&'static str>,
+    /// prikk's own sentence, where there is one, shown verbatim beneath the body (`ER-02`).
+    pub detail: Option<String>,
+}
+
+/// stikk's own guard: the id is adopted here, under a different key (RFC 056 decision 4).
+///
+/// **The only caller with both public keys**, because it answered from the list rather than from
+/// a refusal — and seeing that the two differ is the whole of what this card is for.
+#[must_use]
+pub fn two_keys_warning(conflict: &TwoKeysOneId) -> SecurityWarning {
+    SecurityWarning {
+        heading: TWO_KEYS_ONE_ID_HEADING,
+        rows: vec![
+            WarningRow {
+                label: "key id",
+                value: conflict.key_id.clone(),
+            },
+            WarningRow {
+                label: "already trusted",
+                value: conflict.adopted.clone(),
+            },
+            WarningRow {
+                label: "offered now",
+                value: conflict.given.clone(),
+            },
+        ],
+        body: vec![TWO_KEYS_ONE_ID],
+        detail: None,
+    }
+}
+
+/// prikk's own key-id conflict on an adopt (RFC 063 decision 7).
+///
+/// **Two rows, not three**: a removed id is not in the trust list, so stikk cannot show the key
+/// it stays bound to — and inventing a row for it would be stikk claiming a key it never read.
+/// prikk's sentence carries the rest, verbatim.
+#[must_use]
+pub fn key_id_conflict_warning(
+    conflict: stikk_prikk::KeyIdConflict,
+    key_id: &str,
+    offered: &str,
+    message: String,
+) -> SecurityWarning {
+    let mut body = vec![TWO_KEYS_ONE_ID];
+    if conflict == stikk_prikk::KeyIdConflict::BoundToRemovedKey {
+        body.push(ID_REMOVED_BUT_BOUND);
+    }
+    SecurityWarning {
+        heading: TWO_KEYS_ONE_ID_HEADING,
+        rows: vec![
+            WarningRow {
+                label: "key id",
+                value: key_id.to_string(),
+            },
+            WarningRow {
+                label: "offered now",
+                value: offered.to_string(),
+            },
+        ],
+        body,
+        detail: Some(message),
+    }
+}
+
+/// A seal that does not verify against the key trusted under its id (RFC 063 decisions 6 and 8).
+///
+/// `trusted_here` is the public key adopted under that id, where stikk read the list — the thing
+/// the signature was checked against. Where the list was not read, the row is left out rather
+/// than filled with a placeholder.
+#[must_use]
+pub fn invalid_seal_warning(key_id: &str, trusted_here: Option<&str>) -> SecurityWarning {
+    let mut rows = vec![WarningRow {
+        label: "key id",
+        value: key_id.to_string(),
+    }];
+    if let Some(public_key) = trusted_here {
+        rows.push(WarningRow {
+            label: "trusted here",
+            value: public_key.to_string(),
+        });
+    }
+    SecurityWarning {
+        heading: INVALID_SEAL_HEADING,
+        rows,
+        body: vec![INVALID_SEAL],
+        detail: None,
+    }
+}
+
 /// Whether adopting is offered, and the token that arms it (RFC 056 decision 2).
 #[derive(Debug)]
 pub enum AdoptPreview {
@@ -477,7 +683,10 @@ pub enum AdoptPreview {
     Blocked(String),
     /// The id is adopted under a different key. **Not a confirmation** (decision 4): the card
     /// has no confirm key, and no `add` was spawned.
-    TwoKeys(Box<TwoKeysOneId>),
+    ///
+    /// Carries the shared [`SecurityWarning`] (RFC 063 decision 8), so this card and the two the
+    /// RFC adds are one renderer with three callers.
+    TwoKeys(Box<SecurityWarning>),
     /// Armed. Confirm by typing the key id.
     Ready {
         /// Single-use, step-scoped.
@@ -586,7 +795,7 @@ pub fn adopt_preview(
         },
     )?;
     if let Some(conflict) = conflict {
-        return Ok(AdoptPreview::TwoKeys(Box::new(conflict)));
+        return Ok(AdoptPreview::TwoKeys(Box::new(two_keys_warning(&conflict))));
     }
     Ok(match view {
         ReadView::Blocked(reason) => AdoptPreview::Blocked(reason),
@@ -689,6 +898,14 @@ pub struct TrustWriteResult {
     /// After a removal, [`REMOVED_SEE_VERIFY`]. stikk points at Verify and does not run it
     /// (decision 7): Verify can be slow on a large repository.
     pub see_verify: Option<&'static str>,
+    /// **The security warning prikk's own refusal carried** (RFC 063 decision 7), where there is
+    /// one: an adopt refused for a key-id conflict.
+    ///
+    /// It reaches the reader **here rather than from the preview** for the removed-id case,
+    /// which the preview cannot see: a removed id is not in the trust list, so stikk's own guard
+    /// finds nothing and prikk is the only one who knows (F7). Where this is `Some`, nothing was
+    /// written and the list beneath is unchanged.
+    pub warning: Option<Box<SecurityWarning>>,
 }
 
 /// Adopt the key this token was previewed for, then re-read the list (decision 1).
@@ -709,6 +926,27 @@ pub fn adopt_confirm_and_execute(
     let outcome = confirm::execute(prikk, repo, confirmed, || {
         prikk.trust_add(repo, key_id, public_key)
     })?;
+    // **prikk's own key-id conflict, as the security event it is** (RFC 063 decision 7). It
+    // arrives *here* and not from the preview for the removed-id case: that id is not in the
+    // trust list, so stikk's guard finds nothing and prikk is the only one who knows (F7).
+    // Nothing was written, and the list is re-read all the same so the screen beneath says what
+    // is true now.
+    if let stikk_prikk::TrustWritten::KeyIdConflict { conflict, message } = &outcome.result {
+        return Ok(Outcome {
+            operation: outcome.operation,
+            result: TrustWriteResult {
+                printed: Vec::new(),
+                view: read(prikk, repo)?,
+                see_verify: None,
+                warning: Some(Box::new(key_id_conflict_warning(
+                    *conflict,
+                    key_id,
+                    public_key,
+                    message.clone(),
+                ))),
+            },
+        });
+    }
     written(prikk, repo, outcome, None)
 }
 
@@ -754,10 +992,10 @@ fn written(
         // **From prikk 0.56 an adopt answers in JSON** (RFC 063 decision 7), so there are no
         // printed lines to carry: the result says what prikk counted.
         stikk_prikk::TrustWritten::Adopted(added) => vec![adopted_line(&added)],
-        // **The two key-id conflicts** (RFC 063 F7). The warning card this builds is RFC 063
-        // Handoff B's own commit; until it lands, the typed outcome is turned back into prikk's
-        // refusal, which is **exactly** what reached the reader before the seam was typed -- so
-        // this commit changes no behaviour here, and the next one replaces this arm.
+        // **The two key-id conflicts never reach here** (RFC 063 decision 7): `adopt_preview`
+        // answers them before a confirmation exists, so there is no result to shape. Carried
+        // rather than asserted, and as prikk's own refusal, which is what a reader would have
+        // seen before this was typed.
         stikk_prikk::TrustWritten::KeyIdConflict { message, .. } => {
             return Err(stikk_model::StikkError::Refusal { message });
         }
@@ -772,6 +1010,9 @@ fn written(
             printed,
             view: read(prikk, repo)?,
             see_verify,
+            // The conflict is answered before this is reached (RFC 063 decision 7), and a
+            // removal cannot produce one.
+            warning: None,
         },
     })
 }

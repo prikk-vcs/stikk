@@ -9979,7 +9979,7 @@ fn rfc054_below_the_band_trust_is_unavailable() {
         other => panic!("0.{}: expected unavailable, got {other:?}", bin.minor),
     }
     assert_eq!(
-        stikk_core::sealers(&backend, fixture.repo(), &["ed25519-0".to_string()]),
+        stikk_core::sealers(&backend, fixture.repo(), &["ed25519-0".to_string()], None),
         stikk_core::SealerTrustRead::Unavailable,
         "0.{}: a card below the band says nothing extra",
         bin.minor
@@ -10172,10 +10172,30 @@ fn rfc056_adopting_grows_the_list_and_the_two_declines_write_nothing_at_the_ceil
     )
     .unwrap_or_else(|e| panic!("0.{}: adopt_preview: {e}", bin.minor))
     {
-        stikk_core::AdoptPreview::TwoKeys(conflict) => {
-            assert_eq!(conflict.key_id, their_id);
-            assert_eq!(conflict.adopted, theirs, "0.{}", bin.minor);
-            assert_eq!(conflict.given, mine.public_key, "0.{}", bin.minor);
+        stikk_core::AdoptPreview::TwoKeys(warning) => {
+            // **The shared security-warning card** (RFC 063 decision 8): this caller is the one
+            // that answered from the trust list, so it is the one with both public keys.
+            let rows: Vec<(&str, &str)> = warning
+                .rows
+                .iter()
+                .map(|row| (row.label, row.value.as_str()))
+                .collect();
+            assert_eq!(
+                rows,
+                vec![
+                    ("key id", their_id.as_str()),
+                    ("already trusted", theirs.as_str()),
+                    ("offered now", mine.public_key.as_str()),
+                ],
+                "0.{}",
+                bin.minor
+            );
+            assert_eq!(warning.heading, stikk_core::TWO_KEYS_ONE_ID_HEADING);
+            assert_eq!(
+                warning.detail, None,
+                "0.{}: stikk answered this from the list, so prikk said nothing",
+                bin.minor
+            );
         }
         other => panic!(
             "0.{}: expected the security event, got {other:?}",

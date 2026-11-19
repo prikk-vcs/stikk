@@ -421,7 +421,7 @@ fn previewed(backend: &NullBackend, limit: usize) -> ImportPreview {
 fn blocked_for(backend: &NullBackend, limit: usize) -> String {
     match previewed(backend, limit) {
         ImportPreview::Blocked(reason) => reason,
-        ImportPreview::Ready { .. } => panic!("expected a block"),
+        other => panic!("expected a block in stikk's own words, got {other:?}"),
     }
 }
 
@@ -842,4 +842,236 @@ fn the_suggested_destination_is_outside_the_repository() {
         "the parent, the last segment, and the short tip"
     );
     assert!(!suggested.starts_with(repo));
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 063 Handoff B: what prikk checked, and the import it would refuse (decisions 6 and 8).
+// ---------------------------------------------------------------------------------------------
+
+/// prikk's own `forged-publication-signature` refusal, shortened to the clause that matters —
+/// its **id** is what stikk keys on, and this text is only ever shown (`measure063-0.58.txt`
+/// §D1).
+const FORGED: &str = "precondition not met: ref-state carries a MAINTAINER signature by adopted key shared that \
+     does not verify: invalid signature -- a forgery, or another maintainer using the same key id";
+
+fn refusal(id: &str) -> stikk_prikk::ImportRefusal {
+    stikk_prikk::ImportRefusal {
+        id: id.to_string(),
+        message: FORGED.to_string(),
+    }
+}
+
+fn outcome(key_id: &str, verdict: stikk_prikk::SealVerdict) -> stikk_prikk::SealOutcome {
+    stikk_prikk::SealOutcome {
+        key_id: key_id.to_string(),
+        outcome: verdict,
+    }
+}
+
+/// An importable bundle at `minor`, with prikk's own two new fields as given.
+fn importing_at(
+    minor: u32,
+    outcomes: Option<Vec<stikk_prikk::SealOutcome>>,
+    refusals: Option<Vec<stikk_prikk::ImportRefusal>>,
+) -> NullBackend {
+    let mut read = preview(
+        Connectivity::NoLocalHistory,
+        Some(BundleConflict::AppliesCleanly),
+        None,
+        edited_a(),
+    );
+    read.seal_outcomes = outcomes;
+    read.import_refusals = refusals;
+    NullBackend::supported()
+        .with_version(0, minor, 0)
+        .with_bundle_verify(verified_with_tip(&id("aa")))
+        .with_bundle_preview(read)
+        .with_bundle_import(import_lines())
+        .with_refs(Vec::new())
+        .with_trusted_keys(vec![stikk_prikk::TrustedKey {
+            key_id: "z-maint".to_string(),
+            public_key: "e".repeat(64),
+        }])
+}
+
+/// **At 0.58 a non-empty refusal list withholds Import, and the refusals themselves come back**
+/// — by id, with prikk's message to show. **Nothing is spawned.**
+#[test]
+fn at_0_58_prikks_own_refusal_withholds_the_import() {
+    let backend = importing_at(
+        58,
+        Some(vec![outcome("z-maint", stikk_prikk::SealVerdict::Invalid)]),
+        Some(vec![refusal("forged-publication-signature")]),
+    );
+    match previewed(&backend, 200) {
+        ImportPreview::WouldRefuse(refusals) => {
+            assert_eq!(refusals.len(), 1);
+            assert_eq!(refusals[0].id, "forged-publication-signature");
+            assert_eq!(refusals[0].message, FORGED, "prikk's words, verbatim");
+        }
+        other => panic!("expected prikk's refusal, got {other:?}"),
+    }
+    assert_eq!(backend.bundle_import_calls(), 0, "nothing was spawned");
+}
+
+/// **At 0.56–0.57 the `invalid` outcome withholds it**, with the security warning rather than a
+/// refusal list: prikk refuses that import from 0.56 (F5), and its list is partial until 0.58.
+#[test]
+fn at_0_56_and_0_57_an_invalid_seal_withholds_the_import_with_the_warning() {
+    for minor in [56, 57] {
+        let backend = importing_at(
+            minor,
+            Some(vec![outcome("z-maint", stikk_prikk::SealVerdict::Invalid)]),
+            None,
+        );
+        match previewed(&backend, 200) {
+            ImportPreview::InvalidSeal(warning) => {
+                assert_eq!(warning.heading, crate::INVALID_SEAL_HEADING, "0.{minor}");
+                assert_eq!(warning.body, vec![crate::INVALID_SEAL]);
+                let rows: Vec<(&str, &str)> = warning
+                    .rows
+                    .iter()
+                    .map(|row| (row.label, row.value.as_str()))
+                    .collect();
+                assert_eq!(
+                    rows,
+                    vec![
+                        ("key id", "z-maint"),
+                        ("trusted here", "e".repeat(64).as_str())
+                    ],
+                    "0.{minor}: the id, and the key the signature was checked against"
+                );
+            }
+            other => panic!("0.{minor}: expected the warning, got {other:?}"),
+        }
+        assert_eq!(
+            backend.bundle_import_calls(),
+            0,
+            "0.{minor}: nothing spawned"
+        );
+    }
+}
+
+/// **`unverifiable` withholds nothing** (§7 trap 2): this repository trusts no key under that
+/// id, which is the ordinary case for a first exchange — and an **empty** refusal list at 0.58
+/// is prikk's own answer, not a missing one.
+#[test]
+fn an_unverifiable_seal_and_an_empty_refusal_list_still_import() {
+    for minor in [56, 57, 58] {
+        let refusals = (minor >= 58).then(Vec::new);
+        let backend = importing_at(
+            minor,
+            Some(vec![
+                outcome("z-maint", stikk_prikk::SealVerdict::Unverifiable),
+                outcome("other", stikk_prikk::SealVerdict::Sound),
+            ]),
+            refusals,
+        );
+        assert!(
+            matches!(previewed(&backend, 200), ImportPreview::Ready { .. }),
+            "0.{minor}: an unverifiable seal is not a warning"
+        );
+    }
+}
+
+/// **Below 0.56 nothing changes**: neither field is read, so the import path is the one RFC 050
+/// shipped.
+#[test]
+fn below_0_56_the_import_path_is_unchanged() {
+    let backend = importing_at(55, None, None);
+    assert!(matches!(
+        previewed(&backend, 200),
+        ImportPreview::Ready { .. }
+    ));
+}
+
+/// **The bundle card's rows are prikk's answer from 0.56**, keyed by outcome, and
+/// `NAMES_BUT_DOES_NOT_PROVE` is not owed beneath them — it exists because a name is not a
+/// proof, and prikk checked the signature itself.
+#[test]
+fn the_card_reads_each_seal_as_prikk_checked_it_from_0_56() {
+    use crate::trust::SealerTrust;
+    let backend = importing_at(
+        56,
+        Some(vec![
+            outcome("z-maint", stikk_prikk::SealVerdict::Sound),
+            outcome("stranger", stikk_prikk::SealVerdict::Unverifiable),
+        ]),
+        None,
+    );
+    let read = crate::open_bundle(&backend, Path::new("/repo"), Path::new("/tmp/v1.bundle"))
+        .expect("the bundle reads");
+    let BundleOpened::Read(view) = read else {
+        panic!("expected a read bundle");
+    };
+    let rows: Vec<(&str, SealerTrust)> = view
+        .sealers
+        .judged()
+        .iter()
+        .map(|sealer| (sealer.key_id.as_str(), sealer.trust))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "z-maint",
+                SealerTrust::Checked(stikk_prikk::SealVerdict::Sound)
+            ),
+            (
+                "stranger",
+                SealerTrust::Checked(stikk_prikk::SealVerdict::Unverifiable)
+            ),
+        ],
+        "prikk's ids, in prikk's order, with prikk's verdicts"
+    );
+    assert!(
+        !view.sealers.names_an_adopted_key(),
+        "no name is being taken for a proof here"
+    );
+    assert_eq!(view.warning, None, "no invalid seal, no warning");
+}
+
+/// **`NAMES_BUT_DOES_NOT_PROVE` stays below 0.56**, where stikk's name match is all there is.
+#[test]
+fn below_0_56_the_card_still_owes_names_but_does_not_prove() {
+    let backend = importing_at(55, None, None);
+    let read = crate::open_bundle(&backend, Path::new("/repo"), Path::new("/tmp/v1.bundle"))
+        .expect("the bundle reads");
+    let BundleOpened::Read(view) = read else {
+        panic!("expected a read bundle");
+    };
+    assert!(
+        view.sealers.names_an_adopted_key(),
+        "the id names an adopted key, and that is not a proof"
+    );
+    assert_eq!(view.warning, None);
+}
+
+/// **An `invalid` row puts the warning on the view**, for the card to open over itself.
+#[test]
+fn an_invalid_seal_puts_the_warning_on_the_view() {
+    let backend = importing_at(
+        58,
+        Some(vec![outcome("z-maint", stikk_prikk::SealVerdict::Invalid)]),
+        Some(vec![refusal("forged-publication-signature")]),
+    );
+    let read = crate::open_bundle(&backend, Path::new("/repo"), Path::new("/tmp/v1.bundle"))
+        .expect("the bundle reads");
+    let BundleOpened::Read(view) = read else {
+        panic!("expected a read bundle");
+    };
+    let warning = view.warning.expect("the security event");
+    assert_eq!(warning.heading, crate::INVALID_SEAL_HEADING);
+    assert_eq!(
+        warning.detail, None,
+        "prikk's message is on the card's list"
+    );
+    assert_eq!(
+        view.preview
+            .import_refusals
+            .as_deref()
+            .map(<[stikk_prikk::ImportRefusal]>::len),
+        Some(1),
+        "and the card still lists what prikk would refuse"
+    );
 }

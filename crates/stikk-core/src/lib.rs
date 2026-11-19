@@ -50,7 +50,7 @@ pub use bundle::{
     UNPUBLISHED_IS_NOT_EXPORTED, WOULD_BRING_FORWARD, WOULD_MOVE_THE_RECEIVED_BRANCH_BACK,
     bundle_unavailable, export_confirm_and_execute, export_preview, export_unavailable,
     import_confirm_and_execute, import_preview, open_bundle, sentence_for, suggested_destination,
-    unshown_effects_line,
+    unshown_effects_line, would_refuse_the_import,
 };
 pub use change_token::{change_token, staleness_notice};
 pub use changes::{
@@ -131,14 +131,17 @@ pub use switch::{
     switch_unavailable,
 };
 pub use trust::{
-    ADOPT_CONSEQUENCE, ADOPT_OPERATION, ALREADY_TRUSTED, AdoptPreview, HOW_TO_ADOPT, KEY_ID_SHAPE,
-    LAST_KEY, NAMES_BUT_DOES_NOT_PROVE, NO_LONGER_TRUSTED, NONE_ADOPTED, OWN_KEY_UNKNOWN,
+    ADOPT_CONSEQUENCE, ADOPT_OPERATION, ALREADY_TRUSTED, AdoptPreview, HOW_TO_ADOPT,
+    ID_REMOVED_BUT_BOUND, INVALID_SEAL, INVALID_SEAL_HEADING, KEY_ID_SHAPE, LAST_KEY,
+    NAMES_BUT_DOES_NOT_PROVE, NO_LONGER_TRUSTED, NONE_ADOPTED, OWN_KEY_UNKNOWN,
     PRIKK_REFUSED_ADOPT, PUBLIC_KEY_SHAPE, REMOVE_CONSEQUENCE, REMOVE_MAY_FAIL_VERIFY,
     REMOVE_OPERATION, REMOVE_YOUR_OWN, REMOVED_SEE_VERIFY, RemovePreview, Sealer, SealerTrust,
-    SealerTrustRead, TRUST_FROM_MINOR, TWO_KEYS_ONE_ID, TrustRow, TrustView, TrustWriteResult,
-    TwoKeysOneId, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY, adopt_confirm_and_execute, adopt_preview,
-    check_key_id, check_public_key, default_key_id, not_the_default_id, remove_confirm_and_execute,
-    remove_preview, sealers, trust_unavailable,
+    SealerTrustRead, SecurityWarning, TRUST_FROM_MINOR, TWO_KEYS_ONE_ID, TWO_KEYS_ONE_ID_HEADING,
+    TrustRow, TrustView, TrustWriteResult, TwoKeysOneId, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY,
+    WarningRow, adopt_confirm_and_execute, adopt_preview, adopted_line, check_key_id,
+    check_public_key, default_key_id, invalid_seal_warning, key_id_conflict_warning,
+    not_the_default_id, remove_confirm_and_execute, remove_preview, sealers, trust_unavailable,
+    two_keys_warning,
 };
 pub use undo::{
     A_MERGE_BLOCK, DEEPER_THAN_STIKK_LOOKED, IGNORE_NOT_UTF8, INTERRUPTED, NOT_THE_CURRENT_BRANCH,

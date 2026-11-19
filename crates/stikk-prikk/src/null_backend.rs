@@ -697,6 +697,28 @@ impl NullBackend {
         self
     }
 
+    /// Answer both trust writes with prikk's **typed key-id conflict** (RFC 063 F7), as
+    /// `trust maintainer add --format json` answers one from 0.56.
+    #[must_use]
+    pub fn with_trust_write_conflict(
+        mut self,
+        conflict: crate::KeyIdConflict,
+        message: impl Into<String>,
+    ) -> Self {
+        self.trust_write = Ok(crate::TrustWritten::KeyIdConflict {
+            conflict,
+            message: message.into(),
+        });
+        self
+    }
+
+    /// Answer both trust writes with prikk's **`trust-add-v1` success document** (RFC 063 F7).
+    #[must_use]
+    pub fn with_trust_added(mut self, added: crate::TrustAdded) -> Self {
+        self.trust_write = Ok(crate::TrustWritten::Adopted(added));
+        self
+    }
+
     /// How many times [`Prikk::trust_add`] has been asked of this backend (and its clones).
     #[must_use]
     pub fn trust_add_calls(&self) -> usize {

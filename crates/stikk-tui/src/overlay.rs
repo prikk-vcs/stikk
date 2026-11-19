@@ -328,15 +328,19 @@ pub enum Overlay {
         /// stikk's own sentence from the last attempt, as above.
         error: Option<String>,
     },
-    /// RFC 056 decision 4: **the security event**, where the id is adopted under a different
-    /// key.
+    /// **The security event** (RFC 056 decision 4, generalised by RFC 063 decision 8).
     ///
-    /// **Not a confirmation**, and it carries no confirm key: `Esc` is the only way out. Two
-    /// keys cannot share an id, so there is nothing here for the reader to approve -- what they
-    /// need is to see both public keys and go back to the key's owner.
+    /// **Not a confirmation**, and it carries no confirm key: `Esc` is the only way out. There
+    /// is nothing here for the reader to approve -- what they need is to see the keys and go
+    /// back to the key's owner, or to the bundle's sender.
+    ///
+    /// **One renderer, three callers**: stikk's own guard from the trust list, prikk's two typed
+    /// key-id conflicts on an adopt, and a bundle whose seal does not verify against the key
+    /// trusted under its id. A twin overlay that looked the same would drift, and looking
+    /// identical wherever it comes from is what makes this card recognizable as the event it is.
     TrustConflict {
-        /// The id, and the two keys that claim it.
-        conflict: Box<stikk_core::TwoKeysOneId>,
+        /// The heading, rows, body and -- where prikk refused -- prikk's own sentence.
+        warning: Box<stikk_core::SecurityWarning>,
     },
     /// RFC 056 decision 1: what a trust write left -- prikk's own lines, then the pointer a
     /// removal carries.
@@ -552,9 +556,7 @@ pub fn render(
             typed,
             error,
         } => render_trust_key_id(public_key, typed, error.as_deref(), palette, frame, area),
-        Overlay::TrustConflict { conflict } => {
-            render_trust_conflict(conflict, palette, frame, area)
-        }
+        Overlay::TrustConflict { warning } => render_trust_conflict(warning, palette, frame, area),
         Overlay::TrustResult {
             printed,
             see_verify,
@@ -3143,48 +3145,69 @@ fn trust_prompt_error<'a>(error: Option<&str>, palette: &Palette) -> Vec<Line<'a
 /// whole of what this card is for. The id is repository text and is drawn as its own row, so
 /// stikk's sentence stays stikk's (`C-T2a`, RFC 044 C1).
 fn render_trust_conflict(
-    conflict: &stikk_core::TwoKeysOneId,
+    warning: &stikk_core::SecurityWarning,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
 ) {
     let mut prose = vec![
         Line::from(Span::styled(
-            "  This repository already trusts a different key under that id",
+            format!("  {}", warning.heading),
             Style::default()
                 .fg(palette.warn)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("  key id          ", Style::default().fg(palette.dim)),
-            Span::styled(
-                identifier(&conflict.key_id),
-                Style::default().fg(palette.accent),
-            ),
-        ]),
     ];
-    for (label, key) in [
-        ("already trusted", &conflict.adopted),
-        ("offered now", &conflict.given),
-    ] {
+    // **The first row is the id, inline; the rest are keys, on their own lines.** A 64-character
+    // public key does not fit beside a label at this width, and it is the one value a reader may
+    // compare character by character, so it is wrapped rather than clipped.
+    for (position, row) in warning.rows.iter().enumerate() {
+        if position == 0 {
+            prose.push(Line::from(vec![
+                Span::styled(
+                    format!("  {:<16}", row.label),
+                    Style::default().fg(palette.dim),
+                ),
+                Span::styled(identifier(&row.value), Style::default().fg(palette.accent)),
+            ]));
+            continue;
+        }
         prose.push(Line::from(Span::styled(
-            format!("  {label}"),
+            format!("  {}", row.label),
             Style::default().fg(palette.dim),
         )));
-        for row in crate::text::wrap_verbatim(&identifier(key), PANEL_TEXT_WIDTH, "    ") {
+        for wrapped in crate::text::wrap_verbatim(&identifier(&row.value), PANEL_TEXT_WIDTH, "    ")
+        {
             prose.push(Line::from(Span::styled(
-                row,
+                wrapped,
                 Style::default().fg(palette.accent),
             )));
         }
     }
-    prose.push(Line::from(""));
-    for row in wrap_indented(stikk_core::TWO_KEYS_ONE_ID, PANEL_PROSE_WIDTH, "  ") {
+    for paragraph in &warning.body {
+        prose.push(Line::from(""));
+        for row in wrap_indented(paragraph, PANEL_PROSE_WIDTH, "  ") {
+            prose.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.warn),
+            )));
+        }
+    }
+    // **prikk's own sentence, verbatim and labelled as prikk's** (`ER-02`), where prikk is the
+    // one who refused.
+    if let Some(detail) = &warning.detail {
+        prose.push(Line::from(""));
         prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.warn),
+            "  prikk refused \u{2014}",
+            Style::default().fg(palette.dim),
         )));
+        for row in crate::text::wrap_verbatim(&identifier(detail), PANEL_PROSE_WIDTH, "  ") {
+            prose.push(Line::from(Span::styled(
+                row,
+                Style::default().fg(palette.fg),
+            )));
+        }
     }
 
     Panel {

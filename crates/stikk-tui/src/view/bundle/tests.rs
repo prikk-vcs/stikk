@@ -79,6 +79,7 @@ fn opened(
             .map(|key_id| stikk_core::Sealer {
                 key_id: key_id.clone(),
                 trust: stikk_core::SealerTrust::NotTrusted,
+                trusted_here: None,
             })
             .collect(),
     );
@@ -88,6 +89,7 @@ fn opened(
         preview,
         sentence,
         sealers,
+        warning: None,
     }))
 }
 
@@ -380,14 +382,17 @@ fn capture_the_three_judged_sealer_answers_at_80_columns() {
         stikk_core::Sealer {
             key_id: "ed25519-31f369d3abb7f64c".to_string(),
             trust: stikk_core::SealerTrust::NamesYourKey,
+            trusted_here: None,
         },
         stikk_core::Sealer {
             key_id: "ed25519-9c0a44b1d2e3f501".to_string(),
             trust: stikk_core::SealerTrust::NamesATrustedKey,
+            trusted_here: None,
         },
         stikk_core::Sealer {
             key_id: "ed25519-0000000000000000".to_string(),
             trust: stikk_core::SealerTrust::NotTrusted,
+            trusted_here: None,
         },
     ]);
     let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
@@ -431,6 +436,7 @@ fn capture_the_unreadable_sealer_answer_at_80_columns() {
     view.sealers = stikk_core::SealerTrustRead::Judged(vec![stikk_core::Sealer {
         key_id: "ed25519-31f369d3abb7f64c".to_string(),
         trust: stikk_core::SealerTrust::Unknown,
+        trusted_here: None,
     }]);
     let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
     println!("{text}");
@@ -467,6 +473,7 @@ fn a_very_long_sealer_id_still_shows_its_answer_at_80_columns() {
     view.sealers = stikk_core::SealerTrustRead::Judged(vec![stikk_core::Sealer {
         key_id: long.clone(),
         trust: stikk_core::SealerTrust::NotTrusted,
+        trusted_here: None,
     }]);
     let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
     println!("{text}");
@@ -526,6 +533,7 @@ fn a_sealer_id_made_of_escapes_still_fits_and_shows_its_answer_at_80_columns() {
     view.sealers = stikk_core::SealerTrustRead::Judged(vec![stikk_core::Sealer {
         key_id: hostile.clone(),
         trust: stikk_core::SealerTrust::NotTrusted,
+        trusted_here: None,
     }]);
     let text = draw_at(&BundleOpened::Read(Box::new(view)), 80, 60, 0);
     println!("{text}");

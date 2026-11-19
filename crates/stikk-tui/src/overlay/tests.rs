@@ -1812,13 +1812,13 @@ fn cases() -> Vec<Case> {
         Case {
             name: "TrustConflict",
             build: Box::new(|_| Overlay::TrustConflict {
-                conflict: Box::new(stikk_core::TwoKeysOneId {
+                warning: Box::new(stikk_core::two_keys_warning(&stikk_core::TwoKeysOneId {
                     key_id: "ed25519-6762b6359a650c0a".to_string(),
                     adopted: "6762b6359a650c0a5acaa723a5fc2ad78b354fcac296495b9cbf46c0d32a3f7f"
                         .to_string(),
                     given: "4c46ed9cd17cb36cef3eb8e26cc23695ddab013a0ddc15d908ae68915521905d"
                         .to_string(),
-                }),
+                })),
             }),
             last_row: "Esc to dismiss".to_string(),
             entry: None,
@@ -4669,11 +4669,11 @@ fn capture_rfc056_cards_at_80_columns() {
     }
 
     let conflict = Overlay::TrustConflict {
-        conflict: Box::new(stikk_core::TwoKeysOneId {
+        warning: Box::new(stikk_core::two_keys_warning(&stikk_core::TwoKeysOneId {
             key_id: THEIRS.to_string(),
             adopted: THEIRS_KEY.to_string(),
             given: NEW_KEY.to_string(),
-        }),
+        })),
     };
     let text = draw_at(&conflict, 80, 30);
     println!("--- RFC 056: the security event (80 columns) ---\n{text}");

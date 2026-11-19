@@ -1396,9 +1396,9 @@ impl App {
                 self.banner = Some(reason);
             }
             // **Its own overlay, and no confirmation** (decision 4).
-            Ok(stikk_core::AdoptPreview::TwoKeys(conflict)) => {
+            Ok(stikk_core::AdoptPreview::TwoKeys(warning)) => {
                 if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::TrustConflict { conflict };
+                    *slot = Overlay::TrustConflict { warning };
                 }
             }
             Ok(stikk_core::AdoptPreview::Ready { token }) => {
@@ -1515,9 +1515,15 @@ impl App {
                     *cursor = 0;
                 }
                 if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::TrustResult {
-                        printed: outcome.result.printed.clone(),
-                        see_verify: outcome.result.see_verify,
+                    // **prikk's own key-id conflict is the security event** (RFC 063
+                    // decision 7), and it arrives here rather than from the preview for a
+                    // removed id, which is not in the list stikk's guard reads.
+                    *slot = match outcome.result.warning.clone() {
+                        Some(warning) => Overlay::TrustConflict { warning },
+                        None => Overlay::TrustResult {
+                            printed: outcome.result.printed.clone(),
+                            see_verify: outcome.result.see_verify,
+                        },
                     };
                 }
             }
@@ -2244,6 +2250,22 @@ impl App {
             Ok(stikk_core::ImportPreview::Blocked(reason)) => {
                 self.overlays.remove(index);
                 self.banner = Some(reason);
+            }
+            // **prikk says it would refuse this import** (RFC 063 decision 6). The bundle card
+            // lists these already and does not offer Import, so this is the case where the
+            // answer changed between opening the card and asking: stikk's own lead, then
+            // prikk's sentences verbatim.
+            Ok(stikk_core::ImportPreview::WouldRefuse(refusals)) => {
+                self.overlays.remove(index);
+                self.banner = Some(stikk_core::would_refuse_the_import(&refusals));
+            }
+            // **A seal that does not verify against the key trusted under its id**, at
+            // 0.56–0.57, where prikk refuses the import but does not yet list its refusals in
+            // full: the same card the bundle view opens, so one event is one card.
+            Ok(stikk_core::ImportPreview::InvalidSeal(warning)) => {
+                if let Some(slot) = self.overlays.get_mut(index) {
+                    *slot = Overlay::TrustConflict { warning };
+                }
             }
             Ok(stikk_core::ImportPreview::Ready { token }) => {
                 let Some(PendingImport::AwaitingPreview { target }) = pending else {

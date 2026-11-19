@@ -4870,6 +4870,7 @@ fn bundle_screen(app: &mut App, rx: &mpsc::Receiver<Request>, tip: Option<&str>)
                 preview,
                 sentence: stikk_core::WOULD_BRING_FORWARD,
                 sealers: stikk_core::SealerTrustRead::Judged(Vec::new()),
+                warning: None,
             },
         )))),
     });
@@ -5588,11 +5589,11 @@ fn the_security_event_has_no_confirmation_and_sends_nothing() {
     app.apply(Response {
         seq,
         kind: ResponseKind::TrustAdoptPreview(Ok(stikk_core::AdoptPreview::TwoKeys(Box::new(
-            stikk_core::TwoKeysOneId {
+            stikk_core::two_keys_warning(&stikk_core::TwoKeysOneId {
                 key_id: RFC056_NEW_ID.to_string(),
                 adopted: RFC056_THEIRS_KEY.to_string(),
                 given: RFC056_NEW_KEY.to_string(),
-            },
+            }),
         )))),
     });
     assert!(matches!(
@@ -5689,6 +5690,7 @@ fn a_removal_is_confirmed_by_typing_the_id_and_points_at_verify() {
                     own_key_unknown: None,
                 },
                 see_verify: Some(stikk_core::REMOVED_SEE_VERIFY),
+                warning: None,
             },
         })),
     });

@@ -1278,11 +1278,12 @@ impl Prikk for CliBackend {
         if Prikk::handshake(self)?.version.minor < crate::TRUST_ADD_JSON_FROM_MINOR {
             return self.trust_write(repo, &argv, "adopting a maintainer key");
         }
-        // The same two guards `trust_write` applies, in the same order, for the same reasons: the
-        // version band first, so nothing is spawned below it, then read-only.
-        if Prikk::handshake(self)?.version.minor < crate::FILES_FROM_MINOR {
-            return Ok(crate::TrustWritten::Unavailable);
-        }
+        // **`FILES_FROM_MINOR`'s guard is not repeated here, and cannot be**: it is 54, below
+        // this path's own band of 56, so the return above has already answered every version it
+        // would have caught (review v1 §6.7's nit). `trust_write` still applies it, for `remove`
+        // and for an `add` below 0.56.
+        //
+        // Read-only, though, applies at every version, exactly as `trust_write` applies it.
         if !Prikk::readiness(self, repo)?.readiness.may_operate() {
             return Err(StikkError::NotReady {
                 detail: "adopting a maintainer key is not available in read-only mode".to_string(),

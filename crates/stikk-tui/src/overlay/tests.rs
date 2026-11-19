@@ -5100,6 +5100,16 @@ fn capture_rfc063_the_security_warning_from_each_caller() {
             stikk_core::invalid_seal_warning("shared", Some(their_key)),
             vec![stikk_core::INVALID_SEAL_HEADING, "trusted here"],
         ),
+        // **Review v1 D1**: prikk checked the seal, and stikk could not list the key it was
+        // checked against. The row is left out, and the card says so.
+        (
+            "a bundle's seal, with the trust list unread",
+            stikk_core::invalid_seal_warning("shared", None),
+            vec![
+                stikk_core::INVALID_SEAL_HEADING,
+                stikk_core::KEY_TRUSTED_HERE_UNREAD,
+            ],
+        ),
     ];
     for (name, warning, wanted) in cases {
         let overlay = Overlay::TrustConflict {
@@ -5147,6 +5157,13 @@ fn capture_rfc063_the_security_warning_from_each_caller() {
                     flat.contains("key id friend") || flat.contains("key id shared"),
                     "{name} at {w}×{h} {theme}: the id leads:\n{text}"
                 );
+                // **And a key stikk never read is never drawn** (review v1 D1).
+                if wanted.contains(&stikk_core::KEY_TRUSTED_HERE_UNREAD) {
+                    assert!(
+                        !flat.contains("trusted here"),
+                        "{name} at {w}×{h} {theme}: no row for a key stikk could not read:\n{text}"
+                    );
+                }
             }
         }
     }

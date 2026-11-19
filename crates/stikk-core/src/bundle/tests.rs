@@ -1075,3 +1075,156 @@ fn an_invalid_seal_puts_the_warning_on_the_view() {
         "and the card still lists what prikk would refuse"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Review v1 D1: a trust list stikk cannot read must not cost prikk's own verdicts.
+// ---------------------------------------------------------------------------------------------
+
+/// As [`importing_at`], with `trust maintainer list` **refused** — prikk answered the preview,
+/// and stikk cannot list the keys that answer was made against.
+fn importing_at_with_the_list_refused(
+    minor: u32,
+    outcomes: Option<Vec<stikk_prikk::SealOutcome>>,
+    refusals: Option<Vec<stikk_prikk::ImportRefusal>>,
+) -> NullBackend {
+    importing_at(minor, outcomes, refusals)
+        .with_trusted_keys_refusal("error: precondition not met: trust policy is unreadable")
+}
+
+/// **At 0.56–0.57 the import is still withheld when the list cannot be read** (review v1 D1).
+///
+/// This is the case that failed open: every row became `Unknown`, the warning was lost, and
+/// stikk armed a confirmation for a bundle prikk had itself called `invalid`.
+#[test]
+fn a_refused_trust_list_does_not_offer_an_import_prikk_called_invalid() {
+    for minor in [56, 57] {
+        let backend = importing_at_with_the_list_refused(
+            minor,
+            Some(vec![outcome("z-maint", stikk_prikk::SealVerdict::Invalid)]),
+            None,
+        );
+        match previewed(&backend, 200) {
+            ImportPreview::InvalidSeal(warning) => {
+                assert_eq!(warning.heading, crate::INVALID_SEAL_HEADING, "0.{minor}");
+                // **The row is left out and its absence is said**, rather than a key stikk never
+                // read being drawn as one.
+                assert_eq!(
+                    warning.rows.len(),
+                    1,
+                    "0.{minor}: the id only: {:?}",
+                    warning.rows
+                );
+                assert!(
+                    warning.body.contains(&crate::KEY_TRUSTED_HERE_UNREAD),
+                    "0.{minor}: and the card says why: {:?}",
+                    warning.body
+                );
+            }
+            other => panic!("0.{minor}: expected the warning, got {other:?}"),
+        }
+        assert_eq!(
+            backend.bundle_import_calls(),
+            0,
+            "0.{minor}: nothing spawned"
+        );
+    }
+}
+
+/// **At 0.58 the same warning, and prikk's refusal list still withholds the import.**
+#[test]
+fn a_refused_trust_list_keeps_the_warning_and_prikks_refusals_at_0_58() {
+    let backend = importing_at_with_the_list_refused(
+        58,
+        Some(vec![outcome("z-maint", stikk_prikk::SealVerdict::Invalid)]),
+        Some(vec![refusal("forged-publication-signature")]),
+    );
+    assert!(
+        matches!(previewed(&backend, 200), ImportPreview::WouldRefuse(_)),
+        "prikk's own list is what withholds at 0.58"
+    );
+    let read = crate::open_bundle(&backend, Path::new("/repo"), Path::new("/tmp/v1.bundle"))
+        .expect("the bundle reads");
+    let BundleOpened::Read(view) = read else {
+        panic!("expected a read bundle");
+    };
+    let warning = view.warning.expect("the card still opens the warning");
+    assert_eq!(warning.heading, crate::INVALID_SEAL_HEADING);
+    assert_eq!(warning.rows.len(), 1, "{:?}", warning.rows);
+    assert!(warning.body.contains(&crate::KEY_TRUSTED_HERE_UNREAD));
+    assert_eq!(backend.bundle_import_calls(), 0);
+}
+
+/// **Every row still carries prikk's own sentence, not `Unknown`**, when the list is refused —
+/// the verdict is prikk's, and the list only supplied the key shown beside it.
+#[test]
+fn a_refused_trust_list_still_shows_each_verdict_prikk_gave() {
+    use crate::trust::SealerTrust;
+    let backend = importing_at_with_the_list_refused(
+        58,
+        Some(vec![
+            outcome("z-maint", stikk_prikk::SealVerdict::Sound),
+            outcome("stranger", stikk_prikk::SealVerdict::Unverifiable),
+        ]),
+        Some(Vec::new()),
+    );
+    let read = crate::open_bundle(&backend, Path::new("/repo"), Path::new("/tmp/v1.bundle"))
+        .expect("the bundle reads");
+    let BundleOpened::Read(view) = read else {
+        panic!("expected a read bundle");
+    };
+    let rows: Vec<(&str, SealerTrust, bool)> = view
+        .sealers
+        .judged()
+        .iter()
+        .map(|sealer| {
+            (
+                sealer.key_id.as_str(),
+                sealer.trust,
+                sealer.trusted_here.is_some(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "z-maint",
+                SealerTrust::Checked(stikk_prikk::SealVerdict::Sound),
+                false
+            ),
+            (
+                "stranger",
+                SealerTrust::Checked(stikk_prikk::SealVerdict::Unverifiable),
+                false
+            ),
+        ],
+        "prikk's verdicts, with no key to show beside them"
+    );
+    assert_eq!(view.warning, None, "nothing here is the security event");
+    // **And an import is still offered**, because `unverifiable` withholds nothing and prikk's
+    // refusal list is empty.
+    assert!(matches!(
+        previewed(&backend, 200),
+        ImportPreview::Ready { .. }
+    ));
+}
+
+/// **Below 0.56 nothing changed**: a refused list is `Unknown` for every id, as RFC 054 built it.
+#[test]
+fn below_0_56_a_refused_trust_list_is_still_unknown_for_every_id() {
+    use crate::trust::SealerTrust;
+    let backend = importing_at_with_the_list_refused(55, None, None);
+    let read = crate::open_bundle(&backend, Path::new("/repo"), Path::new("/tmp/v1.bundle"))
+        .expect("the bundle reads");
+    let BundleOpened::Read(view) = read else {
+        panic!("expected a read bundle");
+    };
+    assert!(
+        view.sealers
+            .judged()
+            .iter()
+            .all(|sealer| sealer.trust == SealerTrust::Unknown),
+        "{:?}",
+        view.sealers
+    );
+}

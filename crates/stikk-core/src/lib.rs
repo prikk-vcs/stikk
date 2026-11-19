@@ -132,14 +132,14 @@ pub use switch::{
 };
 pub use trust::{
     ADOPT_CONSEQUENCE, ADOPT_OPERATION, ALREADY_TRUSTED, AdoptPreview, HOW_TO_ADOPT,
-    ID_REMOVED_BUT_BOUND, INVALID_SEAL, INVALID_SEAL_HEADING, KEY_ID_SHAPE, LAST_KEY,
-    NAMES_BUT_DOES_NOT_PROVE, NO_LONGER_TRUSTED, NONE_ADOPTED, OWN_KEY_UNKNOWN,
-    PRIKK_REFUSED_ADOPT, PUBLIC_KEY_SHAPE, REMOVE_CONSEQUENCE, REMOVE_MAY_FAIL_VERIFY,
-    REMOVE_OPERATION, REMOVE_YOUR_OWN, REMOVED_SEE_VERIFY, RemovePreview, Sealer, SealerTrust,
-    SealerTrustRead, SecurityWarning, TRUST_FROM_MINOR, TWO_KEYS_ONE_ID, TWO_KEYS_ONE_ID_HEADING,
-    TrustRow, TrustView, TrustWriteResult, TwoKeysOneId, WHAT_TRUST_MEANS, WHERE_TO_GET_THE_KEY,
-    WarningRow, adopt_confirm_and_execute, adopt_preview, adopted_line, check_key_id,
-    check_public_key, default_key_id, invalid_seal_warning, key_id_conflict_warning,
+    ID_REMOVED_BUT_BOUND, INVALID_SEAL, INVALID_SEAL_HEADING, KEY_ID_SHAPE,
+    KEY_TRUSTED_HERE_UNREAD, LAST_KEY, NAMES_BUT_DOES_NOT_PROVE, NO_LONGER_TRUSTED, NONE_ADOPTED,
+    OWN_KEY_UNKNOWN, PRIKK_REFUSED_ADOPT, PUBLIC_KEY_SHAPE, REMOVE_CONSEQUENCE,
+    REMOVE_MAY_FAIL_VERIFY, REMOVE_OPERATION, REMOVE_YOUR_OWN, REMOVED_SEE_VERIFY, RemovePreview,
+    Sealer, SealerTrust, SealerTrustRead, SecurityWarning, TRUST_FROM_MINOR, TWO_KEYS_ONE_ID,
+    TWO_KEYS_ONE_ID_HEADING, TrustRow, TrustView, TrustWriteResult, TwoKeysOneId, WHAT_TRUST_MEANS,
+    WHERE_TO_GET_THE_KEY, WarningRow, adopt_confirm_and_execute, adopt_preview, adopted_line,
+    check_key_id, check_public_key, default_key_id, invalid_seal_warning, key_id_conflict_warning,
     not_the_default_id, remove_confirm_and_execute, remove_preview, sealers, trust_unavailable,
     two_keys_warning,
 };

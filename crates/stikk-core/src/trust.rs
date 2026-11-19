@@ -314,24 +314,34 @@ impl SealerTrustRead {
     }
 }
 
-/// Judge each of `sealed_by` against this repository's adopted keys — **one read for all of
-/// them** (RFC 054 decision 3, as amended).
+/// Judge each of `sealed_by` — **by prikk's own check where prikk made one, and by name below
+/// that version** (RFC 054 decision 3 as amended; RFC 063 decision 6).
 ///
-/// Three outcomes, and they are not the same thing:
+/// **Two bands, and they answer different questions.**
+///
+/// **From prikk 0.56** (`outcomes` is `Some`; [`stikk_prikk::SEAL_OUTCOMES_FROM_MINOR`]) the
+/// bundle preview carries prikk's own verdict per signature, checked against the key this
+/// repository has adopted under that id. That verdict **is** the judgement: the ids come from
+/// prikk's own entries, in prikk's order, and stikk's name match is not consulted at all —
+/// it answers the weaker question, and two answers on one row would eventually disagree. The
+/// trust list is read for one thing only, [`Sealer::trusted_here`]: the public key the security
+/// warning shows beside an `invalid` row. **A list stikk cannot read does not cost prikk's
+/// answer** (review v1 D1): the rows still carry prikk's verdicts and `trusted_here` is `None`.
+///
+/// **Below 0.56** (`outcomes` is `None`) a bundle records a name, so a name is what is matched.
+/// `bundle-preview-v1`'s `sealed_by` is the `key_id` string out of the signature envelope —
+/// ids, no public keys, and nothing checked against anything at preview time. The id is compared
+/// with the adopted keys' ids and the sentence says what it found: this id **names** a key this
+/// repository trusts. It does not say the signature is that key's, because the preview there
+/// cannot know, and a sender who adopts its own key under a name the receiver trusts gets a
+/// clean preview and a clean import (measured — see [`NAMES_BUT_DOES_NOT_PROVE`]). **Verify
+/// after import is where prikk checks it**, on that band. Three outcomes there, and they are not
+/// the same thing:
 /// - the list read → each id judged;
 /// - the list **refused** → [`SealerTrust::Unknown`] for every id, so the card says what it does
 ///   not know and nothing else about it changes (RFC 035 A3's rule);
-/// - **below the band** → [`SealerTrustRead::Unavailable`], and the card says nothing extra at
-///   all (decision 4).
-///
-/// **A bundle records a name, so a name is what is matched.** `bundle-preview-v1`'s `sealed_by`
-/// is the `key_id` string out of the signature envelope — ids, no public keys, and nothing
-/// checked against anything at preview time. The id is therefore compared with the adopted
-/// keys' ids and the sentence says what it found: this id **names** a key this repository
-/// trusts. It does not say the signature is that key's, because preview cannot know that, and a
-/// sender who adopts its own key under a name the receiver trusts gets a clean preview and a
-/// clean import (measured — see [`NAMES_BUT_DOES_NOT_PROVE`]). **Verify after import is where
-/// prikk checks it.**
+/// - **below the trust band** → [`SealerTrustRead::Unavailable`], and the card says nothing extra
+///   at all (decision 4).
 #[must_use]
 pub fn sealers(
     prikk: &impl Prikk,
@@ -351,22 +361,31 @@ pub fn sealers(
                 .collect(),
         )
     };
-    let rows = match read(prikk, repo) {
-        Ok(TrustView::Listed { rows, .. }) => rows,
-        Ok(TrustView::Unavailable(_)) => return SealerTrustRead::Unavailable,
-        // Refused, or the handshake itself failed: stikk tried and does not know.
-        Ok(TrustView::Failed(_)) | Err(_) => return unknown(),
+    // **The list is read for the key a warning shows, not for the verdict** (review v1 D1).
+    //
+    // Where prikk gave outcomes, a list stikk cannot read must not cost them: throwing them away
+    // made every row `Unknown`, which lost the security warning on the card and — at 0.56–0.57,
+    // where `import_refusals` is not read — **offered an import of a bundle prikk had itself
+    // called invalid**. That is a security path failing open, so the read's failure now costs
+    // exactly one thing: the public key shown beside the id.
+    let listed = match read(prikk, repo) {
+        Ok(TrustView::Listed { rows, .. }) => Some(rows),
+        // Below the trust band, or refused, or the handshake failed. Each is answered below for
+        // the name-match band, and none of them changes prikk's own verdicts.
+        Ok(TrustView::Unavailable(_)) if outcomes.is_none() => {
+            return SealerTrustRead::Unavailable;
+        }
+        Ok(TrustView::Unavailable(_) | TrustView::Failed(_)) | Err(_) => None,
     };
-    let adopted_key = |key_id: &str| {
-        rows.iter()
-            .find(|row| row.key_id == key_id)
-            .map(|row| row.public_key.clone())
+    let adopted_key = |rows: Option<&Vec<TrustRow>>, key_id: &str| {
+        rows.and_then(|rows| {
+            rows.iter()
+                .find(|row| row.key_id == key_id)
+                .map(|row| row.public_key.clone())
+        })
     };
-    // **prikk's answer wins wherever prikk gave one** (RFC 063 decision 6). From 0.56 the
-    // preview checks each signature against the key adopted under its id, so stikk's own name
-    // match is not consulted at all — it answers a weaker question, and two answers on one row
-    // would eventually disagree. The ids come from prikk's own outcome entries, in prikk's
-    // order, for the same reason.
+    // **prikk's answer wins wherever prikk gave one** (RFC 063 decision 6). The ids come from
+    // prikk's own outcome entries, in prikk's order, for the same reason.
     if let Some(outcomes) = outcomes {
         return SealerTrustRead::Judged(
             outcomes
@@ -374,11 +393,15 @@ pub fn sealers(
                 .map(|outcome| Sealer {
                     key_id: outcome.key_id.clone(),
                     trust: SealerTrust::Checked(outcome.outcome),
-                    trusted_here: adopted_key(&outcome.key_id),
+                    trusted_here: adopted_key(listed.as_ref(), &outcome.key_id),
                 })
                 .collect(),
         );
     }
+    // Below the band, a list stikk could not read is `Unknown` for every id, exactly as before.
+    let Some(rows) = listed else {
+        return unknown();
+    };
     SealerTrustRead::Judged(
         sealed_by
             .iter()
@@ -389,7 +412,7 @@ pub fn sealers(
                     Some(_) => SealerTrust::NamesATrustedKey,
                     None => SealerTrust::NotTrusted,
                 },
-                trusted_here: adopted_key(key_id),
+                trusted_here: adopted_key(Some(&rows), key_id),
             })
             .collect(),
     )
@@ -551,6 +574,16 @@ pub const ID_REMOVED_BUT_BOUND: &str =
 pub const INVALID_SEAL_HEADING: &str =
     "A seal in this bundle does not match the key you trust under its id";
 
+/// The line the `invalid`-seal warning adds **when stikk has no key to show** beside the id
+/// (review v1 D1).
+///
+/// The `trusted here` row is left out rather than filled with a placeholder — a row's value is
+/// repository text, and stikk inventing one would be stikk claiming a key it never read — so the
+/// absence is explained here instead. **What prikk found is unaffected**: prikk checked the
+/// signature against the adopted key whether or not stikk could list it.
+pub const KEY_TRUSTED_HERE_UNREAD: &str = "stikk could not read the key this repository trusts under that id, so it is not shown here. \
+     prikk checked the signature against it all the same.";
+
 /// The body beneath [`INVALID_SEAL_HEADING`] (RFC 063 decision 8), continuing its sentence.
 pub const INVALID_SEAL: &str = "it may be forged, or another person signs under the same id. Do not import it until you have \
      asked the sender. If it is theirs, they must sign under a distinct id, and you adopt that \
@@ -662,16 +695,20 @@ pub fn invalid_seal_warning(key_id: &str, trusted_here: Option<&str>) -> Securit
         label: "key id",
         value: key_id.to_string(),
     }];
-    if let Some(public_key) = trusted_here {
-        rows.push(WarningRow {
+    let mut body = vec![INVALID_SEAL];
+    match trusted_here {
+        Some(public_key) => rows.push(WarningRow {
             label: "trusted here",
             value: public_key.to_string(),
-        });
+        }),
+        // **The row is left out and its absence is said** (review v1 D1): the warning itself is
+        // prikk's finding and does not depend on stikk reading the list.
+        None => body.push(KEY_TRUSTED_HERE_UNREAD),
     }
     SecurityWarning {
         heading: INVALID_SEAL_HEADING,
         rows,
-        body: vec![INVALID_SEAL],
+        body,
         detail: None,
     }
 }

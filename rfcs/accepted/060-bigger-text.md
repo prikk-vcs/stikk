@@ -1,6 +1,6 @@
 # RFC 060 — Bigger text
 
-**Status.** **Accepted by the project owner 2026-11-21**, after a review against the owner's philosophy (§ *Review*); [Handoff A](../handoffs/060-bigger-text/a-bigger-text-handoff-v1.md). **Proposed 2026-11-21** by the architect, as 0.21.0's increment 3 (`.git-exclude/release/0-21-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-11-21**, after a review against the owner's philosophy (§ *Review*); [Handoff A](../handoffs/060-bigger-text/a-bigger-text-handoff-v1.md), delivered on `main` (`ca15867`..`472e6e0`); [Handoff B](../handoffs/060-bigger-text/b-the-help-scrolls-with-down-handoff-v1.md), a defect the real-terminal check found: **↓ does not scroll the help**, and Enter does (older than RFC 060). **Proposed 2026-11-21** by the architect, as 0.21.0's increment 3 (`.git-exclude/release/0-21-0-scope.md`,
 authorized 2026-11-04, last amended 2026-11-21). **No open question.**
 **Measured** (`.git-exclude/reports/060-bigger-text/`):
 - `grid060.sh` → `grid060.txt`: Alacritty 0.17.0's cell size at six font sizes, read from the window's own size

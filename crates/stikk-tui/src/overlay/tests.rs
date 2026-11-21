@@ -129,12 +129,17 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
     // that content tests do not fail for a reason they are not testing. Whether the panel scrolls
     // honestly when it does not fit is the gate's assertion and
     // `the_last_terminology_entry_is_reachable_by_scrolling_at_80x24`'s, both at the real floor.
+    //
+    // **Taller again since RFC 060** (decision 2): the Keys section's longest descriptions now wrap
+    // instead of running into the border, which costs the panel a few rows and pushed the
+    // terminology table past 60. The size is still here for the same reason — so a content test
+    // fails only about content.
     let text = draw_at(
         &Overlay::Glossary {
             offset: std::cell::Cell::new(0),
         },
         90,
-        60,
+        130,
     );
     assert!(text.contains("Glossary"));
     assert!(text.contains("Git")); // the Git → prikk section
@@ -178,15 +183,16 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
 #[test]
 fn glossary_pads_the_longest_term_without_colliding_into_its_prikk_column() {
     // **Taller than `draw`'s own roomy default**, for the reason that default exists: the Keys
-    // section above the terminology grew again (RFC 058's `U`), and at 90x45 the first term now
-    // sits one row past the bottom -- which would fail this test for the one thing it is not
-    // testing. Reachability at 80x24 is pinned by the tests further down, as review v2's C2 says.
+    // section above the terminology grew again (RFC 058's `U`, then RFC 060's wrapping of the
+    // longest key descriptions), and at 90x50 the first term now sits past the bottom -- which
+    // would fail this test for the one thing it is not testing. Reachability at the real floor is
+    // pinned by the tests further down, as review v2's C2 says.
     let text = draw_at(
         &Overlay::Glossary {
             offset: std::cell::Cell::new(0),
         },
         90,
-        50,
+        70,
     );
     assert!(text.contains("checkout / switch branch"));
     assert!(!text.contains("branchfocused"));
@@ -1215,23 +1221,40 @@ fn a_hostile_key_id_renders_inert_and_forges_no_chrome() {
         "a key id must not be able to forge a capability row:\n{text}"
     );
     assert!(capability_rows[0].contains("AUTHOR"), "{text}");
-    // What is left of the forged text is on the id's row, under stikk's own label, inside quotes,
-    // with its spaces escaped — so it cannot be read as the claim it imitates.
-    let id_row = text
-        .lines()
-        .find(|row| row.contains("Signing key id:"))
-        .expect("the id row is on screen");
+    // What is left of the forged text is under stikk's own label, inside quotes, with its spaces
+    // escaped — so it cannot be read as the claim it imitates.
+    //
+    // **Flattened across the id's rows** (RFC 060 decision 2): the escaped id is longer than the
+    // card is wide and now continues on a row of its own instead of being cut at the border, so the
+    // phrase it must not forge is checked against the joined rows — where a row boundary cannot hide
+    // it either.
+    let id_rows: String = panel_rows(&text)
+        .into_iter()
+        .skip_while(|row| !row.contains("Signing key id:"))
+        .take_while(|row| !row.trim().is_empty())
+        .enumerate()
+        // The first row keeps its label; a continuation's hanging indent comes off, so the joined
+        // text is the value as a reader reads it down the card.
+        .map(|(at, row)| {
+            if at == 0 {
+                row.trim_end().to_string()
+            } else {
+                row.trim().to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("");
     assert!(
-        !id_row.contains("Consumes: MAINTAINER"),
-        "the forged phrase must not survive as a phrase: {id_row:?}"
+        !id_rows.contains("Consumes: MAINTAINER"),
+        "the forged phrase must not survive as a phrase: {id_rows:?}"
     );
     assert!(
-        id_row.contains("Consumes:\\u0020MA"),
-        "it survives only as escaped identifier text: {id_row:?}"
+        id_rows.contains("Consumes:\\u0020MA"),
+        "it survives only as escaped identifier text: {id_rows:?}"
     );
     assert!(
-        id_row.contains("\\r\\n"),
-        "the CR LF takes JSON's short escapes, the same spelling Patch detail uses: {id_row:?}"
+        id_rows.contains("\\r\\n"),
+        "the CR LF takes JSON's short escapes, the same spelling Patch detail uses: {id_rows:?}"
     );
 }
 
@@ -2341,10 +2364,12 @@ fn every_wrapped_row_of_a_verbatim_message_carries_the_quote_bar() {
 fn the_quote_bar_does_not_reflow_the_text() {
     let card = three_row_refusal();
     let inert_text = crate::text::inert(&card.verbatim);
-    // The same call the renderer makes, against the placeholder indent…
-    let with_indent = crate::text::wrap_indented(&inert_text, REFUSAL_TEXT_WIDTH, QUOTE_INDENT);
+    // The same call the panel makes, against the placeholder indent… **at the width a 60-column
+    // terminal gives it** (RFC 060 decision 2), which is the narrowest stikk draws at.
+    let width = usize::from(REFUSAL_WIDTH.min(60) - 3);
+    let with_indent = crate::text::wrap_indented(&inert_text, width, QUOTE_INDENT);
     // …and against the bar itself, which is the same display width.
-    let with_bar = crate::text::wrap_indented(&inert_text, REFUSAL_TEXT_WIDTH, QUOTE_BAR);
+    let with_bar = crate::text::wrap_indented(&inert_text, width, QUOTE_BAR);
     assert_eq!(
         QUOTE_BAR.chars().count(),
         QUOTE_INDENT.chars().count(),
@@ -2669,14 +2694,40 @@ fn every_disabled_palette_reason_renders_whole_at_80_columns() {
                 24,
             );
             println!("--- palette, {who}, ref focused: {ref_focused}, 80×24\n{text}");
+            // **The entry, and its continuation rows** (RFC 060 decision 2): a reason that does not
+            // fit the panel now continues on the next row instead of being cut at the border, so the
+            // entry is read as the reader reads it — down the panel, to the next entry's binding.
+            let rows: Vec<&str> = text.lines().collect();
+            let entry = |name: &str| -> String {
+                let at = rows
+                    .iter()
+                    .position(|line| line.contains(name))
+                    .unwrap_or_else(|| panic!("{name} not listed:\n{text}"));
+                let mut joined = rows[at].trim_matches(['│', ' ']).to_string();
+                for row in rows.iter().skip(at + 1) {
+                    let row = row.trim_matches(['│', ' ']);
+                    if row.is_empty() || row.contains('[') {
+                        break;
+                    }
+                    // **Joined with nothing**: a composed row is hard-split, so a continuation can
+                    // begin mid-word, and a space between them would invent one.
+                    joined.push_str(row);
+                }
+                joined
+            };
             for command in stikk_core::palette::commands() {
-                let line = text
-                    .lines()
-                    .find(|line| line.contains(command.name))
-                    .unwrap_or_else(|| panic!("{} not listed:\n{text}", command.name));
+                let line = entry(command.name);
                 match command.unavailable_reason(readiness, ref_focused) {
                     Some(reason) => assert!(
-                        line.contains(&format!("— {reason}")),
+                        line.split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                            .contains(
+                                &format!("— {reason}")
+                                    .split_whitespace()
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            ),
                         "{who}, focused {ref_focused}: {}'s reason {reason:?} is not whole in {line:?}",
                         command.name
                     ),

@@ -698,7 +698,14 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
     let text_width = usize::from(region.width.saturating_sub(3));
     let viewport = region.height.saturating_sub(2);
 
-    let lines = glossary_lines(palette, text_width);
+    // **Wrapped to the width it is drawn at** (RFC 060 decision 2), like every panel: at 60 columns
+    // several key rows used to run into the border.
+    let lines = glossary_lines(palette).rows(text_width);
+    crate::text::record_overflow(
+        "Glossary & Help",
+        &lines,
+        usize::from(region.width.saturating_sub(2)),
+    );
 
     // The clamp, and the write-back that makes it stick (see `Overlay::Glossary`). `saturating_sub`
     // gives 0 when everything fits, so a tall terminal simply cannot scroll.
@@ -733,7 +740,7 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
 
 /// Every line of the Glossary panel, already wrapped to `text_width`, so the caller's scroll clamp is
 /// exact. Split out from the renderer so a test can count and inspect the lines without a terminal.
-fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
+fn glossary_lines<'a>(palette: &Palette) -> Body<'a> {
     // RFC 018 F1: the line this replaced ("stikk reads prikk; it never writes your repository") was
     // true when written and false the moment stikk gained a mutation — anchored to a feature set, not
     // to anything that could not change. A user-facing claim may rest on an invariant this project
@@ -741,98 +748,141 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
     // replacement rests on CON-1: every repository write happens inside prikk itself, through its
     // public surface, never as a direct write stikk performs — true before commit/seal existed, true
     // after, and true of whatever mutation lands next.
-    let mut lines: Vec<Line> = vec![
-        Line::from(Span::styled(
-            "  Every repository write happens inside prikk itself, never in stikk.",
-            Style::default().fg(palette.dim),
-        )),
-        Line::from(""),
-        section(palette, "Keys"),
-        key_line(palette, "↑/↓ or j/k", "scroll this panel"),
-        key_line(palette, "Enter", "open / drill in / activate"),
-        key_line(palette, "b", "choose which ref to view"),
-        key_line(palette, "w", "changes — worktree vs baseline"),
-        key_line(palette, "u", "toggle untracked (in Changes)"),
-        key_line(
-            palette,
-            "v",
-            "prikk's own fields (in Patch detail, Compare)",
-        ),
-        key_line(
-            palette,
-            "m",
-            "mark this block for a comparison (in History)",
-        ),
-        key_line(palette, "d", "compare — what changed between two points"),
-        key_line(palette, "Q", "queue — patches waiting to be sealed"),
-        key_line(palette, "V", "verify — prikk's verdict on the repository"),
-        key_line(palette, "C", "commit worktree changes"),
-        key_line(palette, "S", "seal the active WAL"),
-        key_line(
-            palette,
-            "n",
-            "new branch at this ref's tip (in the ref picker)",
-        ),
-        key_line(
-            palette,
-            "t",
-            "tag this ref's tip, or this block (History, Block detail)",
-        ),
-        key_line(palette, "x", "close this branch (in the ref picker)"),
-        key_line(
-            palette,
-            "s",
-            "switch to this branch — rewrites the worktree (ref picker)",
-        ),
-        key_line(
-            palette,
-            "M",
-            "merge plan — the marked branch into this one (ref picker)",
-        ),
-        key_line(
-            palette,
-            "i",
-            "open a bundle file — what it is, and what it would change",
-        ),
-        key_line(
-            palette,
-            "I",
-            "import the open bundle as a received branch (in Bundle)",
-        ),
-        key_line(
-            palette,
-            "E",
-            "export this branch to a bundle file (in the ref picker)",
-        ),
-        key_line(palette, "T", "the maintainer keys this repository trusts"),
-        key_line(
-            palette,
-            "a",
-            "adopt a maintainer key \u{b7} x removes one (in Trust)",
-        ),
-        key_line(
-            palette,
-            "U",
-            "undo this block \u{b7} puts back what it changed (History, Block)",
-        ),
-        key_line(
-            palette,
-            "F",
-            "save the selected file as it was at this block (in Block)",
-        ),
-        key_line(
-            palette,
-            "A",
-            "save all of this block's files into a new folder (in Block)",
-        ),
-        key_line(palette, ":", "command palette"),
-        key_line(palette, "R", "recent refusals"),
-        key_line(palette, "o", "background operations"),
-        key_line(palette, "r", "refresh — re-read from prikk"),
-        key_line(palette, "? / Esc / q", "close · back · quit at root"),
-        Line::from(""),
-        section(palette, "Git → prikk"),
-    ];
+    let mut lines = Body::new();
+    lines.prose(
+        Style::default().fg(palette.dim),
+        "  ",
+        "Every repository write happens inside prikk itself, never in stikk.",
+    );
+    lines.blank();
+    section(&mut lines, palette, "Keys");
+    key_line(&mut lines, palette, "↑/↓ or j/k", "scroll this panel");
+    key_line(&mut lines, palette, "Enter", "open / drill in / activate");
+    key_line(&mut lines, palette, "b", "choose which ref to view");
+    key_line(&mut lines, palette, "w", "changes — worktree vs baseline");
+    key_line(&mut lines, palette, "u", "toggle untracked (in Changes)");
+    key_line(
+        &mut lines,
+        palette,
+        "v",
+        "prikk's own fields (in Patch detail, Compare)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "m",
+        "mark this block for a comparison (in History)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "d",
+        "compare — what changed between two points",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "Q",
+        "queue — patches waiting to be sealed",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "V",
+        "verify — prikk's verdict on the repository",
+    );
+    key_line(&mut lines, palette, "C", "commit worktree changes");
+    key_line(&mut lines, palette, "S", "seal the active WAL");
+    key_line(
+        &mut lines,
+        palette,
+        "n",
+        "new branch at this ref's tip (in the ref picker)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "t",
+        "tag this ref's tip, or this block (History, Block detail)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "x",
+        "close this branch (in the ref picker)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "s",
+        "switch to this branch — rewrites the worktree (ref picker)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "M",
+        "merge plan — the marked branch into this one (ref picker)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "i",
+        "open a bundle file — what it is, and what it would change",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "I",
+        "import the open bundle as a received branch (in Bundle)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "E",
+        "export this branch to a bundle file (in the ref picker)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "T",
+        "the maintainer keys this repository trusts",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "a",
+        "adopt a maintainer key \u{b7} x removes one (in Trust)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "U",
+        "undo this block \u{b7} puts back what it changed (History, Block)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "F",
+        "save the selected file as it was at this block (in Block)",
+    );
+    key_line(
+        &mut lines,
+        palette,
+        "A",
+        "save all of this block's files into a new folder (in Block)",
+    );
+    key_line(&mut lines, palette, ":", "command palette");
+    key_line(&mut lines, palette, "R", "recent refusals");
+    key_line(&mut lines, palette, "o", "background operations");
+    key_line(&mut lines, palette, "r", "refresh — re-read from prikk");
+    key_line(
+        &mut lines,
+        palette,
+        "? / Esc / q",
+        "close · back · quit at root",
+    );
+    lines.blank();
+    section(&mut lines, palette, "Git → prikk");
     // Review v1 C1: a literal `22` broke the moment a term ("checkout / switch branch", "merge conflict
     // / resolve") ran 24 chars long — the prikk half ran straight into it, unseparated. Computed from
     // the actual terms so a future long one still lines up — `+ 2` for a real gap, since padding a term
@@ -845,20 +895,17 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
         .unwrap_or(0)
         + 2;
     for term in glossary::terminology() {
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("  {:<git_column_width$}", term.git),
-                Style::default().fg(palette.accent),
-            ),
-            Span::styled(term.prikk, Style::default().fg(palette.fg)),
-        ]));
+        // **The prikk half hangs under its own column** (RFC 060 decision 2), so a pair that does not
+        // fit the panel continues rather than running into the border.
+        lines.hanging(
+            Style::default().fg(palette.accent),
+            Style::default().fg(palette.fg),
+            &format!("  {:<git_column_width$}", term.git),
+            &" ".repeat(git_column_width + 2),
+            term.prikk,
+        );
         // Wrapped, not truncated — the RFC 018 fix, now that there is somewhere for the overflow to go.
-        for line in wrap_indented(term.note, text_width, "    ") {
-            lines.push(Line::from(Span::styled(
-                line,
-                Style::default().fg(palette.dim),
-            )));
-        }
+        lines.prose(Style::default().fg(palette.dim), "    ", term.note);
     }
 
     // RFC 035 review v2 §2: quoted content rows are **stikk's own notation**, not prikk's word and
@@ -866,48 +913,27 @@ fn glossary_lines<'a>(palette: &Palette, text_width: usize) -> Vec<Line<'a>> {
     // with nothing else to ask; without this section they would be right to suspect stikk mangled
     // the file.
     for notation in glossary::notations() {
-        lines.push(Line::from(""));
-        lines.push(section(palette, notation.title));
-        for line in wrap_indented(notation.note, text_width, "  ") {
-            lines.push(Line::from(Span::styled(
-                line,
-                Style::default().fg(palette.dim),
-            )));
-        }
+        lines.blank();
+        section(&mut lines, palette, notation.title);
+        lines.prose(Style::default().fg(palette.dim), "  ", notation.note);
     }
 
     // RFC 023 F2: `code_entries()` had **zero call sites** outside `glossary.rs`. A refusal card's
     // `glossary: <code>` line named a code with nowhere to read it; this is the somewhere.
-    lines.push(Line::from(""));
-    lines.push(section(palette, "Codes you may see on a refusal"));
+    lines.blank();
+    section(&mut lines, palette, "Codes you may see on a refusal");
     for entry in glossary::code_entries() {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", entry.code),
-            Style::default().fg(palette.accent),
-        )));
-        lines.push(Line::from(Span::styled(
-            format!("    {}", entry.title),
-            Style::default().fg(palette.fg),
-        )));
-        for line in wrap_indented(entry.explanation, text_width, "    ") {
-            lines.push(Line::from(Span::styled(
-                line,
-                Style::default().fg(palette.dim),
-            )));
-        }
+        lines.prose(Style::default().fg(palette.accent), "  ", entry.code);
+        lines.prose(Style::default().fg(palette.fg), "    ", entry.title);
+        lines.prose(Style::default().fg(palette.dim), "    ", entry.explanation);
         if !entry.see_also.is_empty() {
-            for line in wrap_indented(
-                &format!("see also: {}", entry.see_also.join(" · ")),
-                text_width,
+            lines.prose(
+                Style::default().fg(palette.dim),
                 "    ",
-            ) {
-                lines.push(Line::from(Span::styled(
-                    line,
-                    Style::default().fg(palette.dim),
-                )));
-            }
+                format!("see also: {}", entry.see_also.join(" · ")),
+            );
         }
-        lines.push(Line::from(""));
+        lines.blank();
     }
     lines
 }
@@ -938,15 +964,16 @@ fn render_ref_picker(picker: RefPickerRows<'_>, palette: &Palette, frame: &mut F
         ListPanel {
             title: " Choose ref ",
             width: 52,
-            header: vec![Line::from(Span::styled(
-                "  no published refs",
-                Style::default().fg(palette.dim),
-            ))],
-            items: vec![selectable(
-                palette,
-                true,
-                "heads/main (not published)".to_string(),
-            )],
+            header: {
+                let mut header = Body::new();
+                header.prose(Style::default().fg(palette.dim), "  ", "no published refs");
+                header
+            },
+            items: vec![{
+                let mut row = Body::new();
+                row.selectable(palette, true, "heads/main (not published)");
+                row
+            }],
             cursor: Some(0),
             style: Style::default().fg(palette.fg),
         }
@@ -958,20 +985,21 @@ fn render_ref_picker(picker: RefPickerRows<'_>, palette: &Palette, frame: &mut F
     // fixed-width list with one row per entry, so prose appended to a ref name is prose that gets
     // cut off. The header says it once, in full; the row carries a tag short enough to survive
     // beside a name.
-    let header = if unpublished_current {
-        vec![Line::from(Span::styled(
-            "  the first is the branch you are on, before its first seal",
+    let mut header = Body::new();
+    if unpublished_current {
+        header.prose(
             Style::default().fg(palette.dim),
-        ))]
-    } else {
-        Vec::new()
-    };
+            "  ",
+            "the first is the branch you are on, before its first seal",
+        );
+    }
     let (items, selection) = if refs.is_empty() {
         (
-            vec![Line::from(Span::styled(
-                "  no refs reported",
-                Style::default().fg(palette.dim),
-            ))],
+            vec![{
+                let mut row = Body::new();
+                row.prose(Style::default().fg(palette.dim), "  ", "no refs reported");
+                row
+            }],
             None,
         )
     } else {
@@ -991,7 +1019,9 @@ fn render_ref_picker(picker: RefPickerRows<'_>, palette: &Palette, frame: &mut F
                     // 3): the cursor is where you are, `\u{25cf}` is what you set, and one row can
                     // be both -- which is the ordinary case right before `d`.
                     let marked = marked_ref == Some(name.as_str());
-                    selectable_marked(palette, i == cursor, marked, label)
+                    let mut row = Body::new();
+                    row.selectable_marked(palette, i == cursor, marked, label);
+                    row
                 })
                 .collect(),
             Some(cursor),
@@ -1048,61 +1078,33 @@ fn render_refusal(
     // four-space indent it replaces, so the wrap points cannot move; keeping the same
     // `wrap_indented(.., "    ")` call and re-labelling each row afterwards makes that true by
     // construction rather than by arithmetic, and `the_quote_bar_does_not_reflow_the_text` asserts it.
-    let mut prose: Vec<Line> = vec![Line::from(Span::styled(
-        "  prikk reported —",
-        Style::default().fg(palette.dim),
-    ))];
-    for raw in card.verbatim.lines() {
-        let inert_raw = inert(raw);
-        for row in wrap_indented(&inert_raw, REFUSAL_TEXT_WIDTH, QUOTE_INDENT) {
-            prose.push(Line::from(vec![
-                Span::styled(QUOTE_BAR, Style::default().fg(palette.warn)),
-                // The text, with the placeholder indent removed — the bar occupies exactly those
-                // columns. Styled `fg` on every row, first and continuation alike: a half-styled
-                // continuation reads as a rendering bug rather than as a quote.
-                Span::styled(
-                    row.get(QUOTE_INDENT.len()..)
-                        .unwrap_or_default()
-                        .to_string(),
-                    Style::default().fg(palette.fg),
-                ),
-            ]));
-        }
-    }
-    prose.push(Line::from(""));
+    let mut prose = Body::new();
+    prose.prose(Style::default().fg(palette.dim), "  ", "prikk reported —");
+    // **Every row of prikk's message carries the quote bar** (RFC 026 Handoff C §1), and the panel
+    // wraps it to the width it is drawn at (RFC 060 decision 2).
+    prose.quoted(palette, inert(&card.verbatim));
+    prose.blank();
 
     // ② the gloss — stikk's own voice, separate and below (ER-02). Absent ⇒ verbatim-only (RR-5).
     if let Some(gloss) = &card.gloss {
-        for row in wrap_indented(gloss, REFUSAL_PROSE_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.dim),
-            )));
-        }
-        prose.push(Line::from(""));
+        prose.prose(Style::default().fg(palette.dim), "  ", gloss.clone());
+        prose.blank();
     }
 
     // ④ glossary links for any named code (FR-111).
     if !card.glossary_codes.is_empty() {
-        for row in wrap_indented(
-            &format!("glossary: {}", card.glossary_codes.join(", ")),
-            REFUSAL_PROSE_WIDTH,
+        prose.prose(
+            Style::default().fg(palette.accent),
             "  ",
-        ) {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.accent),
-            )));
-        }
+            format!("glossary: {}", card.glossary_codes.join(", ")),
+        );
     }
 
     // ③ next-steps — stikk-authored, selectable (C-T2b). Their own region, below.
-    let mut actions: Vec<Line> = vec![Line::from(Span::styled(
-        "  What you can do:",
-        Style::default().fg(palette.dim),
-    ))];
+    let mut actions = Body::new();
+    actions.prose(Style::default().fg(palette.dim), "  ", "What you can do:");
     for (i, step) in card.next_steps.iter().enumerate() {
-        actions.push(selectable(palette, i == cursor, step.label.clone()));
+        actions.selectable(palette, i == cursor, step.label.clone());
     }
     // The `+ 12` headroom estimate this used to carry is gone: `prose` is wrapped, so `Panel` sizes it
     // exactly instead of guessing generously and hoping.
@@ -1138,12 +1140,11 @@ fn render_stale(
     // pressure is not a card to leave fragile just because nothing has lengthened it yet.
 
     // ① stikk's own explanation — attributed to stikk, never to prikk (C-T2b/design-review C1).
-    let mut prose: Vec<Line> = vec![
-        Line::from(Span::styled(
-            "  stikk stopped —",
-            Style::default().fg(palette.dim),
-        )),
-        Line::from(vec![
+    let mut prose = Body::new();
+    prose.prose(Style::default().fg(palette.dim), "  ", "stikk stopped —");
+    prose.spans(
+        "    ",
+        vec![
             Span::styled("  │ ", Style::default().fg(palette.warn)),
             Span::styled(
                 inert(operation),
@@ -1152,26 +1153,20 @@ fn render_stale(
             // RFC 030 amendment A3: the headline follows the cause and comes from `stikk-core`
             // (`stale_headline`), so a worktree change never reads as a repository change here.
             Span::styled(headline.to_string(), Style::default().fg(palette.fg)),
-        ]),
-        Line::from(""),
-    ];
+        ],
+    );
+    prose.blank();
 
-    // ② the gloss, in stikk's own voice — never quoted as if it were prikk's. Wrapped here (RFC 024).
-    for row in wrap_indented(gloss, REFUSAL_PROSE_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
+    // ② the gloss, in stikk's own voice — never quoted as if it were prikk's. Wrapped by the panel,
+    // to the width it is drawn at (RFC 060 decision 2).
+    prose.prose(Style::default().fg(palette.dim), "  ", gloss);
 
     // ③ next-steps — stikk-authored, selectable (C-T2b); always exactly one this increment (`Refresh`).
     // Their own region, below.
-    let mut actions: Vec<Line> = vec![Line::from(Span::styled(
-        "  What you can do:",
-        Style::default().fg(palette.dim),
-    ))];
+    let mut actions = Body::new();
+    actions.prose(Style::default().fg(palette.dim), "  ", "What you can do:");
     for (i, step) in next_steps.iter().enumerate() {
-        actions.push(selectable(palette, i == cursor, step.label.clone()));
+        actions.selectable(palette, i == cursor, step.label.clone());
     }
     Panel {
         title: " stikk stopped ",
@@ -1196,37 +1191,46 @@ fn render_commit_would_refuse_declarations(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose: Vec<Line> = Vec::new();
-    for row in wrap_indented(
+    // **The width the panel will draw at** (RFC 060 decision 2), which is also what the declarations
+    // below must be fitted to before their row count can be known.
+    let text_width = panel_text_width(REFUSAL_WIDTH, area);
+    let intro = wrap_indented(
         "Commit is unavailable: prikk reports that it would refuse the declared rename below, and a \
          refused declaration refuses the whole commit. Nothing was armed.",
-        REFUSAL_PROSE_WIDTH,
+        text_width,
         "  ",
-    ) {
-        prose.push(Line::from(Span::styled(
+    );
+    let mut prose = Body::new();
+    let mut prose_len = intro.len() + 1;
+    for row in intro {
+        prose.row(Line::from(Span::styled(
             row,
             Style::default().fg(palette.fg),
         )));
     }
-    prose.push(Line::from(""));
+    prose.blank();
 
-    let actions = vec![
-        Line::from(Span::styled(
-            "  prikk's refusal above names what to do.",
-            Style::default().fg(palette.dim),
-        )),
-        Line::from(Span::styled(
-            "  Esc: close",
-            Style::default().fg(palette.dim),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.prose(
+        Style::default().fg(palette.dim),
+        "  ",
+        "prikk's refusal above names what to do.",
+    );
+    actions.row(Line::from(Span::styled(
+        "  Esc: close",
+        Style::default().fg(palette.dim),
+    )));
 
     // **The budget, exactly as `Panel` will spend it** (RFC 034 Handoff C): it draws
     // `area.height − 2 − actions` prose rows, and the intro above is already wrapped, so what is
     // left for the declarations is a count rather than a guess.
-    let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(actions.len());
-    let available = prose_rows.saturating_sub(prose.len());
-    prose.extend(declaration_lines(declarations, available, palette));
+    let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(2);
+    let available = prose_rows.saturating_sub(prose_len);
+    prose_len += available;
+    let _ = prose_len;
+    for row in declaration_lines(declarations, available, text_width, palette) {
+        prose.row(row);
+    }
 
     Panel {
         title: " Commit unavailable ",
@@ -1256,6 +1260,7 @@ fn render_commit_would_refuse_declarations(
 fn declaration_lines(
     declarations: &[stikk_core::RefusedDeclaration],
     available: usize,
+    text_width: usize,
     palette: &Palette,
 ) -> Vec<Line<'static>> {
     // One declaration's rows: its heading, stikk's attribution, prikk's reason quoted, a blank.
@@ -1267,7 +1272,7 @@ fn declaration_lines(
             identifier(&declaration.old_path),
             identifier(&declaration.new_path)
         );
-        for row in wrap_cells(&heading, REFUSAL_TEXT_WIDTH, "  ") {
+        for row in wrap_cells(&heading, text_width, "  ") {
             out.push(Line::from(Span::styled(
                 row,
                 Style::default().add_modifier(Modifier::BOLD),
@@ -1277,11 +1282,7 @@ fn declaration_lines(
             "  prikk reported —",
             Style::default().fg(palette.dim),
         )));
-        for row in wrap_cells(
-            &inert(&declaration.reason),
-            REFUSAL_TEXT_WIDTH,
-            QUOTE_INDENT,
-        ) {
+        for row in wrap_cells(&inert(&declaration.reason), text_width, QUOTE_INDENT) {
             out.push(Line::from(vec![
                 Span::styled(QUOTE_BAR, Style::default().fg(palette.warn)),
                 Span::styled(
@@ -1298,7 +1299,7 @@ fn declaration_lines(
     let remainder = |unshown: usize| -> Vec<Line<'static>> {
         wrap_cells(
             &stikk_core::unshown_declarations_line(unshown),
-            REFUSAL_PROSE_WIDTH,
+            text_width,
             "  ",
         )
         .into_iter()
@@ -1344,72 +1345,44 @@ fn render_commit_would_refuse(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose: Vec<Line> = Vec::new();
-    for row in wrap_indented(
+    let mut prose = Body::new();
+    prose.prose(
+        Style::default().fg(palette.fg),
+        "  ",
         "Commit is unavailable: prikk reports that it would refuse the paths below, and one refused \
          path refuses the whole commit. Nothing was armed.",
-        REFUSAL_PROSE_WIDTH,
-        "  ",
-    ) {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.fg),
-        )));
-    }
-    prose.push(Line::from(""));
+    );
+    prose.blank();
 
     for path in paths {
-        let heading = format!(
-            "{} {}",
-            identifier(path.kind.label()),
-            identifier(&path.path)
+        prose.prose(
+            Style::default().add_modifier(Modifier::BOLD),
+            "  ",
+            format!(
+                "{} {}",
+                identifier(path.kind.label()),
+                identifier(&path.path)
+            ),
         );
-        for row in wrap_indented(&heading, REFUSAL_TEXT_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().add_modifier(Modifier::BOLD),
-            )));
-        }
-        prose.push(Line::from(Span::styled(
-            "  prikk reported —",
-            Style::default().fg(palette.dim),
-        )));
-        let reason = inert(&path.reason);
-        for row in wrap_indented(&reason, REFUSAL_TEXT_WIDTH, QUOTE_INDENT) {
-            prose.push(Line::from(vec![
-                Span::styled(QUOTE_BAR, Style::default().fg(palette.warn)),
-                Span::styled(
-                    row.get(QUOTE_INDENT.len()..)
-                        .unwrap_or_default()
-                        .to_string(),
-                    Style::default().fg(palette.fg),
-                ),
-            ]));
-        }
-        prose.push(Line::from(""));
+        prose.prose(Style::default().fg(palette.dim), "  ", "prikk reported —");
+        prose.quoted(palette, inert(&path.reason));
+        prose.blank();
     }
 
-    let mut actions: Vec<Line> = vec![Line::from(Span::styled(
-        "  What you can do:",
-        Style::default().fg(palette.dim),
-    ))];
+    let mut actions = Body::new();
+    actions.prose(Style::default().fg(palette.dim), "  ", "What you can do:");
     for step in stikk_core::would_refuse_next_steps(paths) {
-        for (i, row) in wrap_indented(&step, REFUSAL_PROSE_WIDTH, "    ")
-            .into_iter()
-            .enumerate()
-        {
-            let text = if i == 0 {
-                format!("  · {}", row.get(4..).unwrap_or_default())
-            } else {
-                row
-            };
-            actions.push(Line::from(Span::styled(
-                text,
-                Style::default().fg(palette.fg),
-            )));
-        }
+        // The bullet opens the row and the rest hangs under the text, so a step that wraps does not
+        // grow a second bullet.
+        actions.hanging(
+            Style::default().fg(palette.fg),
+            Style::default().fg(palette.fg),
+            "  · ",
+            "    ",
+            step,
+        );
     }
-    actions.push(Line::from(Span::styled(
+    actions.row(Line::from(Span::styled(
         "  Esc: close",
         Style::default().fg(palette.dim),
     )));
@@ -1436,8 +1409,10 @@ fn render_palette(
     let hits = palette::matching(filter);
     // The filter box is chrome the list is read *through* — it stays put while the list scrolls under
     // it, which is why it is the `ListPanel`'s header rather than its first row.
-    let header: Vec<Line> = vec![
-        Line::from(vec![
+    let mut header = Body::new();
+    header.spans(
+        "    ",
+        vec![
             Span::styled("  › ", Style::default().fg(palette.accent)),
             Span::styled(
                 if filter.is_empty() {
@@ -1451,18 +1426,21 @@ fn render_palette(
                     palette.fg
                 }),
             ),
-        ]),
-        Line::from(Span::styled(
-            "  ─────────",
-            Style::default().fg(palette.dim),
-        )),
-    ];
-    let mut lines: Vec<Line> = Vec::new();
+        ],
+    );
+    header.row(Line::from(Span::styled(
+        "  ─────────",
+        Style::default().fg(palette.dim),
+    )));
+    let mut lines: Vec<Body> = Vec::new();
     if hits.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "  no matching command",
+        let mut row = Body::new();
+        row.prose(
             Style::default().fg(palette.dim),
-        )));
+            "  ",
+            "no matching command",
+        );
+        lines.push(row);
     }
     for (i, cmd) in hits.iter().enumerate() {
         let selected = i == cursor;
@@ -1490,7 +1468,12 @@ fn render_palette(
                 Style::default().fg(palette.warn),
             ));
         }
-        lines.push(Line::from(spans));
+        // **Hard-split under the name column** (RFC 060 decision 2): the row's parts are columns, so
+        // it cannot be wrapped as one string, and at 60 columns a disabled command's reason used to be
+        // cut at the border.
+        let mut row = Body::new();
+        row.spans("    ", spans);
+        lines.push(row);
     }
     ListPanel {
         title: " Command palette ",
@@ -1532,11 +1515,16 @@ fn render_loading(what: &str, palette: &Palette, frame: &mut Frame, area: Rect) 
 /// The Background Operations listing (TU-01; RFC 010): running and finished requests this session,
 /// newest-first. A listing only — no cancel action this increment (RFC 010 decision 6).
 fn render_operations(operations: &[Operation], palette: &Palette, frame: &mut Frame, area: Rect) {
-    let lines: Vec<Line> = if operations.is_empty() {
-        vec![Line::from(Span::styled(
-            "  no background operations this session",
-            Style::default().fg(palette.dim),
-        ))]
+    let lines: Vec<Body> = if operations.is_empty() {
+        vec![{
+            let mut row = Body::new();
+            row.prose(
+                Style::default().fg(palette.dim),
+                "  ",
+                "no background operations this session",
+            );
+            row
+        }]
     } else {
         operations
             .iter()
@@ -1551,13 +1539,18 @@ fn render_operations(operations: &[Operation], palette: &Palette, frame: &mut Fr
                         ("failed", Style::default().fg(palette.warn))
                     }
                 };
-                Line::from(vec![
-                    Span::styled(
-                        format!("  {:<14}", op.label),
-                        Style::default().fg(palette.fg),
-                    ),
-                    Span::styled(status, style),
-                ])
+                let mut row = Body::new();
+                row.spans(
+                    "    ",
+                    vec![
+                        Span::styled(
+                            format!("  {:<14}", op.label),
+                            Style::default().fg(palette.fg),
+                        ),
+                        Span::styled(status, style),
+                    ],
+                );
+                row
             })
             .collect()
     };
@@ -1567,7 +1560,7 @@ fn render_operations(operations: &[Operation], palette: &Palette, frame: &mut Fr
     ListPanel {
         title: " Background operations ",
         width: 56,
-        header: Vec::new(),
+        header: Body::new(),
         items: lines,
         cursor: None,
         style: Style::default().fg(palette.fg),
@@ -1590,25 +1583,32 @@ fn render_refusals(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let lines: Vec<Line> = if records.is_empty() {
-        vec![Line::from(Span::styled(
-            "  no refusals this session",
-            Style::default().fg(palette.dim),
-        ))]
+    let lines: Vec<Body> = if records.is_empty() {
+        vec![{
+            let mut row = Body::new();
+            row.prose(
+                Style::default().fg(palette.dim),
+                "  ",
+                "no refusals this session",
+            );
+            row
+        }]
     } else {
         records
             .iter()
             .enumerate()
             .map(|(i, record)| {
                 let head = record.verbatim.lines().next().unwrap_or("");
-                selectable(palette, i == cursor, inert(head))
+                let mut row = Body::new();
+                row.selectable(palette, i == cursor, inert(head));
+                row
             })
             .collect()
     };
     ListPanel {
         title: " Recent refusals ",
         width: 72,
-        header: Vec::new(),
+        header: Body::new(),
         items: lines,
         cursor: (!records.is_empty()).then_some(cursor),
         style: Style::default().fg(palette.fg),
@@ -1635,25 +1635,23 @@ fn render_confirmation(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut lines: Vec<Line> = vec![
-        Line::from(Span::styled(
-            format!("  {}", summary.operation),
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    // **The width the panel will draw at** (RFC 060 decision 2) — needed here only for the lists
+    // below, which choose what to show from how many rows it takes.
+    let text_width = panel_text_width(CONFIRM_WIDTH, area);
+    let mut lines = Body::new();
+    lines.prose(
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        "  ",
+        summary.operation.clone(),
+    );
+    lines.blank();
 
     // **stikk's own words, under the heading and above the targets** (RFC 058 decision 5): what
     // this operation is, for a card that must say that before it names what it acts on. stikk's
     // own, so no `inert` -- the same treatment `consequence` gets at the other end of the card.
     if let Some(preamble) = &summary.preamble {
-        for row in wrap_indented(preamble, PANEL_PROSE_WIDTH, "  ") {
-            lines.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.fg),
-            )));
-        }
-        lines.push(Line::from(""));
+        lines.prose(Style::default().fg(palette.fg), "  ", preamble.clone());
+        lines.blank();
     }
 
     if !summary.target_ids.is_empty()
@@ -1661,7 +1659,7 @@ fn render_confirmation(
         || summary.history_notice.is_some()
     {
         if !summary.target_ids.is_empty() {
-            lines.push(Line::from(Span::styled(
+            lines.row(Line::from(Span::styled(
                 "  Targets:",
                 Style::default().fg(palette.dim),
             )));
@@ -1685,64 +1683,36 @@ fn render_confirmation(
                 Some(width) => 4 + width + 2,
                 None => 4,
             };
-            let rows = crate::text::wrap_verbatim(
-                &identifier(&target.id),
-                PANEL_TEXT_WIDTH,
-                &" ".repeat(gutter),
-            );
-            let mut rows = rows.into_iter();
-            let first = rows
-                .next()
-                .unwrap_or_default()
-                .get(gutter..)
-                .unwrap_or_default()
-                .to_string();
-            let value = Span::styled(first, Style::default().fg(palette.accent));
-            match (role_width, target.role) {
-                (Some(width), Some(role)) => lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("    {role:<width$}  "),
-                        Style::default().fg(palette.dim),
-                    ),
-                    value,
-                ])),
+            let hang = " ".repeat(gutter);
+            // The label opens the row and the id hangs under its own column, split evenly where it
+            // cannot fit (RFC 060 decision 4) — the panel does the splitting, at the width it draws.
+            let opening = match (role_width, target.role) {
+                (Some(width), Some(role)) => format!("    {role:<width$}  "),
                 // A labelled list with an unlabelled row keeps the column, so the ids still line
                 // up under each other rather than one of them stepping left.
-                (Some(width), None) => lines.push(Line::from(vec![
-                    Span::raw(format!("    {:width$}  ", "")),
-                    value,
-                ])),
-                (None, _) => lines.push(Line::from(vec![Span::raw("    "), value])),
-            }
-            for row in rows {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.accent),
-                )));
-            }
+                (Some(width), None) => format!("    {:width$}  ", ""),
+                (None, _) => "    ".to_string(),
+            };
+            lines.hanging_value(
+                Style::default().fg(palette.dim),
+                Style::default().fg(palette.accent),
+                &opening,
+                &hang,
+                identifier(&target.id),
+            );
         }
         // Safeguard 3 (RFC 029 Handoff B §5): directly under the targets and in warn, because it is about
         // where the change goes — above the counts and `C-S2`'s line. The words carry it in a monochrome
         // terminal (`NFR-A03`); the colour only adds. Inert, since it names refs and may carry prikk's
         // own text (`C-T2a`).
         if let Some(notice) = &summary.branch_notice {
-            for row in wrap_indented(&inert(notice), PANEL_PROSE_WIDTH, "    ") {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.warn),
-                )));
-            }
+            lines.prose(Style::default().fg(palette.warn), "    ", inert(notice));
         }
         // RFC 032 decision 5, A2: beside the branch notice, in warn — also about where the change goes.
         if let Some(notice) = &summary.history_notice {
-            for row in wrap_indented(&inert(notice), PANEL_PROSE_WIDTH, "    ") {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.warn),
-                )));
-            }
+            lines.prose(Style::default().fg(palette.warn), "    ", inert(notice));
         }
-        lines.push(Line::from(""));
+        lines.blank();
     }
 
     // **Labelled asides, outside Targets** (RFC 050 review v1 C1). A row under `Targets:` reads
@@ -1766,16 +1736,11 @@ fn render_confirmation(
             aside.after.to_string(),
             Style::default().fg(palette.dim),
         ));
-        lines.push(Line::from(heading));
+        lines.spans("    ", heading);
         for sentence in &aside.body {
-            for row in wrap_indented(&inert(sentence), PANEL_PROSE_WIDTH, "    ") {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.fg),
-                )));
-            }
+            lines.prose(Style::default().fg(palette.fg), "    ", inert(sentence));
         }
-        lines.push(Line::from(""));
+        lines.blank();
     }
 
     if !summary.counts.is_empty() {
@@ -1785,29 +1750,16 @@ fn render_confirmation(
             .map(|(label, count)| format!("{count} {label}"))
             .collect::<Vec<_>>()
             .join(", ");
-        lines.push(Line::from(Span::styled(
-            format!("  {counts_line}"),
-            Style::default().fg(palette.fg),
-        )));
+        lines.prose(Style::default().fg(palette.fg), "  ", counts_line);
         // RFC 032 decision 4: what the `renames` count means, then each declaration prikk will not author
         // as a rename, in warn. Prose rows like the rest, so they never displace the consequence or footer.
         if let Some(note) = &summary.rename_note {
-            for row in wrap_indented(note, PANEL_PROSE_WIDTH, "  ") {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.dim),
-                )));
-            }
+            lines.prose(Style::default().fg(palette.dim), "  ", note.clone());
         }
         for notice in &summary.declaration_notices {
-            for row in wrap_indented(&inert(notice), PANEL_PROSE_WIDTH, "  ") {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.warn),
-                )));
-            }
+            lines.prose(Style::default().fg(palette.warn), "  ", inert(notice));
         }
-        lines.push(Line::from(""));
+        lines.blank();
     }
     // RFC 028 decision 4: what the seal freezes goes directly under the counts line. It is spliced in last,
     // once everything it must never displace has been laid out (Handoff B §4).
@@ -1820,13 +1772,14 @@ fn render_confirmation(
     // **An operation that consumes no capability says so** (RFC 045 §3c). A branch switch signs
     // nothing, and prikk needs no key for it — an absent row would read as an omission, and a
     // `Consumes:` row naming a capability would state a requirement stikk invented.
-    lines.push(Line::from(Span::styled(
-        match summary.capability {
-            Some(capability) => format!("  Consumes: {}", capability_label(capability)),
-            None => "  Consumes: no signing key".to_string(),
-        },
+    lines.prose(
         Style::default().fg(palette.dim),
-    )));
+        "  ",
+        match summary.capability {
+            Some(capability) => format!("Consumes: {}", capability_label(capability)),
+            None => "Consumes: no signing key".to_string(),
+        },
+    );
     // `FL-05` step 5, unmet since before 0.4.0: the confirmation must name **which key** will sign,
     // not only which capability is consumed. `FL-06` asks the same of seal, as amended by RFC 023
     // Handoff B — RFC 016 decision 3 removed a typed key-id *act*, not the information.
@@ -1835,51 +1788,44 @@ fn render_confirmation(
     // reach a confirmation without the readiness this id accompanies (`capability_gate` refuses on
     // `NotReady` first), so any text here would be stikk inventing a fact.
     if let Some(id) = &summary.signing_key_id {
-        lines.push(Line::from(vec![
-            Span::styled("  Signing key id: ", Style::default().fg(palette.dim)),
-            // An **identifier** (RFC 036 decision 3), like every other id: it is a label a user
-            // or a repository's conventions chose, and two different key ids must never look alike
-            // in the one place that names which key will sign.
-            Span::styled(identifier(id), Style::default().fg(palette.accent)),
-        ]));
+        // An **identifier** (RFC 036 decision 3), like every other id: it is a label a user or a
+        // repository's conventions chose, and two different key ids must never look alike in the one
+        // place that names which key will sign. It hangs under the label where it does not fit.
+        lines.hanging_value(
+            Style::default().fg(palette.dim),
+            Style::default().fg(palette.accent),
+            "  Signing key id: ",
+            "    ",
+            identifier(id),
+        );
         // **The id alone is not a statement** (RFC 026 §5). Naming it plainly claims a binding, and on
         // a fresh repository there is none yet — which is the first commit every new user makes.
-        for row in claim_rows(summary.signing_key_claim, palette) {
-            lines.push(row);
+        if let Some(sentence) = claim_sentence(summary.signing_key_claim) {
+            lines.prose(Style::default().fg(palette.dim), "    ", sentence);
         }
         // `C-S2`. **Above the consequence and in warn**, because it is not a note about the key — it
         // is a statement that this signature would be worthless, and it must not read as one more
         // detail in a list the user is scanning past.
         if summary.signing_key_is_published_example {
-            for row in wrap_indented(
+            lines.prose(
+                Style::default().fg(palette.warn),
+                "    ",
                 "This key is published in prikk's own documentation as an example. It is public, so \
                  anyone can forge this signature — generate your own key before signing anything you \
                  intend to be trusted.",
-                PANEL_PROSE_WIDTH,
-                "    ",
-            ) {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.warn),
-                )));
-            }
+            );
         }
     }
-    lines.push(Line::from(""));
+    lines.blank();
 
     // **Cautions about what confirming will produce** (RFC 053 decision 5), above the
     // consequence and in warn. Unconditional, unlike `declaration_notices`, which is drawn only
     // inside the counts block: a card with no counts carried those and showed nothing.
     if !summary.notices.is_empty() {
         for notice in &summary.notices {
-            for row in wrap_indented(notice, PANEL_PROSE_WIDTH, "  ") {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.warn),
-                )));
-            }
+            lines.prose(Style::default().fg(palette.warn), "  ", notice.clone());
         }
-        lines.push(Line::from(""));
+        lines.blank();
     }
 
     // The consequence — stikk's own words. The operation's own plan/content (prikk's verbatim text,
@@ -1891,37 +1837,31 @@ fn render_confirmation(
     // is one *logical* line that draws as four rows, the old `lines.len() + 4` headroom was spent on
     // it, and the footer fell outside the box at every terminal height. Wrapping it makes the count a
     // fact — and the footer is in `actions` below, so even a future mis-measurement costs prose.
-    for line in wrap_indented(&summary.consequence, PANEL_PROSE_WIDTH, "  ") {
-        lines.push(Line::from(Span::styled(
-            line,
-            Style::default().fg(palette.fg),
-        )));
-    }
+    lines.prose(
+        Style::default().fg(palette.fg),
+        "  ",
+        summary.consequence.clone(),
+    );
     // RFC 044 decision 6: the tag message the write will carry, restated under the consequence
     // that said what the write does. **Inert and on its own rows**, because unlike everything else
     // on this card it is text the user wrote, and it is about to become repository content.
     if let Some(message) = &summary.message_note {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
+        lines.blank();
+        lines.row(Line::from(Span::styled(
             "  Message:",
             Style::default().fg(palette.dim),
         )));
-        for row in wrap_indented(&inert(message), PANEL_PROSE_WIDTH, "    ") {
-            lines.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.fg),
-            )));
-        }
+        lines.prose(Style::default().fg(palette.fg), "    ", inert(message));
     }
-    lines.push(Line::from(""));
+    lines.blank();
 
     // The affordances, anchored: whatever runs out of room is prose, never the thing the user must
     // press (RFC 016 C2's rule, now held structurally for this overlay too).
-    let mut actions: Vec<Line> = Vec::new();
+    let mut actions = Body::new();
     match tier {
         Tier::One => {} // never reaches this overlay in practice — tier 1 has no confirmation
         Tier::Two | Tier::Three => {
-            actions.push(Line::from(Span::styled(
+            actions.row(Line::from(Span::styled(
                 "  Enter to confirm · Esc to cancel",
                 Style::default().fg(palette.accent),
             )));
@@ -1932,56 +1872,34 @@ fn render_confirmation(
             // sentence and the id separate, so the id can be split evenly beneath it.
             let target = identifier(summary.target_name.as_deref().unwrap_or(""));
             let inline = format!("  Type \"{target}\" to confirm:");
-            if inline.chars().count() <= PANEL_TEXT_WIDTH {
-                actions.push(Line::from(Span::styled(
+            if inline.chars().count() <= text_width {
+                actions.row(Line::from(Span::styled(
                     inline,
                     Style::default().fg(palette.dim),
                 )));
             } else {
-                actions.push(Line::from(Span::styled(
+                actions.row(Line::from(Span::styled(
                     "  Type this to confirm:",
                     Style::default().fg(palette.dim),
                 )));
-                for row in crate::text::wrap_verbatim(&target, PANEL_TEXT_WIDTH, "    ") {
-                    actions.push(Line::from(Span::styled(
-                        row,
-                        Style::default().fg(palette.accent),
-                    )));
-                }
+                actions.verbatim(Style::default().fg(palette.accent), "    ", target);
             }
             // **The echo is split too**, its continuation rows under the first typed
             // character, so a reader can see the whole of what they have typed so far.
-            let echoed = inert(typed);
-            let mut rows =
-                crate::text::wrap_verbatim(&echoed, PANEL_TEXT_WIDTH, "    ").into_iter();
-            let first = rows
-                .next()
-                .unwrap_or_default()
-                .get(4..)
-                .unwrap_or_default()
-                .to_string();
-            actions.push(Line::from(vec![
-                Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
-                Span::styled(first, Style::default().fg(palette.fg)),
-            ]));
-            for row in rows {
-                actions.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.fg),
-                )));
-            }
+            actions.hanging(
+                Style::default().fg(palette.accent),
+                Style::default().fg(palette.fg),
+                "  \u{203a} ",
+                "    ",
+                inert(typed),
+            );
         }
     }
 
     // An inline error belongs with the affordances, not above them: it is the reason the user is being
     // asked again, and it is useless if it is the row that falls off.
     if let Some(error) = error {
-        for line in wrap_indented(error, PANEL_PROSE_WIDTH, "  ") {
-            actions.push(Line::from(Span::styled(
-                line,
-                Style::default().fg(palette.warn),
-            )));
-        }
+        actions.prose(Style::default().fg(palette.warn), "  ", error);
     }
 
     // **The list is the one part of this card that gives up height** (RFC 028 Handoff B §4). Exact, not
@@ -1989,18 +1907,20 @@ fn render_confirmation(
     // line above is already wrapped, so what remains for the list is a count. The consequence, its
     // trust-refusal warning and the affordances are laid out first and never displaced.
     if let Some(freezes) = &summary.freezes {
-        let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(actions.len());
-        let available = prose_rows.saturating_sub(lines.len());
-        let list = frozen_lines(freezes, available, palette);
-        lines.splice(frozen_at..frozen_at, list);
+        let prose_rows = usize::from(area.height.saturating_sub(2))
+            .saturating_sub(actions.count_rows(text_width));
+        let available = prose_rows.saturating_sub(lines.count_rows(text_width));
+        let list = frozen_lines(freezes, available, text_width, palette);
+        lines.splice(frozen_at, list);
     }
     // RFC 045 §3c: a switch's file plan gives up height the same way, in the same place, for the
     // same reason — and **never silently**: what it gives up, it says.
     if let Some(plan) = &summary.materializes {
-        let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(actions.len());
-        let available = prose_rows.saturating_sub(lines.len());
-        let list = plan_lines(plan, available, palette);
-        lines.splice(frozen_at..frozen_at, list);
+        let prose_rows = usize::from(area.height.saturating_sub(2))
+            .saturating_sub(actions.count_rows(text_width));
+        let available = prose_rows.saturating_sub(lines.count_rows(text_width));
+        let list = plan_lines(plan, available, text_width, palette);
+        lines.splice(frozen_at, list);
     }
     // RFC 058 decision 5: an undo's plan, in the same place as a switch's -- but **never
     // clipped** (§4.3). It is the whole content of this card: a path dropped from it is a file the
@@ -2008,16 +1928,17 @@ fn render_confirmation(
     // it to fall back on. A card too short for it scrolls nothing, so the plan is drawn whole and
     // the card's own height is what gives.
     if let Some(plan) = &summary.undo_plan {
-        let list = undo_plan_lines(plan, palette);
-        lines.splice(frozen_at..frozen_at, list);
+        let list = undo_plan_lines(plan, text_width, palette);
+        lines.splice(frozen_at, list);
     }
     // RFC 047 decision 6: prikk's merge plan gives up height in the same place, by the same
     // rule, and says what it gave up.
     if let Some(plan) = &summary.merge_plan {
-        let prose_rows = usize::from(area.height.saturating_sub(2)).saturating_sub(actions.len());
-        let available = prose_rows.saturating_sub(lines.len());
-        let list = merge_plan_lines(plan, available, palette);
-        lines.splice(frozen_at..frozen_at, list);
+        let prose_rows = usize::from(area.height.saturating_sub(2))
+            .saturating_sub(actions.count_rows(text_width));
+        let available = prose_rows.saturating_sub(lines.count_rows(text_width));
+        let list = merge_plan_lines(plan, available, text_width, palette);
+        lines.splice(frozen_at, list);
     }
 
     Panel {
@@ -2040,7 +1961,11 @@ fn render_confirmation(
 /// **The verbs are padded to one column**, so the paths line up under each other -- the width is
 /// computed from the verbs actually present, as the target rows' labels are, so the longest verb
 /// still fits beside its path.
-fn undo_plan_lines(plan: &stikk_core::UndoPlan, palette: &Palette) -> Vec<Line<'static>> {
+fn undo_plan_lines(
+    plan: &stikk_core::UndoPlan,
+    text_width: usize,
+    palette: &Palette,
+) -> Vec<Line<'static>> {
     let width = plan
         .steps
         .iter()
@@ -2065,7 +1990,7 @@ fn undo_plan_lines(plan: &stikk_core::UndoPlan, palette: &Palette) -> Vec<Line<'
             _ => inert(&step.path),
         };
         let mut rows =
-            crate::text::wrap_verbatim(&text, PANEL_TEXT_WIDTH, &" ".repeat(head.chars().count()))
+            crate::text::wrap_verbatim(&text, text_width, &" ".repeat(head.chars().count()))
                 .into_iter();
         let first = rows
             .next()
@@ -2101,6 +2026,7 @@ fn undo_plan_lines(plan: &stikk_core::UndoPlan, palette: &Palette) -> Vec<Line<'
 fn plan_lines(
     plan: &stikk_core::FilePlan,
     available: usize,
+    text_width: usize,
     palette: &Palette,
 ) -> Vec<Line<'static>> {
     let rows = plan.rows();
@@ -2115,7 +2041,7 @@ fn plan_lines(
         };
         let head = format!("    {mark}  ");
         let text = inert(path);
-        if Span::raw(text.as_str()).width() + Span::raw(head.as_str()).width() <= PANEL_TEXT_WIDTH {
+        if Span::raw(text.as_str()).width() + Span::raw(head.as_str()).width() <= text_width {
             return vec![Line::from(vec![
                 Span::styled(head, Style::default().fg(palette.dim)),
                 Span::styled(text, style),
@@ -2126,7 +2052,7 @@ fn plan_lines(
             format!("    {mark}"),
             Style::default().fg(palette.dim),
         ))];
-        for row in wrap_cells(&text, PANEL_TEXT_WIDTH, "      ") {
+        for row in wrap_cells(&text, text_width, "      ") {
             out.push(Line::from(Span::styled(row, style)));
         }
         out
@@ -2134,7 +2060,7 @@ fn plan_lines(
     let remainder = |unshown: usize| -> Vec<Line<'static>> {
         wrap_indented(
             &stikk_core::unshown_paths_line(unshown, rows.len()),
-            PANEL_PROSE_WIDTH,
+            text_width,
             "    ",
         )
         .into_iter()
@@ -2169,7 +2095,12 @@ fn plan_lines(
 /// line wraps hard rather than reflowing and is kept or dropped **entire**. Room for the
 /// remainder line is kept first: a plan that silently stops is the defect this shape exists to
 /// prevent, and a confirmation showing half a plan is worse than one showing none and saying so.
-fn merge_plan_lines(plan: &[String], available: usize, palette: &Palette) -> Vec<Line<'static>> {
+fn merge_plan_lines(
+    plan: &[String],
+    available: usize,
+    text_width: usize,
+    palette: &Palette,
+) -> Vec<Line<'static>> {
     if plan.is_empty() {
         return Vec::new();
     }
@@ -2177,7 +2108,7 @@ fn merge_plan_lines(plan: &[String], available: usize, palette: &Palette) -> Vec
         if line.trim().is_empty() {
             return vec![Line::from("")];
         }
-        crate::text::wrap_verbatim(&inert(line), PANEL_TEXT_WIDTH, "    ")
+        crate::text::wrap_verbatim(&inert(line), text_width, "    ")
             .into_iter()
             .map(|row| Line::from(Span::styled(row, Style::default().fg(palette.fg))))
             .collect()
@@ -2185,7 +2116,7 @@ fn merge_plan_lines(plan: &[String], available: usize, palette: &Palette) -> Vec
     let remainder = |unshown: usize| -> Vec<Line<'static>> {
         wrap_indented(
             &stikk_core::unshown_plan_lines_line(unshown, plan.len()),
-            PANEL_PROSE_WIDTH,
+            text_width,
             "    ",
         )
         .into_iter()
@@ -2225,6 +2156,7 @@ fn merge_plan_lines(plan: &[String], available: usize, palette: &Palette) -> Vec
 fn frozen_lines(
     freezes: &stikk_core::FrozenPatches,
     available: usize,
+    text_width: usize,
     palette: &Palette,
 ) -> Vec<Line<'static>> {
     // A row that fits is drawn exactly as core wrote it: wrapping joins words with single spaces, which
@@ -2234,10 +2166,10 @@ fn frozen_lines(
     // row fitting that draws past the card, so the rows drawn would stop matching the rows counted.
     let wrap = |text: &str| {
         let text = inert(text);
-        if Span::raw(text.as_str()).width() + 4 <= PANEL_PROSE_WIDTH {
+        if Span::raw(text.as_str()).width() + 4 <= text_width {
             vec![format!("    {text}")]
         } else {
-            wrap_cells(&text, PANEL_PROSE_WIDTH, "    ")
+            wrap_cells(&text, text_width, "    ")
         }
     };
     let styled = |rows: Vec<String>, style: Style| -> Vec<Line<'static>> {
@@ -2362,34 +2294,31 @@ fn render_commit_message(
     };
     // RFC 024 F2: the notice is one logical line that wraps to two rows at this width, which cost the
     // footer its place under `lines.len() + 2`. Wrapped here so the count is exact.
-    let mut prose = vec![
-        Line::from(Span::styled(
-            format!("  Commit to {}", identifier(reff)),
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
-    for line in wrap_indented(notice.trim_start(), PANEL_PROSE_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            line,
-            Style::default().fg(palette.dim),
-        )));
-    }
-    prose.push(Line::from(""));
+    let mut prose = Body::new();
+    prose.prose(
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        "  ",
+        format!("Commit to {}", identifier(reff)),
+    );
+    prose.blank();
+    prose.prose(Style::default().fg(palette.dim), "  ", notice.trim_start());
+    prose.blank();
 
     // The typed input and the footer are affordances, not prose: the prompt is the whole point of this
     // overlay, and a user who cannot see what they have typed cannot decide whether to press Enter.
-    let actions = vec![
-        Line::from(vec![
-            Span::styled("  › ", Style::default().fg(palette.accent)),
-            Span::styled(inert(typed), Style::default().fg(palette.fg)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Enter to continue · Esc to cancel",
-            Style::default().fg(palette.accent),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.hanging(
+        Style::default().fg(palette.accent),
+        Style::default().fg(palette.fg),
+        "  \u{203a} ",
+        "    ",
+        inert(typed),
+    );
+    actions.blank();
+    actions.row(Line::from(Span::styled(
+        "  Enter to continue · Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
 
     Panel {
         title: " Commit message ",
@@ -2411,57 +2340,47 @@ fn render_commit_result(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut lines = vec![
-        Line::from(Span::styled(
-            "  recorded worktree patch in active WAL",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
-    lines.extend(labelled(
-        "patch id: ",
-        &identifier(&result.patch_id),
-        SEAL_TEXT_WIDTH,
+    let mut lines = Body::new();
+    lines.prose(
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        "  ",
+        "recorded worktree patch in active WAL",
+    );
+    lines.blank();
+    lines.labelled(
         Style::default().fg(palette.dim),
         Style::default().fg(palette.accent),
-    ));
-    lines.push(Line::from(Span::styled(
+        "patch id: ",
+        identifier(&result.patch_id),
+    );
+    lines.prose(
+        Style::default().fg(palette.fg),
+        "  ",
         format!(
-            "  operations {} · referenced blobs {} · text edits {}",
+            "operations {} · referenced blobs {} · text edits {}",
             result.operations, result.referenced_blobs, result.text_edits
         ),
-        Style::default().fg(palette.fg),
-    )));
+    );
     if !result.changes.is_empty() {
-        lines.push(Line::from(""));
+        lines.blank();
         for change in &result.changes {
             // A repository path can be long; wrapped with a deeper hanging indent so a continued path
             // is visibly a continuation rather than a second entry.
-            for row in wrap_indented(
-                &format!(
+            lines.prose(
+                Style::default().fg(palette.fg),
+                "    ",
+                format!(
                     "{} {}",
                     identifier(&change.operation),
                     identifier(&change.path)
                 ),
-                SEAL_TEXT_WIDTH,
-                "    ",
-            ) {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.fg),
-                )));
-            }
+            );
         }
     }
     if !result.notes.is_empty() {
-        lines.push(Line::from(""));
+        lines.blank();
         for note in &result.notes {
-            for row in wrap_indented(&inert(note), SEAL_TEXT_WIDTH, "  ") {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.dim),
-                )));
-            }
+            lines.prose(Style::default().fg(palette.dim), "  ", inert(note));
         }
     }
     // **stikk's own next step, when the commit was one half of something larger** (RFC 058
@@ -2469,25 +2388,17 @@ fn render_commit_result(
     // own words, so no `inert` -- and absent for an ordinary commit, whose own next step the
     // Orientation and the Queue already say.
     if let Some(next) = next {
-        lines.push(Line::from(""));
-        for row in wrap_indented(next, SEAL_PROSE_WIDTH, "  ") {
-            lines.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.accent),
-            )));
-        }
+        lines.blank();
+        lines.prose(Style::default().fg(palette.accent), "  ", next);
     }
-    lines.push(Line::from(""));
+    lines.blank();
     Panel {
         title,
         width: SEAL_WIDTH,
         prose: lines,
         // The dismiss hint is the only affordance here; a result card the user cannot leave is the
         // worst thing this overlay could clip.
-        actions: vec![Line::from(Span::styled(
-            "  Enter · Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -2499,54 +2410,38 @@ fn render_commit_result(
 /// every other repository string that reaches a cell (`C-T2a`) -- the same treatment the commit
 /// prompt gives what the user typed, for the same reason.
 fn render_undo_message(block: &str, typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
-    let mut prose = vec![
-        Line::from(vec![
-            Span::styled(
-                "  Undo block ",
-                Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                identifier(&stikk_core::block_short(block)),
-                Style::default().fg(palette.accent),
-            ),
-        ]),
-        Line::from(""),
-    ];
-    for line in wrap_indented(
+    let mut prose = Body::new();
+    prose.row(Line::from(vec![
+        Span::styled(
+            "  Undo block ",
+            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            identifier(&stikk_core::block_short(block)),
+            Style::default().fg(palette.accent),
+        ),
+    ]));
+    prose.blank();
+    prose.prose(
+        Style::default().fg(palette.dim),
+        "  ",
         "A message is required. The undo is an ordinary commit, and this is what `prikk log` will \
          show for it.",
-        PANEL_PROSE_WIDTH,
-        "  ",
-    ) {
-        prose.push(Line::from(Span::styled(
-            line,
-            Style::default().fg(palette.dim),
-        )));
-    }
-    prose.push(Line::from(""));
+    );
+    prose.blank();
 
     // **The typed line is split, never clipped** (RFC 056 Handoff B §2's rule): the prefill is as
     // long as the block's own first message, which is repository text and can be any length.
-    let echoed = inert(typed);
-    let mut rows = crate::text::wrap_verbatim(&echoed, PANEL_TEXT_WIDTH, "    ").into_iter();
-    let first = rows
-        .next()
-        .unwrap_or_default()
-        .get(4..)
-        .unwrap_or_default()
-        .to_string();
-    let mut actions = vec![Line::from(vec![
-        Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
-        Span::styled(first, Style::default().fg(palette.fg)),
-    ])];
-    for row in rows {
-        actions.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.fg),
-        )));
-    }
-    actions.push(Line::from(""));
-    actions.push(Line::from(Span::styled(
+    let mut actions = Body::new();
+    actions.hanging(
+        Style::default().fg(palette.accent),
+        Style::default().fg(palette.fg),
+        "  \u{203a} ",
+        "    ",
+        inert(typed),
+    );
+    actions.blank();
+    actions.row(Line::from(Span::styled(
         "  Enter to continue \u{b7} Esc to cancel",
         Style::default().fg(palette.accent),
     )));
@@ -2574,60 +2469,45 @@ fn render_undo_stopped(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            "  The undo stopped part-way.",
-            Style::default()
-                .fg(palette.warn)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
+        "  The undo stopped part-way.",
+        Style::default()
+            .fg(palette.warn)
+            .add_modifier(Modifier::BOLD),
+    )));
+    prose.blank();
     if changed.is_empty() {
-        prose.push(Line::from(Span::styled(
+        prose.row(Line::from(Span::styled(
             "  No file had been changed yet.",
             Style::default().fg(palette.fg),
         )));
     } else {
-        prose.push(Line::from(Span::styled(
+        prose.row(Line::from(Span::styled(
             "  Changed:",
             Style::default().fg(palette.dim),
         )));
         for path in changed {
-            for row in crate::text::wrap_verbatim(&inert(path), PANEL_TEXT_WIDTH, "    ") {
-                prose.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.fg),
-                )));
-            }
+            prose.verbatim(Style::default().fg(palette.fg), "    ", inert(path));
         }
     }
-    prose.push(Line::from(""));
-    for row in wrap_indented(stikk_core::NOTHING_WAS_COMMITTED, PANEL_PROSE_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.accent),
-        )));
-    }
+    prose.blank();
+    prose.prose(
+        Style::default().fg(palette.accent),
+        "  ",
+        stikk_core::NOTHING_WAS_COMMITTED,
+    );
     if !text.is_empty() {
-        prose.push(Line::from(""));
-        for row in wrap_indented(&inert(text), PANEL_PROSE_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.warn),
-            )));
-        }
+        prose.blank();
+        prose.prose(Style::default().fg(palette.warn), "  ", inert(text));
     }
-    prose.push(Line::from(""));
+    prose.blank();
 
     Panel {
         title: " Undo stopped ",
         width: SEAL_WIDTH,
         prose,
-        actions: vec![Line::from(Span::styled(
-            "  Enter \u{b7} Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.warn),
     }
     .render(frame, area);
@@ -2649,49 +2529,46 @@ fn render_seal_consent(
     } else {
         ("[ ]", Style::default().fg(palette.warn))
     };
-    let mut lines = vec![
-        Line::from(Span::styled(
-            format!("  Seal {}", identifier(reff)),
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    let mut lines = Body::new();
+    lines.row(Line::from(Span::styled(
+        format!("  Seal {}", identifier(reff)),
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    lines.blank();
     // RFC 024: `SEAL_CONSENT_COPY` is one logical line that wraps to several rows, which is why this
     // renderer carried a hand-tuned `+ 6` — added after its own render tests caught the mark and the
     // Enter hint being clipped. Wrapping it makes the count exact and the tuning unnecessary.
-    for row in wrap_indented(stikk_core::SEAL_CONSENT_COPY, SEAL_PROSE_WIDTH, "  ") {
-        lines.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.fg),
-        )));
-    }
-    lines.push(Line::from(""));
+    lines.prose(
+        Style::default().fg(palette.fg),
+        "  ",
+        stikk_core::SEAL_CONSENT_COPY,
+    );
+    lines.blank();
 
     // The acknowledgement mark and the key hint are the ceremony's two affordances — the second act
     // RFC 016 decision 3 made distinct. Anchored: they are the last thing that may be lost, not the
     // first.
-    let actions = vec![
-        Line::from(vec![
-            Span::styled(format!("  {mark} "), mark_style),
-            Span::styled(
-                "I understand — Space to toggle",
-                Style::default().fg(palette.dim),
-            ),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            if acknowledged {
-                "  Enter to seal · Esc to cancel"
-            } else {
-                "  Space to acknowledge before Enter will do anything · Esc to cancel"
-            },
-            Style::default().fg(if acknowledged {
-                palette.accent
-            } else {
-                palette.dim
-            }),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.row(Line::from(vec![
+        Span::styled(format!("  {mark} "), mark_style),
+        Span::styled(
+            "I understand — Space to toggle",
+            Style::default().fg(palette.dim),
+        ),
+    ]));
+    actions.blank();
+    actions.row(Line::from(Span::styled(
+        if acknowledged {
+            "  Enter to seal · Esc to cancel"
+        } else {
+            "  Space to acknowledge before Enter will do anything · Esc to cancel"
+        },
+        Style::default().fg(if acknowledged {
+            palette.accent
+        } else {
+            palette.dim
+        }),
+    )));
     Panel {
         title: " Before you seal ",
         width: SEAL_WIDTH,
@@ -2710,53 +2587,42 @@ fn render_seal_result(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut lines = vec![
-        Line::from(Span::styled(
-            "  sealed active WAL into block",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
-    lines.extend(labelled(
-        "block id: ",
-        &identifier(&result.block_id),
-        SEAL_TEXT_WIDTH,
+    let mut lines = Body::new();
+    lines.row(Line::from(Span::styled(
+        "  sealed active WAL into block",
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    lines.blank();
+    lines.labelled(
         Style::default().fg(palette.dim),
         Style::default().fg(palette.accent),
-    ));
-    lines.push(Line::from(Span::styled(
+        "block id: ",
+        identifier(&result.block_id),
+    );
+    lines.row(Line::from(Span::styled(
         format!("  patches {}", result.patches),
         Style::default().fg(palette.fg),
     )));
-    lines.extend(labelled(
-        &format!("{} RefState: ", identifier(&result.reff)),
-        &identifier(&result.ref_state),
-        SEAL_TEXT_WIDTH,
+    lines.labelled(
         Style::default().fg(palette.dim),
         Style::default().fg(palette.accent),
-    ));
+        format!("{} RefState: ", identifier(&result.reff)),
+        identifier(&result.ref_state),
+    );
     if !result.notes.is_empty() {
-        lines.push(Line::from(""));
+        lines.blank();
         for note in &result.notes {
-            for row in wrap_indented(&inert(note), SEAL_TEXT_WIDTH, "  ") {
-                lines.push(Line::from(Span::styled(
-                    row,
-                    Style::default().fg(palette.dim),
-                )));
-            }
+            lines.prose(Style::default().fg(palette.dim), "  ", inert(note));
         }
     }
-    lines.push(Line::from(""));
+    lines.blank();
     Panel {
         title: " Sealed ",
         width: SEAL_WIDTH,
         prose: lines,
         // The dismiss hint is the only affordance here; a result card the user cannot leave is the
         // worst thing this overlay could clip.
-        actions: vec![Line::from(Span::styled(
-            "  Enter · Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -2788,36 +2654,30 @@ fn render_ref_name(
              naming rules of its own — prikk judges the name, and says so in its own words.",
         ),
     };
-    let mut prose = labelled(
-        &format!("{heading} "),
-        &identifier(source),
-        PANEL_TEXT_WIDTH,
+    let mut prose = Body::new();
+    prose.labelled(
         Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
         Style::default().fg(palette.accent),
+        format!("{heading} "),
+        identifier(source),
     );
-    prose.push(Line::from(""));
-    for row in wrap_indented(notice, PANEL_PROSE_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
-    prose.push(Line::from(""));
+    prose.blank();
+    prose.prose(Style::default().fg(palette.dim), "  ", notice);
+    prose.blank();
 
     // The prompt is the whole point of this overlay, so it sits with the footer in the region that
     // is never clipped — the commit message prompt's own reasoning.
-    let actions = vec![
-        Line::from(vec![
-            Span::styled("  › ", Style::default().fg(palette.accent)),
-            Span::styled(kind.prefix(), Style::default().fg(palette.dim)),
-            Span::styled(inert(typed), Style::default().fg(palette.fg)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Enter to continue · Esc to cancel",
-            Style::default().fg(palette.accent),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.row(Line::from(vec![
+        Span::styled("  › ", Style::default().fg(palette.accent)),
+        Span::styled(kind.prefix(), Style::default().fg(palette.dim)),
+        Span::styled(inert(typed), Style::default().fg(palette.fg)),
+    ]));
+    actions.blank();
+    actions.row(Line::from(Span::styled(
+        "  Enter to continue · Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
 
     Panel {
         title: match kind {
@@ -2840,36 +2700,31 @@ fn render_ref_name(
 /// because that is the question a reader typing a path into a version-control tool is actually
 /// asking.
 fn render_bundle_path(typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
-    let mut prose: Vec<Line> = vec![Line::from(Span::styled(
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
         "Open a bundle file",
         Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-    ))];
-    prose.push(Line::from(""));
-    for row in wrap_indented(
+    )));
+    prose.blank();
+    prose.prose(
+        Style::default().fg(palette.dim),
+        "  ",
         "A path is required. stikk asks prikk what the file is and what importing it would \
          change, and writes nothing. A relative path is taken from the directory stikk was \
          started in, and the view shows the path it used.",
-        PANEL_PROSE_WIDTH,
-        "  ",
-    ) {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
-    prose.push(Line::from(""));
+    );
+    prose.blank();
 
-    let actions = vec![
-        Line::from(vec![
-            Span::styled("  › ", Style::default().fg(palette.accent)),
-            Span::styled(inert(typed), Style::default().fg(palette.fg)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Enter to open · Esc to cancel",
-            Style::default().fg(palette.accent),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.row(Line::from(vec![
+        Span::styled("  › ", Style::default().fg(palette.accent)),
+        Span::styled(inert(typed), Style::default().fg(palette.fg)),
+    ]));
+    actions.blank();
+    actions.row(Line::from(Span::styled(
+        "  Enter to open · Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
 
     Panel {
         title: " Open a bundle ",
@@ -2887,39 +2742,33 @@ fn render_bundle_path(typed: &str, palette: &Palette, frame: &mut Frame, area: R
 /// reader who accepts it never meets the one rule stikk adds. The notice says both rules anyway,
 /// because the reader editing the path is the one who needs them.
 fn render_export_path(reff: &str, typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
-    let mut prose = labelled(
-        "Export ",
-        &identifier(reff),
-        PANEL_TEXT_WIDTH,
+    let mut prose = Body::new();
+    prose.labelled(
         Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
         Style::default().fg(palette.accent),
+        "Export ",
+        identifier(reff),
     );
-    prose.push(Line::from(""));
-    for row in wrap_indented(
+    prose.blank();
+    prose.prose(
+        Style::default().fg(palette.dim),
+        "  ",
         "A path is required. stikk writes nowhere inside the repository -- the bundle would sit \
          in your worktree as an untracked file -- and never over a file that is already there. \
          A relative path is taken from the directory stikk was started in.",
-        PANEL_PROSE_WIDTH,
-        "  ",
-    ) {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
-    prose.push(Line::from(""));
+    );
+    prose.blank();
 
-    let actions = vec![
-        Line::from(vec![
-            Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
-            Span::styled(inert(typed), Style::default().fg(palette.fg)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Enter to continue \u{b7} Esc to cancel",
-            Style::default().fg(palette.accent),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.row(Line::from(vec![
+        Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
+        Span::styled(inert(typed), Style::default().fg(palette.fg)),
+    ]));
+    actions.blank();
+    actions.row(Line::from(Span::styled(
+        "  Enter to continue \u{b7} Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
 
     Panel {
         title: " Export a bundle ",
@@ -2962,33 +2811,27 @@ fn render_save_path(
              worktree changes.",
         ),
     };
-    let mut prose = labelled(
-        label,
-        &identifier(heading),
-        PANEL_TEXT_WIDTH,
+    let mut prose = Body::new();
+    prose.labelled(
         Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
         Style::default().fg(palette.accent),
+        label,
+        identifier(heading),
     );
-    prose.push(Line::from(""));
-    for row in wrap_indented(notice, PANEL_PROSE_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
-    prose.push(Line::from(""));
+    prose.blank();
+    prose.prose(Style::default().fg(palette.dim), "  ", notice);
+    prose.blank();
 
-    let actions = vec![
-        Line::from(vec![
-            Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
-            Span::styled(inert(typed), Style::default().fg(palette.fg)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Enter to continue \u{b7} Esc to cancel",
-            Style::default().fg(palette.accent),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.row(Line::from(vec![
+        Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
+        Span::styled(inert(typed), Style::default().fg(palette.fg)),
+    ]));
+    actions.blank();
+    actions.row(Line::from(Span::styled(
+        "  Enter to continue \u{b7} Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
 
     Panel {
         title,
@@ -3011,43 +2854,33 @@ fn render_trust_public_key(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            "  The public key of the key to adopt",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
+        "  The public key of the key to adopt",
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    prose.blank();
     for sentence in [
         stikk_core::WHERE_TO_GET_THE_KEY,
         stikk_core::PUBLIC_KEY_SHAPE,
         stikk_core::WHAT_TRUST_MEANS,
     ] {
-        for row in wrap_indented(sentence, PANEL_PROSE_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.dim),
-            )));
-        }
+        prose.prose(Style::default().fg(palette.dim), "  ", sentence);
     }
-    prose.push(Line::from(""));
+    prose.blank();
     prose.extend(trust_prompt_error(error, palette));
     // **Hard-split, as the Trust view splits a public key**: it is one value, and a word wrap
     // would break it on nothing.
-    let mut actions: Vec<Line> = Vec::new();
-    let typed_rows = crate::text::wrap_verbatim(&inert(typed), PANEL_TEXT_WIDTH, "    ");
-    for (at, row) in typed_rows.iter().enumerate() {
-        let body = row.get(4..).unwrap_or_default().to_string();
-        actions.push(Line::from(vec![
-            Span::styled(
-                if at == 0 { "  \u{203a} " } else { "    " },
-                Style::default().fg(palette.accent),
-            ),
-            Span::styled(body, Style::default().fg(palette.fg)),
-        ]));
-    }
-    actions.push(Line::from(""));
-    actions.push(Line::from(Span::styled(
+    let mut actions = Body::new();
+    actions.hanging(
+        Style::default().fg(palette.accent),
+        Style::default().fg(palette.fg),
+        "  \u{203a} ",
+        "    ",
+        inert(typed),
+    );
+    actions.blank();
+    actions.row(Line::from(Span::styled(
         "  Enter to continue \u{b7} Esc to cancel",
         Style::default().fg(palette.accent),
     )));
@@ -3071,21 +2904,19 @@ fn render_trust_key_id(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            "  The id this key signs under",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
+        "  The id this key signs under",
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    prose.blank();
     // The key itself, so the reader can see which key the id is for.
-    for row in crate::text::wrap_verbatim(&identifier(public_key), PANEL_TEXT_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.accent),
-        )));
-    }
-    prose.push(Line::from(""));
+    prose.verbatim(
+        Style::default().fg(palette.accent),
+        "  ",
+        identifier(public_key),
+    );
+    prose.blank();
     let notice = if typed == stikk_core::default_key_id(public_key) {
         "This is the id prikk gives this key. If its owner signs under a different one, type \
          that instead."
@@ -3093,26 +2924,20 @@ fn render_trust_key_id(
     } else {
         stikk_core::not_the_default_id(public_key)
     };
-    for row in wrap_indented(&notice, PANEL_PROSE_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
-    prose.push(Line::from(""));
+    prose.prose(Style::default().fg(palette.dim), "  ", &notice);
+    prose.blank();
     prose.extend(trust_prompt_error(error, palette));
 
-    let actions = vec![
-        Line::from(vec![
-            Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
-            Span::styled(inert(typed), Style::default().fg(palette.fg)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Enter to continue \u{b7} Esc to cancel",
-            Style::default().fg(palette.accent),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.row(Line::from(vec![
+        Span::styled("  \u{203a} ", Style::default().fg(palette.accent)),
+        Span::styled(inert(typed), Style::default().fg(palette.fg)),
+    ]));
+    actions.blank();
+    actions.row(Line::from(Span::styled(
+        "  Enter to continue \u{b7} Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
 
     Panel {
         title: " Adopt a key \u{b7} key id ",
@@ -3125,16 +2950,11 @@ fn render_trust_key_id(
 }
 
 /// stikk's sentence from the last attempt, where there was one.
-fn trust_prompt_error<'a>(error: Option<&str>, palette: &Palette) -> Vec<Line<'a>> {
-    let mut lines = Vec::new();
+fn trust_prompt_error<'a>(error: Option<&str>, palette: &Palette) -> Body<'a> {
+    let mut lines = Body::new();
     if let Some(error) = error {
-        for row in wrap_indented(error, PANEL_PROSE_WIDTH, "  ") {
-            lines.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.warn),
-            )));
-        }
-        lines.push(Line::from(""));
+        lines.prose(Style::default().fg(palette.warn), "  ", error);
+        lines.blank();
     }
     lines
 }
@@ -3152,69 +2972,54 @@ fn render_trust_conflict(
 ) {
     // **The heading wraps**, because decision 8's is longer than RFC 056's and a clipped
     // heading on this card would cut the one sentence that says what the event is.
-    let mut prose: Vec<Line> = wrap_indented(warning.heading, PANEL_PROSE_WIDTH, "  ")
-        .into_iter()
-        .map(|row| {
-            Line::from(Span::styled(
-                row,
-                Style::default()
-                    .fg(palette.warn)
-                    .add_modifier(Modifier::BOLD),
-            ))
-        })
-        .collect();
-    prose.push(Line::from(""));
+    let mut prose = Body::new();
+    prose.prose(
+        Style::default()
+            .fg(palette.warn)
+            .add_modifier(Modifier::BOLD),
+        "  ",
+        warning.heading,
+    );
+    prose.blank();
     // **The first row is the id, inline; the rest are keys, on their own lines.** A 64-character
     // public key does not fit beside a label at this width, and it is the one value a reader may
     // compare character by character, so it is wrapped rather than clipped.
     for (position, row) in warning.rows.iter().enumerate() {
         if position == 0 {
-            prose.push(Line::from(vec![
-                Span::styled(
-                    format!("  {:<16}", row.label),
-                    Style::default().fg(palette.dim),
-                ),
-                Span::styled(identifier(&row.value), Style::default().fg(palette.accent)),
-            ]));
+            prose.hanging_value(
+                Style::default().fg(palette.dim),
+                Style::default().fg(palette.accent),
+                &format!("  {:<16}", row.label),
+                "                  ",
+                identifier(&row.value),
+            );
             continue;
         }
-        prose.push(Line::from(Span::styled(
+        prose.row(Line::from(Span::styled(
             format!("  {}", row.label),
             Style::default().fg(palette.dim),
         )));
-        for wrapped in crate::text::wrap_verbatim(&identifier(&row.value), PANEL_TEXT_WIDTH, "    ")
-        {
-            prose.push(Line::from(Span::styled(
-                wrapped,
-                Style::default().fg(palette.accent),
-            )));
-        }
+        prose.verbatim(
+            Style::default().fg(palette.accent),
+            "    ",
+            identifier(&row.value),
+        );
     }
     for paragraph in &warning.body {
-        prose.push(Line::from(""));
-        for row in wrap_indented(paragraph, PANEL_PROSE_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.warn),
-            )));
-        }
+        prose.blank();
+        prose.prose(Style::default().fg(palette.warn), "  ", paragraph);
     }
     // **prikk's own sentence, verbatim and labelled as prikk's** (`ER-02`), where prikk is the
     // one who refused.
     if let Some(detail) = &warning.detail {
-        prose.push(Line::from(""));
-        prose.push(Line::from(Span::styled(
+        prose.blank();
+        prose.row(Line::from(Span::styled(
             "  prikk refused \u{2014}",
             Style::default().fg(palette.dim),
         )));
         // **Wrapped on whitespace, like every other prikk sentence** (`render_refusal`'s own
         // call): this is prose, not a key, and hard-splitting it broke words mid-letter.
-        for row in wrap_indented(&inert(detail), PANEL_PROSE_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.fg),
-            )));
-        }
+        prose.prose(Style::default().fg(palette.fg), "  ", inert(detail));
     }
 
     Panel {
@@ -3222,10 +3027,14 @@ fn render_trust_conflict(
         width: CONFIRM_WIDTH,
         prose,
         // **No confirm key.** There is nothing here to approve.
-        actions: vec![Line::from(Span::styled(
-            "  Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: {
+            let mut actions = Body::new();
+            actions.row(Line::from(Span::styled(
+                "  Esc to dismiss",
+                Style::default().fg(palette.accent),
+            )));
+            actions
+        },
         style: Style::default().fg(palette.warn),
     }
     .render(frame, area);
@@ -3239,45 +3048,26 @@ fn render_trust_result(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose: Vec<Line> = Vec::new();
+    let mut prose = Body::new();
     if !printed.is_empty() {
-        prose.push(Line::from(Span::styled(
+        prose.row(Line::from(Span::styled(
             "  prikk reported \u{2014}",
             Style::default().fg(palette.dim),
         )));
         for line in printed {
-            let inert_line = inert(line);
-            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
-                prose.push(Line::from(vec![
-                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
-                    Span::styled(
-                        row.get(QUOTE_INDENT.len()..)
-                            .unwrap_or_default()
-                            .to_string(),
-                        Style::default().fg(palette.fg),
-                    ),
-                ]));
-            }
+            quote_prikks_lines(&mut prose, palette, line);
         }
-        prose.push(Line::from(""));
+        prose.blank();
     }
     if let Some(pointer) = see_verify {
-        for row in wrap_indented(pointer, SEAL_PROSE_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(
-                row,
-                Style::default().fg(palette.warn),
-            )));
-        }
+        prose.prose(Style::default().fg(palette.warn), "  ", pointer);
     }
 
     Panel {
         title: " Trust changed ",
         width: SEAL_WIDTH,
         prose,
-        actions: vec![Line::from(Span::styled(
-            "  Enter \u{b7} Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -3290,10 +3080,10 @@ fn render_trust_result(
 /// rather than prose, so there is nothing of prikk's to show verbatim and a `prikk reported --`
 /// heading over stikk's own words would be a lie.
 fn render_save_result(lines: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
-    let mut prose: Vec<Line> = Vec::new();
+    let mut prose = Body::new();
     for (at, line) in lines.iter().enumerate() {
         if at > 0 {
-            prose.push(Line::from(""));
+            prose.blank();
         }
         let style = if at == 0 {
             Style::default().fg(palette.fg)
@@ -3301,19 +3091,14 @@ fn render_save_result(lines: &[String], palette: &Palette, frame: &mut Frame, ar
             // The provisional notice, which is a caution rather than a result.
             Style::default().fg(palette.warn)
         };
-        for row in wrap_indented(&inert(line), SEAL_PROSE_WIDTH, "  ") {
-            prose.push(Line::from(Span::styled(row, style)));
-        }
+        prose.prose(style, "  ", inert(line));
     }
 
     Panel {
         title: " Saved ",
         width: SEAL_WIDTH,
         prose,
-        actions: vec![Line::from(Span::styled(
-            "  Enter \u{b7} Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -3331,44 +3116,37 @@ fn render_tag_message(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose = labelled(
-        "Tag ",
-        &identifier(name),
-        PANEL_TEXT_WIDTH,
+    let mut prose = Body::new();
+    prose.labelled(
         Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
         Style::default().fg(palette.accent),
+        "Tag ",
+        identifier(name),
     );
-    prose.extend(labelled(
-        "at ",
-        &identifier(target),
-        PANEL_TEXT_WIDTH,
+    prose.labelled(
         Style::default().fg(palette.dim),
         Style::default().fg(palette.accent),
-    ));
-    prose.push(Line::from(""));
-    for row in wrap_indented(
-        "A message is optional. Leave it empty and the tag carries none.",
-        PANEL_PROSE_WIDTH,
+        "at ",
+        identifier(target),
+    );
+    prose.blank();
+    prose.prose(
+        Style::default().fg(palette.dim),
         "  ",
-    ) {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
-    prose.push(Line::from(""));
+        "A message is optional. Leave it empty and the tag carries none.",
+    );
+    prose.blank();
 
-    let actions = vec![
-        Line::from(vec![
-            Span::styled("  › ", Style::default().fg(palette.accent)),
-            Span::styled(inert(typed), Style::default().fg(palette.fg)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Enter to continue · Esc to cancel",
-            Style::default().fg(palette.accent),
-        )),
-    ];
+    let mut actions = Body::new();
+    actions.row(Line::from(vec![
+        Span::styled("  › ", Style::default().fg(palette.accent)),
+        Span::styled(inert(typed), Style::default().fg(palette.fg)),
+    ]));
+    actions.blank();
+    actions.row(Line::from(Span::styled(
+        "  Enter to continue · Esc to cancel",
+        Style::default().fg(palette.accent),
+    )));
 
     Panel {
         title: " Tag message ",
@@ -3397,36 +3175,24 @@ fn render_ref_write_result(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            match kind {
-                RefWriteKind::CreateBranch => "  the branch exists",
-                RefWriteKind::CreateTag => "  the tag exists",
-                RefWriteKind::CloseBranch => "  the branch is closed",
-            },
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  prikk reported —",
-            Style::default().fg(palette.dim),
-        )),
-    ];
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
+        match kind {
+            RefWriteKind::CreateBranch => "  the branch exists",
+            RefWriteKind::CreateTag => "  the tag exists",
+            RefWriteKind::CloseBranch => "  the branch is closed",
+        },
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    prose.blank();
+    prose.row(Line::from(Span::styled(
+        "  prikk reported —",
+        Style::default().fg(palette.dim),
+    )));
     for line in lines {
-        let inert_line = inert(line);
-        for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
-            prose.push(Line::from(vec![
-                Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
-                Span::styled(
-                    row.get(QUOTE_INDENT.len()..)
-                        .unwrap_or_default()
-                        .to_string(),
-                    Style::default().fg(palette.fg),
-                ),
-            ]));
-        }
+        quote_prikks_lines(&mut prose, palette, line);
     }
-    prose.push(Line::from(""));
+    prose.blank();
 
     Panel {
         title: kind.done_title(),
@@ -3434,10 +3200,7 @@ fn render_ref_write_result(
         prose,
         // The dismiss hint is the only affordance here; a result card the user cannot leave is the
         // worst thing this overlay could clip.
-        actions: vec![Line::from(Span::styled(
-            "  Enter · Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -3457,36 +3220,21 @@ fn render_switch_result(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            "  the worktree is the new branch's files",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
-    let quoted = |label: &str, lines: &[String], prose: &mut Vec<Line<'static>>| {
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
+        "  the worktree is the new branch's files",
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    prose.blank();
+    let quoted = |label: &str, lines: &[String], prose: &mut Body<'static>| {
         if lines.is_empty() {
             return;
         }
-        prose.push(Line::from(Span::styled(
-            format!("  {label}"),
-            Style::default().fg(palette.dim),
-        )));
+        prose.prose(Style::default().fg(palette.dim), "  ", label);
         for line in lines {
-            let inert_line = inert(line);
-            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
-                prose.push(Line::from(vec![
-                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
-                    Span::styled(
-                        row.get(QUOTE_INDENT.len()..)
-                            .unwrap_or_default()
-                            .to_string(),
-                        Style::default().fg(palette.fg),
-                    ),
-                ]));
-            }
+            quote_prikks_lines(prose, palette, line);
         }
-        prose.push(Line::from(""));
+        prose.blank();
     };
     quoted("prikk reported \u{2014}", printed, &mut prose);
     quoted("and noted \u{2014}", noted, &mut prose);
@@ -3495,10 +3243,7 @@ fn render_switch_result(
         title: " Switched ",
         width: SEAL_WIDTH,
         prose,
-        actions: vec![Line::from(Span::styled(
-            "  Enter \u{b7} Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -3511,51 +3256,35 @@ fn render_switch_result(
 /// prikk does not say and the reader will otherwise discover by surprise — that the worktree is
 /// unchanged, and where the merged files are.
 fn render_merge_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            "  the merge block is sealed",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
+        "  the merge block is sealed",
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    prose.blank();
     if !printed.is_empty() {
-        prose.push(Line::from(Span::styled(
+        prose.row(Line::from(Span::styled(
             "  prikk reported \u{2014}",
             Style::default().fg(palette.dim),
         )));
         for line in printed {
-            let inert_line = inert(line);
-            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
-                prose.push(Line::from(vec![
-                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
-                    Span::styled(
-                        row.get(QUOTE_INDENT.len()..)
-                            .unwrap_or_default()
-                            .to_string(),
-                        Style::default().fg(palette.fg),
-                    ),
-                ]));
-            }
+            quote_prikks_lines(&mut prose, palette, line);
         }
-        prose.push(Line::from(""));
+        prose.blank();
     }
     // **stikk's own sentence, and it is not optional.** prikk writes no file here, and a reader
     // who looks for the merged files in the worktree will not find them (F3's neighbour).
-    for row in wrap_indented(stikk_core::SWITCH_TO_SEE_THE_FILES, SEAL_PROSE_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
+    prose.prose(
+        Style::default().fg(palette.dim),
+        "  ",
+        stikk_core::SWITCH_TO_SEE_THE_FILES,
+    );
 
     Panel {
         title: " Merged ",
         width: SEAL_WIDTH,
         prose,
-        actions: vec![Line::from(Span::styled(
-            "  Enter \u{b7} Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -3569,49 +3298,33 @@ fn render_merge_result(printed: &[String], palette: &Palette, frame: &mut Frame,
 /// reader will otherwise go looking for: that taking this work into a branch of theirs is a
 /// merge stikk does not offer from a received ref yet.
 fn render_import_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            "  the bundle is stored as a received branch",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
+        "  the bundle is stored as a received branch",
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    prose.blank();
     if !printed.is_empty() {
-        prose.push(Line::from(Span::styled(
+        prose.row(Line::from(Span::styled(
             "  prikk reported \u{2014}",
             Style::default().fg(palette.dim),
         )));
         for line in printed {
-            let inert_line = inert(line);
-            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
-                prose.push(Line::from(vec![
-                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
-                    Span::styled(
-                        row.get(QUOTE_INDENT.len()..)
-                            .unwrap_or_default()
-                            .to_string(),
-                        Style::default().fg(palette.fg),
-                    ),
-                ]));
-            }
+            quote_prikks_lines(&mut prose, palette, line);
         }
-        prose.push(Line::from(""));
+        prose.blank();
     }
-    for row in wrap_indented(stikk_core::RECEIVED_IS_READ_ONLY, SEAL_PROSE_WIDTH, "  ") {
-        prose.push(Line::from(Span::styled(
-            row,
-            Style::default().fg(palette.dim),
-        )));
-    }
+    prose.prose(
+        Style::default().fg(palette.dim),
+        "  ",
+        stikk_core::RECEIVED_IS_READ_ONLY,
+    );
 
     Panel {
         title: " Imported ",
         width: SEAL_WIDTH,
         prose,
-        actions: vec![Line::from(Span::styled(
-            "  Enter \u{b7} Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -3624,31 +3337,19 @@ fn render_import_result(printed: &[String], palette: &Palette, frame: &mut Frame
 /// discover by surprise, so stikk adds no sentence -- unlike a merge, where the worktree's being
 /// unchanged is exactly such a surprise.
 fn render_export_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
-    let mut prose = vec![
-        Line::from(Span::styled(
-            "  the bundle is written",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ];
+    let mut prose = Body::new();
+    prose.row(Line::from(Span::styled(
+        "  the bundle is written",
+        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+    )));
+    prose.blank();
     if !printed.is_empty() {
-        prose.push(Line::from(Span::styled(
+        prose.row(Line::from(Span::styled(
             "  prikk reported \u{2014}",
             Style::default().fg(palette.dim),
         )));
         for line in printed {
-            let inert_line = inert(line);
-            for row in crate::text::wrap_verbatim(&inert_line, SEAL_TEXT_WIDTH, QUOTE_INDENT) {
-                prose.push(Line::from(vec![
-                    Span::styled(QUOTE_BAR, Style::default().fg(palette.accent)),
-                    Span::styled(
-                        row.get(QUOTE_INDENT.len()..)
-                            .unwrap_or_default()
-                            .to_string(),
-                        Style::default().fg(palette.fg),
-                    ),
-                ]));
-            }
+            quote_prikks_lines(&mut prose, palette, line);
         }
     }
 
@@ -3656,10 +3357,7 @@ fn render_export_result(printed: &[String], palette: &Palette, frame: &mut Frame
         title: " Exported ",
         width: SEAL_WIDTH,
         prose,
-        actions: vec![Line::from(Span::styled(
-            "  Enter \u{b7} Esc to dismiss",
-            Style::default().fg(palette.accent),
-        ))],
+        actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
@@ -3674,72 +3372,54 @@ fn capability_label(capability: Capability) -> &'static str {
 }
 
 /// A selectable list row with a marker and consistent highlight styling.
-fn selectable<'a>(palette: &Palette, selected: bool, text: String) -> Line<'a> {
-    let marker = if selected { "▶ " } else { "  " };
-    let style = if selected {
-        Style::default()
-            .fg(palette.accent)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(palette.fg)
-    };
-    Line::from(vec![
-        Span::styled(marker, Style::default().fg(palette.accent)),
-        Span::styled(text, style),
-    ])
+/// The one affordance every result card has: a dismiss hint, which must never be the row that falls
+/// off (RFC 024 §2).
+/// prikk's own printed lines, under the quote bar, **not reflowed** — they are prikk's layout, not
+/// prose (`ER-02`).
+fn quote_prikks_lines(into: &mut Body<'static>, palette: &Palette, text: &str) {
+    into.quoted_in(
+        Style::default().fg(palette.accent),
+        Style::default().fg(palette.fg),
+        false,
+        inert(text),
+    );
 }
 
-/// A selectable row that can also carry a **mark** (RFC 041 decision 1).
-///
-/// Two columns, never one: the cursor says where you are and the mark says what you set, and a
-/// row is routinely both at once -- which is exactly the moment before `d`. This is the scheme
-/// History's own rows use.
-fn selectable_marked<'a>(
-    palette: &Palette,
-    selected: bool,
-    marked: bool,
-    text: String,
-) -> Line<'a> {
-    let cursor = if selected { "\u{25b6} " } else { "  " };
-    let mark = if marked { "\u{25cf} " } else { "  " };
-    let style = if selected {
-        Style::default()
-            .fg(palette.accent)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(palette.fg)
-    };
-    Line::from(vec![
-        Span::styled(cursor, Style::default().fg(palette.accent)),
-        Span::styled(mark, Style::default().fg(palette.warn)),
-        Span::styled(text, style),
-    ])
+fn dismiss<'a>(palette: &Palette) -> Body<'a> {
+    let mut actions = Body::new();
+    actions.row(Line::from(Span::styled(
+        "  Enter \u{00b7} Esc to dismiss",
+        Style::default().fg(palette.accent),
+    )));
+    actions
 }
 
-fn section<'a>(palette: &Palette, title: &'a str) -> Line<'a> {
-    Line::from(Span::styled(
-        format!("  {title}"),
+fn section<'a>(into: &mut Body<'a>, palette: &Palette, title: &'a str) {
+    into.prose(
         Style::default()
             .fg(palette.accent)
             .add_modifier(Modifier::BOLD),
-    ))
+        "  ",
+        title,
+    );
 }
 
-fn key_line<'a>(palette: &Palette, key: &'a str, desc: &'a str) -> Line<'a> {
-    Line::from(vec![
-        Span::styled(format!("  {key:<13}"), Style::default().fg(palette.accent)),
-        Span::styled(desc, Style::default().fg(palette.fg)),
-    ])
+fn key_line<'a>(into: &mut Body<'a>, palette: &Palette, key: &'a str, desc: &'a str) {
+    // **The description hangs under its own column** (RFC 060 decision 2): at 60 columns several of
+    // these ran into the border, which is the Glossary's half of F3.
+    into.hanging(
+        Style::default().fg(palette.accent),
+        Style::default().fg(palette.fg),
+        &format!("  {key:<13}"),
+        "               ",
+        desc,
+    );
 }
 
 /// The overlay widths this module uses, named so the wrap width beside each one cannot drift from it.
 const CONFIRM_WIDTH: u16 = 70;
 /// The result/consent card width.
 const SEAL_WIDTH: u16 = 78;
-/// Text columns inside a [`SEAL_WIDTH`] panel — see [`PANEL_TEXT_WIDTH`].
-const SEAL_TEXT_WIDTH: usize = SEAL_WIDTH as usize - 2;
-/// Prose columns inside a [`SEAL_WIDTH`] panel — see [`PANEL_PROSE_WIDTH`].
-const SEAL_PROSE_WIDTH: usize = SEAL_TEXT_WIDTH - 1;
 
 /// The quote bar prefixing every row of prikk's verbatim message, and the placeholder indent the
 /// wrap is computed against.
@@ -3752,34 +3432,6 @@ const QUOTE_INDENT: &str = "    ";
 
 /// The refusal/stale card width.
 const REFUSAL_WIDTH: u16 = 72;
-/// Text columns inside a [`REFUSAL_WIDTH`] panel — see [`PANEL_TEXT_WIDTH`].
-const REFUSAL_TEXT_WIDTH: usize = REFUSAL_WIDTH as usize - 2;
-/// Prose columns inside a [`REFUSAL_WIDTH`] panel — see [`PANEL_PROSE_WIDTH`].
-const REFUSAL_PROSE_WIDTH: usize = REFUSAL_TEXT_WIDTH - 1;
-
-/// Text columns available inside a [`CONFIRM_WIDTH`] panel — the outer width less its two border
-/// columns, which is exactly what [`Panel`] gives the prose region.
-///
-/// **Two widths, and what a call holds decides which it takes** (RFC 013 Handoff B). Every panel
-/// kind has both, and the pair is the same rule each time.
-///
-/// **This one is the full inner width, for identifiers and prikk's verbatim lines**: a target row,
-/// a `block id:` line, a repository path, anything drawn through `identifier` or `wrap_verbatim`.
-/// It must stay full, because a gutter would cost a 64-hex id its last character — `block id: `
-/// plus 64 hex is exactly the inner width of a 78-wide card — and fold it onto a second row for one
-/// column. Fitting prikk's identifiers on one row wins, and prikk's lines are prikk's to wrap.
-///
-/// **Prose stikk writes takes [`PANEL_PROSE_WIDTH`]**: a consequence, a note, a notice, an error
-/// sentence, anything stikk composed. Measured on the merge card at 80×24 before this existed, a
-/// word of stikk's could land in the last inner column and read as cut off — `…from this
-/// baseline. A│`. Nothing stikk writes needs that column, so prose gives it up and identifiers
-/// do not.
-const PANEL_TEXT_WIDTH: usize = CONFIRM_WIDTH as usize - 2;
-
-/// Prose columns inside a [`CONFIRM_WIDTH`] panel: [`PANEL_TEXT_WIDTH`] less a one-column right
-/// gutter, so no word stikk wrote sits against the border. See [`PANEL_TEXT_WIDTH`] for which
-/// calls take which, and `the_prose_gutter_*` tests for what holds it.
-const PANEL_PROSE_WIDTH: usize = PANEL_TEXT_WIDTH - 1;
 
 /// What to say under a signing key id, given how firmly it may be claimed (RFC 026 §5).
 ///
@@ -3787,9 +3439,9 @@ const PANEL_PROSE_WIDTH: usize = PANEL_TEXT_WIDTH - 1;
 /// The other two each add one sentence, wrapped, because the sentence is the point — a user meeting
 /// `Unbound` is looking at the first commit in a new repository and should be told, in the affirmative,
 /// what is about to happen rather than warned about a hedge.
-fn claim_rows<'a>(claim: KeyClaim, palette: &Palette) -> Vec<Line<'a>> {
+fn claim_sentence(claim: KeyClaim) -> Option<&'static str> {
     let text = match claim {
-        KeyClaim::Bound | KeyClaim::None => return Vec::new(),
+        KeyClaim::Bound | KeyClaim::None => return None,
         KeyClaim::Unbound => {
             "Nothing has signed under this id in this repository yet — this signature binds it."
         }
@@ -3798,10 +3450,452 @@ fn claim_rows<'a>(claim: KeyClaim, palette: &Palette) -> Vec<Line<'a>> {
              pass, not one prikk has confirmed."
         }
     };
-    wrap_indented(text, PANEL_PROSE_WIDTH, "    ")
-        .into_iter()
-        .map(|row| Line::from(Span::styled(row, Style::default().fg(palette.dim))))
-        .collect()
+    Some(text)
+}
+
+/// **What a panel's text is, before anything knows how wide it will be drawn** (RFC 060 decision 2).
+///
+/// Until RFC 060 every renderer wrapped its own prose to a constant — `PANEL_PROSE_WIDTH` and its
+/// siblings — and handed [`Panel`] finished rows. [`centered`] then narrowed the panel to the
+/// terminal, and the panel cut what the renderer had wrapped wider: RFC 024's *wrap, never clip* held
+/// only at the width the renderer happened to pick, and broke at every width below it (RFC 060 F3).
+///
+/// **The fix is ownership.** A renderer says what its text *is* — a paragraph, prikk's quoted words, a
+/// `label: value` row, a bullet — and the panel wraps it to the inner width it is finally drawn at.
+/// No renderer can wrap for a panel again, because no renderer is told the width.
+#[derive(Default, Clone)]
+pub(crate) struct Body<'a> {
+    items: Vec<Item<'a>>,
+}
+
+/// **How much of the panel's inner width an item may use** (RFC 024 §2, kept by RFC 060).
+///
+/// Prose stops one column short of the border: a sentence flush against the box reads as if it were
+/// cut. A *value* — an id, a path, a key — takes the whole inner width, because `block id: ` plus a
+/// 64-hex id is exactly the inner width of a 78-wide card, and a gutter would fold it onto a second
+/// row for no reader's benefit (`an_identifier_row_still_uses_the_last_inner_column`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Room {
+    /// The whole inner width.
+    Full,
+    /// One column less, so prose never touches the border.
+    Gutter,
+}
+
+/// One piece of a [`Body`], unwrapped.
+#[derive(Clone)]
+enum Item<'a> {
+    /// An empty row.
+    Blank,
+    /// Word-wrapped prose, every row opening at `indent`. Counted in characters, as `text.rs` counts.
+    Prose {
+        text: String,
+        indent: String,
+        style: Style,
+    },
+    /// Repository content or a long value: never reflowed, and split evenly where it cannot fit
+    /// (RFC 060 decision 4, through `text::wrap_verbatim`).
+    Verbatim {
+        text: String,
+        indent: String,
+        style: Style,
+    },
+    /// prikk's own words, with the quote bar on **every** row (RFC 026 Handoff C §1). One source line
+    /// per `\n`, each wrapped on its own.
+    Quoted {
+        text: String,
+        bar: Style,
+        style: Style,
+        /// Whether to word-wrap (prose) or split without reflowing (a path, a key).
+        reflow: bool,
+    },
+    /// A row that opens with `first` and hangs its continuations at `hang` — a bullet, a key, a
+    /// selectable label.
+    Hanging {
+        text: String,
+        first: String,
+        hang: String,
+        first_style: Style,
+        style: Style,
+        room: Room,
+    },
+    /// A `label: value` row, whose value moves to a row of its own rather than being split beside the
+    /// label (see [`labelled`]).
+    Labelled {
+        label: String,
+        value: String,
+        label_style: Style,
+        value_style: Style,
+    },
+    /// A selectable row with a mark column — see [`Body::selectable_marked`].
+    Marked {
+        cursor: String,
+        mark: String,
+        cursor_style: Style,
+        mark_style: Style,
+        text: String,
+        style: Style,
+    },
+    /// A row of several spans, each with its own style, **hard-split** across rows by
+    /// [`crate::view::wrap_spans`] — the wrap for a row whose parts are columns and so cannot be
+    /// wrapped as one string.
+    Spans {
+        spans: Vec<Span<'a>>,
+        indent: String,
+    },
+    /// A row that is one row **by construction** — a marker, a short key hint, a separator. Nothing
+    /// wraps it, so the structural check (`text::record_overflow`) is what keeps one from growing past
+    /// the panel unnoticed.
+    Row(Line<'a>),
+}
+
+impl<'a> Body<'a> {
+    /// An empty body.
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// How many items are in it — the index a later [`Self::splice`] can aim at.
+    pub(crate) fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    /// **How many rows this would draw at `width`.** For the few cards that must fit a list to a
+    /// height budget: the budget is in rows, and an item can be several.
+    pub(crate) fn count_rows(&self, width: usize) -> usize {
+        self.clone().rows(width).len()
+    }
+
+    /// Insert finished rows at item index `at` — for a list spliced in after everything it must
+    /// never displace has been laid out.
+    pub(crate) fn splice(&mut self, at: usize, rows: Vec<Line<'a>>) {
+        let at = at.min(self.items.len());
+        self.items.splice(at..at, rows.into_iter().map(Item::Row));
+    }
+
+    /// An empty row.
+    pub(crate) fn blank(&mut self) -> &mut Self {
+        self.items.push(Item::Blank);
+        self
+    }
+
+    /// A paragraph of prose, wrapped on whitespace, every row at `indent`.
+    pub(crate) fn prose(&mut self, style: Style, indent: &str, text: impl AsRef<str>) -> &mut Self {
+        self.items.push(Item::Prose {
+            text: text.as_ref().to_string(),
+            indent: indent.to_string(),
+            style,
+        });
+        self
+    }
+
+    /// A value that must not be reflowed: a path, an id, a typed string.
+    pub(crate) fn verbatim(
+        &mut self,
+        style: Style,
+        indent: &str,
+        text: impl AsRef<str>,
+    ) -> &mut Self {
+        self.items.push(Item::Verbatim {
+            text: text.as_ref().to_string(),
+            indent: indent.to_string(),
+            style,
+        });
+        self
+    }
+
+    /// prikk's own words, quoted.
+    pub(crate) fn quoted(&mut self, palette: &Palette, text: impl AsRef<str>) -> &mut Self {
+        let bar = Style::default().fg(palette.warn);
+        self.quoted_in(bar, Style::default().fg(palette.fg), true, text)
+    }
+
+    /// As [`Self::quoted`], with the bar's own colour and the choice of wrap: prikk's *lines* (a
+    /// result card) are not reflowed, prikk's *sentences* (a refusal) are.
+    pub(crate) fn quoted_in(
+        &mut self,
+        bar: Style,
+        style: Style,
+        reflow: bool,
+        text: impl AsRef<str>,
+    ) -> &mut Self {
+        self.items.push(Item::Quoted {
+            text: text.as_ref().to_string(),
+            bar,
+            style,
+            reflow,
+        });
+        self
+    }
+
+    /// A row of **prose** opening with `first` and hanging at `hang` — a bullet, a key, a label.
+    pub(crate) fn hanging(
+        &mut self,
+        first_style: Style,
+        style: Style,
+        first: &str,
+        hang: &str,
+        text: impl AsRef<str>,
+    ) -> &mut Self {
+        self.hanging_in(Room::Gutter, first_style, style, first, hang, text)
+    }
+
+    /// As [`Self::hanging`], for a **value** under a label: an id, a path, a key, which takes the
+    /// whole inner width (see [`Room`]).
+    pub(crate) fn hanging_value(
+        &mut self,
+        first_style: Style,
+        style: Style,
+        first: &str,
+        hang: &str,
+        text: impl AsRef<str>,
+    ) -> &mut Self {
+        self.hanging_in(Room::Full, first_style, style, first, hang, text)
+    }
+
+    fn hanging_in(
+        &mut self,
+        room: Room,
+        first_style: Style,
+        style: Style,
+        first: &str,
+        hang: &str,
+        text: impl AsRef<str>,
+    ) -> &mut Self {
+        self.items.push(Item::Hanging {
+            text: text.as_ref().to_string(),
+            first: first.to_string(),
+            hang: hang.to_string(),
+            first_style,
+            style,
+            room,
+        });
+        self
+    }
+
+    /// A `label: value` row.
+    pub(crate) fn labelled(
+        &mut self,
+        label_style: Style,
+        value_style: Style,
+        label: impl AsRef<str>,
+        value: impl AsRef<str>,
+    ) -> &mut Self {
+        self.items.push(Item::Labelled {
+            label: label.as_ref().to_string(),
+            value: value.as_ref().to_string(),
+            label_style,
+            value_style,
+        });
+        self
+    }
+
+    /// Everything in `other`, appended.
+    pub(crate) fn extend(&mut self, other: Self) -> &mut Self {
+        self.items.extend(other.items);
+        self
+    }
+
+    /// A row that is one row by construction.
+    pub(crate) fn row(&mut self, line: Line<'a>) -> &mut Self {
+        self.items.push(Item::Row(line));
+        self
+    }
+
+    /// A row of several styled spans, hard-split across rows under `indent`.
+    pub(crate) fn spans(&mut self, indent: &str, spans: Vec<Span<'a>>) -> &mut Self {
+        self.items.push(Item::Spans {
+            spans,
+            indent: indent.to_string(),
+        });
+        self
+    }
+
+    /// A selectable row (RFC 024 §2): the cursor marker, then the label, hanging under the label.
+    pub(crate) fn selectable(
+        &mut self,
+        palette: &Palette,
+        selected: bool,
+        text: impl AsRef<str>,
+    ) -> &mut Self {
+        let marker = if selected { "\u{25b6} " } else { "  " };
+        let style = if selected {
+            Style::default()
+                .fg(palette.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(palette.fg)
+        };
+        self.hanging(
+            Style::default().fg(palette.accent),
+            style,
+            marker,
+            "  ",
+            text,
+        )
+    }
+
+    /// A selectable row that also carries a **mark** (RFC 041 decision 1): two marker columns, then
+    /// the label, hanging under the label.
+    pub(crate) fn selectable_marked(
+        &mut self,
+        palette: &Palette,
+        selected: bool,
+        marked: bool,
+        text: impl AsRef<str>,
+    ) -> &mut Self {
+        let cursor = if selected { "\u{25b6} " } else { "  " };
+        let mark = if marked { "\u{25cf} " } else { "  " };
+        let style = if selected {
+            Style::default()
+                .fg(palette.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(palette.fg)
+        };
+        // The two markers share one span so the wrap can substitute them for a blank of the same
+        // width; the mark's own colour is kept by drawing it as part of that span's prefix.
+        self.items.push(Item::Marked {
+            cursor: cursor.to_string(),
+            mark: mark.to_string(),
+            cursor_style: Style::default().fg(palette.accent),
+            mark_style: Style::default().fg(palette.warn),
+            text: text.as_ref().to_string(),
+            style,
+        });
+        self
+    }
+
+    /// **The rows, wrapped to `width`** — the inner width of the region the panel is finally drawn in,
+    /// less its right gutter. The only place a panel's text learns how wide it is.
+    fn rows(self, inner: usize) -> Vec<Line<'a>> {
+        let full = inner.max(1);
+        let gutter = inner.saturating_sub(1).max(1);
+        let width = gutter;
+        let mut out: Vec<Line<'a>> = Vec::new();
+        for item in self.items {
+            match item {
+                Item::Blank => out.push(Line::from("")),
+                Item::Prose {
+                    text,
+                    indent,
+                    style,
+                } => {
+                    for row in wrap_indented(&text, width, &indent) {
+                        out.push(Line::from(Span::styled(row, style)));
+                    }
+                }
+                Item::Verbatim {
+                    text,
+                    indent,
+                    style,
+                } => {
+                    for row in crate::text::wrap_verbatim(&text, full, &indent) {
+                        out.push(Line::from(Span::styled(row, style)));
+                    }
+                }
+                Item::Quoted {
+                    text,
+                    bar,
+                    style,
+                    reflow,
+                } => {
+                    for source in text.lines() {
+                        // **The wrap width is the bar's own**: `QUOTE_BAR` and `QUOTE_INDENT` are the
+                        // same four columns, so wrapping against the indent and substituting the bar
+                        // afterwards cannot move a wrap point.
+                        let rows = if reflow {
+                            wrap_indented(source, gutter, QUOTE_INDENT)
+                        } else {
+                            crate::text::wrap_verbatim(source, full, QUOTE_INDENT)
+                        };
+                        for row in rows {
+                            out.push(Line::from(vec![
+                                Span::styled(QUOTE_BAR, bar),
+                                Span::styled(
+                                    row.get(QUOTE_INDENT.len()..)
+                                        .unwrap_or_default()
+                                        .to_string(),
+                                    style,
+                                ),
+                            ]));
+                        }
+                    }
+                }
+                Item::Hanging {
+                    text,
+                    first,
+                    hang,
+                    first_style,
+                    style,
+                    room,
+                } => {
+                    // Wrapped against a blank of the same width as `first`, so the opening marker can
+                    // be substituted for it without moving a wrap point — the quote bar's trick.
+                    let pad = " ".repeat(first.chars().count());
+                    let room = match room {
+                        Room::Full => full,
+                        Room::Gutter => gutter,
+                    };
+                    let rows = crate::view::wrap_hanging(&text, room, &pad, &hang);
+                    for (index, row) in rows.into_iter().enumerate() {
+                        if index == 0 {
+                            let rest: String = row.chars().skip(first.chars().count()).collect();
+                            out.push(Line::from(vec![
+                                Span::styled(first.clone(), first_style),
+                                Span::styled(rest, style),
+                            ]));
+                        } else {
+                            out.push(Line::from(Span::styled(row, style)));
+                        }
+                    }
+                }
+                Item::Labelled {
+                    label,
+                    value,
+                    label_style,
+                    value_style,
+                } => {
+                    // A value, so the full inner width (see [`Room`]).
+                    out.extend(labelled(&label, &value, full, label_style, value_style));
+                }
+                Item::Marked {
+                    cursor,
+                    mark,
+                    cursor_style,
+                    mark_style,
+                    text,
+                    style,
+                } => {
+                    let pad = " ".repeat(cursor.chars().count() + mark.chars().count());
+                    // **Not reflowed**: a picker row's label is composed text whose own spacing
+                    // places a tag beside a name (RFC 037 decision 4), and a word wrap would
+                    // collapse that gap. Split evenly where it cannot fit, like any other value.
+                    let rows = crate::text::wrap_verbatim(&text, full, &pad);
+                    for (index, row) in rows.into_iter().enumerate() {
+                        if index == 0 {
+                            let rest: String = row.chars().skip(pad.chars().count()).collect();
+                            out.push(Line::from(vec![
+                                Span::styled(cursor.clone(), cursor_style),
+                                Span::styled(mark.clone(), mark_style),
+                                Span::styled(rest, style),
+                            ]));
+                        } else {
+                            out.push(Line::from(Span::styled(row, style)));
+                        }
+                    }
+                }
+                Item::Spans { spans, indent } => {
+                    // **The full inner width** (see [`Room`]): a composed row's parts are columns
+                    // placed by the renderer, not a sentence — and a gutter would push a reason that
+                    // fits today onto a second row, splitting a word there for one blank column.
+                    out.extend(crate::view::wrap_spans(spans, full, &indent));
+                }
+                Item::Row(line) => out.push(line),
+            }
+        }
+        out
+    }
 }
 
 /// The shared prose-plus-actions panel every overlay of that shape renders through (RFC 024 §2).
@@ -3835,10 +3929,11 @@ pub(crate) struct Panel<'a> {
     pub(crate) title: &'a str,
     /// Outer width; clamped to the terminal by [`centered`].
     pub(crate) width: u16,
-    /// The body. Pre-wrapped by the caller so its length is the number of rows it will occupy.
-    pub(crate) prose: Vec<Line<'a>>,
-    /// The affordances — footer, next-steps, prompt. **Never clipped while any row remains.**
-    pub(crate) actions: Vec<Line<'a>>,
+    /// The body, **unwrapped** (RFC 060 decision 2): this type wraps it to the width it is drawn at.
+    pub(crate) prose: Body<'a>,
+    /// The affordances — footer, next-steps, prompt. **Never clipped while any row remains**, and
+    /// wrapped here like the body.
+    pub(crate) actions: Body<'a>,
     /// The block's style (`palette.fg` for ordinary overlays, `palette.warn` for refusals).
     pub(crate) style: Style,
 }
@@ -3846,8 +3941,19 @@ pub(crate) struct Panel<'a> {
 impl Panel<'_> {
     /// Render the panel centred in `area`.
     fn render(self, frame: &mut Frame, area: Rect) {
-        let actions_height = u16::try_from(self.actions.len()).unwrap_or(u16::MAX);
-        let prose_len = u16::try_from(self.prose.len()).unwrap_or(u16::MAX);
+        // **The width the panel will really be**, which is what its text is wrapped to (RFC 060
+        // decision 2): `centered` clamps the outer width to the terminal, two columns are the border,
+        // and one is the right gutter — prose flush against the box edge reads as if it were cut.
+        let outer = self.width.min(area.width);
+        let inner_width = usize::from(outer.saturating_sub(2));
+        let title = self.title;
+        let prose = self.prose.rows(inner_width);
+        let actions = self.actions.rows(inner_width);
+        crate::text::record_overflow(title.trim(), &prose, inner_width);
+        crate::text::record_overflow(title.trim(), &actions, inner_width);
+
+        let actions_height = u16::try_from(actions.len()).unwrap_or(u16::MAX);
+        let prose_len = u16::try_from(prose.len()).unwrap_or(u16::MAX);
         // Exact, not estimated: `prose` is already wrapped, so this is the height that fits everything.
         let wanted = prose_len.saturating_add(actions_height).saturating_add(2);
         let region = centered(self.width, wanted.min(area.height), area);
@@ -3863,12 +3969,12 @@ impl Panel<'_> {
             // Clipped — say so, in the Glossary's idiom, rather than in silence.
             format!(
                 "{} — lines 1–{} of {} ",
-                self.title.trim_end(),
+                title.trim_end(),
                 prose_area_height,
                 prose_len
             )
         } else {
-            self.title.to_string()
+            title.to_string()
         };
 
         let block = Block::default()
@@ -3883,8 +3989,8 @@ impl Panel<'_> {
             Constraint::Length(actions_area_height),
         ])
         .areas(inner);
-        frame.render_widget(Paragraph::new(self.prose), prose_area);
-        frame.render_widget(Paragraph::new(self.actions), actions_area);
+        frame.render_widget(Paragraph::new(prose), prose_area);
+        frame.render_widget(Paragraph::new(actions), actions_area);
     }
 }
 
@@ -3904,9 +4010,10 @@ pub(crate) struct ListPanel<'a> {
     /// Outer width.
     pub(crate) width: u16,
     /// Rows pinned above the list — a filter prompt, a separator. Never scrolled out of view.
-    pub(crate) header: Vec<Line<'a>>,
-    /// The list itself, one row per entry.
-    pub(crate) items: Vec<Line<'a>>,
+    pub(crate) header: Body<'a>,
+    /// The list itself, one entry per row **before wrapping**: an entry too long for the panel
+    /// continues on a row of its own rather than being cut (RFC 060 decision 2).
+    pub(crate) items: Vec<Body<'a>>,
     /// The selected index into `items`, when this list has a selection.
     pub(crate) cursor: Option<usize>,
     /// The block's style.
@@ -3915,8 +4022,25 @@ pub(crate) struct ListPanel<'a> {
 
 impl ListPanel<'_> {
     fn render(self, frame: &mut Frame, area: Rect) {
-        let header_len = u16::try_from(self.header.len()).unwrap_or(u16::MAX);
-        let items_len = u16::try_from(self.items.len()).unwrap_or(u16::MAX);
+        // As [`Panel::render`]: the width the panel will really be, less border and gutter.
+        let outer = self.width.min(area.width);
+        let inner_width = usize::from(outer.saturating_sub(2));
+        let title_text = self.title;
+        let header = self.header.rows(inner_width);
+        // **One entry can be several rows.** The window below moves in rows, and keeps every row of
+        // the selected entry on screen — a selection half off the bottom is the fault `window_start`
+        // exists to prevent, and wrapping made an entry taller than one row.
+        let entries: Vec<Vec<Line>> = self
+            .items
+            .into_iter()
+            .map(|item| item.rows(inner_width))
+            .collect();
+        let rows: Vec<Line> = entries.iter().flatten().cloned().collect();
+        crate::text::record_overflow(title_text.trim(), &header, inner_width);
+        crate::text::record_overflow(title_text.trim(), &rows, inner_width);
+
+        let header_len = u16::try_from(header.len()).unwrap_or(u16::MAX);
+        let items_len = u16::try_from(rows.len()).unwrap_or(u16::MAX);
         let wanted = header_len.saturating_add(items_len).saturating_add(2);
         let region = centered(self.width, wanted.min(area.height), area);
 
@@ -3926,12 +4050,21 @@ impl ListPanel<'_> {
         let header_height = header_len.min(inner_height);
         let viewport = inner_height.saturating_sub(header_height);
 
-        let start = self.cursor.map_or(0, |cursor| {
-            window_start(self.items.len(), cursor, usize::from(viewport))
+        // The selected entry's **last** row is what has to be on screen, so a two-row entry does not
+        // hang half off the bottom.
+        let anchor = self.cursor.map(|cursor| {
+            entries
+                .iter()
+                .take(cursor + 1)
+                .map(Vec::len)
+                .sum::<usize>()
+                .saturating_sub(1)
         });
-        let end = (start + usize::from(viewport)).min(self.items.len());
-        let visible: Vec<Line> = self
-            .items
+        let start = anchor.map_or(0, |anchor| {
+            window_start(rows.len(), anchor, usize::from(viewport))
+        });
+        let end = (start + usize::from(viewport)).min(rows.len());
+        let visible: Vec<Line> = rows
             .get(start..end)
             .map(<[Line]>::to_vec)
             .unwrap_or_default();
@@ -3939,13 +4072,13 @@ impl ListPanel<'_> {
         let title = if items_len > viewport {
             format!(
                 "{} — lines {}–{} of {} ",
-                self.title.trim_end(),
+                title_text.trim_end(),
                 start + 1,
                 end,
                 items_len
             )
         } else {
-            self.title.to_string()
+            title_text.to_string()
         };
 
         let block = Block::default()
@@ -3960,7 +4093,7 @@ impl ListPanel<'_> {
             Constraint::Length(viewport),
         ])
         .areas(inner);
-        frame.render_widget(Paragraph::new(self.header), header_area);
+        frame.render_widget(Paragraph::new(header), header_area);
         frame.render_widget(Paragraph::new(visible), list_area);
     }
 }
@@ -4022,6 +4155,17 @@ fn window_start(total: usize, cursor: usize, viewport: usize) -> usize {
     cursor
         .saturating_sub(viewport.saturating_sub(1))
         .min(total - viewport)
+}
+
+/// **The text columns a panel of this outer width will have in `area`** — the same arithmetic
+/// [`Panel::render`] does, in one place.
+///
+/// For the two helpers that must count their own rows against a height budget before the panel sees
+/// them ([`declaration_lines`] and [`frozen_lines`]): they decide *what to show* from how many rows it
+/// takes, which cannot be deferred to the panel. **It is the drawn width, never a constant**, so the
+/// fault RFC 060 F3 found cannot come back through them.
+fn panel_text_width(outer: u16, area: Rect) -> usize {
+    usize::from(outer.min(area.width).saturating_sub(3))
 }
 
 /// A `width`×`height` rectangle centred within `area` (clamped to fit).

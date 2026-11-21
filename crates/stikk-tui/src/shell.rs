@@ -17,6 +17,34 @@ use crate::{overlay, status_bar, view};
 const MIN_WIDTH: u16 = 80;
 const MIN_HEIGHT: u16 = 24;
 
+// **The seam RFC 060's own tests draw through** (Handoff A §2.3).
+//
+// The minimum is still 80 x 24 in this commit, and the wrap this commit fixes is what has to be
+// checked at 60 — so a test draws every screen with the size guard set aside, rather than editing
+// the constant and testing a tree nobody ships. It goes away with the lower minimum (§5.1).
+#[cfg(test)]
+thread_local! {
+    static GUARD_SET_ASIDE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Draw `f` with the too-small guard set aside — see [`GUARD_SET_ASIDE`].
+#[cfg(test)]
+pub(crate) fn below_the_minimum<R>(f: impl FnOnce() -> R) -> R {
+    GUARD_SET_ASIDE.set(true);
+    let out = f();
+    GUARD_SET_ASIDE.set(false);
+    out
+}
+
+/// Whether the too-small screen is owed for this size.
+fn too_small(area: Rect) -> bool {
+    #[cfg(test)]
+    if GUARD_SET_ASIDE.get() {
+        return false;
+    }
+    area.width < MIN_WIDTH || area.height < MIN_HEIGHT
+}
+
 /// Render the whole shell for `app` into the frame.
 pub fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
@@ -60,7 +88,7 @@ fn paint_the_themes_own_pair(frame: &mut Frame, area: Rect, fg: Color, bg: Color
 fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
     let palette = app.palette();
 
-    if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
+    if too_small(area) {
         render_too_small(palette, frame, area);
         return;
     }

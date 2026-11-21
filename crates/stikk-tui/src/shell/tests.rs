@@ -1626,3 +1626,126 @@ fn the_too_small_notice_keeps_seven_to_one() {
     }
     println!("RFC 059: the too-small notice, {cells} coloured cells");
 }
+
+// ---------------------------------------------------------------------------------------------
+// No row overflows its area (RFC 060 decision 2; Handoff A §2)
+// ---------------------------------------------------------------------------------------------
+
+/// **Every screen, at a width below today's minimum, with no row wider than the area it is drawn
+/// in** (RFC 060 decision 2).
+///
+/// **Structural, not textual.** A cut row and a row that simply ends look the same on screen, so
+/// this cannot be read off the buffer: every view and every panel records the rows it is about to
+/// draw against the width it has (`text::record_overflow`), and this drains the list and asserts it
+/// is empty, naming each one.
+///
+/// The minimum is still 80 × 24 in this commit, so the screens are drawn through `shell`'s own
+/// `cfg(test)` seam rather than by editing the constant (Handoff A §2.3); commit 4 lowers the
+/// minimum and the seam goes with it.
+#[test]
+fn no_row_overflows_its_area_below_the_minimum() {
+    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
+    let mut found: Vec<String> = Vec::new();
+    let mut screens_drawn = 0_usize;
+    for screen in screens() {
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+        // Drain what reaching the screen recorded: `reach` draws, and those draws were at 120×40.
+        let _ = crate::text::drain_overflows();
+        for (w, h) in [(60, 18), (72, 20)] {
+            crate::shell::below_the_minimum(|| {
+                let _ = drawn(&app, w, h);
+            });
+            screens_drawn += 1;
+            for overflow in crate::text::drain_overflows() {
+                found.push(format!(
+                    "{} at {w}x{h}: {} row {} wants {} columns of {}: {:?}",
+                    screen.name,
+                    overflow.what,
+                    overflow.row,
+                    overflow.drawn,
+                    overflow.width,
+                    overflow.text
+                ));
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "{} row(s) overflow their area:\n{}",
+        found.len(),
+        found.join("\n")
+    );
+    println!("RFC 060: {screens_drawn} screens drawn at 60x18 and 72x20, zero overflows");
+}
+
+/// **The three overlays RFC 060 F3 found cut, read whole at 60 × 18** — the sentences F3 quotes,
+/// asserted after flattening the border and the wrap.
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib capture_rfc060_the_three_overlays -- --nocapture
+/// ```
+#[test]
+fn capture_rfc060_the_three_overlays_f3_found_cut() {
+    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
+    for (name, fragments) in [
+        (
+            "overlay: a refusal card",
+            vec![
+                "prikk declined to read this ref's history.",
+                "The ref may not exist, or its name may be mistyped.",
+                "stikk cannot override prikk's decision.",
+            ],
+        ),
+        (
+            "overlay: a commit prikk would refuse",
+            vec![
+                "prikk reports that it would refuse the paths below",
+                "and one refused path refuses the whole commit. Nothing was armed.",
+                "then preview the commit again",
+            ],
+        ),
+        (
+            "overlay: glossary (the help overlay)",
+            vec![
+                "Every repository write happens inside prikk itself, never in stikk.",
+                "prikk's own fields (in Patch detail, Compare)",
+                "mark this block for a comparison (in History)",
+            ],
+        ),
+    ] {
+        let screen = screens()
+            .into_iter()
+            .find(|screen| screen.name == name)
+            .expect("a screen of the matrix");
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+        let text = crate::shell::below_the_minimum(|| draw(&app, 60, 18));
+        println!("--- RFC 060 F3: {name}, 60x18\n{text}");
+        // Flattened the way every capture here is: the border off, the rows joined, so a sentence
+        // that wrapped is one line again and `contains` means "whole on screen".
+        let flat = text
+            .lines()
+            .map(|line| line.trim_matches(|c: char| c == '│' || c.is_whitespace()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        for fragment in fragments {
+            let wanted: String = fragment.split_whitespace().collect::<Vec<_>>().join(" ");
+            let flowed: String = flat.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(
+                flowed.contains(&wanted),
+                "{name}: {wanted:?} is not whole on screen:\n{text}"
+            );
+        }
+    }
+}

@@ -277,32 +277,43 @@ pub fn render(
 
     // UD-06 honesty, and — since prikk 0.46 — the content diff that no longer awaits anything.
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "  commits are whole-worktree — there is no staging (u: toggle untracked)",
-        dim,
-    )));
+    // **Wrapped to the view's own width** (RFC 060 decision 2): at 60 and at 72 columns these two
+    // rows were cut at the border, which the structural check now catches.
+    for row in crate::text::wrap_indented(
+        "commits are whole-worktree — there is no staging (u: toggle untracked)",
+        text_width,
+        "  ",
+    ) {
+        lines.push(Line::from(Span::styled(row, dim)));
+    }
     // **This row said `per-file content diff awaits prikk support (UD-09)`, and at the ceiling
     // that is false** (RFC 038 F4, `C-T2b`): `prikk diff` with no arguments *is* that diff — the
     // worktree against what `commit` would author against. Below the band the sentence is stikk's
     // own, about stikk's own limit (`C-T4d`), and never prikk's.
-    lines.push(Line::from(Span::styled(
-        if bands.compares {
-            "  d: compare the worktree with what `commit` would author against, line by line"
-                .to_string()
-        } else {
-            format!(
-                "  stikk compares from prikk 0.{} on",
-                stikk_core::COMPARE_FROM_MINOR
-            )
-        },
-        dim.add_modifier(Modifier::ITALIC),
-    )));
+    let compare_hint = if bands.compares {
+        "d: compare the worktree with what `commit` would author against, line by line".to_string()
+    } else {
+        format!(
+            "stikk compares from prikk 0.{} on",
+            stikk_core::COMPARE_FROM_MINOR
+        )
+    };
+    for row in crate::text::wrap_indented(&compare_hint, text_width, "  ") {
+        lines.push(Line::from(Span::styled(
+            row,
+            dim.add_modifier(Modifier::ITALIC),
+        )));
+    }
 
     let title = format!(" Changes · {} ", identifier(&view.reff));
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
         .style(Style::default().fg(palette.fg));
+    // **No row may be wider than the area it is drawn in** (RFC 060 decision 2). This view
+    // wraps its own rows to a width taken from `area`, and draws them through a `Paragraph`
+    // with no `Wrap`: a row too wide would be cut, so it is recorded in tests instead.
+    crate::text::record_overflow("Changes", &lines, usize::from(area.width.saturating_sub(2)));
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 

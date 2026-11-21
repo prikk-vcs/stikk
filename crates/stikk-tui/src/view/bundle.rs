@@ -70,6 +70,10 @@ pub fn render(
         .borders(Borders::ALL)
         .title(title)
         .style(Style::default().fg(palette.fg));
+    // **No row may be wider than the area it is drawn in** (RFC 060 decision 2). This view
+    // wraps its own rows to a width taken from `area`, and draws them through a `Paragraph`
+    // with no `Wrap`: a row too wide would be cut, so it is recorded in tests instead.
+    crate::text::record_overflow("Bundle", &lines, usize::from(area.width.saturating_sub(2)));
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 

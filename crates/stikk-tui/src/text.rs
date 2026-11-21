@@ -319,5 +319,76 @@ pub fn wrap_verbatim(text: &str, width: usize, indent: &str) -> Vec<String> {
         .collect()
 }
 
+/// **Every row stikk draws is held to the area it is drawn in** (RFC 060 decision 2), structurally,
+/// in tests.
+///
+/// RFC 060 F3 found three overlays cutting words in the middle at 60 columns: each wrapped its text to
+/// a constant width, and the panel was then narrowed to the terminal, so the panel cut what the
+/// renderer had wrapped wider. The cut is invisible in the rendered buffer — a cut row and a row that
+/// simply ends look the same — so it cannot be caught by reading the screen. It can be caught where
+/// the rows meet their width, which is here.
+///
+/// **A renderer calls this where a cut would be possible**, which is wherever rows are handed to a
+/// `Paragraph` that does **not** wrap: every view but Orientation, every overlay panel, and the
+/// Glossary. A wrapping `Paragraph` reflows a long row instead of cutting it, so Orientation does not
+/// call this — recording a reflow as a defect would be a false alarm, and RFC 060 F2 measured that
+/// those rows reflow correctly at 60 columns.
+///
+/// **Nothing is recorded in a release build**: the body is empty there, and the call compiles away.
+#[cfg(test)]
+pub(crate) fn record_overflow(what: &str, rows: &[ratatui::text::Line<'_>], width: usize) {
+    for (index, row) in rows.iter().enumerate() {
+        let text: String = row.spans.iter().map(|span| span.content.as_ref()).collect();
+        // **Characters, as every wrap here counts** (RFC 060 decision 2). Display width for CJK is the
+        // carried i18n item, and it changes the count in this one place.
+        let drawn = text.chars().count();
+        if drawn > width {
+            OVERFLOWS.with_borrow_mut(|list| {
+                list.push(Overflow {
+                    what: what.to_string(),
+                    row: index,
+                    width,
+                    drawn,
+                    text,
+                });
+            });
+        }
+    }
+}
+
+/// See [`record_overflow`]. In a release build this does nothing at all.
+#[cfg(not(test))]
+#[inline]
+pub(crate) fn record_overflow(_what: &str, _rows: &[ratatui::text::Line<'_>], _width: usize) {}
+
+/// One row that was wider than the area it was drawn in.
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(crate) struct Overflow {
+    /// The view or overlay that drew it, as it named itself.
+    pub(crate) what: String,
+    /// Which row of the surface it was.
+    pub(crate) row: usize,
+    /// The columns it had.
+    pub(crate) width: usize,
+    /// The columns it wanted.
+    pub(crate) drawn: usize,
+    /// The row itself, for the failure message.
+    pub(crate) text: String,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Overflows recorded since the last drain. Thread-local, so tests running in parallel cannot
+    /// read each other's.
+    static OVERFLOWS: std::cell::RefCell<Vec<Overflow>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Take every overflow recorded on this thread since the last call.
+#[cfg(test)]
+pub(crate) fn drain_overflows() -> Vec<Overflow> {
+    OVERFLOWS.with_borrow_mut(std::mem::take)
+}
+
 #[cfg(test)]
 mod tests;

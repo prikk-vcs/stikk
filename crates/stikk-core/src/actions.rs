@@ -171,6 +171,11 @@ pub struct Action {
     pub needs_focused_ref: bool,
     /// Its place in the key line (RFC 061 decision 5): the line drops **whole entries, lowest rank
     /// first**. `255` never drops; `0` never appears.
+    ///
+    /// **What belongs to this screen or this row outranks what every screen has.** `u` on Changes is
+    /// why a reader is on Changes; `b` is on every line, and a reader who loses it there still finds
+    /// branches by name. The ranks only decide what goes when the line is short — the order a reader
+    /// reads is the catalog's.
     pub rank: u8,
 }
 
@@ -524,7 +529,7 @@ static ACTIONS: &[Action] = &[
         operation: "mark",
         category: None,
         needs_focused_ref: false,
-        rank: 85,
+        rank: 194,
     },
     Action {
         id: "op.compare",
@@ -540,7 +545,7 @@ static ACTIONS: &[Action] = &[
         operation: "compare",
         category: Some(RequestCategory::ReadState),
         needs_focused_ref: false,
-        rank: 90,
+        rank: 195,
     },
     Action {
         id: "block.undo",
@@ -625,7 +630,7 @@ static ACTIONS: &[Action] = &[
         operation: "untracked",
         category: None,
         needs_focused_ref: false,
-        rank: 75,
+        rank: 192,
     },
     // ----- Trust -----
     Action {
@@ -690,7 +695,7 @@ static ACTIONS: &[Action] = &[
         operation: "raw",
         category: None,
         needs_focused_ref: false,
-        rank: 80,
+        rank: 193,
     },
     // ----- found by name -----
     Action {
@@ -848,6 +853,24 @@ pub fn here(row: Option<RowKind>, screen: Option<ScreenKind>) -> Vec<&'static Ac
         }
     }
     list
+}
+
+/// **The keys a reader has here, in reading order** (RFC 061 decision 5): the catalog's entries that
+/// apply here *and* have a key line label.
+///
+/// The order is the catalog's, which is the order a reader meets them; [`Action::rank`] decides what
+/// goes when the line does not fit, not where an entry sits.
+#[must_use]
+pub fn keys_here(row: Option<RowKind>, screen: Option<ScreenKind>) -> Vec<&'static Action> {
+    ACTIONS
+        .iter()
+        .filter(|action| action.hint.is_some())
+        .filter(|action| {
+            action.applies_to(Where::Everywhere)
+                || screen.is_some_and(|screen| action.applies_to(Where::Screen(screen)))
+                || row.is_some_and(|row| action.applies_to(Where::Row(row)))
+        })
+        .collect()
 }
 
 /// Actions whose name matches `filter` (case-insensitive substring; empty matches all) — the

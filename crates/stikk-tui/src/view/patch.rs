@@ -61,26 +61,17 @@ pub fn render(
     let scroll = offset.get().min(max_offset);
     offset.set(scroll);
 
-    // `NFR-A03`: which view is showing, what switches it, and that there is more, are all said rather
-    // than left to guess. **The `v` hint lives in the title, not in a row at the foot**: this view
-    // scrolls, and a hint at the foot is a hint below the fold exactly when the patch is big enough to
-    // need it (caught by this module's own capture test).
-    // One title builder, for every frame (RFC 060 review v1 C1). `↑/↓` is named only where something
-    // is hidden, as it always has been: an affordance for a surface that does not scroll is noise.
+    // `NFR-A03`: which view is showing, and that there is more, are said rather than left to guess.
+    // **Which key switches it is on the key line** (RFC 061 decision 5), one row above the status
+    // bar, where every key this screen has is named; the title says which of the two is showing.
+    // One title builder, for every frame (RFC 060 review v1 C1).
     let position = Position::of(scroll, viewport, lines.len());
-    let (name, key): (&str, &str) = if raw {
-        ("Patch \u{00b7} prikk's own fields", "v: rendered")
+    let name = if raw {
+        "Patch \u{00b7} prikk's own fields"
     } else {
-        ("Patch", "v: prikk's own fields")
+        "Patch"
     };
-    let mut keys = vec![key];
-    if position.is_some() {
-        keys.push("\u{2191}/\u{2193}");
-    }
-    let title = Title::of(name)
-        .keys(&keys)
-        .position(position)
-        .render(area.width);
+    let title = Title::of(name).position(position).render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

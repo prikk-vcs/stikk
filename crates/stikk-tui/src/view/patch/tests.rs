@@ -297,8 +297,10 @@ fn a_bounded_preimage_says_how_many_bytes_it_withheld() {
         "{rows:?}"
     );
     assert!(joined(&text).contains("delete-node big.txt"), "{text}");
+    // **The position says there is more** (RFC 061 decision 5: the scroll keys are on the key line,
+    // so the title carries the name and the position alone).
     assert!(
-        text.contains("\u{2191}/\u{2193} \u{b7} lines"),
+        text.contains("\u{2014} lines 1\u{2013}"),
         "a bounded preimage still scrolls: {text}"
     );
 }
@@ -317,10 +319,7 @@ fn the_raw_view_shows_prikks_own_fields_at_80_columns() {
     let rendered = draw_sized(&view, false, 80, 40);
     let raw = draw_sized(&view, true, 80, 40);
     println!("--- RFC 035 §6: the raw view, 80 columns\n{raw}");
-    assert!(
-        raw.contains(" Patch · prikk's own fields — v: rendered"),
-        "{raw}"
-    );
+    assert!(raw.contains(" Patch · prikk's own fields "), "{raw}");
     let flat = joined(&raw);
     assert!(flat.contains("\"old_mode\": 33188"), "{flat}");
     assert!(flat.contains("\"new_mode\": 33261"), "{flat}");
@@ -332,11 +331,10 @@ fn the_raw_view_shows_prikks_own_fields_at_80_columns() {
         joined(&rendered).contains("mode 100644 → 100755"),
         "{rendered}"
     );
-    // The hint is in the title, where a scroll cannot push it off screen.
-    assert!(
-        rendered.contains(" Patch — v: prikk's own fields"),
-        "{rendered}"
-    );
+    // **The title says which rendering is showing**, and the key that switches them is on the key
+    // line (RFC 061 decision 5).
+    assert!(rendered.contains(" Patch "), "{rendered}");
+    assert!(!rendered.contains("v: "), "{rendered}");
 }
 
 /// Below stikk's JSON floor there is nothing to list, and the view says so in stikk's own voice — never
@@ -701,13 +699,14 @@ fn the_patch_title_is_whole_at_80_columns_in_both_renderings() {
         let text = draw(&view, raw);
         assert!(text.contains("lines 1"), "it must be scrolling: {text}");
         assert_title_is_whole(&text, " of ");
-        // And the last word of stikk's own wording survives, not just the counter.
+        // And the name that says which rendering is showing (RFC 061 decision 5: the key that
+        // switches them is on the key line, not here).
         assert_title_is_whole(
             &text,
             if raw {
-                "v: rendered"
+                "Patch \u{00b7} prikk's own fields"
             } else {
-                "v: prikk's own fields"
+                "Patch"
             },
         );
     }

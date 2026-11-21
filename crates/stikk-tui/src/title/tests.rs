@@ -1,4 +1,4 @@
-//! The one title builder's own rules (RFC 060 review v1 C1).
+//! The one title builder's own rules (RFC 060 review v1 C1, as RFC 061 decision 5 narrows them).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -14,47 +14,28 @@ fn a_position_is_only_said_when_something_is_hidden() {
     assert_eq!(some.words(), "lines 4–14 of 29");
 }
 
-/// **The whole title where it fits**, in the shape every frame has used.
+/// **A name and a position, and nothing else** (RFC 061 decision 5).
 #[test]
 fn the_whole_title_where_it_fits() {
-    let title = Title::of("Verify · this run")
-        .keys(&["v: raw", "r: re-run", "↑/↓"])
-        .position(Position::of(0, 11, 24));
-    assert_eq!(
-        title.render(120),
-        " Verify · this run — v: raw · r: re-run · ↑/↓ · lines 1–11 of 24 "
-    );
+    let title = Title::of("Verify · this run").position(Position::of(0, 11, 24));
+    assert_eq!(title.render(120), " Verify · this run — lines 1–11 of 24 ");
+    // At 60 it is the same title: there are no keys left to give up, which is the point.
+    assert_eq!(title.render(60), " Verify · this run — lines 1–11 of 24 ");
 }
 
-/// **The keys go first, as one group** — never one of them at a time.
-#[test]
-fn the_keys_are_dropped_as_one_group() {
-    let title = Title::of("Verify · this run")
-        .keys(&["v: raw", "r: re-run", "↑/↓"])
-        .position(Position::of(0, 11, 24));
-    let at_60 = title.render(60);
-    assert_eq!(at_60, " Verify · this run — lines 1–11 of 24 ");
-    assert!(!at_60.contains("v: raw"), "{at_60:?}");
-    assert!(!at_60.contains("r: re-run"), "{at_60:?}");
-    assert!(!at_60.contains('↑'), "{at_60:?}");
-}
-
-/// **Then the name, from its end and marked** — and **the position is never cut**.
+/// **The name is shortened from its end and marked** — and **the position is never cut**.
 #[test]
 fn the_name_is_shortened_and_the_position_is_never_cut() {
-    let title = Title::of("Compare · prikk's own fields")
-        .keys(&["v: rendered"])
-        .position(Position::of(40, 11, 2999));
+    let title = Title::of("Compare · prikk's own fields").position(Position::of(40, 11, 2999));
     for width in 20..=60 {
         let drawn = title.render(width);
         assert!(
             drawn.contains("lines 41–51 of 2999"),
             "at {width}: the position is whole: {drawn:?}"
         );
-        // **Whatever is given up is given up in the right order**: the keys first, then the name
-        // from its end — and a name that lost anything says so with the mark. At the narrowest
-        // widths the name is the mark alone, which is still a name that says it was shortened.
-        if !drawn.contains("v: rendered") && !drawn.contains("Compare · prikk's own fields") {
+        // A name that lost anything says so with the mark. At the narrowest widths the name is the
+        // mark alone, which is still a name that says it was shortened.
+        if !drawn.contains("Compare · prikk's own fields") {
             assert!(
                 drawn.contains('…'),
                 "at {width}: a shortened name says so: {drawn:?}"
@@ -70,16 +51,20 @@ fn a_name_on_its_own_is_unchanged() {
     assert_eq!(Title::of("Block · tip").render(80), " Block · tip ");
 }
 
-/// **RFC 024 §4's em dash where there are no keys**, and the keys' own separator where there are.
+/// **RFC 024 §4's em dash**, which is now the only separator a title has.
 #[test]
-fn the_position_joins_with_the_right_separator() {
+fn the_position_joins_with_an_em_dash() {
     let bare = Title::of("Confirm").position(Position::of(0, 11, 29));
     assert_eq!(bare.render(80), " Confirm — lines 1–11 of 29 ");
-    let with_keys = Title::of("Trust")
-        .keys(&["a adopts"])
-        .position(Position::of(0, 11, 29));
-    assert_eq!(
-        with_keys.render(80),
-        " Trust — a adopts · lines 1–11 of 29 "
-    );
+    let trust = Title::of("Trust").position(Position::of(0, 11, 29));
+    assert_eq!(trust.render(80), " Trust — lines 1–11 of 29 ");
+}
+
+/// **No title names a key** (RFC 061 decision 5): there is no builder method that could.
+#[test]
+fn a_title_cannot_name_a_key() {
+    // The type carries a name and a position, and the key line names the keys. This test is the
+    // reminder; `every_title_names_no_key` in `shell::tests` holds the drawn frames to it.
+    let title = Title::of("History · heads/main");
+    assert_eq!(title.render(80), " History · heads/main ");
 }

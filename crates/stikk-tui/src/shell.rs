@@ -69,7 +69,7 @@ fn paint_the_themes_own_pair(frame: &mut Frame, area: Rect, fg: Color, bg: Color
     }
 }
 
-/// The frame itself: header, body, banner, status bar, and the overlay layer above them.
+/// The frame itself: header, body, banner, key line, status bar, and the overlay layer above them.
 fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
     let palette = app.palette();
 
@@ -88,13 +88,18 @@ fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
         .unwrap_or_default();
     // A banner is a notice, never the screen: the header, a row of body and the status bar keep
     // their places whatever a caller puts in it.
+    // The header, a row of body, the key line and the status bar keep their places whatever a
+    // caller puts in the banner.
     let banner_height = u16::try_from(banner_lines.len())
         .unwrap_or(1)
-        .min(area.height.saturating_sub(3));
-    let [header, body, banner, status] = Layout::vertical([
+        .min(area.height.saturating_sub(4));
+    let [header, body, banner, keys, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(banner_height),
+        // **The key line** (RFC 061 decision 5): one row, above the status bar, at every size from
+        // the minimum.
+        Constraint::Length(1),
         Constraint::Length(1),
     ])
     .areas(area);
@@ -108,6 +113,14 @@ fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
     if !banner_lines.is_empty() {
         frame.render_widget(Paragraph::new(banner_lines), banner);
     }
+    frame.render_widget(
+        Paragraph::new(crate::key_line::line(
+            &app.keys_here(),
+            palette,
+            usize::from(keys.width),
+        )),
+        keys,
+    );
     status_bar::render(app, frame, status);
 
     if let Some(top) = app.top_overlay() {

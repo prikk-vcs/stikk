@@ -112,13 +112,7 @@ pub fn render(
         ),
         None => format!("History \u{00b7} {}", identifier(&view.reff)),
     };
-    let title = Title::of(&name)
-        .keys(if marked.is_some() {
-            &["d compares it with the selected block"]
-        } else {
-            &[]
-        })
-        .render(area.width);
+    let title = Title::of(&name).render(area.width);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)

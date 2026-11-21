@@ -385,6 +385,10 @@ const FONT: &str = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 /// background, so the image supplies one too, dark to match [`Palette::dark`].
 const BACKGROUND: &str = "#12161b";
 
+/// The page's own text colour, which stands in for the terminal's own ([`Color::Reset`]) — the other
+/// half of the pair [`BACKGROUND`] is.
+const DEFAULT_FG: &str = "#d8dee4";
+
 /// Line thickness for the box-drawing characters, in pixels.
 const STROKE: u32 = 1;
 
@@ -535,9 +539,21 @@ struct CellStyle {
 
 impl CellStyle {
     fn of(cell: &ratatui::buffer::Cell) -> Self {
+        let (fg, bg) = (colour(cell.fg), colour(cell.bg));
+        // **Reverse video, drawn as the terminal draws it** (RFC 061 decision 4): the pair is
+        // swapped, and wherever one end is the terminal's own, this page's own pair stands in for it
+        // — the same substitution the rest of this file makes for [`Color::Reset`].
+        let (fg, bg) = if cell.modifier.contains(Modifier::REVERSED) {
+            (
+                bg.or_else(|| Some(BACKGROUND.to_string())),
+                Some(fg.unwrap_or_else(|| DEFAULT_FG.to_string())),
+            )
+        } else {
+            (fg, bg)
+        };
         Self {
-            fg: colour(cell.fg).unwrap_or_else(|| "#d8dee4".to_string()),
-            bg: colour(cell.bg),
+            fg: fg.unwrap_or_else(|| DEFAULT_FG.to_string()),
+            bg,
             bold: cell.modifier.contains(Modifier::BOLD),
             italic: cell.modifier.contains(Modifier::ITALIC),
         }

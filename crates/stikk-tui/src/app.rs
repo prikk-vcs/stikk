@@ -5612,6 +5612,19 @@ impl App {
             .collect()
     }
 
+    /// **The keys a reader has here** (RFC 061 decision 5), for the key line — the same row and
+    /// screen Enter's list is built from, so the line and the list cannot disagree about what a key
+    /// does here.
+    pub(crate) fn keys_here(&self) -> Vec<&'static stikk_core::Action> {
+        let row = self.selected_row().map(|(kind, _)| kind);
+        let screen = if self.overlays.is_empty() {
+            self.screen_kind()
+        } else {
+            None
+        };
+        stikk_core::actions::keys_here(row, screen)
+    }
+
     /// **What Enter opens** (RFC 061 decision 3): the actions for the selected row, then for the
     /// screen, titled by the row itself.
     ///

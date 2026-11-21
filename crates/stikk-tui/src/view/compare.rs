@@ -69,19 +69,14 @@ pub fn render(
     // One title builder, for every frame (RFC 060 review v1 C1). `↑/↓` is named only where something
     // is hidden, as it always has been: an affordance for a surface that does not scroll is noise.
     let position = Position::of(scroll, viewport, lines.len());
-    let (name, key): (&str, &str) = if raw {
-        ("Compare \u{00b7} prikk's own fields", "v: rendered")
+    // **The name says which it is showing**, and the key that toggles it is on the key line
+    // (RFC 061 decision 5).
+    let name = if raw {
+        "Compare \u{00b7} prikk's own fields"
     } else {
-        ("Compare", "v: prikk's own fields")
+        "Compare"
     };
-    let mut keys = vec![key];
-    if position.is_some() {
-        keys.push("\u{2191}/\u{2193}");
-    }
-    let title = Title::of(name)
-        .keys(&keys)
-        .position(position)
-        .render(area.width);
+    let title = Title::of(name).position(position).render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

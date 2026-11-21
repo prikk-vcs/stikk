@@ -79,14 +79,7 @@ pub fn render(
     // `NFR-A03`: "there is more" is said, never left to guess — only when there is somewhere to go.
     // One title builder, for every frame (RFC 060 review v1 C1).
     let position = Position::of(scroll, viewport, lines.len());
-    let title = Title::of("Queue")
-        .keys(if position.is_some() {
-            &["\u{2191}/\u{2193}"]
-        } else {
-            &[]
-        })
-        .position(position)
-        .render(area.width);
+    let title = Title::of("Queue").position(position).render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

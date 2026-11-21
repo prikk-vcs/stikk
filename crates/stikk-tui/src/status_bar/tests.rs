@@ -31,7 +31,7 @@ fn from_state(repo: &str, state: OrientationState, palette: Palette) -> App {
 }
 
 #[test]
-fn shows_repo_and_hint_and_no_focus_before_the_first_read() {
+fn shows_the_repository_and_no_focus_before_the_first_read() {
     // RFC 029 Handoff B §3: pending focus renders nothing for focus — no `heads/main` guessed before
     // prikk has said anything — and the existing `(loading)` marker stays.
     let (tx, _rx) = mpsc::channel();
@@ -40,7 +40,8 @@ fn shows_repo_and_hint_and_no_focus_before_the_first_read() {
     assert!(text.contains("project"));
     assert!(!text.contains("heads/main"), "{text:?}");
     assert!(text.contains("(loading)"));
-    assert!(text.contains("q:back"));
+    // **No key hint** (RFC 061 decision 5): the keys are on the key line, one row above.
+    assert!(!text.contains("q:back"), "{text:?}");
     // Never "HEAD".
     assert!(!text.contains("HEAD"));
 }
@@ -441,8 +442,9 @@ fn at_40_columns_the_name_is_shed_to_one_character_and_the_ref_is_marked() {
 
 #[test]
 fn the_line_sheds_in_order_one_step_at_a_time() {
-    // Widths for the unresolved row with a long name and a queue: name 30, focus 15, the default's label 22
-    // and value 32, queue and badges 34, hint 27 — 160 in all. The order is review v2 §2's.
+    // Widths for the unresolved row with a long name and a queue: name 30, focus 15, the default's
+    // label 22 and value 32, queue and badges 34 — 133 in all. The order is review v2 §2's, less its
+    // first step: **the key hint is gone** (RFC 061 decision 5), and with it `fit`'s step 1.
     let app = focused_app(LONG_REPO, unresolved(), 3);
     let at = |width| {
         let text = render_at(&app, width);
@@ -452,20 +454,19 @@ fn the_line_sheds_in_order_one_step_at_a_time() {
     };
 
     let nothing = at(160);
-    assert!(nothing.ends_with(":palette  ?:help  q:back"), "{nothing:?}");
+    assert!(!nothing.contains(":palette"), "{nothing:?}");
     assert!(nothing.starts_with(LONG_REPO), "{nothing:?}");
     assert!(nothing.contains(UNRESOLVED), "{nothing:?}");
 
-    // 1. The hint goes first; the name and prikk's text are still whole.
-    let hint_gone = at(133);
-    assert!(!hint_gone.contains(":palette"), "{hint_gone:?}");
-    assert!(hint_gone.starts_with(LONG_REPO), "{hint_gone:?}");
+    // Whole at its own width, which is what it needs now that the hint is gone.
+    let whole = at(133);
+    assert!(whole.starts_with(LONG_REPO), "{whole:?}");
     assert!(
-        hint_gone.contains(&format!("prikk's default: {UNRESOLVED}")),
-        "{hint_gone:?}"
+        whole.contains(&format!("prikk's default: {UNRESOLVED}")),
+        "{whole:?}"
     );
 
-    // 2. Then the repository name is shortened from its end; prikk's text is still whole.
+    // 1. The repository name is shortened from its end; prikk's text is still whole.
     let name_short = at(120);
     assert!(
         name_short.starts_with("a-repository-nam…  ·  heads/main"),
@@ -483,7 +484,7 @@ fn the_line_sheds_in_order_one_step_at_a_time() {
     );
     assert!(name_shortest.contains(UNRESOLVED), "{name_shortest:?}");
 
-    // 3. Then prikk's default is shortened from its end, marked `…`.
+    // 2. Then prikk's default is shortened from its end, marked `…`.
     let default_short = at(90);
     assert!(
         default_short.starts_with("a…  ·  heads/main"),
@@ -500,7 +501,7 @@ fn the_line_sheds_in_order_one_step_at_a_time() {
         "a…  ·  heads/main  ·  prikk's default: …  ·  ●3 queued  ·  [AUT ?] [MNT ?]"
     );
 
-    // 4. Last, the segment goes.
+    // 3. Last, the segment goes.
     let segment_gone = at(73);
     assert_eq!(
         segment_gone,

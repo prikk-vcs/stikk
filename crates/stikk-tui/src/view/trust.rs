@@ -69,17 +69,12 @@ pub fn render(
     // One title builder, for every frame (RFC 060 review v1 C1). `a adopts` and `x removes` are key
     // hints, so they go with the group.
     let position = Position::of(scroll, viewport, lines.len());
-    let scrolls: &[&str] = if position.is_some() {
-        &["\u{2191}/\u{2193}"]
-    } else {
-        &[]
-    };
+    // **The name says whether this list can be written to**, and the keys that write are found by
+    // name in Enter's list (RFC 061 decision 2): `a` and `x` are gone.
     let title = if adoptable(view) {
-        let mut keys = vec!["a adopts", "x removes"];
-        keys.extend_from_slice(scrolls);
-        Title::of("Trust").keys(&keys)
+        Title::of("Trust")
     } else {
-        Title::of("Trust \u{00b7} read only").keys(scrolls)
+        Title::of("Trust \u{00b7} read only")
     }
     .position(position)
     .render(area.width);

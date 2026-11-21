@@ -55,11 +55,6 @@ pub fn render(
     // One title builder, for every frame (RFC 060 review v1 C1).
     let position = Position::of(scroll, viewport, lines.len());
     let title = Title::of("Merge plan \u{00b7} prikk's own")
-        .keys(if position.is_some() {
-            &["\u{2191}/\u{2193}"]
-        } else {
-            &[]
-        })
         .position(position)
         .render(area.width);
 

@@ -85,7 +85,10 @@ fn renders_header_orientation_and_status_together() {
     assert!(text.contains("sample-repo")); // header repo name
     assert!(text.contains("Orientation")); // body
     assert!(text.contains("prikk 0.30.0")); // orientation content (RFC 009: the new NullBackend default)
-    assert!(text.contains("q:back")); // status bar
+    // **The key line, above the status bar** (RFC 061 decision 5), where the status bar's hint used
+    // to be the only place a key was named.
+    assert!(text.contains("q back"), "{text}");
+    assert!(text.contains("Enter actions"), "{text}");
 }
 
 #[test]
@@ -108,7 +111,11 @@ fn overlay_draws_over_the_view() {
     let text = draw(&app, 90, 24);
     assert!(text.contains("Glossary"));
     // The status bar still shows beneath the centred overlay.
-    assert!(text.contains("q:back"));
+    assert!(text.contains("no ref focused"), "{text}");
+    // **A tall card covers the key line**, which is why an overlay keeps a foot line of its own
+    // (RFC 060 decision 3, kept by RFC 061 decision 5): it names the key that reads on, where the
+    // key line cannot be seen.
+    assert!(text.contains("more below"), "{text}");
 }
 
 #[test]
@@ -1306,7 +1313,7 @@ fn screens() -> Vec<Screen> {
         },
         Screen {
             name: "patch detail",
-            marker: "Patch \u{2014} v: prikk's own fields",
+            marker: " Patch ",
             first_read: true,
             backend: stocked,
             reach: |app, rx, backend| {
@@ -1908,17 +1915,22 @@ fn capture_rfc060_c1_titles_at_60_columns() {
         title.contains(" of "),
         "the position is whole: {title:?}\n{text}"
     );
+    // **No title names a key** (RFC 061 decision 5): the key line does, one row above the status
+    // bar, and a title is a name and a position.
     assert!(
         !title.contains("v: raw") && !title.contains("r: re-run"),
-        "the keys are the first thing given up: {title:?}"
+        "a title names no key: {title:?}"
     );
     assert!(title.contains("Verify"), "{title:?}");
-    // At 120 columns everything fits, and nothing was given up.
+    // At 120 columns nothing is given up, and there is still no key in it.
     let roomy = draw(&app, 120, 40);
     let roomy_title = roomy.lines().nth(1).unwrap_or_default();
     println!("--- RFC 060 C1: Verify at 120x40\n{roomy_title}");
-    assert!(roomy_title.contains("v: raw"), "{roomy_title:?}");
-    assert!(roomy_title.contains("r: re-run"), "{roomy_title:?}");
+    assert!(
+        roomy_title.contains("Verify \u{00b7} this run"),
+        "{roomy_title:?}"
+    );
+    assert!(!roomy_title.contains("r: re-run"), "{roomy_title:?}");
 
     // The Glossary: the title says where, the foot line says which key, neither says both.
     app.open_glossary();
@@ -2099,4 +2111,112 @@ fn the_selected_row_is_reversed_across_its_width() {
         rows_checked >= 20,
         "only {rows_checked} selected rows were found to check"
     );
+}
+
+/// **The key line, on every screen at every size** (RFC 061 decision 5): one row above the status
+/// bar, whole entries only, and `? help` and `q back` always there.
+#[test]
+fn capture_rfc061_the_key_line_at_every_size() {
+    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
+    let mut found: Vec<String> = Vec::new();
+    for screen in screens() {
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+        let _ = crate::text::drain_overflows();
+        for (w, h) in [(60, 15), (80, 24), (120, 40)] {
+            let text = draw(&app, w, h);
+            let rows: Vec<&str> = text.lines().collect();
+            // The key line is the row above the status bar, which is the last.
+            let line = rows
+                .get(rows.len().saturating_sub(2))
+                .copied()
+                .unwrap_or_default();
+            println!("--- the key line: {} at {w}x{h}\n{line}", screen.name);
+            for overflow in crate::text::drain_overflows() {
+                found.push(format!(
+                    "{} at {w}x{h}: {} row {} wants {} columns of {}: {:?}",
+                    screen.name,
+                    overflow.what,
+                    overflow.row,
+                    overflow.drawn,
+                    overflow.width,
+                    overflow.text
+                ));
+            }
+            // **An overlay can cover it** (RFC 060 decision 3's foot line is why), so this asserts
+            // the line itself only where nothing is drawn over it.
+            if app.has_overlay() {
+                continue;
+            }
+            assert!(
+                line.contains("? help") && line.contains("q back"),
+                "{} at {w}x{h}: the two that never drop are not on the line:\n{line}",
+                screen.name
+            );
+            // **Whole entries only**: every `·` has a key and a word on each side of it, and no
+            // entry ends in a cut word — the line is built from whole entries or not at all.
+            for entry in line.trim().split(" \u{00b7} ") {
+                assert!(
+                    entry.split_whitespace().count() >= 2,
+                    "{} at {w}x{h}: {entry:?} is half an entry:\n{line}",
+                    screen.name
+                );
+                assert!(
+                    !entry.contains('\u{2026}'),
+                    "{} at {w}x{h}: {entry:?} was shortened, and entries drop whole:\n{line}",
+                    screen.name
+                );
+            }
+            assert!(
+                line.chars().count() <= usize::from(w),
+                "{} at {w}x{h}: the line is {} columns:\n{line}",
+                screen.name,
+                line.chars().count()
+            );
+        }
+    }
+    assert!(found.is_empty(), "rows overflowed:\n{}", found.join("\n"));
+}
+
+/// **No title names a key** (RFC 061 decision 5): every frame on every screen, at three sizes.
+#[test]
+fn every_title_names_no_key() {
+    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
+    let mut titles = 0_usize;
+    for screen in screens() {
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+        for (w, h) in [(60, 15), (80, 24), (120, 40)] {
+            let text = draw(&app, w, h);
+            for row in text.lines().filter(|row| row.contains('\u{250c}')) {
+                titles += 1;
+                // The shapes titles used: `v: raw`, `a adopts`, `d compares it with…`, `↑/↓`.
+                for named in [
+                    "v: ",
+                    "r: ",
+                    "a adopts",
+                    "x removes",
+                    "\u{2191}/\u{2193}",
+                    "d com",
+                ] {
+                    assert!(
+                        !row.contains(named),
+                        "{} at {w}x{h}: a title names {named:?}:\n{row}",
+                        screen.name
+                    );
+                }
+            }
+        }
+    }
+    assert!(titles > 50, "only {titles} titles were checked");
 }

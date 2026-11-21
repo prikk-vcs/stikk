@@ -10,21 +10,20 @@
 //!
 //! # The rule
 //!
-//! One title, three parts, and an order to give them up in:
+//! **A title is a name and a position** (RFC 061 decision 5):
 //!
 //! 1. **the name** — what the frame is: *"Verify · this run"*, *"Choose ref"*, *"Confirm"*;
-//! 2. **the key hints**, as one group — *"v: raw"*, *"r: re-run"*, *"↑/↓"*;
-//! 3. **the position** — *"lines a–b of c"*, RFC 024 §4's idiom.
+//! 2. **the position** — *"lines a–b of c"*, RFC 024 §4's idiom.
 //!
-//! When the title does not fit its frame: **drop every key hint, as one group**; then **shorten the
-//! name from its end, marked with `…`**. **The position is never cut and never shortened**: it is the
-//! one part of a title that is a statement about what the reader cannot see, and a half of it is
-//! worse than none of it. If even the position cannot fit, the frame is below stikk's minimum, which
-//! `shell`'s own guard rules out.
+//! When it does not fit its frame, **the name is shortened from its end, marked with `…`**. **The
+//! position is never cut and never shortened**: it is the one part of a title that is a statement
+//! about what the reader cannot see, and a half of it is worse than none of it. If even the position
+//! cannot fit, the frame is below stikk's minimum, which `shell`'s own guard rules out.
 //!
-//! **An overlay's title never names the scroll key** (RFC 060 decision 3): one foot line does, and two
-//! idioms for one fact is what that decision removed. A view's keys stay in its title until RFC 061
-//! moves them to the key line — and are the first thing dropped either way.
+//! **No title names a key.** RFC 060 had taken the scroll key out of an overlay's title, leaving one
+//! foot line to name it (decision 3); RFC 061 decision 5 takes the rest out of the views' titles,
+//! because the key line names every key a screen has, and a reader who has to look in two places to
+//! learn one key has been told twice and trusts neither.
 
 /// Where the reader is in a surface taller than its frame: RFC 024 §4's idiom, *"lines a–b of c"*.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +61,6 @@ impl Position {
 #[derive(Debug, Clone)]
 pub(crate) struct Title<'a> {
     name: &'a str,
-    keys: Vec<&'a str>,
     position: Option<Position>,
 }
 
@@ -71,15 +69,8 @@ impl<'a> Title<'a> {
     pub(crate) fn of(name: &'a str) -> Self {
         Self {
             name,
-            keys: Vec::new(),
             position: None,
         }
-    }
-
-    /// The keys this frame offers, as one group — **dropped together** when the title does not fit.
-    pub(crate) fn keys(mut self, keys: &[&'a str]) -> Self {
-        self.keys = keys.to_vec();
-        self
     }
 
     /// Where the reader is, when there is more than the frame shows.
@@ -100,47 +91,31 @@ impl<'a> Title<'a> {
         chosen
     }
 
-    /// The longest form that fits `available` columns, by the module doc's order.
+    /// The longest form that fits `available` columns: the name whole, then shortened from its end
+    /// and marked. **The position is never cut** (RFC 060 review v1 C1).
     fn fit(&self, available: usize) -> String {
-        let whole = self.compose(self.name, true);
+        let whole = self.compose(self.name);
         if whole.chars().count() <= available {
             return whole;
         }
-        // 1. The key hints, as one group.
-        let without_keys = self.compose(self.name, false);
-        if without_keys.chars().count() <= available {
-            return without_keys;
-        }
-        // 2. The name, shortened from its end and marked.
+        // The name, shortened from its end and marked.
         let chars: Vec<char> = self.name.chars().collect();
         for keep in (1..chars.len()).rev() {
             let shortened: String = chars.iter().take(keep).collect::<String>() + "\u{2026}";
-            let candidate = self.compose(&shortened, false);
+            let candidate = self.compose(&shortened);
             if candidate.chars().count() <= available {
                 return candidate;
             }
         }
         // The position alone, whole. Below the minimum, which `shell` does not draw a frame at.
-        self.compose("\u{2026}", false)
+        self.compose("\u{2026}")
     }
 
-    /// ` name — keys · … · position `, with whichever parts are being kept.
-    fn compose(&self, name: &str, keys: bool) -> String {
+    /// ` name — position `, with whichever parts there are.
+    fn compose(&self, name: &str) -> String {
         let mut out = name.to_string();
-        let mut said_dash = false;
-        if keys && !self.keys.is_empty() {
-            out.push_str(" \u{2014} ");
-            out.push_str(&self.keys.join(" \u{00b7} "));
-            said_dash = true;
-        }
         if let Some(position) = self.position {
-            // RFC 024 §4's idiom keeps its em dash where there are no keys before it, and joins the
-            // list with the same separator the keys use where there are.
-            out.push_str(if said_dash {
-                " \u{00b7} "
-            } else {
-                " \u{2014} "
-            });
+            out.push_str(" \u{2014} ");
             out.push_str(&position.words());
         }
         format!(" {out} ")

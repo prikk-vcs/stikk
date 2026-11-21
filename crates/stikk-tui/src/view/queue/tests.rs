@@ -324,7 +324,8 @@ fn a_tall_queue_scrolls_to_follow_the_selected_patch_and_says_where_it_is() {
 
     let top = draw_at(&view, &offset, 0);
     println!("--- Queue, twelve patches, first selected, 80×24\n{top}");
-    assert!(top.contains(" Queue — ↑/↓ · lines 1–22 of 53 "), "{top}");
+    // A name and a position, which is the whole of a title (RFC 061 decision 5).
+    assert!(top.contains(" Queue — lines 1–22 of 53 "), "{top}");
     assert!(top.contains("12 patch(es) queued for heads/main"), "{top}");
     assert!(
         top.contains("▸ 00000000000"),

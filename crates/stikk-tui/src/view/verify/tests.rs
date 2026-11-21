@@ -379,9 +379,10 @@ fn the_verify_title_is_whole_at_80_columns_in_every_state() {
     // Seventeen stages overflow 24 rows, so every one of these carries the scroll indicator --
     // which is the case that used to cut the title in half.
     let v = view(true, Vec::new(), all_evaluated());
+    // **The name and the position**, which is all a title carries (RFC 061 decision 5).
     for (raw, refreshing, tail) in [
-        (false, false, "r: re-run"),
-        (true, false, "r: re-run"),
+        (false, false, "Verify \u{00b7} this run"),
+        (true, false, "Verify \u{00b7} this run"),
         (false, true, "the previous verdict"),
     ] {
         let text = draw_at(&v, raw, refreshing, 80, 24);

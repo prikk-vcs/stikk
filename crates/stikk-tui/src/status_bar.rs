@@ -22,9 +22,6 @@ use crate::app::{App, OrientationState, RefFocus};
 use crate::text::{identifier, inert};
 use crate::theme::Palette;
 
-/// The key hint, the first thing the line sheds.
-const HINT: &str = "   :palette  ?:help  q:back";
-
 /// The mark a shortened value ends with.
 const ELLIPSIS: &str = "…";
 
@@ -72,14 +69,16 @@ struct Parts {
     tail: Vec<Span<'static>>,
 }
 
-/// Build the line from `parts`, with the given repository name and default value, and the hint or not.
+/// Build the line from `parts`, with the given repository name and default value.
+///
+/// **No key hint** (RFC 061 decision 5): the keys are named on the key line, one row above, which is
+/// the one place they are named. The hint here said three of the nineteen a reader had.
 fn line(
     parts: &Parts,
     palette: &Palette,
     repo: &str,
     focus: Option<usize>,
     default: Option<&str>,
-    hint: bool,
 ) -> Line<'static> {
     let mut spans = vec![Span::styled(
         repo.to_string(),
@@ -119,83 +118,67 @@ fn line(
         ));
     }
     spans.extend(parts.tail.iter().cloned());
-    if hint {
-        spans.push(Span::styled(HINT, Style::default().fg(palette.dim)));
-    }
     Line::from(spans)
 }
 
 /// The line that fits `width` terminal cells, shedding in this order and each step only if the line still
 /// does not fit:
 ///
-/// 1. drop the key hint;
-/// 2. shorten the repository name from its end, marked with `…`, down to one character and `…` — the
+/// 1. shorten the repository name from its end, marked with `…`, down to one character and `…` — the
 ///    header already shows the name, so it is the first thing worth giving up (review v2 §2);
-/// 3. shorten prikk's default from its end, marked with `…`, down to `prikk's default: …`;
-/// 4. drop the `prikk's default` segment, separator included;
-/// 5. shorten the focused ref from its end, marked with `…`, down to one character and `…` (RFC 060
+/// 2. shorten prikk's default from its end, marked with `…`, down to `prikk's default: …`;
+/// 3. drop the `prikk's default` segment, separator included;
+/// 4. shorten the focused ref from its end, marked with `…`, down to one character and `…` (RFC 060
 ///    decision 5) — last, because the ref is what the line is about.
 ///
 /// **Never shortened, and never dropped:** `no ref focused`, `(loading)`/`(error)`, `●n queued`, every
 /// badge, and `⟳ n` — `[MNT ?]` must never go missing (`C-T2c′`, `FR-104`), and the badges are the
-/// signing state. Beyond step 5 the line clips at the right edge, as it always did. Widths are cells ([`Line::width`]), not bytes or chars, because `inert` can
+/// signing state. Beyond step 4 the line clips at the right edge, as it always did. Widths are cells ([`Line::width`]), not bytes or chars, because `inert` can
 /// emit wide characters; shortening cuts on a character boundary and then measures.
 fn fit(parts: &Parts, palette: &Palette, width: usize) -> Line<'static> {
     let default = parts.default.as_deref();
-    let full = line(parts, palette, &parts.repo, None, default, true);
+    let full = line(parts, palette, &parts.repo, None, default);
     if full.width() <= width {
         return full;
     }
-    // 1. The key hint.
-    let without_hint = line(parts, palette, &parts.repo, None, default, false);
-    if without_hint.width() <= width {
-        return without_hint;
-    }
-    // 2. The repository name, shortened from its end, down to one character.
+    // 1. The repository name, shortened from its end, down to one character.
     let repo_chars: Vec<char> = parts.repo.chars().collect();
     let mut repo = parts.repo.clone();
     for keep in (1..repo_chars.len()).rev() {
         repo = shortened(&repo_chars, keep);
-        let candidate = line(parts, palette, &repo, None, default, false);
+        let candidate = line(parts, palette, &repo, None, default);
         if candidate.width() <= width {
             return candidate;
         }
     }
-    // 3. prikk's default, shortened from its end.
+    // 2. prikk's default, shortened from its end.
     if let Some(value) = default {
         let chars: Vec<char> = value.chars().collect();
         for keep in (0..chars.len()).rev() {
-            let candidate = line(
-                parts,
-                palette,
-                &repo,
-                None,
-                Some(&shortened(&chars, keep)),
-                false,
-            );
+            let candidate = line(parts, palette, &repo, None, Some(&shortened(&chars, keep)));
             if candidate.width() <= width {
                 return candidate;
             }
         }
     }
-    // 4. The whole segment.
-    let without_default = line(parts, palette, &repo, None, None, false);
+    // 3. The whole segment.
+    let without_default = line(parts, palette, &repo, None, None);
     if without_default.width() <= width {
         return without_default;
     }
-    // 5. **The focused ref, shortened from its end and marked** (RFC 060 decision 5) — last, and only
+    // 4. **The focused ref, shortened from its end and marked** (RFC 060 decision 5) — last, and only
     // once everything else has gone, because the ref is what the line is about. The badges are never
     // dropped: they are the signing state (`C-T2c′`, `FR-104`). Past this the line clips at the right
     // edge, as it always did.
     if let Focused::Ref(name) = &parts.focus {
         let chars: Vec<char> = name.chars().collect();
         for keep in (1..chars.len()).rev() {
-            let candidate = line(parts, palette, &repo, Some(keep), None, false);
+            let candidate = line(parts, palette, &repo, Some(keep), None);
             if candidate.width() <= width {
                 return candidate;
             }
         }
-        return line(parts, palette, &repo, Some(1), None, false);
+        return line(parts, palette, &repo, Some(1), None);
     }
     without_default
 }

@@ -534,9 +534,11 @@ fn a_block_pairs_heading_is_unchanged() {
 /// **A title must not be cut off at 80 columns** (RFC 042 review v1 §2).
 ///
 /// ratatui truncates a title that will not fit the top border, silently -- so a reader at 80
-/// columns sees the view's name and loses the keys at the end of it. The end of a title is the
-/// half a reader needs most: what `v` and `r` do, and where in the content they are. This asserts
-/// those last characters survive, which is the half that goes first.
+/// columns sees the view's name and loses the end of it. The end of a title is the half a reader
+/// needs most: where in the content they are. This asserts those last characters survive.
+///
+/// **A title names no key** (RFC 061 decision 5), so what it must carry whole is its name and its
+/// position; the keys are on the key line.
 fn assert_title_is_whole(screen: &str, tail: &str) {
     let top = screen.lines().next().unwrap_or_default();
     assert!(
@@ -556,12 +558,14 @@ fn the_compare_title_is_whole_at_80_columns_in_both_renderings() {
     let view = two_blocks(vec![entry("modified", "src/main.rs", &refs)]);
     for raw in [false, true] {
         let text = draw_at(&view, &CompareSource::MarkedPair, 0, raw, 80, 24);
+        // The position, whole, and the name that says which rendering is showing.
+        assert_title_is_whole(&text, " of ");
         assert_title_is_whole(
             &text,
             if raw {
-                "v: rendered"
+                "Compare \u{00b7} prikk's own fields"
             } else {
-                "v: prikk's own fields"
+                "Compare"
             },
         );
     }

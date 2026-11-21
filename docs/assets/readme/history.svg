@@ -18,12 +18,20 @@
 <rect x="24" y="59" width="72" height="1" fill="#c1c5ca"/>
 <rect x="636" y="51" width="1" height="17" fill="#d8dee4"/>
 <rect x="4" y="68" width="1" height="17" fill="#d8dee4"/>
-<text x="8" y="81" textLength="16" lengthAdjust="spacing" fill="#97cbf0">▶ </text>
-<text x="40" y="81" textLength="96" lengthAdjust="spacing" fill="#97cbf0" font-weight="bold">111111111111</text>
-<text x="136" y="81" textLength="64" lengthAdjust="spacing" fill="#c1c5ca">  #14   </text>
-<text x="200" y="81" textLength="72" lengthAdjust="spacing" fill="#d8dee4">Merge    </text>
-<text x="272" y="81" textLength="88" lengthAdjust="spacing" fill="#c1c5ca">4 patch(es)</text>
-<text x="360" y="81" textLength="56" lengthAdjust="spacing" fill="#6ddb92">  ← tip</text>
+<rect x="8" y="68" width="16" height="17" fill="#97cbf0"/>
+<text x="8" y="81" textLength="16" lengthAdjust="spacing" fill="#12161b">▶ </text>
+<rect x="24" y="68" width="16" height="17" fill="#f7ba64"/>
+<rect x="40" y="68" width="96" height="17" fill="#97cbf0"/>
+<text x="40" y="81" textLength="96" lengthAdjust="spacing" fill="#12161b" font-weight="bold">111111111111</text>
+<rect x="136" y="68" width="64" height="17" fill="#c1c5ca"/>
+<text x="136" y="81" textLength="64" lengthAdjust="spacing" fill="#12161b">  #14   </text>
+<rect x="200" y="68" width="72" height="17" fill="#d8dee4"/>
+<text x="200" y="81" textLength="72" lengthAdjust="spacing" fill="#12161b">Merge    </text>
+<rect x="272" y="68" width="88" height="17" fill="#c1c5ca"/>
+<text x="272" y="81" textLength="88" lengthAdjust="spacing" fill="#12161b">4 patch(es)</text>
+<rect x="360" y="68" width="56" height="17" fill="#6ddb92"/>
+<text x="360" y="81" textLength="56" lengthAdjust="spacing" fill="#12161b">  ← tip</text>
+<rect x="416" y="68" width="216" height="17" fill="#d8dee4"/>
 <rect x="636" y="68" width="1" height="17" fill="#d8dee4"/>
 <rect x="4" y="85" width="1" height="17" fill="#d8dee4"/>
 <text x="40" y="98" textLength="96" lengthAdjust="spacing" fill="#d8dee4">222222222222</text>
@@ -111,13 +119,25 @@
 <rect x="636" y="323" width="1" height="17" fill="#d8dee4"/>
 <rect x="4" y="340" width="1" height="17" fill="#d8dee4"/>
 <rect x="636" y="340" width="1" height="17" fill="#d8dee4"/>
-<rect x="4" y="357" width="1" height="17" fill="#d8dee4"/>
-<rect x="636" y="357" width="1" height="17" fill="#d8dee4"/>
-<rect x="4" y="382" width="4" height="1" fill="#d8dee4"/>
-<rect x="4" y="374" width="1" height="9" fill="#d8dee4"/>
-<rect x="8" y="382" width="624" height="1" fill="#d8dee4"/>
-<rect x="632" y="382" width="5" height="1" fill="#d8dee4"/>
-<rect x="636" y="374" width="1" height="9" fill="#d8dee4"/>
+<rect x="4" y="365" width="4" height="1" fill="#d8dee4"/>
+<rect x="4" y="357" width="1" height="9" fill="#d8dee4"/>
+<rect x="8" y="365" width="624" height="1" fill="#d8dee4"/>
+<rect x="632" y="365" width="5" height="1" fill="#d8dee4"/>
+<rect x="636" y="357" width="1" height="9" fill="#d8dee4"/>
+<text x="0" y="387" textLength="40" lengthAdjust="spacing" fill="#d8dee4">Enter</text>
+<text x="40" y="387" textLength="88" lengthAdjust="spacing" fill="#c1c5ca"> actions · </text>
+<text x="128" y="387" textLength="16" lengthAdjust="spacing" fill="#d8dee4">↑↓</text>
+<text x="144" y="387" textLength="64" lengthAdjust="spacing" fill="#c1c5ca"> move · </text>
+<text x="208" y="387" textLength="8" lengthAdjust="spacing" fill="#d8dee4">d</text>
+<text x="216" y="387" textLength="88" lengthAdjust="spacing" fill="#c1c5ca"> compare · </text>
+<text x="304" y="387" textLength="8" lengthAdjust="spacing" fill="#d8dee4">m</text>
+<text x="312" y="387" textLength="64" lengthAdjust="spacing" fill="#c1c5ca"> mark · </text>
+<text x="376" y="387" textLength="8" lengthAdjust="spacing" fill="#d8dee4">b</text>
+<text x="384" y="387" textLength="96" lengthAdjust="spacing" fill="#c1c5ca"> branches · </text>
+<text x="480" y="387" textLength="8" lengthAdjust="spacing" fill="#d8dee4">?</text>
+<text x="488" y="387" textLength="64" lengthAdjust="spacing" fill="#c1c5ca"> help · </text>
+<text x="552" y="387" textLength="8" lengthAdjust="spacing" fill="#d8dee4">q</text>
+<text x="560" y="387" textLength="40" lengthAdjust="spacing" fill="#c1c5ca"> back</text>
 <text x="0" y="404" textLength="120" lengthAdjust="spacing" fill="#d8dee4">example-project</text>
 <text x="120" y="404" textLength="40" lengthAdjust="spacing" fill="#c1c5ca">  ·  </text>
 <text x="160" y="404" textLength="80" lengthAdjust="spacing" fill="#97cbf0">heads/main</text>

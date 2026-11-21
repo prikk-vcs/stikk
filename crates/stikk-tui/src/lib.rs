@@ -25,6 +25,7 @@ pub mod app;
 pub mod overlay;
 pub mod text;
 
+mod key_line;
 mod keys;
 mod shell;
 mod status_bar;

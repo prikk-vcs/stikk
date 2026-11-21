@@ -540,7 +540,7 @@ a fabricated worktree entry was fixed.
 
 ## Next — 0.21.0: easy to read, and easy to find your way in
 
-**Scoped and authorized by the owner** (2026-11-04, amended 2026-11-18). stikk is easy to read and easy to find your
+**Scoped and authorized by the owner** (2026-11-04, amended 2026-11-18 and 2026-11-21). stikk is easy to read and easy to find your
 way in, for everyone, and especially for older users and anyone with weaker eyesight. In delivery order:
 
 1. **The prikk 0.58.0 re-baseline — landed on `main`** ([RFC 063](rfcs/done/063-prikk-0-58-rebaseline.md),
@@ -550,16 +550,25 @@ way in, for everyone, and especially for older users and anyone with weaker eyes
    - the bundle card shows prikk's own check of each seal, and withholds an import prikk would refuse;
    - a seal that fails against a trusted key, and a different key under a removed id, get the security warning;
    - an interrupted seal is shown as one, and Seal finishes it.
-2. **Readable colours** (RFC 059): the terminal's own foreground; light or dark detected; 7 : 1 for every colour
-   stikk chooses; a high-contrast theme; `NO_COLOR`.
-3. **Bigger text** (RFC 060): no italic, a smaller minimum window, and *"Making the text bigger"* in the guide.
+2. **Readable colours — landed on `main`** ([RFC 059](rfcs/accepted/059-readable-colours.md), `3e284a8`): body text
+   in the terminal's own colour; light or dark detected; 7 : 1 for every colour stikk chooses; high-contrast and
+   plain; `NO_COLOR`. The owner's Windows checks close it.
+3. **Bigger text** ([RFC 060](rfcs/accepted/060-bigger-text.md), accepted):
+   - stikk works down to 60 × 15, so text can be about twice as big;
+   - overlays wrap and scroll in the space they have, and offer a confirmation only once it has been read;
+   - no italic; bold for headings and the selection only;
+   - *"Making the text bigger"* in the guide.
 4. **Finding your place** (RFC 061): a full-row highlight, a key line that stays, and Enter opening a list of actions.
-5. **The mouse, optionally** (RFC 062), with its default decided after measuring.
+
+**The mouse is withdrawn from the TUI** (owner, 2026-11-21). In a terminal it costs drag-to-copy of ids. In the GUI it
+comes for free, so it is part of the GUI's design.
 
 **Also in 0.21.0 — landed on `main`** ([RFC 064](rfcs/done/064-json-reader-skips-what-it-does-not-read.md),
 `d0ebe55`): stikk's JSON reader skips any valid value in a field it does not read, as promised to prikk in letter 024.
 
-The new prikk 0.57/0.58 features are **0.22.0 candidates**: going back to an older block in one step, counting what a
+**0.22.0's theme is choosing the GUI toolkit** (owner, 2026-11-21). A TUI cannot give screen readers, real
+typography, or the OS's own text size and zoom. The toolkit RFC prototypes egui (with AccessKit), iced and GTK, and
+chooses by RFC 001's filter, accessibility first. The new prikk 0.57/0.58 features are **0.22.0 candidates** too: going back to an older block in one step, counting what a
 key removal breaks, exact parents for undo and undoing a merge, `uncommit`, and `bundle preview --adopt`.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,

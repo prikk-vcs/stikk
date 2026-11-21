@@ -8,8 +8,32 @@
 //! add roughly eight crates, two of them proc-macros, to read three flat schemas.
 //!
 //! **This reader is scoped to exactly that job**: enough JSON to read `log-report-v1`,
-//! `branch-list-v1` and `tag-list-v1`, and nothing more. It has no floats, no derive, and no
-//! configurability.
+//! `branch-list-v1` and `tag-list-v1`, and nothing more. It has **no floats read**, no derive, and
+//! no configurability.
+//!
+//! # What it accepts, and what it refuses — in two halves
+//!
+//! The halves are **a field stikk reads** and **a value it only skips**, and RFC 064 is why they
+//! differ. Until then they did not: one additive prikk field holding `-1` made a whole report
+//! unreadable, for every released stikk, because the refusal happened in the parser and the parser
+//! does not know which fields anyone wants (RFC 064 F1, measured). **stikk promised prikk the
+//! other behaviour** in our letter 024 §2 — that prikk may add a field without stikk's readers
+//! caring — and this is that promise kept.
+//!
+//! **A value stikk only skips may be any valid JSON.** A negative, fractional or exponent-bearing
+//! number, an integer above `u64::MAX`, and nesting past [`MAX_DEPTH`] all read: the first group
+//! as [`Json::OtherNumber`], holding prikk's own text, and the last as [`Json::TooDeep`], holding
+//! nothing. Both are inert.
+//!
+//! **A field stikk reads keeps exactly the rule it had.** Every accessor refuses both variants —
+//! [`Json::OtherNumber`] with its own sentence, [`Json::TooDeep`] with its own — and **naming the
+//! field**, which the parser's refusal could not do. No accessor turns either into a value: not 0,
+//! not empty, not absent.
+//!
+//! **And invalid JSON is still invalid, everywhere.** `-` alone, `1.`, `1e+`, an unclosed string,
+//! a stray closer, a bad escape: refused whether or not anyone reads the field it sits in, and
+//! refused past [`MAX_DEPTH`] too, where the value is scanned rather than built. *Skipped* never
+//! means *accepted*.
 //!
 //! It has **no `Serialize` half either** — nothing stikk sends prikk is JSON. What it does have, since
 //! RFC 035, is one *display* renderer ([`Json::render`]): Patch detail's raw view shows prikk's own
@@ -18,7 +42,7 @@
 //! to read, in prikk's key order, and is never read back by anything.
 //!
 //! **It cannot panic on any input.** Every entry point returns [`Result`], every index is bounds-checked
-//! through iterators, and depth is capped — the workspace lint set forbids `unwrap`/`expect`/indexing in
+//! through iterators, recursion is capped — the workspace lint set forbids `unwrap`/`expect`/indexing in
 //! this crate, and the fuzz-shaped tests in `json/tests.rs` feed it truncated, nested and hostile input.
 //! A front-end that panicked a user's terminal on a malformed read would be a worse failure than not
 //! reading it at all.

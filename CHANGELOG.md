@@ -6,6 +6,10 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Changed
 
+- **stikk now reads a prikk report that carries a value it does not use**, such as a negative or
+  fractional number, or deep nesting, in a field it skips. Before, such a field made the whole
+  report unreadable. A value in a field stikk *does* read is refused exactly as before, and the
+  message now names the field.
 - **Validated through prikk 0.58.0** (from 0.55.0). prikk 0.56 made the worktree follow the current
   branch, which is what stikk's own letter asked for, and that changes three things below.
 - **A commit goes to prikk's current branch.** stikk commits the files in your folder, and your

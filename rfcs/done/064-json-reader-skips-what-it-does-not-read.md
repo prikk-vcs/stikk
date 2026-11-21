@@ -1,6 +1,6 @@
 # RFC 064 — stikk's JSON reader skips any valid value it does not read
 
-**Status.** **Accepted by the project owner 2026-11-21**; [Handoff A](../handoffs/064-json-reader-skips-what-it-does-not-read/a-skip-what-is-not-read-handoff-v1.md). **Proposed 2026-11-21** by the architect, as an addition to 0.21.0
+**Status.** **Done 2026-11-21**: Handoff A delivered on `main` (`eda9412`..`d0ebe55`), green on the full platform matrix; ships in **0.21.0**. **Accepted by the project owner 2026-11-21**; [Handoff A](../handoffs/064-json-reader-skips-what-it-does-not-read/a-skip-what-is-not-read-handoff-v1.md). **Proposed 2026-11-21** by the architect, as an addition to 0.21.0
 (`.git-exclude/release/0-21-0-scope.md`, "Addition, 2026-11-19"). **Promised to prikk** in our letter 024 §2, as sent
 by the project owner. prikk acknowledged it in their 033, and holds to the old constraints until their owner rules.
 **No open question.**
@@ -44,6 +44,12 @@ Then run both of stikk's real readers of that schema, `orientation` and `queue`,
 | the report unchanged | read | read |
 
 The (b) column is right and stays. **The (a) column is what this RFC changes.**
+
+*At delivery, `measure064.sh` at `d0ebe55` (`measure064-0.58-at-d0ebe55.txt`) reads every (a) row. The (b) rows are
+now refused by `orientation` alone, naming the field. `queue` never reads `trailing_partial_wal_bytes`, and refused
+column (b) above only because the whole parse failed. That is decision 3 working: each reader refuses the fields it
+reads. For the depth rows, the refusal is the wrong-type sentence, because the skipped value starts 16 levels below
+the field.*
 
 ## Decisions
 
@@ -103,3 +109,19 @@ The suite is run as usual: green at 0.28.0 + 0.58.0, unchanged.
 
 `### Changed`: stikk now reads a prikk report that carries a value it does not use, such as a negative or
 fractional number, or deep nesting, in a field it skips. Before, such a field made the whole report unreadable.
+
+## Delivered
+
+**One handoff, three commits, `eda9412`..`d0ebe55`, green on `main`:** CI, Docs, supply chain, and the real-binary
+suite on the full platform matrix (run `44850823616`): 100 cases on Linux, macOS and Windows at 0.28.0 + 0.58.0,
+unchanged, as expected.
+- `Json::OtherNumber` and `Json::TooDeep`.
+- An iterative `skip_value` past `MAX_DEPTH`, which stays 16. It holds the parser's grammar, and 100 000 levels are
+  scanned in a default test thread.
+- Every reader with a captured report compared, with and without each form in an unread field: 18 runs × 7 values.
+- One field per numeric reader is still refused, naming it.
+- `parse_json.rs` needed no new arm: every `match` already sends a wrong type to a refusal.
+
+**What it does and does not change.** The promise in our letter 024 §2 is kept **from stikk 0.21.0**. Releases up to
+0.20.0 keep the old reader, which is why 024 asked prikk to keep the old constraints until 0.21.0 is the oldest stikk
+in use.

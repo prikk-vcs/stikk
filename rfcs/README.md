@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 064 | [stikk's JSON reader skips any valid value it does not read](./accepted/064-json-reader-skips-what-it-does-not-read.md) | a negative or fractional number, or deep nesting, in a field stikk never reads no longer makes a whole prikk report unreadable (promised in letter 024) | [A: skip what is not read](./handoffs/064-json-reader-skips-what-it-does-not-read/a-skip-what-is-not-read-handoff-v1.md) |
+_None: RFC 064 delivered and closed 2026-11-21._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 064 | [stikk's JSON reader skips any valid value it does not read](./done/064-json-reader-skips-what-it-does-not-read.md) | shipped in 0.21.0 | none | [A: skip what is not read](./handoffs/064-json-reader-skips-what-it-does-not-read/a-skip-what-is-not-read-handoff-v1.md) |
 | 063 | [The prikk 0.58 re-baseline](./done/063-prikk-0-58-rebaseline.md) | shipped in 0.21.0 | the 0.57/0.58 features (`branch create --from <block id>`, `block_seals`, `parent_block_ids`, `uncommit`, `bundle preview --adopt`, `behind_ref`): 0.22.0 candidates | [A: what 0.56 changed](./handoffs/063-prikk-0-58-rebaseline/a-what-0-56-changed-handoff-v1.md) · [B: what prikk now checks](./handoffs/063-prikk-0-58-rebaseline/b-what-prikk-now-checks-handoff-v1.md) |
 | 058 | [Undo one block: putting back what a block changed, as a new change](./done/058-undo-one-block.md) | shipped in 0.20.0 | reading the parent's `.prikkignore` (a content read); undoing a merge, once prikk names a block's parents | [A: undo one block](./handoffs/058-undo-one-block/a-undo-one-block-handoff-v1.md) |
 | 057 | [Orientation on `status --format json`](./done/057-orientation-on-status-json.md) | **0.19.0** | reading `provisional_worktree` (decision 4); the prose parser stays for the floor | [A: Orientation on JSON](./handoffs/057-orientation-on-status-json/a-orientation-json-handoff-v1.md) |

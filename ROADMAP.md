@@ -556,8 +556,8 @@ way in, for everyone, and especially for older users and anyone with weaker eyes
 4. **Finding your place** (RFC 061): a full-row highlight, a key line that stays, and Enter opening a list of actions.
 5. **The mouse, optionally** (RFC 062), with its default decided after measuring.
 
-**Also in 0.21.0** (RFC 064): stikk's JSON reader skips any valid value in a field it does not read, as promised to
-prikk in letter 024.
+**Also in 0.21.0 — landed on `main`** ([RFC 064](rfcs/done/064-json-reader-skips-what-it-does-not-read.md),
+`d0ebe55`): stikk's JSON reader skips any valid value in a field it does not read, as promised to prikk in letter 024.
 
 The new prikk 0.57/0.58 features are **0.22.0 candidates**: going back to an older block in one step, counting what a
 key removal breaks, exact parents for undo and undoing a merge, `uncommit`, and `bundle preview --adopt`.

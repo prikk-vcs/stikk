@@ -4928,16 +4928,27 @@ fn every_reader_is_unchanged_by(value: &str) {
             "verify: `{value}`"
         );
         assert_eq!(injected.stages, plain.stages, "verify: `{value}`");
-        let added = format!("\"x_added_field\": {value},\n  ");
         assert!(
-            injected
-                .raw
-                .contains(&format!("\"x_added_field\": {value}")),
+            injected.raw.contains("\"x_added_field\""),
             "verify: the raw view shows the report's own shape: {}",
             injected.raw
         );
+        // **The raw view differs by the added field and nothing else**, shown by reading the view
+        // back, dropping that one field and re-rendering: a value's own rendering may be many
+        // lines, so a textual splice would not say this.
+        let read_back = crate::json::parse(&injected.raw)
+            .unwrap_or_else(|e| panic!("verify: the raw view is readable: {e}"));
+        let crate::json::Json::Object(fields) = read_back else {
+            panic!("verify: the raw view is an object");
+        };
+        let without = crate::json::Json::Object(
+            fields
+                .into_iter()
+                .filter(|(key, _)| key != "x_added_field")
+                .collect(),
+        );
         assert_eq!(
-            injected.raw.replacen(&added, "", 1),
+            without.render(),
             plain.raw,
             "verify: `{value}`: the raw view differs by the added field and nothing else"
         );
@@ -5103,6 +5114,50 @@ fn the_refusal_for_a_read_field_names_it() {
         assert!(
             said.contains("a number stikk does not hold"),
             "`{value}`: and what kind of value it is: {said}"
+        );
+    }
+}
+
+/// **F1's depth rows, flipped.** 17 levels, 1000 levels and 100 000 levels in a field no reader
+/// looks at leave every reader's result **equal** to what the plain report gives.
+///
+/// The same eighteen reader runs as `a_number_stikk_does_not_read_costs_no_reader_anything`.
+#[test]
+fn a_skipped_deep_value_costs_no_reader_anything() {
+    for levels in [17, 1000, 100_000] {
+        let value = format!("{}0{}", "[".repeat(levels), "]".repeat(levels));
+        every_reader_is_unchanged_by(&value);
+    }
+}
+
+/// **A deep value in a field a reader reads is still refused, and names the field** (RFC 064
+/// decision 3) — the field F1 measured, at both of its depths.
+///
+/// **The sentence is the wrong-type one, and that is right.** A top-level field's own value sits
+/// at depth 1, so what the reader meets there is an *array* where it wants a number; the skip
+/// begins 16 levels further in. The *"nested deeper than stikk reads"* sentence belongs to a
+/// field whose value **is** the skipped one, which no schema nests that deep — it is asserted at
+/// the accessor, in `json/tests.rs`'s
+/// `every_accessor_refuses_a_skipped_value_and_names_the_field`.
+#[test]
+fn a_deep_value_in_a_read_field_is_refused_and_names_it() {
+    for levels in [17, 1000] {
+        let deep = format!("{}0{}", "[".repeat(levels), "]".repeat(levels));
+        let text = STATUS_057_B_ONE_SEALED_BLOCK.replace(
+            "\"trailing_partial_wal_bytes\": 0",
+            &format!("\"trailing_partial_wal_bytes\": {deep}"),
+        );
+        let err = orientation(&text)
+            .err()
+            .unwrap_or_else(|| panic!("{levels} levels in a read field is refused"));
+        let said = err.to_string();
+        assert!(
+            said.contains("field `trailing_partial_wal_bytes`"),
+            "{levels}: the field is named: {said}"
+        );
+        assert!(
+            said.contains("should be a number, got an array"),
+            "{levels}: and what it found: {said}"
         );
     }
 }

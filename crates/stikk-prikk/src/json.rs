@@ -63,6 +63,13 @@ pub(crate) enum Json {
     /// stikk *skips* costs nothing — which, before RFC 064, made the whole report unreadable
     /// (F1).
     OtherNumber(String),
+    /// A **valid** JSON value nested deeper than [`MAX_DEPTH`], scanned and discarded (RFC 064
+    /// decision 2). It carries nothing: not the text, not the shape, not a count.
+    ///
+    /// **Inert, and checked.** Every accessor refuses it, naming the field, so a field stikk
+    /// reads keeps the rule it had. And "skipped" never means "accepted": the scan holds the
+    /// whole JSON grammar, so malformed input past the limit is still refused.
+    TooDeep,
     String(String),
     Array(Vec<Json>),
     Object(Vec<(String, Json)>),
@@ -82,6 +89,7 @@ impl Json {
     pub(crate) fn str_field(&self, key: &str) -> Result<&str> {
         match self.get(key) {
             Some(Json::String(s)) => Ok(s),
+            Some(Json::TooDeep) => Err(schema(&too_deep(key))),
             Some(other) => Err(schema(&format!(
                 "field `{key}` should be a string, got {}",
                 kind_of(other)
@@ -102,6 +110,7 @@ impl Json {
                 "field `{key}` is a number stikk does not hold (negative, fractional, or larger \
                  than 2^64 - 1)"
             ))),
+            Some(Json::TooDeep) => Err(schema(&too_deep(key))),
             Some(other) => Err(schema(&format!(
                 "field `{key}` should be a number, got {}",
                 kind_of(other)
@@ -114,6 +123,7 @@ impl Json {
     pub(crate) fn bool_field(&self, key: &str) -> Result<bool> {
         match self.get(key) {
             Some(Json::Bool(b)) => Ok(*b),
+            Some(Json::TooDeep) => Err(schema(&too_deep(key))),
             Some(other) => Err(schema(&format!(
                 "field `{key}` should be a boolean, got {}",
                 kind_of(other)
@@ -126,6 +136,7 @@ impl Json {
     pub(crate) fn array_field(&self, key: &str) -> Result<&[Json]> {
         match self.get(key) {
             Some(Json::Array(items)) => Ok(items),
+            Some(Json::TooDeep) => Err(schema(&too_deep(key))),
             Some(other) => Err(schema(&format!(
                 "field `{key}` should be an array, got {}",
                 kind_of(other)
@@ -140,6 +151,8 @@ impl Json {
         match self.get(key) {
             None | Some(Json::Null) => Ok(None),
             Some(Json::String(s)) => Ok(Some(s)),
+            // **Not `None`** (RFC 064 §5 trap 3): a skipped value is not an absent one.
+            Some(Json::TooDeep) => Err(schema(&too_deep(key))),
             Some(other) => Err(schema(&format!(
                 "field `{key}` should be a string or null, got {}",
                 kind_of(other)
@@ -180,6 +193,12 @@ impl Json {
             // admits only ASCII digits, `-`, `.`, `e`, `E` and `+`, so there is nothing here for
             // an escape table to do and nothing a terminal could act on.
             Json::OtherNumber(text) => out.push_str(text),
+            // **stikk's own placeholder, never the skipped text** (RFC 064 decision 4). The
+            // skipped bytes were never parsed into strings, so they never passed through the
+            // escape table -- a control character or a bidi override in there would reach the
+            // terminal from this one `push_str` (`C-T2a`). Written through `write_string` so it
+            // is a JSON string like any other value.
+            Json::TooDeep => write_string(out, TOO_DEEP_PLACEHOLDER),
             Json::String(s) => write_string(out, s),
             Json::Array(items) if items.is_empty() => out.push_str("[]"),
             Json::Array(items) => {
@@ -215,6 +234,12 @@ impl Json {
     }
 }
 
+/// What the raw view shows in place of a value the reader skipped (RFC 064 decision 4).
+///
+/// **stikk's own text, and short.** The alternative — the skipped bytes — is the one thing this
+/// variant exists not to carry.
+pub(crate) const TOO_DEEP_PLACEHOLDER: &str = "\u{2026}nested deeper than stikk shows\u{2026}";
+
 /// Write `text` as a JSON string literal, through the one escape table the workspace has
 /// ([`crate::escape`]) — the same bytes prikk itself would have written.
 ///
@@ -234,10 +259,20 @@ fn kind_of(value: &Json) -> &'static str {
         Json::Number(_) => "a number",
         // **Named, so every accessor's wrong-type sentence names it too** (RFC 064 decision 3).
         Json::OtherNumber(_) => "a number stikk does not hold",
+        Json::TooDeep => "nested deeper than stikk reads",
         Json::String(_) => "a string",
         Json::Array(_) => "an array",
         Json::Object(_) => "an object",
     }
+}
+
+/// The one sentence for a field whose value was skipped (RFC 064 decision 3).
+///
+/// **Every accessor gives it, naming the field.** A reader that fell through to `kind_of`'s
+/// wrong-type sentence would say *should be a string, got nested deeper than stikk reads*, which
+/// reads as a type confusion rather than as the limit it is.
+fn too_deep(key: &str) -> String {
+    format!("field `{key}` is nested deeper than stikk reads")
 }
 
 /// A schema mismatch is an [`StikkError::Environment`] rather than a refusal: prikk answered, and the
@@ -249,12 +284,18 @@ fn schema(detail: &str) -> StikkError {
     ))
 }
 
-/// The maximum nesting depth this reader accepts.
+/// The maximum nesting depth this reader **builds**.
 ///
 /// prikk's deepest report nests three levels (report → array → object → array → object). Sixteen is
 /// far above anything the schemas use and far below anything that could exhaust the stack — a bound
 /// rather than a guess, because recursion over attacker-shaped input without one is how a reader
 /// becomes a crash.
+///
+/// **Past it the reader skips rather than refuses** (RFC 064 decision 2): the value is scanned by
+/// [`Cursor::skip_value`], which uses a `Vec` instead of the call stack, checked against the whole
+/// JSON grammar, and discarded as [`Json::TooDeep`]. So the recursion stays bounded at sixteen —
+/// the reason this constant exists — while a report that nests something deeper somewhere stikk
+/// never looks stays readable.
 const MAX_DEPTH: usize = 16;
 
 /// Parse `text` as a single JSON value, rejecting trailing content.
@@ -307,7 +348,7 @@ impl Cursor<'_> {
 
     fn value(&mut self, depth: usize) -> Result<Json> {
         if depth > MAX_DEPTH {
-            return Err(schema("nested deeper than stikk reads"));
+            return self.skip_value();
         }
         self.skip_whitespace();
         match self.peek() {
@@ -522,6 +563,107 @@ impl Cursor<'_> {
             return Ok(Json::Number(value));
         }
         Ok(Json::OtherNumber(text))
+    }
+
+    /// Scan one whole JSON value and discard it (RFC 064 decision 2).
+    ///
+    /// **Iterative, and that is the rule, not an optimisation** (§5 trap 1). `open` holds one
+    /// entry per container the scan is inside, so the call stack does not grow with the input's
+    /// depth: a recursive version passes every test here except the 100 000-level one, which is
+    /// the test this rule exists for. Nothing is allocated per value — `open` holds one byte of
+    /// shape information per level and the strings are scanned, not built.
+    ///
+    /// **It checks the same grammar the recursive parser does**, because "skipped" must not mean
+    /// "anything": objects are `"key": value` pairs with commas between and a matching closer;
+    /// arrays are values with commas between; strings go through the existing scanner, escapes
+    /// and all; `true`, `false` and `null` must be spelled out; and numbers go through
+    /// [`Cursor::number`]. Malformed input past the limit is refused exactly as it would be
+    /// above the limit.
+    ///
+    /// Returns [`Json::TooDeep`] once the value it was called on closes.
+    fn skip_value(&mut self) -> Result<Json> {
+        /// What the scan is inside, and whether it has seen anything yet.
+        enum Open {
+            Array,
+            Object,
+        }
+        let mut open: Vec<Open> = Vec::new();
+        loop {
+            self.skip_whitespace();
+            // ---- one value
+            match self.peek() {
+                Some('{') => {
+                    self.at += 1;
+                    open.push(Open::Object);
+                    self.skip_whitespace();
+                    if self.peek() == Some('}') {
+                        self.at += 1;
+                        open.pop();
+                    } else {
+                        // A key must come first, and the value after it is the next iteration's.
+                        self.skip_whitespace();
+                        self.string()?;
+                        self.skip_whitespace();
+                        self.expect(':')?;
+                        continue;
+                    }
+                }
+                Some('[') => {
+                    self.at += 1;
+                    open.push(Open::Array);
+                    self.skip_whitespace();
+                    if self.peek() == Some(']') {
+                        self.at += 1;
+                        open.pop();
+                    } else {
+                        continue;
+                    }
+                }
+                Some('"') => {
+                    self.string()?;
+                }
+                Some('t' | 'f') => {
+                    self.boolean()?;
+                }
+                Some('n') => {
+                    self.null()?;
+                }
+                Some(ch) if ch.is_ascii_digit() || ch == '-' => {
+                    self.number()?;
+                }
+                Some(ch) => return Err(schema(&format!("unexpected `{ch}`"))),
+                None => return Err(schema("unexpected end of input")),
+            }
+            // ---- one value has closed: what follows it?
+            loop {
+                let Some(inside) = open.last() else {
+                    // The value this scan was called on is complete.
+                    return Ok(Json::TooDeep);
+                };
+                self.skip_whitespace();
+                match (inside, self.next()) {
+                    (Open::Array, Some(',')) | (Open::Object, Some(',')) => break,
+                    (Open::Array, Some(']')) | (Open::Object, Some('}')) => {
+                        open.pop();
+                    }
+                    (Open::Array, Some(ch)) => {
+                        return Err(schema(&format!("expected `,` or `]`, found `{ch}`")));
+                    }
+                    (Open::Object, Some(ch)) => {
+                        return Err(schema(&format!("expected `,` or `}}`, found `{ch}`")));
+                    }
+                    (Open::Array, None) => return Err(schema("unterminated array")),
+                    (Open::Object, None) => return Err(schema("unterminated object")),
+                }
+            }
+            // A comma inside an object means another key, and then its value.
+            if matches!(open.last(), Some(Open::Object)) {
+                self.skip_whitespace();
+                self.string()?;
+                self.skip_whitespace();
+                self.expect(':')?;
+            }
+        }
     }
 
     /// Advance over one or more ASCII digits, reporting whether there were any.

@@ -135,12 +135,28 @@ fn malformed_input_errors_and_never_panics() {
     }
 }
 
-/// Depth is bounded, so deeply nested input is refused rather than recursing until the stack ends.
+/// **Recursion is bounded, and past the bound the value is skipped rather than built** (RFC 064
+/// decision 2, which changed this test's claim).
+///
+/// Before RFC 064, 200 levels was refused. Now it reads, as a [`Json::TooDeep`] at the level
+/// where the bound is reached — and that is still a bounded recursion, which is why `MAX_DEPTH`
+/// exists. What no accessor will do is read it as a value.
 #[test]
-fn nesting_past_the_bound_errors_rather_than_overflowing_the_stack() {
+fn nesting_past_the_bound_is_skipped_rather_than_built() {
     let deep = format!("{}{}", "[".repeat(200), "]".repeat(200));
-    assert!(parse(&deep).is_err());
-    // And a depth the schemas actually use is fine.
+    let value = parse(&deep).expect("a valid 200-level array is scanned, not refused");
+    // The outer 17 levels are built; the 18th is where the skip begins.
+    let mut at = &value;
+    let mut built = 0;
+    while let Json::Array(items) = at {
+        built += 1;
+        at = items
+            .first()
+            .unwrap_or_else(|| panic!("each level holds one"));
+    }
+    assert_eq!(*at, Json::TooDeep, "the skip starts past the bound");
+    assert_eq!(built, MAX_DEPTH + 1, "and the recursion stopped there");
+    // And a depth the schemas actually use is built in full.
     assert!(parse(&format!("{}{}", "[".repeat(8), "]".repeat(8))).is_ok());
 }
 
@@ -323,4 +339,173 @@ fn the_raw_view_writes_a_number_stikk_does_not_hold_as_its_text() {
             .all(|ch| !ch.is_control() || ch == '\n' || ch == '\t'),
         "{rendered}"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 064: a value past the depth bound is scanned and discarded (decisions 2, 3, 4).
+// ---------------------------------------------------------------------------------------------
+
+/// `levels` nested arrays around a `0`.
+fn nested(levels: usize) -> String {
+    format!("{}0{}", "[".repeat(levels), "]".repeat(levels))
+}
+
+/// **100 000 levels read, in a default-sized test thread** (RFC 064 decision 2, §5 trap 1).
+///
+/// **This is the test the iterative rule exists for.** A recursive skipper passes every other
+/// test on this page and overflows here — the default thread stack is where a real session's
+/// reader runs, so the test must run there too, which is why it is an ordinary `#[test]` and not
+/// a spawned thread with a chosen stack size.
+#[test]
+fn a_hundred_thousand_levels_are_scanned_without_the_call_stack() {
+    let value = parse(&nested(100_000)).expect("a valid 100 000-level array is scanned");
+    // It is still a tree of the bounded depth, ending in the skip.
+    let mut at = &value;
+    let mut built = 0;
+    while let Json::Array(items) = at {
+        built += 1;
+        at = items
+            .first()
+            .unwrap_or_else(|| panic!("each level holds one"));
+    }
+    assert_eq!(*at, Json::TooDeep);
+    assert_eq!(built, MAX_DEPTH + 1);
+}
+
+/// **Every accessor refuses a skipped value, naming the field** (RFC 064 decision 3) — and none
+/// of them turns it into an absence, an emptiness or a zero (§5 trap 3).
+#[test]
+fn every_accessor_refuses_a_skipped_value_and_names_the_field() {
+    // **Built here rather than parsed**, so the field under test is the skipped value itself
+    // rather than the array that holds it 17 levels down. That the parser produces one is
+    // `nesting_past_the_bound_is_skipped_rather_than_built`'s claim; this is about the accessors.
+    let value = Json::Object(vec![("x".to_string(), Json::TooDeep)]);
+    assert_eq!(value.get("x"), Some(&Json::TooDeep));
+    for said in [
+        value.str_field("x").err().map(|e| e.to_string()),
+        value.u64_field("x").err().map(|e| e.to_string()),
+        value.bool_field("x").err().map(|e| e.to_string()),
+        value.array_field("x").err().map(|e| e.to_string()),
+        value.opt_str_field("x").err().map(|e| e.to_string()),
+    ] {
+        let said = said.unwrap_or_else(|| panic!("every accessor must refuse a skipped value"));
+        assert_eq!(
+            said,
+            "environment: prikk's JSON report is not the shape stikk expects: field `x` is nested \
+             deeper than stikk reads",
+            "one sentence, from every accessor"
+        );
+    }
+    // **Not `None`**, which would be the reader turning a skipped value into "no value".
+    assert!(value.opt_str_field("x").is_err());
+    // **Not an empty array**, which would be the reader turning it into "nothing there".
+    assert!(value.array_field("x").is_err());
+
+    // The same sentence from a value the parser skipped, through a key the reader does read:
+    // 17 objects deep, where the 18th value is the one skipped.
+    let deep_object = format!(
+        "{}1{}",
+        r#"{"x": "#.repeat(MAX_DEPTH + 2),
+        "}".repeat(MAX_DEPTH + 2)
+    );
+    let mut at = obj(&deep_object);
+    for _ in 0..=MAX_DEPTH {
+        at = at
+            .get("x")
+            .cloned()
+            .unwrap_or_else(|| panic!("each level holds `x`"));
+    }
+    assert_eq!(at, Json::TooDeep, "the skip, reached through `x`");
+}
+
+/// **Malformed input past the bound is still refused** (RFC 064 decision 2): "skipped" is not
+/// "accepted". Each case is wrapped deep enough that the scanner, not the parser, meets it.
+#[test]
+fn malformed_input_past_the_bound_is_still_refused() {
+    let open = "[".repeat(20);
+    let close = "]".repeat(20);
+    for (what, inner) in [
+        ("an unclosed string", r#""unterminated"#),
+        ("a stray `}` inside `[`", "}"),
+        ("a bare word", "maybe"),
+        ("a hole in an array", "1,,2"),
+        ("a missing colon", r#"{"a" 1}"#),
+        ("an invalid escape", r#""\q""#),
+        ("a truncated `\\u`", r#""\u12""#),
+        ("a number that is not one", "1."),
+        ("an unclosed object", r#"{"a": 1"#),
+        ("a mismatched closer", "[1}"),
+    ] {
+        // The unclosed cases need no trailing brackets to be wrong; the rest get them, so the
+        // only thing malformed is the inner text.
+        for text in [format!("{open}{inner}{close}"), format!("{open}{inner}")] {
+            assert!(
+                parse(&text).is_err(),
+                "{what}: past the bound, malformed is still malformed: {text:?}"
+            );
+        }
+    }
+    // And input that simply ends mid-value.
+    assert!(parse(&open).is_err(), "ends mid-value");
+    assert!(parse(&format!("{open}0")).is_err(), "ends after a value");
+}
+
+/// **A valid skipped value's own shapes all scan**: objects, arrays, strings with escapes, the
+/// three literals, and every number form.
+#[test]
+fn a_valid_value_past_the_bound_scans_whatever_shape_it_has() {
+    let open = "[".repeat(20);
+    let close = "]".repeat(20);
+    for inner in [
+        "{}",
+        "[]",
+        r#"{"a": [1, {"b": null}], "c": [[], {}]}"#,
+        r#""a \"quoted\" é string""#,
+        "true",
+        "false",
+        "null",
+        "-1",
+        "0.5",
+        "1e-3",
+        "18446744073709551616",
+        r#"[{"a": 1}, {"b": [2, 3]}]"#,
+    ] {
+        let text = format!("{open}{inner}{close}");
+        assert!(parse(&text).is_ok(), "a valid value must scan: {inner}");
+    }
+}
+
+/// **The raw view writes the placeholder, and none of the skipped bytes** (RFC 064 decision 4,
+/// §5 trap 2).
+///
+/// The skipped value holds an escape for a control character and one for a bidi override —
+/// neither of which ever went through the string decoder, so neither ever went through the escape
+/// table. If the renderer wrote the skipped text, they would reach the terminal from here.
+///
+/// **The escapes are built rather than written literally**: a real U+202E in this file would be
+/// a bidi override in stikk's own source, which the compiler refuses outright.
+#[test]
+fn the_raw_view_writes_the_placeholder_and_no_skipped_byte() {
+    let esc = "\\u001b";
+    let bidi = "\\u202e";
+    let hostile = format!("{{\"k\": \"{esc}[2J{bidi} payload\"}}");
+    let text = format!(
+        "{{\"outer\": {}{hostile}{}}}",
+        "[".repeat(20),
+        "]".repeat(20)
+    );
+    let value = obj(&text);
+    let rendered = value.render();
+    assert!(
+        rendered.contains(TOO_DEEP_PLACEHOLDER),
+        "the placeholder is what the view shows: {rendered}"
+    );
+    for byte in ["payload", "2J", "202e", "001b", "\u{1b}", "\u{202e}"] {
+        assert!(
+            !rendered.contains(byte),
+            "no skipped byte reaches the view: {byte:?} in {rendered}"
+        );
+    }
+    // The placeholder is written as a JSON string, like any other value on that view.
+    assert!(rendered.contains('"'), "{rendered}");
 }

@@ -339,20 +339,38 @@ pub fn wrap_verbatim(text: &str, width: usize, indent: &str) -> Vec<String> {
 pub(crate) fn record_overflow(what: &str, rows: &[ratatui::text::Line<'_>], width: usize) {
     for (index, row) in rows.iter().enumerate() {
         let text: String = row.spans.iter().map(|span| span.content.as_ref()).collect();
-        // **Characters, as every wrap here counts** (RFC 060 decision 2). Display width for CJK is the
-        // carried i18n item, and it changes the count in this one place.
-        let drawn = text.chars().count();
-        if drawn > width {
-            OVERFLOWS.with_borrow_mut(|list| {
-                list.push(Overflow {
-                    what: what.to_string(),
-                    row: index,
-                    width,
-                    drawn,
-                    text,
-                });
+        record_row(what, index, &text, width);
+    }
+}
+
+/// As [`record_overflow`], for **one piece of text that is not a row** — a frame's title, which a
+/// `Block` clips as surely as a `Paragraph` clips a row (RFC 060 review v1 C1, rule 5).
+#[cfg(test)]
+pub(crate) fn record_overflow_text(what: &str, text: &str, width: usize) {
+    record_row(what, 0, text, width);
+}
+
+/// See [`record_overflow_text`]. In a release build this does nothing at all.
+#[cfg(not(test))]
+#[inline]
+pub(crate) fn record_overflow_text(_what: &str, _text: &str, _width: usize) {}
+
+/// One row, held to the width it is drawn in.
+#[cfg(test)]
+fn record_row(what: &str, index: usize, text: &str, width: usize) {
+    // **Characters, as every wrap here counts** (RFC 060 decision 2). Display width for CJK is the
+    // carried i18n item, and it changes the count in this one place.
+    let drawn = text.chars().count();
+    if drawn > width {
+        OVERFLOWS.with_borrow_mut(|list| {
+            list.push(Overflow {
+                what: what.to_string(),
+                row: index,
+                width,
+                drawn,
+                text: text.to_string(),
             });
-        }
+        });
     }
 }
 

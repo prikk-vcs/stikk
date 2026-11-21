@@ -36,6 +36,7 @@ use stikk_core::BlockDetailView;
 
 use crate::text::{compose, identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
+use crate::title::Title;
 
 /// Render the Block-detail view for `detail` into `area`, with `cursor` selecting one of the block's
 /// patches.
@@ -50,11 +51,13 @@ pub fn render(
     let width = usize::from(area.width.saturating_sub(2));
     let lines = block_lines(detail, cursor, palette, width);
 
-    let title = if detail.is_tip {
-        " Block · tip ".to_string()
+    // One title builder, for every frame (RFC 060 review v1 C1).
+    let title = Title::of(if detail.is_tip {
+        "Block \u{00b7} tip"
     } else {
-        " Block ".to_string()
-    };
+        "Block"
+    })
+    .render(area.width);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)

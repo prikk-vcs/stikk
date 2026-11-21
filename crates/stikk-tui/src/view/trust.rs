@@ -27,6 +27,7 @@ use stikk_core::{HOW_TO_ADOPT, NONE_ADOPTED, TrustView, WHAT_TRUST_MEANS, WHERE_
 
 use crate::text::{identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
+use crate::title::{Position, Title};
 
 /// Indents: the heading rows, and the values under them.
 const TOP: &str = "  ";
@@ -63,19 +64,23 @@ pub fn render(
     }
     offset.set(scroll);
 
-    let mut title = if adoptable(view) {
-        " Trust \u{00b7} a adopts \u{00b7} x removes ".to_string()
+    // One title builder, for every frame (RFC 060 review v1 C1). `a adopts` and `x removes` are key
+    // hints, so they go with the group.
+    let position = Position::of(scroll, viewport, lines.len());
+    let scrolls: &[&str] = if position.is_some() {
+        &["\u{2191}/\u{2193}"]
     } else {
-        " Trust \u{00b7} read only ".to_string()
+        &[]
     };
-    if max_offset > 0 {
-        let first = usize::from(scroll) + 1;
-        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        title.push_str(&format!(
-            "\u{00b7} \u{2191}/\u{2193} \u{00b7} lines {first}\u{2013}{last} of {} ",
-            lines.len()
-        ));
+    let title = if adoptable(view) {
+        let mut keys = vec!["a adopts", "x removes"];
+        keys.extend_from_slice(scrolls);
+        Title::of("Trust").keys(&keys)
+    } else {
+        Title::of("Trust \u{00b7} read only").keys(scrolls)
     }
+    .position(position)
+    .render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

@@ -16,6 +16,7 @@ use stikk_prikk::BlockRow;
 
 use crate::text::{compose, identifier, wrap_indented};
 use crate::theme::Palette;
+use crate::title::Title;
 use crate::view::wrap_spans;
 
 /// The queued tier's label, and the indent its continuation rows line up under — the same columns,
@@ -102,13 +103,22 @@ pub fn render(
     }
 
     // The title says a mark is set, because the marked row can be scrolled off screen.
-    let title = match marked {
+    // One title builder, for every frame (RFC 060 review v1 C1). The mark is a state, so it stays
+    // with the name; `d` is a key hint, so it goes with the group.
+    let name = match marked {
         Some(_) => format!(
-            " History · {} · \u{25cf} marked — d compares it with the selected block ",
+            "History \u{00b7} {} \u{00b7} \u{25cf} marked",
             identifier(&view.reff)
         ),
-        None => format!(" History · {} ", identifier(&view.reff)),
+        None => format!("History \u{00b7} {}", identifier(&view.reff)),
     };
+    let title = Title::of(&name)
+        .keys(if marked.is_some() {
+            &["d compares it with the selected block"]
+        } else {
+            &[]
+        })
+        .render(area.width);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)

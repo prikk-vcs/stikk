@@ -32,6 +32,7 @@ use stikk_core::{OperationRow, PatchDetailView};
 
 use crate::text::{compose, identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
+use crate::title::{Position, Title};
 
 /// Indents, by level: the patch id and foot, the heading rows, an operation's title, and its rows.
 const TOP: &str = "  ";
@@ -64,16 +65,22 @@ pub fn render(
     // than left to guess. **The `v` hint lives in the title, not in a row at the foot**: this view
     // scrolls, and a hint at the foot is a hint below the fold exactly when the patch is big enough to
     // need it (caught by this module's own capture test).
-    let mut title = if raw {
-        " Patch · prikk's own fields — v: rendered ".to_string()
+    // One title builder, for every frame (RFC 060 review v1 C1). `↑/↓` is named only where something
+    // is hidden, as it always has been: an affordance for a surface that does not scroll is noise.
+    let position = Position::of(scroll, viewport, lines.len());
+    let (name, key): (&str, &str) = if raw {
+        ("Patch \u{00b7} prikk's own fields", "v: rendered")
     } else {
-        " Patch — v: prikk's own fields ".to_string()
+        ("Patch", "v: prikk's own fields")
     };
-    if max_offset > 0 {
-        let first = usize::from(scroll) + 1;
-        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        title.push_str(&format!("· ↑/↓ · lines {first}–{last} of {} ", lines.len()));
+    let mut keys = vec![key];
+    if position.is_some() {
+        keys.push("\u{2191}/\u{2193}");
     }
+    let title = Title::of(name)
+        .keys(&keys)
+        .position(position)
+        .render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

@@ -35,6 +35,7 @@ use stikk_core::{Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewher
 
 use crate::text::{compose, identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
+use crate::title::Title;
 
 /// The columns an entry row spends before its path: two of margin, an 11-column kind tag, one space.
 /// A refused entry's marker row starts here, so the marker costs the path row nothing.
@@ -298,7 +299,9 @@ pub fn render(
         lines.push(Line::from(Span::styled(row, dim)));
     }
 
-    let title = format!(" Changes · {} ", identifier(&view.reff));
+    // One title builder, for every frame (RFC 060 review v1 C1).
+    let title =
+        Title::of(&format!("Changes \u{00b7} {}", identifier(&view.reff))).render(area.width);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)

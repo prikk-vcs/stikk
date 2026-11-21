@@ -26,6 +26,7 @@ use stikk_core::{JSON_OMITS, VerifyView};
 
 use crate::text::{compose, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
+use crate::title::{Position, Title};
 
 const TOP: &str = "  ";
 const ROW: &str = "    ";
@@ -57,22 +58,30 @@ pub fn render(
     // v1 §2). They used to run past the border, where ratatui cuts them: a reader at 80 columns
     // saw the view's name and lost the keys. Each word below is stikk's own and was shortened to
     // pay for the indicator; **no word of prikk's and no name is ever shortened**.
-    let mut title = if refreshing {
-        " Verify · re-running — the previous verdict ".to_string()
+    // **One title builder, for every frame** (RFC 060 review v1 C1): the keys go first when it does
+    // not fit, then the name from its end — and the position is never cut.
+    // `↑/↓` is named only where something is hidden, as it always has been: an affordance for a
+    // surface that does not scroll is noise.
+    let position = Position::of(scroll, viewport, lines.len());
+    let (name, own): (&str, &[&str]) = if refreshing {
+        (
+            "Verify \u{00b7} re-running \u{2014} the previous verdict",
+            &[],
+        )
     } else if raw {
         // The body labels the raw block itself, so the title does not repeat it.
-        " Verify · this run — v: rendered · r: re-run ".to_string()
+        ("Verify \u{00b7} this run", &["v: rendered", "r: re-run"])
     } else {
-        " Verify · this run — v: raw · r: re-run ".to_string()
+        ("Verify \u{00b7} this run", &["v: raw", "r: re-run"])
     };
-    if max_offset > 0 {
-        let first = usize::from(scroll) + 1;
-        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        title.push_str(&format!(
-            "· \u{2191}/\u{2193} · lines {first}\u{2013}{last} of {} ",
-            lines.len()
-        ));
+    let mut keys = own.to_vec();
+    if position.is_some() {
+        keys.push("\u{2191}/\u{2193}");
     }
+    let title = Title::of(name)
+        .keys(&keys)
+        .position(position)
+        .render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

@@ -23,6 +23,7 @@ use stikk_core::MergePlanView;
 
 use crate::text::{identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
+use crate::title::{Position, Title};
 
 /// Indents: the heading rows, and prikk's own lines under them.
 const TOP: &str = "  ";
@@ -51,15 +52,16 @@ pub fn render(
 
     // **"prikk's plan"**, not "the merge": nothing here merges, and a title that implied one
     // would be the view promising what the keys do not do.
-    let mut title = " Merge plan \u{00b7} prikk's own ".to_string();
-    if max_offset > 0 {
-        let first = usize::from(scroll) + 1;
-        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        title.push_str(&format!(
-            "\u{00b7} \u{2191}/\u{2193} \u{00b7} lines {first}\u{2013}{last} of {} ",
-            lines.len()
-        ));
-    }
+    // One title builder, for every frame (RFC 060 review v1 C1).
+    let position = Position::of(scroll, viewport, lines.len());
+    let title = Title::of("Merge plan \u{00b7} prikk's own")
+        .keys(if position.is_some() {
+            &["\u{2191}/\u{2193}"]
+        } else {
+            &[]
+        })
+        .position(position)
+        .render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

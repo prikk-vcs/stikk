@@ -177,7 +177,10 @@ fn banner_lines<'a>(palette: &Palette, text: &str, width: usize) -> Vec<Line<'a>
 fn render_fault(palette: &Palette, frame: &mut Frame, area: Rect, detail: &str) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" stikk fault — your repository was not touched ")
+        .title(
+            crate::title::Title::of("stikk fault \u{2014} your repository was not touched")
+                .render(area.width),
+        )
         .style(Style::default().fg(palette.warn));
     let text = vec![
         Line::from(Span::styled(inert(detail), Style::default().fg(palette.fg))),
@@ -283,7 +286,7 @@ fn render_failure(palette: &Palette, frame: &mut Frame, area: Rect, message: &st
     // next-steps is the next increment.
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Cannot open repository ")
+        .title(crate::title::Title::of("Cannot open repository").render(area.width))
         .style(Style::default().fg(palette.warn));
     let text = vec![
         Line::from(Span::styled(

@@ -198,7 +198,7 @@ pub fn render(
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Orientation ")
+        .title(crate::title::Title::of("Orientation").render(area.width))
         .style(Style::default().fg(palette.fg));
     // The unvalidated-ceiling notice (RFC 009 decision 7) is long enough to overflow a narrow terminal;
     // wrap rather than silently truncate it out of view (design TU-11).

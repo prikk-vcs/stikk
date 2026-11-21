@@ -29,6 +29,7 @@ use stikk_core::QueueView;
 
 use crate::text::{identifier, inert, wrap_indented};
 use crate::theme::Palette;
+use crate::title::{Position, Title};
 
 /// Indents, by level: the heading and foot, a patch's id (selected or not), its message, and its
 /// operations. The two id indents are the same width, so the ids line up whichever is marked.
@@ -73,13 +74,16 @@ pub fn render(
     offset.set(scroll);
 
     // `NFR-A03`: "there is more" is said, never left to guess — only when there is somewhere to go.
-    let title = if max_offset == 0 {
-        " Queue ".to_string()
-    } else {
-        let first = usize::from(scroll) + 1;
-        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        format!(" Queue — ↑/↓ · lines {first}–{last} of {} ", lines.len())
-    };
+    // One title builder, for every frame (RFC 060 review v1 C1).
+    let position = Position::of(scroll, viewport, lines.len());
+    let title = Title::of("Queue")
+        .keys(if position.is_some() {
+            &["\u{2191}/\u{2193}"]
+        } else {
+            &[]
+        })
+        .position(position)
+        .render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

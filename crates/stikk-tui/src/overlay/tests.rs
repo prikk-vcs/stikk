@@ -924,9 +924,20 @@ fn seal_result_hostile_block_id_and_ref_render_inert() {
 #[test]
 fn the_glossary_does_not_fit_at_80x24_which_is_why_it_scrolls() {
     let (overlay, text) = glossary_scrolled(0, 80, 24);
+    // **The title says where, and the foot line says which key** (RFC 060 decision 3, held by review
+    // v1 C1). It used to say both in the title, which is the second idiom trap 4 removed — and the
+    // key is still named *from this panel*, which is what `NFR-A03` asks.
     assert!(
-        text.contains("↑/↓ to scroll"),
-        "the title must say scrolling is possible when it is (NFR-A03):\n{text}"
+        text.contains("lines 1–"),
+        "the title must say where the reader is when something is hidden:\n{text}"
+    );
+    assert!(
+        text.contains("↓ more below"),
+        "and the foot line must name the key (NFR-A03):\n{text}"
+    );
+    assert!(
+        !text.contains("↑/↓ to scroll"),
+        "but not twice, in two idioms:\n{text}"
     );
     // Unscrolled, the top is showing and the end is not.
     assert!(text.contains("Keys"), "{text}");

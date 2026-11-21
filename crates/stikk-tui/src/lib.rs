@@ -30,6 +30,7 @@ mod shell;
 mod status_bar;
 mod terminal;
 mod theme;
+mod title;
 mod view;
 mod worker;
 

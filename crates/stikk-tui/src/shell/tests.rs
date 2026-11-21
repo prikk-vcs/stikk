@@ -1661,7 +1661,15 @@ fn no_row_overflows_its_area_below_the_minimum() {
         // Drain what reaching the screen recorded: `reach` draws, and those draws were at 120×40.
         let _ = crate::text::drain_overflows();
         for (w, h) in [(60, 15), (72, 20)] {
-            let _ = drawn(&app, w, h);
+            // **Scrolled, so a surface that has a position actually shows one** (RFC 060 review v1
+            // C1): a title's position is the part that may never be cut, and an unscrolled screen
+            // of a scrollable surface does not draw one.
+            for _ in 0..3 {
+                let _ = drawn(&app, w, h);
+                app.nav_down();
+            }
+            let _ = crate::text::drain_overflows();
+            let text = draw(&app, w, h);
             screens_drawn += 1;
             for overflow in crate::text::drain_overflows() {
                 found.push(format!(
@@ -1674,6 +1682,21 @@ fn no_row_overflows_its_area_below_the_minimum() {
                     overflow.text
                 ));
             }
+            // **And every position on screen is whole.** `lines a–b` with no `of c` is the cut
+            // review v1 C1 found: not a missing word but a wrong statement.
+            for row in text.lines() {
+                if let Some(rest) = row.split_once("lines ").map(|(_, rest)| rest) {
+                    let whole = rest
+                        .split_once(" of ")
+                        .is_some_and(|(_, total)| total.starts_with(|c: char| c.is_ascii_digit()));
+                    if !whole {
+                        found.push(format!(
+                            "{} at {w}x{h}: a position is cut: {row:?}",
+                            screen.name
+                        ));
+                    }
+                }
+            }
         }
     }
     assert!(
@@ -1682,7 +1705,10 @@ fn no_row_overflows_its_area_below_the_minimum() {
         found.len(),
         found.join("\n")
     );
-    println!("RFC 060: {screens_drawn} screens drawn at 60x15 and 72x20, zero overflows");
+    println!(
+        "RFC 060: {screens_drawn} screens drawn scrolled at 60x15 and 72x20, zero overflows, \
+         every position whole"
+    );
 }
 
 /// **The three overlays RFC 060 F3 found cut, read whole at 60 × 18** — the sentences F3 quotes,
@@ -1818,5 +1844,59 @@ fn capture_rfc060_the_too_small_screen() {
             .count(),
         3,
         "three rows, all of them used:\n{smallest}"
+    );
+}
+
+/// **A frame's title is never cut, and its position is never half said** (RFC 060 review v1 C1).
+///
+/// Verify's was the one the review found: at 60 columns it drew
+/// `┌ Verify · this run — v: raw · r: re-run · ↑/↓ · lines 1–11┐`, and the reader was told
+/// *"lines 1–11"* with no *"of 24"*.
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib capture_rfc060_c1_titles -- --nocapture
+/// ```
+#[test]
+fn capture_rfc060_c1_titles_at_60_columns() {
+    let backend = stocked();
+    let (mut app, rx) = open("/repo", &Config::default());
+    drain(&mut app, &rx, &backend);
+    app.open_verify();
+    drain(&mut app, &rx, &backend);
+    // Scrolled, so the title carries a position at all.
+    for _ in 0..3 {
+        let _ = draw(&app, 60, 15);
+        app.nav_down();
+    }
+    let text = draw(&app, 60, 15);
+    println!("--- RFC 060 C1: Verify at 60x15\n{text}");
+    let title = text.lines().nth(1).unwrap_or_default();
+    // **The keys went, as one group; the position stayed, whole.**
+    assert!(
+        title.contains(" of "),
+        "the position is whole: {title:?}\n{text}"
+    );
+    assert!(
+        !title.contains("v: raw") && !title.contains("r: re-run"),
+        "the keys are the first thing given up: {title:?}"
+    );
+    assert!(title.contains("Verify"), "{title:?}");
+    // At 120 columns everything fits, and nothing was given up.
+    let roomy = draw(&app, 120, 40);
+    let roomy_title = roomy.lines().nth(1).unwrap_or_default();
+    println!("--- RFC 060 C1: Verify at 120x40\n{roomy_title}");
+    assert!(roomy_title.contains("v: raw"), "{roomy_title:?}");
+    assert!(roomy_title.contains("r: re-run"), "{roomy_title:?}");
+
+    // The Glossary: the title says where, the foot line says which key, neither says both.
+    app.open_glossary();
+    let glossary = draw(&app, 60, 15);
+    println!("--- RFC 060 C1: the Glossary at 60x15\n{glossary}");
+    assert!(glossary.contains("lines 1–"), "{glossary}");
+    assert!(glossary.contains(" of "), "{glossary}");
+    assert!(glossary.contains("↓ more below"), "{glossary}");
+    assert!(
+        !glossary.contains("to scroll"),
+        "the title no longer names the key as well:\n{glossary}"
     );
 }

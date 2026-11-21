@@ -30,6 +30,7 @@ use stikk_core::{CompareView, ComparedEntry, HunkRow};
 
 use crate::text::{compose, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
+use crate::title::{Position, Title};
 
 /// Indents, by level: the heading and foot, an entry's title, and the rows under it.
 const TOP: &str = "  ";
@@ -63,16 +64,22 @@ pub fn render(
     let scroll = offset.get().min(max_offset);
     offset.set(scroll);
 
-    let mut title = if raw {
-        " Compare · prikk's own fields — v: rendered ".to_string()
+    // One title builder, for every frame (RFC 060 review v1 C1). `↑/↓` is named only where something
+    // is hidden, as it always has been: an affordance for a surface that does not scroll is noise.
+    let position = Position::of(scroll, viewport, lines.len());
+    let (name, key): (&str, &str) = if raw {
+        ("Compare \u{00b7} prikk's own fields", "v: rendered")
     } else {
-        " Compare — v: prikk's own fields ".to_string()
+        ("Compare", "v: prikk's own fields")
     };
-    if max_offset > 0 {
-        let first = usize::from(scroll) + 1;
-        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        title.push_str(&format!("· ↑/↓ · lines {first}–{last} of {} ", lines.len()));
+    let mut keys = vec![key];
+    if position.is_some() {
+        keys.push("\u{2191}/\u{2193}");
     }
+    let title = Title::of(name)
+        .keys(&keys)
+        .position(position)
+        .render(area.width);
 
     let block = Block::default()
         .borders(Borders::ALL)

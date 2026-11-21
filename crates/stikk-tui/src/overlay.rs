@@ -755,16 +755,11 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
     // `NFR-A03`: whatever scrolls this panel is discoverable *from* this panel — the Keys section below
     // names the keys, and the title says where you are, so "there is more" is never something a user has
     // to guess. Only shown when there is somewhere to go.
-    let title = if max_offset == 0 {
-        " Glossary & Help ".to_string()
-    } else {
-        let first = usize::from(scroll) + 1;
-        let last = (usize::from(scroll) + usize::from(viewport)).min(lines.len());
-        format!(
-            " Glossary & Help — ↑/↓ to scroll · lines {first}–{last} of {} ",
-            lines.len()
-        )
-    };
+    // **The title no longer names the scroll key** (RFC 060 decision 3, held by review v1 C1): the
+    // foot line below names it, and two idioms for one fact is what that decision removed.
+    let title = crate::title::Title::of("Glossary & Help")
+        .position(crate::title::Position::of(scroll, viewport, lines.len()))
+        .render(region.width);
 
     frame.render_widget(Clear, region);
     let block = block.title(title);
@@ -1574,11 +1569,11 @@ fn render_loading(what: &str, palette: &Palette, frame: &mut Frame, area: Rect) 
         format!("  loading {what}…"),
         Style::default().fg(palette.dim),
     ))];
+    let region = centered(40, 3, area);
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Loading ")
+        .title(crate::title::Title::of("Loading").render(region.width))
         .style(Style::default().fg(palette.fg));
-    let region = centered(40, 3, area);
     frame.render_widget(Clear, region);
     frame.render_widget(Paragraph::new(lines).block(block), region);
 }
@@ -4298,7 +4293,7 @@ impl Panel<'_> {
             let region = centered(self.width, height.min(area.height), area);
             let block = Block::default()
                 .borders(Borders::ALL)
-                .title(title.to_string())
+                .title(crate::title::Title::of(title.trim()).render(outer))
                 .style(self.style);
             frame.render_widget(Clear, region);
             let inner = block.inner(region);
@@ -4327,18 +4322,16 @@ impl Panel<'_> {
         }
         let last = usize::from(offset) + usize::from(prose_area_height);
 
-        let title = if foot_needed {
-            // Where you are, in the Glossary's idiom (RFC 024 §4), rather than in silence.
-            format!(
-                "{} — lines {}–{} of {} ",
-                title.trim_end(),
-                usize::from(offset) + 1,
-                last.min(prose.len()),
-                prose_len
-            )
-        } else {
-            title.to_string()
-        };
+        // **The one title builder** (RFC 060 review v1 C1): the position is never cut, and an
+        // overlay's title never names the scroll key — the foot line below does.
+        let title = crate::title::Title::of(title.trim())
+            .position(crate::title::Position::of(
+                offset,
+                prose_area_height,
+                prose.len(),
+            ))
+            .render(outer);
+        let _ = last;
         if foot_needed {
             // **Which key**, said once, in the label colour: down while there is more below, and up
             // once there is not.
@@ -4446,17 +4439,15 @@ impl ListPanel<'_> {
             .map(<[Line]>::to_vec)
             .unwrap_or_default();
 
-        let title = if items_len > viewport {
-            format!(
-                "{} — lines {}–{} of {} ",
-                title_text.trim_end(),
-                start + 1,
-                end,
-                items_len
-            )
-        } else {
-            title_text.to_string()
-        };
+        // The one title builder (RFC 060 review v1 C1); the window moves in rows, so the position is
+        // the rows it shows.
+        let title = crate::title::Title::of(title_text.trim())
+            .position((items_len > viewport).then_some(crate::title::Position {
+                first: start + 1,
+                last: end,
+                total: rows.len(),
+            }))
+            .render(outer);
 
         let block = Block::default()
             .borders(Borders::ALL)

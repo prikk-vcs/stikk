@@ -4,7 +4,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, HorizontalAlignment, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
@@ -20,6 +20,44 @@ const MIN_HEIGHT: u16 = 24;
 /// Render the whole shell for `app` into the frame.
 pub fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
+    render_frame(app, frame, area);
+    // **Last, so it is under everything** — see [`paint_the_themes_own_pair`].
+    if let Some(bg) = app.palette().bg {
+        paint_the_themes_own_pair(frame, area, app.palette().fg, bg);
+    }
+}
+
+/// **The theme's own pair, over the whole frame** (RFC 059 decision 8). `high-contrast` is the only
+/// theme that paints one; the other four leave the terminal's own background alone.
+///
+/// **Applied after everything else is drawn, to every cell nobody gave a colour**, which is what
+/// *"under everything, overlays included"* has to mean in practice: an overlay clears its region
+/// before it draws, and `Clear` resets a cell to the terminal's own pair — so a background painted
+/// before the overlays would be punched out under every one of them. Painting what is still unpainted
+/// is the same result from one place, and it cannot be forgotten by a renderer that clears.
+///
+/// **The pair, not half of it.** A span drawn with no explicit colour (`Span::raw`) would otherwise
+/// keep the terminal's own text colour over stikk's painted background, which on the wrong terminal is
+/// the unreadable combination this RFC exists to remove. With `high-contrast` stikk owes the reader
+/// both halves.
+fn paint_the_themes_own_pair(frame: &mut Frame, area: Rect, fg: Color, bg: Color) {
+    let buffer = frame.buffer_mut();
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            if let Some(cell) = buffer.cell_mut((x, y)) {
+                if cell.bg == Color::Reset {
+                    cell.set_bg(bg);
+                }
+                if cell.fg == Color::Reset {
+                    cell.set_fg(fg);
+                }
+            }
+        }
+    }
+}
+
+/// The frame itself: header, body, banner, status bar, and the overlay layer above them.
+fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
     let palette = app.palette();
 
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {

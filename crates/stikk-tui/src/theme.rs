@@ -79,6 +79,8 @@ pub enum SchemeKind {
     /// No colour of stikk's own (decision 7) — **and decision 5's fallback**, which is why it arrives
     /// with the resolver rather than with `high-contrast`.
     Plain,
+    /// stikk's own black-and-white pair, painted over the whole frame (decision 8).
+    HighContrast,
 }
 
 impl SchemeKind {
@@ -89,8 +91,10 @@ impl SchemeKind {
         match self {
             Self::Dark => &DARK_REFERENCES,
             Self::Light => &LIGHT_REFERENCES,
-            // Nothing to promise: `plain` chooses no colour at all.
-            Self::Plain => &[],
+            // Nothing to promise against *these*: `plain` chooses no colour at all, and
+            // `high-contrast` paints its own background, so what it must hold up against is that
+            // background and nothing else (`Palette::bg`).
+            Self::Plain | Self::HighContrast => &[],
         }
     }
 
@@ -101,6 +105,7 @@ impl SchemeKind {
             Self::Dark => "dark",
             Self::Light => "light",
             Self::Plain => "plain",
+            Self::HighContrast => "high-contrast",
         }
     }
 }
@@ -144,6 +149,13 @@ impl RoleColour {
         }
     }
 }
+
+/// White, as an exact xterm-cube entry (231 is `#ffffff`) as well as a 24-bit value — so
+/// `high-contrast` is 21 : 1 on a 256-colour terminal too, rather than an RGB escape that a terminal
+/// without 24-bit colour rounds its own way (F3).
+const WHITE: RoleColour = RoleColour::chosen(0xff, 0xff, 0xff, 231);
+/// Black, as an exact xterm-cube entry (16 is `#000000`). See [`WHITE`].
+const BLACK: RoleColour = RoleColour::chosen(0x00, 0x00, 0x00, 16);
 
 /// A theme's five roles, each at both depths, and the background the theme paints.
 ///
@@ -213,6 +225,31 @@ impl Scheme {
             accent: RoleColour::terminals_own(),
             ok: RoleColour::terminals_own(),
             warn: RoleColour::terminals_own(),
+        }
+    }
+
+    /// **stikk paints its own pair** (decision 8): black on white when the terminal answered *light*,
+    /// white on black otherwise — 21 : 1 whatever the terminal's own scheme is.
+    ///
+    /// Every role is that one text colour, so nothing in the frame is distinguished by hue at all;
+    /// emphasis is bold and reverse video only. It queries like `system`, and **does not need an
+    /// answer**: with none, white on black is the pair, which is safe on every background because
+    /// stikk is painting the background too.
+    #[must_use]
+    pub const fn high_contrast(light_background: bool) -> Self {
+        let (fg, bg) = if light_background {
+            (BLACK, WHITE)
+        } else {
+            (WHITE, BLACK)
+        };
+        Self {
+            kind: SchemeKind::HighContrast,
+            fg,
+            bg: Some(bg),
+            dim: fg,
+            accent: fg,
+            ok: fg,
+            warn: fg,
         }
     }
 
@@ -426,7 +463,11 @@ impl Environment {
     fn wants_an_answer(&self) -> bool {
         match self.theme {
             ConfigTheme::System => !self.no_color(),
-            ConfigTheme::Light | ConfigTheme::Dark => false,
+            // **`high-contrast` queries too** (decision 8), and `NO_COLOR` does not stop it: an
+            // explicit theme in the config wins over `NO_COLOR` (decision 9), so the answer can still
+            // change which way round the pair is painted. It needs no answer to work.
+            ConfigTheme::HighContrast => true,
+            ConfigTheme::Light | ConfigTheme::Dark | ConfigTheme::Plain => false,
         }
     }
 
@@ -537,6 +578,13 @@ pub fn resolve(environment: &Environment) -> Resolved {
     let (scheme, reason) = match environment.theme {
         ConfigTheme::Dark => (Scheme::dark(), Reason::FromConfig(SchemeKind::Dark)),
         ConfigTheme::Light => (Scheme::light(), Reason::FromConfig(SchemeKind::Light)),
+        ConfigTheme::Plain => (Scheme::plain(), Reason::FromConfig(SchemeKind::Plain)),
+        // The answer only decides which way round the pair goes; without one it is white on black,
+        // and either way stikk paints both halves, so decision 6's guard has nothing to add here.
+        ConfigTheme::HighContrast => (
+            Scheme::high_contrast(environment.answer.is_some_and(|answer| answer.light)),
+            Reason::FromConfig(SchemeKind::HighContrast),
+        ),
         ConfigTheme::System if environment.no_color() => (Scheme::plain(), Reason::NoColor),
         ConfigTheme::System => match environment.answer {
             Some(answer) => {

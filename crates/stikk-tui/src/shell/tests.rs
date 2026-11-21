@@ -672,3 +672,198 @@ fn capture_rfc063_a_commit_off_the_current_branch_at_both_sizes_and_themes() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// `high-contrast` and `plain` (RFC 059 decisions 7 and 8; Handoff A §3)
+// ---------------------------------------------------------------------------------------------
+
+/// The whole rendered buffer, not its text: these tests are about colour, cell by cell.
+fn drawn(app: &App, w: u16, h: u16) -> ratatui::buffer::Buffer {
+    let backend = TestBackend::new(w, h);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|f| render(app, f)).unwrap();
+    terminal.backend().buffer().clone()
+}
+
+/// An app on a loaded Orientation, drawing with `resolved` — and, when `overlay` is set, with the
+/// Glossary open over it, which is the case that matters: an overlay clears its region before it
+/// draws, so a painted frame has to survive the clear.
+fn app_drawing_with(
+    resolved: crate::theme::Resolved,
+    overlay: bool,
+) -> (App, mpsc::Receiver<Request>) {
+    let backend = NullBackend::supported().with_orientation(orientation_naming_heads_main());
+    let (tx, rx) = mpsc::channel();
+    let mut app = App::open("/repo", resolved, None, tx);
+    drain(&mut app, &rx, &backend);
+    if overlay {
+        app.open_glossary();
+    }
+    (app, rx)
+}
+
+/// What the resolver answers for one configured theme and one terminal answer, at 256 colours.
+fn resolved_for(
+    theme: stikk_state::config::Theme,
+    answer: Option<crate::theme::Answer>,
+) -> crate::theme::Resolved {
+    resolved_at(theme, answer, false)
+}
+
+/// As [`resolved_for`], at the depth `truecolour` asks for.
+fn resolved_at(
+    theme: stikk_state::config::Theme,
+    answer: Option<crate::theme::Answer>,
+    truecolour: bool,
+) -> crate::theme::Resolved {
+    crate::theme::resolve(&crate::theme::Environment {
+        theme,
+        answer,
+        colorterm: truecolour.then(|| "truecolor".to_string()),
+        ..crate::theme::Environment::default()
+    })
+}
+
+/// Decision 8: **stikk paints its own pair over the whole frame**, in both directions, and an overlay
+/// cannot punch a hole in it.
+#[test]
+fn high_contrast_paints_every_cell_in_both_directions() {
+    use ratatui::style::Color;
+
+    // The pair at each depth: the exact cube entries at 256 colours (16 and 231 **are** black and
+    // white, so nothing is rounded), and the plain 24-bit values where the terminal promises them.
+    for (truecolour, white, black) in [
+        (false, Color::Indexed(231), Color::Indexed(16)),
+        (true, Color::Rgb(0xff, 0xff, 0xff), Color::Rgb(0, 0, 0)),
+    ] {
+        for (light, fg, bg) in [(true, black, white), (false, white, black)] {
+            let answer = Some(crate::theme::Answer {
+                light,
+                background: if light {
+                    (0xff, 0xff, 0xff)
+                } else {
+                    (0x1e, 0x1e, 0x1e)
+                },
+            });
+            let resolved =
+                resolved_at(stikk_state::config::Theme::HighContrast, answer, truecolour);
+            for overlay in [false, true] {
+                let (app, _rx) = app_drawing_with(resolved, overlay);
+                for (w, h) in [(80, 24), (120, 40)] {
+                    let buffer = drawn(&app, w, h);
+                    for y in 0..h {
+                        for x in 0..w {
+                            let cell = buffer.cell((x, y)).expect("a cell inside the buffer");
+                            assert_eq!(
+                                (cell.fg, cell.bg),
+                                (fg, bg),
+                                "high-contrast (light background: {light}, overlay: {overlay}) at \
+                             {w}x{h}, cell {x},{y} = {:?}",
+                                cell.symbol()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Decision 7: **`plain` paints nothing and colours nothing** — every cell is the terminal's own
+/// pair, at every size, with and without an overlay.
+#[test]
+fn plain_leaves_every_cell_to_the_terminal() {
+    use ratatui::style::Color;
+
+    let resolved = resolved_for(stikk_state::config::Theme::Plain, None);
+    assert_eq!(resolved.palette.bg, None, "plain paints no background");
+    for overlay in [false, true] {
+        let (app, _rx) = app_drawing_with(resolved, overlay);
+        for (w, h) in [(80, 24), (120, 40)] {
+            let buffer = drawn(&app, w, h);
+            for y in 0..h {
+                for x in 0..w {
+                    let cell = buffer.cell((x, y)).expect("a cell inside the buffer");
+                    assert_eq!(
+                        (cell.fg, cell.bg),
+                        (Color::Reset, Color::Reset),
+                        "plain (overlay: {overlay}) at {w}x{h}, cell {x},{y} = {:?}",
+                        cell.symbol()
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// **Capture: one view in `high-contrast` and in `plain`, at 80 x 24** (RFC 059 Handoff A §0). The
+/// two new themes change no character of a screen — that is the point of them — and these captures
+/// are the evidence that they change none: the view reads and fits exactly as it does in `dark`.
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib capture_rfc059_the_two_new_themes -- --nocapture
+/// ```
+#[test]
+fn capture_rfc059_the_two_new_themes_at_80x24() {
+    use stikk_state::config::Theme;
+
+    // Every row but the `colours` row, which is the one row that is *about* the theme and so the one
+    // row allowed to differ (RFC 059 decision 10).
+    let apart_from_the_colours_row = |text: &str| {
+        text.lines()
+            .filter(|line| !line.contains("colours     "))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let in_dark = {
+        let (app, _rx) = app_drawing_with(resolved_for(Theme::Dark, None), false);
+        apart_from_the_colours_row(&draw(&app, 80, 24))
+    };
+    for (theme, answer) in [
+        (
+            Theme::HighContrast,
+            Some(crate::theme::Answer {
+                light: true,
+                background: (0xff, 0xff, 0xff),
+            }),
+        ),
+        (Theme::HighContrast, None),
+        (Theme::Plain, None),
+    ] {
+        let (app, _rx) = app_drawing_with(resolved_for(theme, answer), false);
+        let text = draw(&app, 80, 24);
+        println!(
+            "--- RFC 059: Orientation in {theme:?} (terminal answered light: {}), 80x24\n{text}",
+            answer.is_some_and(|a| a.light)
+        );
+        for fragment in ["Orientation", "capability", "heads/main"] {
+            assert!(
+                text.contains(fragment),
+                "{theme:?}: {fragment:?} is whole on screen:\n{text}"
+            );
+        }
+        assert_eq!(
+            apart_from_the_colours_row(&text),
+            in_dark,
+            "{theme:?} draws the same characters as dark — only the colours differ"
+        );
+    }
+}
+
+/// **The four other themes paint no background at all** — only `high-contrast` does (decision 2).
+#[test]
+fn only_high_contrast_paints_a_background() {
+    use stikk_state::config::Theme;
+
+    for theme in [Theme::System, Theme::Light, Theme::Dark, Theme::Plain] {
+        assert_eq!(
+            resolved_for(theme, None).palette.bg,
+            None,
+            "{theme:?} paints no background"
+        );
+    }
+    assert!(
+        resolved_for(Theme::HighContrast, None).palette.bg.is_some(),
+        "high-contrast paints one"
+    );
+}

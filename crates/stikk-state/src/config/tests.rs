@@ -75,3 +75,30 @@ fn there_is_no_setting_that_disables_honesty() {
     // It landed in `unknown`, i.e. it changed no behavior.
     assert!(c.unknown.contains_key("disable_unverifiable"));
 }
+
+/// RFC 059 decision 1: the two new themes are accepted by the words the guide gives them.
+#[test]
+fn the_two_new_themes_are_accepted() {
+    assert_eq!(
+        Config::parse("theme = high-contrast\n").theme,
+        Theme::HighContrast
+    );
+    assert_eq!(Config::parse("theme = plain\n").theme, Theme::Plain);
+    // **No warning**: these are known values now, not preserved unknowns.
+    for text in ["theme = high-contrast\n", "theme = plain\n"] {
+        assert!(
+            Config::parse(text).warnings.is_empty(),
+            "{text:?} warned about nothing"
+        );
+    }
+    // The spelling is the hyphenated one. `high_contrast` is not a theme stikk knows, and an unknown
+    // word keeps the default, as it always has.
+    let underscored = Config::parse("theme = high_contrast\n");
+    assert_eq!(underscored.theme, Theme::System);
+    assert!(
+        underscored
+            .warnings
+            .iter()
+            .any(|w| w.contains("unknown theme"))
+    );
+}

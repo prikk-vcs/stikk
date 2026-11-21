@@ -9,16 +9,24 @@
 
 use std::collections::BTreeMap;
 
-/// The UI theme (external design GU-07). `System` follows the host; the explicit choices win.
+/// The UI theme (external design GU-07; **RFC 059 decision 1**). `System` asks the terminal which way
+/// round it is; the explicit choices win, and send no query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Theme {
-    /// Follow the host's light/dark setting.
+    /// Ask the terminal whether its background is light or dark, and use `Plain` when it does not
+    /// answer. Also where `NO_COLOR` applies (RFC 059 decision 9).
     #[default]
     System,
     /// Force the light palette.
     Light,
     /// Force the dark palette.
     Dark,
+    /// stikk paints its own pair: black on white, or white on black, over the whole frame — 21 : 1
+    /// whatever the terminal's own scheme is (RFC 059 decision 8).
+    HighContrast,
+    /// No colour of stikk's own: every role is the terminal's own text colour, and no background is
+    /// painted (RFC 059 decision 7).
+    Plain,
 }
 
 /// The UI locale (requirement NFR-I01). prikk's own diagnostics stay English regardless (NFR-I03).
@@ -93,6 +101,10 @@ impl Config {
                 "system" => self.theme = Theme::System,
                 "light" => self.theme = Theme::Light,
                 "dark" => self.theme = Theme::Dark,
+                // RFC 059 decision 1. Hyphenated, as the accessibility flag `high-contrast` already
+                // is in CF-03 -- not `high_contrast`, which no other value in this file uses.
+                "high-contrast" => self.theme = Theme::HighContrast,
+                "plain" => self.theme = Theme::Plain,
                 other => self.warnings.push(format!(
                     "line {line}: unknown theme {other:?}, keeping default"
                 )),

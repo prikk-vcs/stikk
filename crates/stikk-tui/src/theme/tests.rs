@@ -152,8 +152,9 @@ fn the_palette_agrees_with_palette059_to_two_decimals() {
         let scheme = match kind {
             SchemeKind::Dark => Scheme::dark(),
             SchemeKind::Light => Scheme::light(),
-            // `plain` chooses no colour, so `palette059.txt` has no row for it.
-            SchemeKind::Plain => continue,
+            // `plain` chooses no colour and `high-contrast` paints its own pair, so `palette059.txt`
+            // has no row for either.
+            SchemeKind::Plain | SchemeKind::HighContrast => continue,
         };
         let palette = scheme.for_depth(depth);
         for (role, measured) in expected {
@@ -443,23 +444,47 @@ fn an_explicit_theme_wins_over_no_color() {
     }
 }
 
-/// **The query is sent for `system` and for nothing else** (decision 5) — and this is the same
-/// question `crate::run` asks before it calls `detect`, so a theme that must not query cannot start
-/// querying without this test failing.
+/// **Two themes ask the terminal, and no other does** — `system` (decision 5) and `high-contrast`
+/// (decision 8). This is the same question `crate::run` asks before it calls `detect`, so a theme
+/// that must not query cannot start querying without this test failing.
 #[test]
-fn only_system_wants_an_answer_from_the_terminal() {
-    assert!(resolve(&system()).wants_an_answer);
-    for theme in [ConfigTheme::Dark, ConfigTheme::Light] {
+fn system_and_high_contrast_ask_the_terminal_and_nothing_else_does() {
+    assert!(resolve(&system()).wants_an_answer, "system asks");
+    // **`high-contrast` asks as well**, and needs no answer: the answer only decides which way round
+    // its own pair is painted.
+    assert!(
+        resolve(&Environment::configured(ConfigTheme::HighContrast)).wants_an_answer,
+        "high-contrast asks"
+    );
+    // **And it asks under `NO_COLOR` too**, because an explicit theme in the config wins over
+    // `NO_COLOR` (decision 9): the answer can still change which way round the pair goes, so it is
+    // still worth asking for. A query is not colour output.
+    let high_contrast_with_no_color = Environment {
+        no_color: Some("1".to_string()),
+        ..Environment::configured(ConfigTheme::HighContrast)
+    };
+    assert!(
+        resolve(&high_contrast_with_no_color).wants_an_answer,
+        "high-contrast asks under NO_COLOR as well"
+    );
+
+    // **Every theme that decides without the terminal sends nothing** — `plain` included, which
+    // chooses no colour at all and so has nothing an answer could change.
+    for theme in [ConfigTheme::Dark, ConfigTheme::Light, ConfigTheme::Plain] {
         assert!(
             !resolve(&Environment::configured(theme)).wants_an_answer,
-            "an explicit theme sends no query"
+            "{theme:?} sends no query"
         );
     }
+    // `system` with `NO_COLOR` resolves to `plain` whatever the terminal would say, so it does not ask.
     let no_color = Environment {
         no_color: Some("1".to_string()),
         ..system()
     };
-    assert!(!resolve(&no_color).wants_an_answer);
+    assert!(
+        !resolve(&no_color).wants_an_answer,
+        "system under NO_COLOR sends no query"
+    );
 }
 
 /// **Decision 6's guard**, on the two backgrounds the palette's references do not cover: a mid-grey,

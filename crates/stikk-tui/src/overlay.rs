@@ -523,6 +523,7 @@ pub fn render(
     overlay: &Overlay,
     marked_ref: Option<&str>,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -547,30 +548,42 @@ pub fn render(
             frame,
             area,
         ),
-        Overlay::BundlePath { typed } => render_bundle_path(typed, palette, frame, area),
+        Overlay::BundlePath { typed } => render_bundle_path(typed, palette, scroll, frame, area),
         Overlay::TrustPublicKey { typed, error } => {
-            render_trust_public_key(typed, error.as_deref(), palette, frame, area);
+            render_trust_public_key(typed, error.as_deref(), palette, scroll, frame, area);
         }
         Overlay::TrustKeyId {
             public_key,
             typed,
             error,
-        } => render_trust_key_id(public_key, typed, error.as_deref(), palette, frame, area),
-        Overlay::TrustConflict { warning } => render_trust_conflict(warning, palette, frame, area),
+        } => render_trust_key_id(
+            public_key,
+            typed,
+            error.as_deref(),
+            palette,
+            scroll,
+            frame,
+            area,
+        ),
+        Overlay::TrustConflict { warning } => {
+            render_trust_conflict(warning, palette, scroll, frame, area)
+        }
         Overlay::TrustResult {
             printed,
             see_verify,
-        } => render_trust_result(printed, *see_verify, palette, frame, area),
+        } => render_trust_result(printed, *see_verify, palette, scroll, frame, area),
         Overlay::SavePath {
             what,
             heading,
             typed,
-        } => render_save_path(what, heading, typed, palette, frame, area),
-        Overlay::SaveResult { lines } => render_save_result(lines, palette, frame, area),
+        } => render_save_path(what, heading, typed, palette, scroll, frame, area),
+        Overlay::SaveResult { lines } => render_save_result(lines, palette, scroll, frame, area),
         Overlay::ExportPath { reff, typed } => {
-            render_export_path(reff, typed, palette, frame, area);
+            render_export_path(reff, typed, palette, scroll, frame, area);
         }
-        Overlay::Refusal { card, cursor } => render_refusal(card, *cursor, palette, frame, area),
+        Overlay::Refusal { card, cursor } => {
+            render_refusal(card, *cursor, palette, scroll, frame, area)
+        }
         Overlay::Stale {
             operation,
             cause: _,
@@ -579,13 +592,13 @@ pub fn render(
             next_steps,
             cursor,
         } => render_stale(
-            operation, headline, gloss, next_steps, *cursor, palette, frame, area,
+            operation, headline, gloss, next_steps, *cursor, palette, scroll, frame, area,
         ),
         Overlay::CommitWouldRefuse { paths } => {
-            render_commit_would_refuse(paths, palette, frame, area);
+            render_commit_would_refuse(paths, palette, scroll, frame, area);
         }
         Overlay::CommitWouldRefuseDeclarations { declarations } => {
-            render_commit_would_refuse_declarations(declarations, palette, frame, area);
+            render_commit_would_refuse_declarations(declarations, palette, scroll, frame, area);
         }
         Overlay::Palette {
             filter,
@@ -615,6 +628,7 @@ pub fn render(
             typed,
             error.as_deref(),
             palette,
+            scroll,
             frame,
             area,
         ),
@@ -623,48 +637,63 @@ pub fn render(
             typed,
             messages_persist,
         } => {
-            render_commit_message(reff, typed, *messages_persist, palette, frame, area);
+            render_commit_message(reff, typed, *messages_persist, palette, scroll, frame, area);
         }
         Overlay::CommitResult { result } => {
-            render_commit_result(result, None, " Commit recorded ", palette, frame, area);
+            render_commit_result(
+                result,
+                None,
+                " Commit recorded ",
+                palette,
+                scroll,
+                frame,
+                area,
+            );
         }
         Overlay::UndoMessage { block, typed } => {
-            render_undo_message(block, typed, palette, frame, area);
+            render_undo_message(block, typed, palette, scroll, frame, area);
         }
         Overlay::UndoRecorded { result } => render_commit_result(
             result,
             Some(stikk_core::SEAL_THE_UNDO),
             " Undo recorded ",
             palette,
+            scroll,
             frame,
             area,
         ),
         Overlay::UndoStopped { changed, text } => {
-            render_undo_stopped(changed, text, palette, frame, area);
+            render_undo_stopped(changed, text, palette, scroll, frame, area);
         }
         Overlay::SealConsent { reff, acknowledged } => {
-            render_seal_consent(reff, *acknowledged, palette, frame, area);
+            render_seal_consent(reff, *acknowledged, palette, scroll, frame, area);
         }
-        Overlay::SealResult { result } => render_seal_result(result, palette, frame, area),
+        Overlay::SealResult { result } => render_seal_result(result, palette, scroll, frame, area),
         Overlay::RefName {
             kind,
             source,
             typed,
-        } => render_ref_name(*kind, source, typed, palette, frame, area),
+        } => render_ref_name(*kind, source, typed, palette, scroll, frame, area),
         Overlay::TagMessage {
             name,
             target,
             typed,
-        } => render_tag_message(name, target, typed, palette, frame, area),
+        } => render_tag_message(name, target, typed, palette, scroll, frame, area),
         Overlay::RefWriteResult { kind, lines } => {
-            render_ref_write_result(*kind, lines, palette, frame, area);
+            render_ref_write_result(*kind, lines, palette, scroll, frame, area);
         }
         Overlay::SwitchResult { printed, noted } => {
-            render_switch_result(printed, noted, palette, frame, area);
+            render_switch_result(printed, noted, palette, scroll, frame, area);
         }
-        Overlay::MergeResult { printed } => render_merge_result(printed, palette, frame, area),
-        Overlay::ImportResult { printed } => render_import_result(printed, palette, frame, area),
-        Overlay::ExportResult { printed } => render_export_result(printed, palette, frame, area),
+        Overlay::MergeResult { printed } => {
+            render_merge_result(printed, palette, scroll, frame, area)
+        }
+        Overlay::ImportResult { printed } => {
+            render_import_result(printed, palette, scroll, frame, area)
+        }
+        Overlay::ExportResult { printed } => {
+            render_export_result(printed, palette, scroll, frame, area)
+        }
     }
 }
 
@@ -696,7 +725,6 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
     // `- 2` for the border columns, `- 1` for a right gutter: wrapping to the full inner width puts
     // prose flush against the box edge, which reads as if it were cut off.
     let text_width = usize::from(region.width.saturating_sub(3));
-    let viewport = region.height.saturating_sub(2);
 
     // **Wrapped to the width it is drawn at** (RFC 060 decision 2), like every panel: at 60 columns
     // several key rows used to run into the border.
@@ -707,11 +735,20 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
         usize::from(region.width.saturating_sub(2)),
     );
 
+    // **The same foot line every scrolling surface has** (RFC 060 decision 3), which costs the text
+    // a row — so whether it is needed is decided before the viewport is.
+    let inner_height = region.height.saturating_sub(2);
+    let rows = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+    let foot_needed = rows > inner_height;
+    let viewport = if foot_needed {
+        inner_height.saturating_sub(1)
+    } else {
+        inner_height
+    };
+
     // The clamp, and the write-back that makes it stick (see `Overlay::Glossary`). `saturating_sub`
     // gives 0 when everything fits, so a tall terminal simply cannot scroll.
-    let max_offset = u16::try_from(lines.len())
-        .unwrap_or(u16::MAX)
-        .saturating_sub(viewport);
+    let max_offset = rows.saturating_sub(viewport);
     let scroll = offset.get().min(max_offset);
     offset.set(scroll);
 
@@ -730,12 +767,31 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
     };
 
     frame.render_widget(Clear, region);
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block.title(title))
-            .scroll((scroll, 0)),
-        region,
-    );
+    let block = block.title(title);
+    let inner = block.inner(region);
+    frame.render_widget(block, region);
+    let [text_area, foot_area] = Layout::vertical([
+        Constraint::Length(viewport),
+        Constraint::Length(u16::from(foot_needed)),
+    ])
+    .areas(inner);
+    frame.render_widget(Paragraph::new(lines).scroll((scroll, 0)), text_area);
+    if foot_needed {
+        // **Which key**, said once, in the label colour — the Glossary says it the same way a card
+        // does (RFC 060 decision 3).
+        let hint = if scroll >= max_offset {
+            "  \u{2191} more above"
+        } else {
+            "  \u{2193} more below"
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                hint,
+                Style::default().fg(palette.dim),
+            ))),
+            foot_area,
+        );
+    }
 }
 
 /// Every line of the Glossary panel, already wrapped to `text_width`, so the caller's scroll clamp is
@@ -1051,6 +1107,7 @@ fn render_refusal(
     card: &RefusalCard,
     cursor: usize,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -1114,6 +1171,9 @@ fn render_refusal(
         prose,
         actions,
         style: Style::default().fg(palette.warn),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -1129,6 +1189,7 @@ fn render_stale(
     next_steps: &[NextStep],
     cursor: usize,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -1174,6 +1235,9 @@ fn render_stale(
         prose,
         actions,
         style: Style::default().fg(palette.warn),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -1188,6 +1252,7 @@ fn render_stale(
 fn render_commit_would_refuse_declarations(
     declarations: &[stikk_core::RefusedDeclaration],
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -1238,6 +1303,9 @@ fn render_commit_would_refuse_declarations(
         prose,
         actions,
         style: Style::default().fg(palette.warn),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -1342,6 +1410,7 @@ fn declaration_lines(
 fn render_commit_would_refuse(
     paths: &[RefusedPath],
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -1393,6 +1462,9 @@ fn render_commit_would_refuse(
         prose,
         actions,
         style: Style::default().fg(palette.warn),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -1626,12 +1698,16 @@ fn render_refusals(
 /// (`C-T2a`/`C-T4e`): the first two are prikk-authoritative and a hostile repository must not be able
 /// to forge chrome through them; `typed` is defensive against a pasted control character. `operation`
 /// and `consequence` are stikk's own words and need no such treatment.
+// One more than the lint allows, and the one is RFC 060's `scroll`: this card is the reason the
+// reading latch exists, and threading it through a struct would hide what the extra argument is.
+#[allow(clippy::too_many_arguments)]
 fn render_confirmation(
     summary: &ConfirmationSummary,
     tier: Tier,
     typed: &str,
     error: Option<&str>,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -1861,10 +1937,16 @@ fn render_confirmation(
     match tier {
         Tier::One => {} // never reaches this overlay in practice — tier 1 has no confirmation
         Tier::Two | Tier::Three => {
-            actions.row(Line::from(Span::styled(
-                "  Enter to confirm · Esc to cancel",
-                Style::default().fg(palette.accent),
-            )));
+            actions.confirm_line(
+                Line::from(Span::styled(
+                    "  Enter to confirm · Esc to cancel",
+                    Style::default().fg(palette.accent),
+                )),
+                Line::from(Span::styled(
+                    stikk_core::READ_TO_THE_END_TO_CONFIRM,
+                    Style::default().fg(palette.dim),
+                )),
+            );
         }
         Tier::ThreeTyped => {
             // **The id the reader must type back is never cut off** (RFC 056 Handoff B §2).
@@ -1892,6 +1974,17 @@ fn render_confirmation(
                 "  \u{203a} ",
                 "    ",
                 inert(typed),
+            );
+            // **Typing is accepted; confirming is not, until the card has been read** (RFC 060
+            // decision 3). This tier's affordance is the typed prompt above, which keeps its place;
+            // the row that changes is this one, which says what is missing while it is missing and
+            // is blank once it is not — so the card's height does not jump as the latch flips.
+            actions.confirm_line(
+                Line::from(""),
+                Line::from(Span::styled(
+                    stikk_core::READ_TO_THE_END_TO_CONFIRM,
+                    Style::default().fg(palette.dim),
+                )),
             );
         }
     }
@@ -1947,6 +2040,11 @@ fn render_confirmation(
         prose: lines,
         actions,
         style: Style::default().fg(palette.warn),
+        scroll,
+        // **The card that offers a confirmation** — so the one that offers none when its pinned part
+        // cannot fit above a row of text (RFC 060 decision 3).
+        confirms: true,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2281,6 +2379,7 @@ fn render_commit_message(
     typed: &str,
     messages_persist: bool,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2326,6 +2425,9 @@ fn render_commit_message(
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2337,6 +2439,7 @@ fn render_commit_result(
     next: Option<&str>,
     title: &'static str,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2400,6 +2503,9 @@ fn render_commit_result(
         // worst thing this overlay could clip.
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2409,7 +2515,14 @@ fn render_commit_result(
 /// **The prefill is prikk's text inside stikk's**, so the whole line goes through [`inert`] like
 /// every other repository string that reaches a cell (`C-T2a`) -- the same treatment the commit
 /// prompt gives what the user typed, for the same reason.
-fn render_undo_message(block: &str, typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
+fn render_undo_message(
+    block: &str,
+    typed: &str,
+    palette: &Palette,
+    scroll: &Scroll,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut prose = Body::new();
     prose.row(Line::from(vec![
         Span::styled(
@@ -2452,6 +2565,9 @@ fn render_undo_message(block: &str, typed: &str, palette: &Palette, frame: &mut 
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2466,6 +2582,7 @@ fn render_undo_stopped(
     changed: &[String],
     text: &str,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2509,6 +2626,9 @@ fn render_undo_stopped(
         prose,
         actions: dismiss(palette),
         style: Style::default().fg(palette.warn),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2521,6 +2641,7 @@ fn render_seal_consent(
     reff: &str,
     acknowledged: bool,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2575,6 +2696,9 @@ fn render_seal_consent(
         prose: lines,
         actions,
         style: Style::default().fg(palette.warn),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2584,6 +2708,7 @@ fn render_seal_consent(
 fn render_seal_result(
     result: &stikk_prikk::SealResult,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2624,6 +2749,9 @@ fn render_seal_result(
         // worst thing this overlay could clip.
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2638,6 +2766,7 @@ fn render_ref_name(
     source: &str,
     typed: &str,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2688,6 +2817,9 @@ fn render_ref_name(
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2699,7 +2831,13 @@ fn render_ref_name(
 /// is a bundle is prikk's. The notice says what will happen — a read, and nothing written —
 /// because that is the question a reader typing a path into a version-control tool is actually
 /// asking.
-fn render_bundle_path(typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
+fn render_bundle_path(
+    typed: &str,
+    palette: &Palette,
+    scroll: &Scroll,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "Open a bundle file",
@@ -2732,6 +2870,9 @@ fn render_bundle_path(typed: &str, palette: &Palette, frame: &mut Frame, area: R
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2741,7 +2882,14 @@ fn render_bundle_path(typed: &str, palette: &Palette, frame: &mut Frame, area: R
 /// **The suggestion is outside the repository by construction** (the repository's parent), so a
 /// reader who accepts it never meets the one rule stikk adds. The notice says both rules anyway,
 /// because the reader editing the path is the one who needs them.
-fn render_export_path(reff: &str, typed: &str, palette: &Palette, frame: &mut Frame, area: Rect) {
+fn render_export_path(
+    reff: &str,
+    typed: &str,
+    palette: &Palette,
+    scroll: &Scroll,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut prose = Body::new();
     prose.labelled(
         Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
@@ -2776,6 +2924,9 @@ fn render_export_path(reff: &str, typed: &str, palette: &Palette, frame: &mut Fr
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2790,6 +2941,7 @@ fn render_save_path(
     heading: &str,
     typed: &str,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2839,6 +2991,9 @@ fn render_save_path(
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2851,6 +3006,7 @@ fn render_trust_public_key(
     typed: &str,
     error: Option<&str>,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2891,6 +3047,9 @@ fn render_trust_public_key(
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2901,6 +3060,7 @@ fn render_trust_key_id(
     typed: &str,
     error: Option<&str>,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -2945,6 +3105,9 @@ fn render_trust_key_id(
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -2967,6 +3130,7 @@ fn trust_prompt_error<'a>(error: Option<&str>, palette: &Palette) -> Body<'a> {
 fn render_trust_conflict(
     warning: &stikk_core::SecurityWarning,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -3036,6 +3200,9 @@ fn render_trust_conflict(
             actions
         },
         style: Style::default().fg(palette.warn),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3045,6 +3212,7 @@ fn render_trust_result(
     printed: &[String],
     see_verify: Option<&'static str>,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -3069,6 +3237,9 @@ fn render_trust_result(
         prose,
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3079,7 +3250,13 @@ fn render_trust_result(
 /// prints nothing at all on a successful `cat --output`, and `extract`'s answer is a JSON report
 /// rather than prose, so there is nothing of prikk's to show verbatim and a `prikk reported --`
 /// heading over stikk's own words would be a lie.
-fn render_save_result(lines: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
+fn render_save_result(
+    lines: &[String],
+    palette: &Palette,
+    scroll: &Scroll,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut prose = Body::new();
     for (at, line) in lines.iter().enumerate() {
         if at > 0 {
@@ -3100,6 +3277,9 @@ fn render_save_result(lines: &[String], palette: &Palette, frame: &mut Frame, ar
         prose,
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3113,6 +3293,7 @@ fn render_tag_message(
     target: &str,
     typed: &str,
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -3154,6 +3335,9 @@ fn render_tag_message(
         prose,
         actions,
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3172,6 +3356,7 @@ fn render_ref_write_result(
     kind: RefWriteKind,
     lines: &[String],
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -3202,6 +3387,9 @@ fn render_ref_write_result(
         // worst thing this overlay could clip.
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3217,6 +3405,7 @@ fn render_switch_result(
     printed: &[String],
     noted: &[String],
     palette: &Palette,
+    scroll: &Scroll,
     frame: &mut Frame,
     area: Rect,
 ) {
@@ -3245,6 +3434,9 @@ fn render_switch_result(
         prose,
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3255,7 +3447,13 @@ fn render_switch_result(
 /// adopted blocks, the adopted patches, the new block and the new RefState; stikk adds only what
 /// prikk does not say and the reader will otherwise discover by surprise — that the worktree is
 /// unchanged, and where the merged files are.
-fn render_merge_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
+fn render_merge_result(
+    printed: &[String],
+    palette: &Palette,
+    scroll: &Scroll,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  the merge block is sealed",
@@ -3286,6 +3484,9 @@ fn render_merge_result(printed: &[String], palette: &Palette, frame: &mut Frame,
         prose,
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3297,7 +3498,13 @@ fn render_merge_result(printed: &[String], palette: &Palette, frame: &mut Frame,
 /// advanced and no MAINTAINER key was trusted. stikk adds only what prikk does not say and the
 /// reader will otherwise go looking for: that taking this work into a branch of theirs is a
 /// merge stikk does not offer from a received ref yet.
-fn render_import_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
+fn render_import_result(
+    printed: &[String],
+    palette: &Palette,
+    scroll: &Scroll,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  the bundle is stored as a received branch",
@@ -3326,6 +3533,9 @@ fn render_import_result(printed: &[String], palette: &Palette, frame: &mut Frame
         prose,
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3336,7 +3546,13 @@ fn render_import_result(printed: &[String], palette: &Palette, frame: &mut Frame
 /// count and its own continuity note about the author keys; there is nothing here a reader will
 /// discover by surprise, so stikk adds no sentence -- unlike a merge, where the worktree's being
 /// unchanged is exactly such a surprise.
-fn render_export_result(printed: &[String], palette: &Palette, frame: &mut Frame, area: Rect) {
+fn render_export_result(
+    printed: &[String],
+    palette: &Palette,
+    scroll: &Scroll,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  the bundle is written",
@@ -3359,6 +3575,9 @@ fn render_export_result(printed: &[String], palette: &Palette, frame: &mut Frame
         prose,
         actions: dismiss(palette),
         style: Style::default().fg(palette.fg),
+        scroll,
+        confirms: false,
+        dim: Style::default().fg(palette.dim),
     }
     .render(frame, area);
 }
@@ -3453,6 +3672,84 @@ fn claim_sentence(claim: KeyClaim) -> Option<&'static str> {
     Some(text)
 }
 
+/// **Where a card is scrolled to, and whether its text has been read to the end** (RFC 060 decision
+/// 3).
+///
+/// One of these belongs to whichever overlay is on top: `App` holds it and stamps it with the
+/// overlay stack's generation, so a new card always starts at the top, unread. The latch
+/// (`Self::seen_whole_card`) is set by the renderer, which is the only thing that knows when the
+/// last row of text has actually been on screen — and it is **never cleared while the same overlay is
+/// on top**, so a reader who scrolls to the end and back up does not lose the confirmation they
+/// earned.
+///
+/// Every field is a `Cell`, for the reason the Glossary's offset already is: the renderer clamps the
+/// offset against a height only it knows and writes the clamp back, so the keys and the panel cannot
+/// disagree about where the card is.
+#[derive(Debug, Default)]
+pub struct Scroll {
+    /// The overlay generation this state belongs to; a different one resets it.
+    owner: std::cell::Cell<u64>,
+    /// How many rows of text are scrolled off the top.
+    offset: std::cell::Cell<u16>,
+    /// The largest offset with anything left to show — written by the renderer.
+    max: std::cell::Cell<u16>,
+    /// **The latch.** Set once the last row of text has been on screen.
+    seen: std::cell::Cell<bool>,
+}
+
+impl Scroll {
+    /// This state, for the overlay identified by `generation` — reset if it belongs to another.
+    pub(crate) fn for_overlay(&self, generation: u64) -> &Self {
+        if self.owner.get() != generation {
+            self.owner.set(generation);
+            self.offset.set(0);
+            self.max.set(0);
+            self.seen.set(false);
+        }
+        self
+    }
+
+    /// Whether the text is scrolled as far as it goes — **the question `↓` asks** before it moves a
+    /// highlight into the actions (decision 3's one reading path).
+    pub(crate) fn at_end(&self) -> bool {
+        self.offset.get() >= self.max.get()
+    }
+
+    /// Whether anything is scrolled off the top — what `↑` asks before it scrolls back.
+    pub(crate) fn more_above(&self) -> bool {
+        self.offset.get() > 0
+    }
+
+    /// Scroll one row down. The renderer clamps.
+    pub(crate) fn down(&self) {
+        self.offset.set(self.offset.get().saturating_add(1));
+    }
+
+    /// Scroll one row up.
+    pub(crate) fn up(&self) {
+        self.offset.set(self.offset.get().saturating_sub(1));
+    }
+
+    /// **Whether a confirmation may be offered at all** (decision 3): the whole card has been on
+    /// screen.
+    pub(crate) fn seen_whole_card(&self) -> bool {
+        self.seen.get()
+    }
+
+    /// Clamp the offset to a viewport of `viewport` rows over `rows` rows of text, and latch
+    /// *"seen"* when the last row is among those on screen. Called by the renderer, once per draw.
+    fn fit(&self, rows: usize, viewport: usize) -> u16 {
+        let max = u16::try_from(rows.saturating_sub(viewport)).unwrap_or(u16::MAX);
+        self.max.set(max);
+        let offset = self.offset.get().min(max);
+        self.offset.set(offset);
+        if viewport > 0 && usize::from(offset) + viewport >= rows {
+            self.seen.set(true);
+        }
+        offset
+    }
+}
+
 /// **What a panel's text is, before anything knows how wide it will be drawn** (RFC 060 decision 2).
 ///
 /// Until RFC 060 every renderer wrapped its own prose to a constant — `PANEL_PROSE_WIDTH` and its
@@ -3543,6 +3840,13 @@ enum Item<'a> {
         spans: Vec<Span<'a>>,
         indent: String,
     },
+    /// **The confirm line, in both of its forms** (RFC 060 decision 3).
+    ///
+    /// Which one is drawn cannot be decided by the renderer: it depends on whether the whole card
+    /// fits, which only the panel knows once it has wrapped the text against the height it has. So
+    /// the renderer gives both, and [`Panel::render`] picks — with no flicker on the first frame,
+    /// which is what deciding from last frame's latch would have cost.
+    ConfirmLine { ready: Line<'a>, not_yet: Line<'a> },
     /// A row that is one row **by construction** — a marker, a short key hint, a separator. Nothing
     /// wraps it, so the structural check (`text::record_overflow`) is what keeps one from growing past
     /// the panel unnoticed.
@@ -3702,6 +4006,13 @@ impl<'a> Body<'a> {
         self
     }
 
+    /// The confirm line, in the form for a card that has been read to the end and the form for one
+    /// that has not (RFC 060 decision 3).
+    pub(crate) fn confirm_line(&mut self, ready: Line<'a>, not_yet: Line<'a>) -> &mut Self {
+        self.items.push(Item::ConfirmLine { ready, not_yet });
+        self
+    }
+
     /// A row of several styled spans, hard-split across rows under `indent`.
     pub(crate) fn spans(&mut self, indent: &str, spans: Vec<Span<'a>>) -> &mut Self {
         self.items.push(Item::Spans {
@@ -3769,10 +4080,17 @@ impl<'a> Body<'a> {
     /// **The rows, wrapped to `width`** — the inner width of the region the panel is finally drawn in,
     /// less its right gutter. The only place a panel's text learns how wide it is.
     fn rows(self, inner: usize) -> Vec<Line<'a>> {
+        self.rows_marking(inner).0
+    }
+
+    /// As [`Self::rows`], and **where the confirm lines landed**: each index, with the row to put
+    /// there once the card has been read to the end.
+    fn rows_marking(self, inner: usize) -> (Vec<Line<'a>>, Vec<(usize, Line<'a>)>) {
         let full = inner.max(1);
         let gutter = inner.saturating_sub(1).max(1);
         let width = gutter;
         let mut out: Vec<Line<'a>> = Vec::new();
+        let mut confirm_lines: Vec<(usize, Line<'a>)> = Vec::new();
         for item in self.items {
             match item {
                 Item::Blank => out.push(Line::from("")),
@@ -3891,10 +4209,14 @@ impl<'a> Body<'a> {
                     // fits today onto a second row, splitting a word there for one blank column.
                     out.extend(crate::view::wrap_spans(spans, full, &indent));
                 }
+                Item::ConfirmLine { ready, not_yet } => {
+                    confirm_lines.push((out.len(), ready));
+                    out.push(not_yet);
+                }
                 Item::Row(line) => out.push(line),
             }
         }
-        out
+        (out, confirm_lines)
     }
 }
 
@@ -3936,6 +4258,13 @@ pub(crate) struct Panel<'a> {
     pub(crate) actions: Body<'a>,
     /// The block's style (`palette.fg` for ordinary overlays, `palette.warn` for refusals).
     pub(crate) style: Style,
+    /// Where the body is scrolled to, and whether it has been read to the end (RFC 060 decision 3).
+    pub(crate) scroll: &'a Scroll,
+    /// **Whether this card offers a confirmation.** One that does and cannot show its pinned part
+    /// with a row of text above it offers nothing at all: decision 3's fail-closed rule.
+    pub(crate) confirms: bool,
+    /// The label colour, for the foot line that names the scroll key.
+    pub(crate) dim: Style,
 }
 
 impl Panel<'_> {
@@ -3948,34 +4277,100 @@ impl Panel<'_> {
         let inner_width = usize::from(outer.saturating_sub(2));
         let title = self.title;
         let prose = self.prose.rows(inner_width);
-        let actions = self.actions.rows(inner_width);
+        let (actions, confirm_lines) = self.actions.rows_marking(inner_width);
         crate::text::record_overflow(title.trim(), &prose, inner_width);
         crate::text::record_overflow(title.trim(), &actions, inner_width);
 
+        let mut actions = actions;
         let actions_height = u16::try_from(actions.len()).unwrap_or(u16::MAX);
         let prose_len = u16::try_from(prose.len()).unwrap_or(u16::MAX);
-        // Exact, not estimated: `prose` is already wrapped, so this is the height that fits everything.
+        // Exact, not estimated: `prose` is already wrapped, so this is the height that fits
+        // everything, with one row for the foot line where one is needed.
         let wanted = prose_len.saturating_add(actions_height).saturating_add(2);
         let region = centered(self.width, wanted.min(area.height), area);
 
         let inner_height = region.height.saturating_sub(2);
+
         // The actions keep their exact height; prose takes what is left. When even the actions do not
         // fit, they take everything — losing the last affordance is worse than losing all prose, and
         // this is the direction C2's rule points.
         let actions_area_height = actions_height.min(inner_height);
-        let prose_area_height = inner_height.saturating_sub(actions_area_height);
+        let room_for_text = inner_height.saturating_sub(actions_area_height);
+        // **One foot line, only while something is hidden** (RFC 060 decision 3), on its own row
+        // below the text and above the pinned actions. It costs the text a row, so it is decided
+        // before the text's own height is.
+        let foot_needed = room_for_text < prose_len;
+        let prose_area_height = if foot_needed {
+            room_for_text.saturating_sub(1)
+        } else {
+            room_for_text
+        };
 
-        let title = if prose_area_height < prose_len {
-            // Clipped — say so, in the Glossary's idiom, rather than in silence.
+        // **Fail closed** (RFC 060 decision 3). A card that offers a confirmation and cannot show its
+        // pinned part above one row of text offers nothing: the reader would be pressing Enter on a
+        // consequence they cannot see. It says so, and only `Esc` works.
+        if self.confirms && prose_area_height == 0 {
+            let mut body = Body::new();
+            body.prose(self.style, "  ", stikk_core::MAKE_THE_WINDOW_BIGGER);
+            let rows = body.rows(inner_width);
+            let esc = vec![Line::from(Span::styled("  Esc: close", self.dim))];
+            let height = u16::try_from(rows.len() + esc.len())
+                .unwrap_or(u16::MAX)
+                .saturating_add(2);
+            let region = centered(self.width, height.min(area.height), area);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title(title.to_string())
+                .style(self.style);
+            frame.render_widget(Clear, region);
+            let inner = block.inner(region);
+            frame.render_widget(block, region);
+            let [body_area, esc_area] = Layout::vertical([
+                Constraint::Min(1),
+                Constraint::Length(u16::try_from(esc.len()).unwrap_or(1)),
+            ])
+            .areas(inner);
+            frame.render_widget(Paragraph::new(rows), body_area);
+            frame.render_widget(Paragraph::new(esc), esc_area);
+            return;
+        }
+
+        // The scroll, clamped by the one thing that knows the height — which is also where
+        // *"seen to the end"* is latched.
+        let offset = self.scroll.fit(prose.len(), usize::from(prose_area_height));
+        // **Now that the card knows what fits, the confirm line can say the truth** (RFC 060
+        // decision 3) — in the same frame, so the affordance never flickers.
+        if self.scroll.seen_whole_card() {
+            for (at, ready) in confirm_lines {
+                if let Some(slot) = actions.get_mut(at) {
+                    *slot = ready;
+                }
+            }
+        }
+        let last = usize::from(offset) + usize::from(prose_area_height);
+
+        let title = if foot_needed {
+            // Where you are, in the Glossary's idiom (RFC 024 §4), rather than in silence.
             format!(
-                "{} — lines 1–{} of {} ",
+                "{} — lines {}–{} of {} ",
                 title.trim_end(),
-                prose_area_height,
+                usize::from(offset) + 1,
+                last.min(prose.len()),
                 prose_len
             )
         } else {
             title.to_string()
         };
+        if foot_needed {
+            // **Which key**, said once, in the label colour: down while there is more below, and up
+            // once there is not.
+            let hint = if self.scroll.at_end() {
+                "  \u{2191} more above"
+            } else {
+                "  \u{2193} more below"
+            };
+            actions.insert(0, Line::from(Span::styled(hint, self.dim)));
+        }
 
         let block = Block::default()
             .borders(Borders::ALL)
@@ -3986,10 +4381,14 @@ impl Panel<'_> {
         frame.render_widget(block, region);
         let [prose_area, actions_area] = Layout::vertical([
             Constraint::Length(prose_area_height),
-            Constraint::Length(actions_area_height),
+            Constraint::Length(
+                u16::try_from(actions.len())
+                    .unwrap_or(u16::MAX)
+                    .min(inner_height),
+            ),
         ])
         .areas(inner);
-        frame.render_widget(Paragraph::new(prose), prose_area);
+        frame.render_widget(Paragraph::new(prose).scroll((offset, 0)), prose_area);
         frame.render_widget(Paragraph::new(actions), actions_area);
     }
 }

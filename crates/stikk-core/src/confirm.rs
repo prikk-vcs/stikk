@@ -499,13 +499,51 @@ pub fn signing_key_claim(
     }
 }
 
-/// What the user supplied to satisfy a tier's confirmation requirement (design `TU-09`; RFC 013 §4).
+/// **What a card says instead of a confirmation it cannot show** (RFC 060 decision 3).
+///
+/// A window too short to hold a card's pinned part above one row of its text offers nothing: the
+/// reader would be pressing Enter on a consequence they cannot see. stikk's own words, in stikk's
+/// own voice, because this is stikk's limit and not prikk's.
+pub const MAKE_THE_WINDOW_BIGGER: &str = "Make the window bigger to see the whole card.";
+
+/// **The confirm line of a card that has not been read to the end** (RFC 060 decision 3).
+///
+/// It names the key that gets the reader there, which is the same one every view scrolls with.
+pub const READ_TO_THE_END_TO_CONFIRM: &str = "  \u{2193} read to the end to confirm";
+
+/// **Whether the whole card had been on screen when the confirmation was given** (RFC 060 decision
+/// 3).
+///
+/// A card taller than the terminal scrolls, and a confirmation offered while its consequences were
+/// scrolled out of sight is not a confirmation. The front end knows whether the reader reached the
+/// end; it says so here, and [`confirm`] refuses without it. **Not a `bool`**: at a call site, a bare
+/// `true` says nothing about what it claims.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Seen {
+    /// Every row of the card's text has been on screen.
+    WholeCard,
+    /// Some of it has not. **Nothing is confirmed from here** — the gate fails closed.
+    NotYet,
+}
+
+/// What the user supplied to satisfy a tier's confirmation requirement (design `TU-09`; RFC 013 §4),
+/// **and whether they had seen the whole card when they supplied it** (RFC 060 decision 3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Evidence {
     /// Tier 2/3: an explicit yes.
-    ExplicitYes,
+    ExplicitYes(Seen),
     /// Tier 3-typed: the user's typed input, checked against the summary's `target_name`.
-    TypedName(String),
+    TypedName(String, Seen),
+}
+
+impl Evidence {
+    /// Whether the reader had the whole card on screen — the same answer for either act.
+    #[must_use]
+    pub fn seen(&self) -> Seen {
+        match self {
+            Self::ExplicitYes(seen) | Self::TypedName(_, seen) => *seen,
+        }
+    }
 }
 
 /// Produced only by [`preview`]. Single-use and step-scoped (RFC 013 Q2): one preview→confirm→execute
@@ -640,8 +678,9 @@ pub fn capability_gate(
 ///
 /// # Errors
 /// [`StikkError::NotReady`] if read-only mode or capability is insufficient; [`StikkError::Stale`] if
-/// the repository changed since the preview; [`StikkError::Declined`] if `evidence` does not satisfy
-/// `token`'s tier; any [`StikkError`] the seam's change-token read raises.
+/// the repository changed since the preview; [`StikkError::Declined`] if the card had not been read to
+/// the end ([`Seen::NotYet`], RFC 060 decision 3) or if `evidence` does not satisfy `token`'s tier;
+/// any [`StikkError`] the seam's change-token read raises.
 pub fn confirm(
     prikk: &impl Prikk,
     repo: &Path,
@@ -659,10 +698,22 @@ pub fn confirm(
         });
     }
 
+    // **No one confirms an operation whose consequences they could not see** (RFC 060 decision 3).
+    // The front end offers no confirm key until its card has been read to the end; this is the gate
+    // behind that, so a renderer that drew the key anyway cannot open it.
+    if evidence.seen() == Seen::NotYet {
+        return Err(StikkError::Declined {
+            detail: format!(
+                "{} was not confirmed: the card had not been read to the end",
+                token.intent.operation
+            ),
+        });
+    }
+
     let satisfied = match (token.tier, &evidence) {
         (Tier::One, _) => true, // never reached in practice: tier 1 never calls confirm
-        (Tier::Two | Tier::Three, Evidence::ExplicitYes) => true,
-        (Tier::ThreeTyped, Evidence::TypedName(typed)) => {
+        (Tier::Two | Tier::Three, Evidence::ExplicitYes(_)) => true,
+        (Tier::ThreeTyped, Evidence::TypedName(typed, _)) => {
             !typed.is_empty() && token.summary.target_name.as_deref() == Some(typed.as_str())
         }
         _ => false,

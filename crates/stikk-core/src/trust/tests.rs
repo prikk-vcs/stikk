@@ -6,6 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
+use crate::confirm::Seen;
 use stikk_prikk::{NullBackend, TrustedKey};
 
 use super::*;
@@ -587,11 +588,11 @@ fn a_failed_key_status_costs_only_the_your_own_key_notice() {
 #[test]
 fn only_the_typed_key_id_confirms_either_write() {
     for near in [
-        Evidence::ExplicitYes,
-        Evidence::TypedName(String::new()),
-        Evidence::TypedName("ed25519-6762b6359a650c0".to_string()),
-        Evidence::TypedName(format!("{NEW_ID} ")),
-        Evidence::TypedName(MINE_ID.to_string()),
+        Evidence::ExplicitYes(Seen::WholeCard),
+        Evidence::TypedName(String::new(), Seen::WholeCard),
+        Evidence::TypedName("ed25519-6762b6359a650c0".to_string(), Seen::WholeCard),
+        Evidence::TypedName(format!("{NEW_ID} "), Seen::WholeCard),
+        Evidence::TypedName(MINE_ID.to_string(), Seen::WholeCard),
     ] {
         let backend = writing(vec![key(MINE_ID, MINE_KEY), key(THEIRS_ID, THEIRS_KEY)]);
         let token = armed_adopt(&backend, NEW_ID, NEW_KEY);
@@ -641,7 +642,7 @@ fn a_stale_preview_refuses_and_writes_nothing() {
         Path::new("/repo"),
         token,
         operator(),
-        Evidence::TypedName(NEW_ID.to_string()),
+        Evidence::TypedName(NEW_ID.to_string(), Seen::WholeCard),
         NEW_ID,
         NEW_KEY,
     )
@@ -663,7 +664,7 @@ fn a_write_shows_prikks_lines_and_the_list_it_re_reads() {
         Path::new("/repo"),
         token,
         operator(),
-        Evidence::TypedName(NEW_ID.to_string()),
+        Evidence::TypedName(NEW_ID.to_string(), Seen::WholeCard),
         NEW_ID,
         NEW_KEY,
     )
@@ -697,7 +698,7 @@ fn a_write_shows_prikks_lines_and_the_list_it_re_reads() {
         Path::new("/repo"),
         token,
         operator(),
-        Evidence::TypedName(MINE_ID.to_string()),
+        Evidence::TypedName(MINE_ID.to_string(), Seen::WholeCard),
         MINE_ID,
     )
     .expect("the removal runs");
@@ -717,7 +718,7 @@ fn a_refused_adopt_carries_prikks_own_sentence() {
         Path::new("/repo"),
         token,
         operator(),
-        Evidence::TypedName(NEW_ID.to_string()),
+        Evidence::TypedName(NEW_ID.to_string(), Seen::WholeCard),
         NEW_ID,
         NEW_KEY,
     )
@@ -765,7 +766,7 @@ fn an_adopt_at_0_56_says_what_prikk_counted() {
         Path::new("/repo"),
         token,
         operator(),
-        Evidence::TypedName(NEW_ID.to_string()),
+        Evidence::TypedName(NEW_ID.to_string(), Seen::WholeCard),
         NEW_ID,
         NEW_KEY,
     )
@@ -799,7 +800,7 @@ fn prikks_key_id_conflicts_become_the_security_warning() {
             Path::new("/repo"),
             token,
             operator(),
-            Evidence::TypedName(NEW_ID.to_string()),
+            Evidence::TypedName(NEW_ID.to_string(), Seen::WholeCard),
             NEW_ID,
             NEW_KEY,
         )

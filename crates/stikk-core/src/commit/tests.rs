@@ -2,6 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use crate::confirm::Seen;
 use stikk_model::ChangeToken;
 use stikk_prikk::{CommitResult, NullBackend, Orientation, WorktreeStatus};
 
@@ -177,7 +178,7 @@ fn confirm_and_execute_carries_the_commit_result_through() {
         repo,
         *token,
         author_readiness(),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "a message",
     )
     .expect("confirm+execute succeeds");
@@ -205,7 +206,7 @@ fn execute_refuses_when_the_change_token_moved_between_preview_and_confirm() {
         repo,
         *token,
         author_readiness(),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "a message",
     )
     .expect_err("must refuse");
@@ -228,7 +229,7 @@ fn a_cross_ref_race_reaching_the_seam_propagates_as_cross_ref_not_lock_conflict(
         repo,
         *token,
         author_readiness(),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "a message",
     )
     .expect_err("must refuse");
@@ -254,7 +255,7 @@ fn read_only_refuses_even_with_author_keys_present() {
         repo,
         *token,
         read_only,
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "a message",
     )
     .expect_err("must refuse");
@@ -275,7 +276,7 @@ fn viewer_capability_refuses() {
         repo,
         *token,
         stikk_model::Readiness::none(),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "a message",
     )
     .expect_err("must refuse");
@@ -297,7 +298,7 @@ fn declined_evidence_refuses_without_touching_the_seam() {
         repo,
         *token,
         author_readiness(),
-        crate::confirm::Evidence::TypedName("heads/main".to_string()),
+        crate::confirm::Evidence::TypedName("heads/main".to_string(), Seen::WholeCard),
         "a message",
     )
     .expect_err("must refuse");
@@ -516,7 +517,7 @@ fn preview_then_confirm(backend: &NullBackend) -> Result<Outcome<CommitResult>> 
         repo,
         *token,
         author_readiness(),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "a message",
     )
 }
@@ -648,7 +649,7 @@ fn a_current_branch_moved_alone_is_stale_repository_before_any_re_read() {
         repo,
         *token,
         author_readiness(),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "a message",
     );
     assert!(is_stale(&result, StaleCause::Repository), "{result:?}");

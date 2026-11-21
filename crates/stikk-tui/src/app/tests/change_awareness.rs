@@ -374,6 +374,8 @@ fn stikks_own_commit_is_never_taken_for_an_outside_change() {
     app.focus_gained(t0);
     let early_check = sent_check(&rx);
 
+    read_the_card(&app);
+
     app.select(); // Enter: confirm-and-execute
     let confirm_req = next_request(&rx);
     assert!(matches!(
@@ -480,6 +482,7 @@ fn a_change_detected_at_seals_consent_step_makes_it_stale_at_once() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
+    read_the_card(&app);
     app.select(); // the first act: -> SealConsent
     assert!(matches!(
         app.top_overlay(),

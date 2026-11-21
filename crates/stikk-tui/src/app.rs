@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use stikk_core::{
     BlockDetailView, COMMIT_OPERATION, ChangesRead, ChangesView, Command, CommitPreviewOutcome,
     HistoryView, NextTarget, OperationContext, Presentation, RefusalHistory, SEAL_OPERATION,
-    SealPreviewOutcome, Target, present, staleness_notice,
+    SealPreviewOutcome, Seen, Target, present, staleness_notice,
 };
 use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
@@ -413,6 +413,14 @@ pub struct App {
     ref_focus: RefFocus,
     screens: Vec<Screen>,
     overlays: Vec<Overlay>,
+    /// **The top overlay's scroll state and reading latch** (RFC 060 decision 3).
+    ///
+    /// One, not one per overlay: only the top overlay is drawn and only it takes keys. It is stamped
+    /// with [`Self::overlay_generation`], so a card pushed where another was does not inherit the
+    /// reader it never had.
+    overlay_scroll: crate::overlay::Scroll,
+    /// Bumped by every change to [`Self::overlays`] — see [`Self::overlay_scroll`].
+    overlay_generation: u64,
     refusals: RefusalHistory,
     /// A transient one-line banner for non-overlay presentations (lock-conflict, guidance, plain
     /// statements). Cleared on the next navigation (design OP-03 banner class).
@@ -890,6 +898,8 @@ impl App {
             ref_focus: RefFocus::Pending,
             screens: Vec::new(),
             overlays: Vec::new(),
+            overlay_scroll: crate::overlay::Scroll::default(),
+            overlay_generation: 0,
             refusals: RefusalHistory::new(),
             banner: None,
             fault: None,
@@ -1153,6 +1163,7 @@ impl App {
         } else {
             (SEAL_OPERATION, OperationContext::Other)
         };
+        self.overlay_generation = self.overlay_generation.wrapping_add(1);
         self.overlays.truncate(index);
         self.pending_commit = None;
         self.pending_seal = None;
@@ -1265,7 +1276,7 @@ impl App {
             self.banner = Some(reason);
             return;
         }
-        self.overlays.push(Overlay::TrustPublicKey {
+        self.push_overlay(Overlay::TrustPublicKey {
             typed: String::new(),
             error: None,
         });
@@ -1314,11 +1325,11 @@ impl App {
     fn submit_trust_public_key(&mut self, typed: &str) {
         match stikk_core::check_public_key(typed) {
             Ok(public_key) => {
-                self.overlays.pop();
+                self.pop_overlay();
                 // **Prefilled with the key's own default id**, and editable: prikk does not tie
                 // an id to its key (RFC 056 F3), and the owner may sign under another.
                 let typed = stikk_core::default_key_id(&public_key);
-                self.overlays.push(Overlay::TrustKeyId {
+                self.push_overlay(Overlay::TrustKeyId {
                     public_key,
                     typed,
                     error: None,
@@ -1336,7 +1347,7 @@ impl App {
     fn submit_trust_key_id(&mut self, public_key: &str, typed: &str) {
         match stikk_core::check_key_id(typed) {
             Ok(key_id) => {
-                self.overlays.pop();
+                self.pop_overlay();
                 self.start_trust_write(TrustTarget::Adopt {
                     key_id,
                     public_key: public_key.to_string(),
@@ -1364,7 +1375,7 @@ impl App {
             },
         };
         let seq = self.dispatch(kind);
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "trust preview",
             seq,
         });
@@ -1384,10 +1395,12 @@ impl App {
         let pending = self.pending_trust.take();
         match result {
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
             Ok(stikk_core::AdoptPreview::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -1415,10 +1428,12 @@ impl App {
         let pending = self.pending_trust.take();
         match result {
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
             Ok(stikk_core::RemovePreview::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -1436,6 +1451,7 @@ impl App {
         pending: Option<PendingTrust>,
     ) {
         let Some(PendingTrust::AwaitingPreview(target)) = pending else {
+            self.overlay_generation = self.overlay_generation.wrapping_add(1);
             self.overlays.remove(index);
             return; // defensive
         };
@@ -1457,10 +1473,10 @@ impl App {
             return; // nothing is actually pending
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let kind = match target {
             TrustTarget::Adopt { key_id, public_key } => RequestKind::TrustAdoptConfirmExecute {
@@ -1478,7 +1494,7 @@ impl App {
             },
         };
         let seq = self.dispatch(kind);
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "trust write",
             seq,
         });
@@ -1497,6 +1513,7 @@ impl App {
         self.pending_trust = None;
         match result {
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 // **prikk's own words, under stikk's heading** (decision 5). The refusal path
                 // is the usual one; what RFC 056 adds is the heading, which `surface` draws
@@ -1576,7 +1593,7 @@ impl App {
                 let Some(reff) = self.require_focus() else {
                     return;
                 };
-                self.overlays.push(Overlay::CommitMessage {
+                self.push_overlay(Overlay::CommitMessage {
                     reff,
                     typed: String::new(),
                     messages_persist: self.messages_persist(),
@@ -1597,9 +1614,9 @@ impl App {
         if message.is_empty() {
             return;
         }
-        self.overlays.pop();
+        self.pop_overlay();
         let seq = self.dispatch(RequestKind::CommitPreview { reff });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "commit preview",
             seq,
         });
@@ -1615,10 +1632,10 @@ impl App {
             return; // no commit is actually pending — a stray Enter on a Confirmation this app did not open
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::CommitConfirmExecute {
             token,
@@ -1626,7 +1643,7 @@ impl App {
             evidence,
             message,
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "commit",
             seq,
         });
@@ -1648,7 +1665,7 @@ impl App {
                     return;
                 };
                 let seq = self.dispatch(RequestKind::SealPreview { reff: reff.clone() });
-                self.overlays.push(Overlay::Loading {
+                self.push_overlay(Overlay::Loading {
                     what: "seal preview",
                     seq,
                 });
@@ -1665,15 +1682,15 @@ impl App {
     /// dispatch anything yet — unlike commit, seal has a second, distinct act still to come (the
     /// no-audit consent, RFC 016 §8), so this only records the evidence and opens
     /// [`Overlay::SealConsent`]. Seal stays untyped (RFC 013 Q3), so `tier`/`typed` are accepted for
-    /// shape parity with [`Self::submit_commit_confirmation`] but only `Evidence::ExplicitYes` is ever
-    /// produced in practice.
+    /// shape parity with [`Self::submit_commit_confirmation`] but only `Evidence::ExplicitYes` is
+    /// ever produced in practice.
     fn submit_seal_confirmation(&mut self, tier: Tier, typed: &str) {
         let Some(PendingSeal::Confirming { token, reff }) = self.pending_seal.take() else {
             return; // no seal is actually pending — a stray Enter on a Confirmation this app did not open
         };
         let _ = (tier, typed); // seal's confirm() evidence is always ExplicitYes (RFC 013 Q3)
-        self.overlays.pop();
-        self.overlays.push(Overlay::SealConsent {
+        self.pop_overlay();
+        self.push_overlay(Overlay::SealConsent {
             reff: reff.clone(),
             acknowledged: false,
         });
@@ -1702,15 +1719,18 @@ impl App {
         let Some(PendingSeal::AwaitingConsent { token, reff }) = self.pending_seal.take() else {
             return; // defensive: should not happen if SealConsent is on the stack at all
         };
-        self.overlays.pop();
+        // **Read before the card is popped** (RFC 060 decision 3): popping hands the next overlay a
+        // reader of its own, and what core is told must be what *this* reader saw.
+        let evidence = stikk_core::Evidence::ExplicitYes(self.seen());
+        self.pop_overlay();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::SealConfirmExecute {
             token: Box::new(token),
             readiness,
-            evidence: stikk_core::Evidence::ExplicitYes,
+            evidence,
             reff,
         });
-        self.overlays.push(Overlay::Loading { what: "seal", seq });
+        self.push_overlay(Overlay::Loading { what: "seal", seq });
     }
 
     /// **stikk's own words for a row with no tip** (RFC 044 decision 7, following RFC 041
@@ -1737,8 +1757,8 @@ impl App {
         let Some(from_ref) = self.ref_write_source() else {
             return;
         };
-        self.overlays.pop(); // the picker closes on its way, as `d` does
-        self.overlays.push(Overlay::RefName {
+        self.pop_overlay(); // the picker closes on its way, as `d` does
+        self.push_overlay(Overlay::RefName {
             kind: RefNameKind::Branch,
             source: from_ref,
             typed: String::new(),
@@ -1754,7 +1774,7 @@ impl App {
             let Some(reff) = self.ref_write_source() else {
                 return;
             };
-            self.overlays.pop();
+            self.pop_overlay();
             reff
         } else {
             if !self.overlays.is_empty() || !self.ref_writes_offered() {
@@ -1771,7 +1791,7 @@ impl App {
                 _ => return,
             }
         };
-        self.overlays.push(Overlay::RefName {
+        self.push_overlay(Overlay::RefName {
             kind: RefNameKind::Tag,
             source: target,
             typed: String::new(),
@@ -1812,7 +1832,7 @@ impl App {
             }
             _ => {}
         }
-        self.overlays.pop(); // the picker closes on its way, as `d` does
+        self.pop_overlay(); // the picker closes on its way, as `d` does
         self.start_ref_write(RefWriteOp::CloseBranch { name });
     }
 
@@ -1906,11 +1926,11 @@ impl App {
         let Some(target) = self.switch_target() else {
             return;
         };
-        self.overlays.pop(); // the picker closes on its way, as `d` and `n` do
+        self.pop_overlay(); // the picker closes on its way, as `d` and `n` do
         let seq = self.dispatch(RequestKind::SwitchPreview {
             target: target.clone(),
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "switch preview",
             seq,
         });
@@ -1999,7 +2019,7 @@ impl App {
         let Some((into, from)) = self.merge_pair() else {
             return;
         };
-        self.overlays.pop(); // the picker closes on its way, as `d` and `s` do
+        self.pop_overlay(); // the picker closes on its way, as `d` and `s` do
         let seq = self.dispatch(RequestKind::MergePlan { into, from });
         self.screens.push(Screen::Loading {
             what: "merge plan",
@@ -2026,7 +2046,7 @@ impl App {
             self.banner = Some(stikk_core::bundle_unavailable(minor));
             return;
         }
-        self.overlays.push(Overlay::BundlePath {
+        self.push_overlay(Overlay::BundlePath {
             typed: String::new(),
         });
     }
@@ -2042,7 +2062,7 @@ impl App {
         if typed.is_empty() {
             return;
         }
-        self.overlays.pop();
+        self.pop_overlay();
         // `std::path::absolute` joins and tidies **without touching the filesystem**:
         // `canonicalize` would fail on a path that does not exist, and *this file is not there*
         // is prikk's answer to give, in prikk's words, not a shape stikk invents before asking.
@@ -2165,7 +2185,7 @@ impl App {
             target: target.clone(),
             shown_baseline,
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "merge preview",
             seq,
         });
@@ -2207,7 +2227,7 @@ impl App {
         let seq = self.dispatch(RequestKind::ImportPreview {
             target: target.clone(),
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "import preview",
             seq,
         });
@@ -2220,10 +2240,10 @@ impl App {
             return; // no import is actually pending
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::ImportConfirmExecute {
             token,
@@ -2231,7 +2251,7 @@ impl App {
             evidence,
             target: target.clone(),
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "import",
             seq,
         });
@@ -2255,6 +2275,7 @@ impl App {
         let pending = self.pending_import.take();
         match result {
             Ok(stikk_core::ImportPreview::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -2263,6 +2284,7 @@ impl App {
             // answer changed between opening the card and asking: stikk's own lead, then
             // prikk's sentences verbatim.
             Ok(stikk_core::ImportPreview::WouldRefuse(refusals)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(stikk_core::would_refuse_the_import(&refusals));
             }
@@ -2276,6 +2298,7 @@ impl App {
             }
             Ok(stikk_core::ImportPreview::Ready { token }) => {
                 let Some(PendingImport::AwaitingPreview { target }) = pending else {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
@@ -2290,6 +2313,7 @@ impl App {
                 self.pending_import = Some(PendingImport::Confirming { token, target });
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2344,6 +2368,7 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::BundleImport::Unavailable => {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::bundle_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -2351,6 +2376,7 @@ impl App {
                 }
             },
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2411,8 +2437,8 @@ impl App {
         // on a prompt the reader may cancel. It is a display id either way: the card reads the
         // tip again from `history`, which is the value prikk would name.
         let suggested = stikk_core::suggested_destination(&self.repo, &reff, &entry.id);
-        self.overlays.pop(); // the picker closes on its way, as `n`, `t` and `M` do
-        self.overlays.push(Overlay::ExportPath {
+        self.pop_overlay(); // the picker closes on its way, as `n`, `t` and `M` do
+        self.push_overlay(Overlay::ExportPath {
             reff,
             typed: suggested.display().to_string(),
         });
@@ -2425,14 +2451,14 @@ impl App {
         if typed.is_empty() {
             return;
         }
-        self.overlays.pop();
+        self.pop_overlay();
         let output = std::path::Path::new(typed);
         let output = std::path::absolute(output).unwrap_or_else(|_| output.to_path_buf());
         let target = stikk_core::ExportTarget { reff, output };
         let seq = self.dispatch(RequestKind::ExportPreview {
             target: target.clone(),
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "export preview",
             seq,
         });
@@ -2445,10 +2471,10 @@ impl App {
             return; // no export is actually pending
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::ExportConfirmExecute {
             token,
@@ -2456,7 +2482,7 @@ impl App {
             evidence,
             target,
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "export",
             seq,
         });
@@ -2487,7 +2513,7 @@ impl App {
         };
         let (path, block) = (path.to_string(), view.row.block_id.clone());
         let suggested = stikk_core::suggested_file_destination(&self.repo, &path, &block);
-        self.overlays.push(Overlay::SavePath {
+        self.push_overlay(Overlay::SavePath {
             what: SavePathKind::File {
                 block,
                 path: path.clone(),
@@ -2512,7 +2538,7 @@ impl App {
         }
         let block = view.row.block_id.clone();
         let suggested = stikk_core::suggested_all_destination(&self.repo, &block);
-        self.overlays.push(Overlay::SavePath {
+        self.push_overlay(Overlay::SavePath {
             heading: stikk_core::block_short(&block),
             what: SavePathKind::All { block },
             typed: suggested.display().to_string(),
@@ -2533,7 +2559,7 @@ impl App {
         if typed.is_empty() {
             return;
         }
-        self.overlays.pop();
+        self.pop_overlay();
         let resolved = std::path::Path::new(typed);
         let resolved = std::path::absolute(resolved).unwrap_or_else(|_| resolved.to_path_buf());
         let (target, kind) = match what {
@@ -2560,7 +2586,7 @@ impl App {
             }
         };
         let seq = self.dispatch(kind);
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "save preview",
             seq,
         });
@@ -2573,10 +2599,10 @@ impl App {
             return; // no save is actually pending
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let kind = match target.clone() {
             SaveTarget::File(target) => RequestKind::SaveFileConfirmExecute {
@@ -2593,7 +2619,7 @@ impl App {
             },
         };
         let seq = self.dispatch(kind);
-        self.overlays.push(Overlay::Loading { what: "save", seq });
+        self.push_overlay(Overlay::Loading { what: "save", seq });
         self.pending_save = Some(PendingSave::Executing(target));
     }
 
@@ -2646,7 +2672,7 @@ impl App {
             self.banner = Some(stikk_core::NOT_THE_CURRENT_BRANCH.to_string());
             return;
         }
-        self.overlays.push(Overlay::UndoMessage {
+        self.push_overlay(Overlay::UndoMessage {
             block: block.block_id.clone(),
             typed: stikk_core::prefilled_undo_message(&block),
         });
@@ -2673,9 +2699,9 @@ impl App {
         if message.is_empty() {
             return;
         }
-        self.overlays.pop();
+        self.pop_overlay();
         let seq = self.dispatch(RequestKind::UndoPreview { block, message });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "undo preview",
             seq,
         });
@@ -2688,17 +2714,17 @@ impl App {
             return; // no undo is actually pending
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::UndoConfirmExecute {
             token,
             readiness,
             evidence,
         });
-        self.overlays.push(Overlay::Loading { what: "undo", seq });
+        self.push_overlay(Overlay::Loading { what: "undo", seq });
         self.pending_undo = Some(PendingUndo::Executing);
     }
 
@@ -2719,6 +2745,7 @@ impl App {
         self.pending_undo = None;
         match result {
             Ok(stikk_core::UndoPreviewOutcome::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -2734,6 +2761,7 @@ impl App {
                 self.pending_undo = Some(PendingUndo::Confirming { token });
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
@@ -2773,6 +2801,7 @@ impl App {
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
@@ -2796,16 +2825,19 @@ impl App {
         };
         let pending = self.pending_save.take();
         if let Some(error) = error {
+            self.overlay_generation = self.overlay_generation.wrapping_add(1);
             self.overlays.remove(index);
             self.surface(&error, OperationContext::Bundle);
             return;
         }
         if let Some(reason) = blocked {
+            self.overlay_generation = self.overlay_generation.wrapping_add(1);
             self.overlays.remove(index);
             self.banner = Some(reason);
             return;
         }
         let (Some(token), Some(PendingSave::AwaitingPreview(target))) = (token, pending) else {
+            self.overlay_generation = self.overlay_generation.wrapping_add(1);
             self.overlays.remove(index);
             return; // defensive
         };
@@ -2839,6 +2871,7 @@ impl App {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::FileSaved::Done => {
                     let Some(PendingSave::Executing(SaveTarget::File(target))) = pending else {
+                        self.overlay_generation = self.overlay_generation.wrapping_add(1);
                         self.overlays.remove(index);
                         return; // defensive
                     };
@@ -2849,6 +2882,7 @@ impl App {
                     }
                 }
                 stikk_prikk::FileSaved::Unavailable => {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::files_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -2856,6 +2890,7 @@ impl App {
                 }
             },
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2880,6 +2915,7 @@ impl App {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::Extracted::Read(report) => {
                     let Some(PendingSave::Executing(SaveTarget::All(target))) = pending else {
+                        self.overlay_generation = self.overlay_generation.wrapping_add(1);
                         self.overlays.remove(index);
                         return; // defensive
                     };
@@ -2890,6 +2926,7 @@ impl App {
                     }
                 }
                 stikk_prikk::Extracted::Unavailable => {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::files_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -2897,6 +2934,7 @@ impl App {
                 }
             },
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2920,11 +2958,13 @@ impl App {
         let pending = self.pending_export.take();
         match result {
             Ok(stikk_core::ExportPreview::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::ExportPreview::Ready { token }) => {
                 let Some(PendingExport::AwaitingPreview { target }) = pending else {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     return; // defensive
                 };
@@ -2939,6 +2979,7 @@ impl App {
                 self.pending_export = Some(PendingExport::Confirming { token, target });
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2969,6 +3010,7 @@ impl App {
                     }
                 }
                 stikk_prikk::BundleExport::Unavailable => {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::export_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -2976,6 +3018,7 @@ impl App {
                 }
             },
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2988,10 +3031,10 @@ impl App {
             return; // no merge is actually pending
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::MergeConfirmExecute {
             token,
@@ -2999,7 +3042,7 @@ impl App {
             evidence,
             target: target.clone(),
         });
-        self.overlays.push(Overlay::Loading { what: "merge", seq });
+        self.push_overlay(Overlay::Loading { what: "merge", seq });
         self.pending_merge = Some(PendingMerge::Executing { target });
     }
 
@@ -3020,11 +3063,13 @@ impl App {
         let pending = self.pending_merge.take();
         match result {
             Ok(stikk_core::MergePreview::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::MergePreview::Ready { token }) => {
                 let Some(PendingMerge::AwaitingPreview { target }) = pending else {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
@@ -3039,6 +3084,7 @@ impl App {
                 self.pending_merge = Some(PendingMerge::Confirming { token, target });
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::MergePlan);
             }
@@ -3094,6 +3140,7 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::MergeResult::Unavailable => {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::merge_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -3101,6 +3148,7 @@ impl App {
                 }
             },
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::MergePlan);
             }
@@ -3124,10 +3172,10 @@ impl App {
             return; // no switch is actually pending
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::SwitchConfirmExecute {
             token,
@@ -3135,7 +3183,7 @@ impl App {
             evidence,
             target: target.clone(),
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "switch",
             seq,
         });
@@ -3151,13 +3199,13 @@ impl App {
             return;
         }
         let name = format!("{}{typed}", kind.prefix());
-        self.overlays.pop();
+        self.pop_overlay();
         match kind {
             RefNameKind::Branch => self.start_ref_write(RefWriteOp::CreateBranch {
                 name,
                 from_ref: source,
             }),
-            RefNameKind::Tag => self.overlays.push(Overlay::TagMessage {
+            RefNameKind::Tag => self.push_overlay(Overlay::TagMessage {
                 name,
                 target: source,
                 typed: String::new(),
@@ -3168,7 +3216,7 @@ impl App {
     /// The tag message prompt's `Enter` (RFC 044 decision 5). **Empty is a valid answer**: it
     /// sends no `-m`, which is what prikk does for a tag without a message.
     fn submit_tag_message(&mut self, name: String, target: String, typed: &str) {
-        self.overlays.pop();
+        self.pop_overlay();
         self.start_ref_write(RefWriteOp::CreateTag {
             name,
             target,
@@ -3179,7 +3227,7 @@ impl App {
     /// Dispatch the preview for `op` and park the flow on it.
     fn start_ref_write(&mut self, op: RefWriteOp) {
         let seq = self.dispatch(RequestKind::RefWritePreview { op: op.clone() });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "ref write preview",
             seq,
         });
@@ -3194,10 +3242,10 @@ impl App {
             return; // no ref write is actually pending -- a stray Enter on a Confirmation this app did not open
         };
         let evidence = match tier {
-            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string()),
-            _ => stikk_core::Evidence::ExplicitYes,
+            Tier::ThreeTyped => stikk_core::Evidence::TypedName(typed.to_string(), self.seen()),
+            _ => stikk_core::Evidence::ExplicitYes(self.seen()),
         };
-        self.overlays.pop();
+        self.pop_overlay();
         let readiness = self.readiness();
         let seq = self.dispatch(RequestKind::RefWriteConfirmExecute {
             token,
@@ -3205,7 +3253,7 @@ impl App {
             evidence,
             op,
         });
-        self.overlays.push(Overlay::Loading {
+        self.push_overlay(Overlay::Loading {
             what: "ref write",
             seq,
         });
@@ -3231,7 +3279,7 @@ impl App {
                     refs.get(*cursor).cloned()
                 };
                 if let Some(name) = picked {
-                    self.overlays.pop();
+                    self.pop_overlay();
                     // **The next ref change ends the mark's life** (RFC 041 decision 1). It
                     // survives closing and reopening the picker -- that is where both halves of a
                     // pair are chosen, so a mark that died on `Esc` could never be paired -- but
@@ -3247,7 +3295,7 @@ impl App {
             Some(Overlay::Refusal { card, cursor }) => {
                 if let Some(step) = card.next_steps.get(*cursor) {
                     let target = step.target;
-                    self.overlays.pop();
+                    self.pop_overlay();
                     self.activate(target);
                 }
             }
@@ -3256,7 +3304,7 @@ impl App {
             }) => {
                 if let Some(step) = next_steps.get(*cursor) {
                     let target = step.target;
-                    self.overlays.pop();
+                    self.pop_overlay();
                     self.activate(target);
                 }
             }
@@ -3265,14 +3313,14 @@ impl App {
                 if let Some(cmd) = hits.get(*cursor).copied() {
                     let readiness = self.readiness();
                     if cmd.available(readiness, self.focused_ref().is_some()) {
-                        self.overlays.pop();
+                        self.pop_overlay();
                         self.run_command(cmd);
                     }
                 }
             }
             Some(Overlay::Refusals { records, cursor }) => {
                 if let Some(record) = records.get(*cursor).cloned() {
-                    self.overlays.pop();
+                    self.pop_overlay();
                     // Rebuild the card from the remembered refusal (history holds refusals only).
                     let err = stikk_model::StikkError::Refusal {
                         message: record.verbatim.clone(),
@@ -3280,7 +3328,7 @@ impl App {
                     if let Presentation::RefusalOverlay(card) =
                         present(&err, record.operation, self.prikk_minor())
                     {
-                        self.overlays.push(Overlay::Refusal { card, cursor: 0 });
+                        self.push_overlay(Overlay::Refusal { card, cursor: 0 });
                     }
                 }
             }
@@ -3338,6 +3386,14 @@ impl App {
             // `Some` at once (each flow pops its own message/consent step before pushing this one), so
             // checking commit first is a tie-break that cannot actually occur, not a real ambiguity.
             Some(Overlay::Confirmation { tier, typed, .. }) => {
+                // **Nothing is confirmed from a card whose text has not been on screen** (RFC 060
+                // decision 3). The key does nothing and dispatches nothing: the reader has not seen
+                // the consequence they would be agreeing to. The confirm line says so, and `↓` is
+                // the way on. `stikk_core::confirm` refuses the same thing again, so a renderer that
+                // drew the key anyway could not open the gate either.
+                if !self.overlay_scroll().seen_whole_card() {
+                    return;
+                }
                 let (tier, typed) = (*tier, typed.clone());
                 if self.pending_commit.is_some() {
                     self.submit_commit_confirmation(tier, &typed);
@@ -3585,7 +3641,7 @@ impl App {
         let pair = if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
             match self.ref_pair_comparison() {
                 Some(pair) => {
-                    self.overlays.pop();
+                    self.pop_overlay();
                     Some(pair)
                 }
                 // The reason is already in the banner, and the picker stays open so the reader
@@ -3731,15 +3787,15 @@ impl App {
     pub fn open_ref_picker(&mut self) {
         self.banner = None;
         let seq = self.dispatch(RequestKind::Refs);
-        self.overlays.push(Overlay::Loading { what: "refs", seq });
+        self.push_overlay(Overlay::Loading { what: "refs", seq });
     }
 
     /// Open the glossary / help browser (the `?` key).
     pub fn open_glossary(&mut self) {
         if matches!(self.overlays.last(), Some(Overlay::Glossary { .. })) {
-            self.overlays.pop();
+            self.pop_overlay();
         } else {
-            self.overlays.push(Overlay::Glossary {
+            self.push_overlay(Overlay::Glossary {
                 offset: std::cell::Cell::new(0),
             });
         }
@@ -3749,7 +3805,7 @@ impl App {
     pub fn open_palette(&mut self) {
         let readiness = self.readiness();
         let ref_focused = self.focused_ref().is_some();
-        self.overlays.push(Overlay::Palette {
+        self.push_overlay(Overlay::Palette {
             filter: String::new(),
             cursor: 0,
             readiness,
@@ -3765,16 +3821,16 @@ impl App {
             .into_iter()
             .cloned()
             .collect::<Vec<_>>();
-        self.overlays.push(Overlay::Refusals { records, cursor: 0 });
+        self.push_overlay(Overlay::Refusals { records, cursor: 0 });
     }
 
     /// Open the Background Operations overlay (the `o` key; TU-01) — a snapshot listing, no cancel
     /// action (RFC 010 decision 6).
     pub fn open_operations(&mut self) {
         if matches!(self.overlays.last(), Some(Overlay::Operations { .. })) {
-            self.overlays.pop();
+            self.pop_overlay();
         } else {
-            self.overlays.push(Overlay::Operations {
+            self.push_overlay(Overlay::Operations {
                 operations: self.operations.clone(),
             });
         }
@@ -3862,6 +3918,16 @@ impl App {
 
     /// Move the selection up (the top overlay's cursor if it has one, else the History cursor).
     pub fn nav_up(&mut self) {
+        // **One reading path, read top to bottom** (RFC 060 decision 3). `↑` walks up the action
+        // list to its first row and only then scrolls the text back up, which is `↓`'s path in
+        // reverse. Where the text fits, nothing is scrolled and this is exactly today's behaviour.
+        if !self.overlays.is_empty()
+            && self.overlay_cursor().unwrap_or(0) == 0
+            && self.overlay_scroll().more_above()
+        {
+            self.overlay_scroll().up();
+            return;
+        }
         match self.overlays.last_mut() {
             Some(Overlay::RefPicker { cursor, .. })
             | Some(Overlay::Refusal { cursor, .. })
@@ -3933,6 +3999,14 @@ impl App {
 
     /// Move the selection down, clamped to the active list length.
     pub fn nav_down(&mut self) {
+        // **`↓` scrolls the card's text to its end, and only then moves the highlight into the
+        // actions** (RFC 060 decision 3). `at_end` is the renderer's answer from the last draw —
+        // the same write-back the Glossary's clamp has always used — so the keys and the panel
+        // cannot disagree about where the card is.
+        if !self.overlays.is_empty() && !self.overlay_scroll().at_end() {
+            self.overlay_scroll().down();
+            return;
+        }
         match self.overlays.last_mut() {
             Some(Overlay::RefPicker {
                 refs,
@@ -4035,7 +4109,7 @@ impl App {
         if self.fault.take().is_some() {
             return;
         }
-        if let Some(overlay) = self.overlays.pop() {
+        if let Some(overlay) = self.pop_overlay() {
             // Cancelling the message step or a confirmation abandons the commit it belonged to (RFC
             // 014 §3) — otherwise a stale `PreviewToken` would sit unused until a later, unrelated
             // commit's response arrived and (harmlessly, but confusingly) found nothing to attach it
@@ -4685,7 +4759,7 @@ impl App {
                     };
                 }
                 if let Some(warning) = warning {
-                    self.overlays.push(Overlay::TrustConflict {
+                    self.push_overlay(Overlay::TrustConflict {
                         warning: Box::new(warning),
                     });
                 }
@@ -4928,6 +5002,7 @@ impl App {
                     }
                 }
                 Err(error) => {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     self.surface(&error, OperationContext::ListRefs);
                 }
@@ -4956,6 +5031,7 @@ impl App {
         let pending = self.pending_commit.take();
         match result {
             Ok(CommitPreviewOutcome::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -4976,6 +5052,7 @@ impl App {
             }
             Ok(CommitPreviewOutcome::Ready { preview: _, token }) => {
                 let Some(PendingCommit::AwaitingPreview { message }) = pending else {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
@@ -4990,6 +5067,7 @@ impl App {
                 self.pending_commit = Some(PendingCommit::Confirming { token, message });
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
@@ -5021,6 +5099,7 @@ impl App {
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
@@ -5044,11 +5123,13 @@ impl App {
         let pending = self.pending_seal.take();
         match result {
             Ok(SealPreviewOutcome::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
             Ok(SealPreviewOutcome::Ready { token }) => {
                 let Some(PendingSeal::AwaitingPreview { reff }) = pending else {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
@@ -5066,6 +5147,7 @@ impl App {
                 });
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
@@ -5098,6 +5180,7 @@ impl App {
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
@@ -5125,6 +5208,7 @@ impl App {
         let pending = self.pending_ref_write.take();
         match result {
             Ok(stikk_core::RefWritePreview::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
                 // **The typed name survives a block too** (RFC 044 §3). A blocked close has no
@@ -5133,11 +5217,12 @@ impl App {
                 if let Some(PendingRefWrite::AwaitingPreview { op }) = pending
                     && let Some(prompt) = op.prompt()
                 {
-                    self.overlays.push(prompt);
+                    self.push_overlay(prompt);
                 }
             }
             Ok(stikk_core::RefWritePreview::Ready { token }) => {
                 let Some(PendingRefWrite::AwaitingPreview { op }) = pending else {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
@@ -5152,6 +5237,7 @@ impl App {
                 self.pending_ref_write = Some(PendingRefWrite::Confirming { token, op });
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.restore_prompt(pending);
                 self.surface(&error, OperationContext::Other);
@@ -5194,6 +5280,7 @@ impl App {
                 // The band is checked before the keys offer anything, so this is only reachable
                 // if prikk changed under the session. stikk's own words, never prikk's silence.
                 stikk_prikk::RefWrite::Unavailable => {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::ref_writes_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -5201,6 +5288,7 @@ impl App {
                 }
             },
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.restore_prompt(pending);
                 self.surface(&error, OperationContext::Other);
@@ -5218,7 +5306,7 @@ impl App {
             None => return,
         };
         if let Some(prompt) = op.prompt() {
-            self.overlays.push(prompt);
+            self.push_overlay(prompt);
         }
     }
 
@@ -5240,11 +5328,13 @@ impl App {
         let pending = self.pending_switch.take();
         match result {
             Ok(stikk_core::SwitchPreview::Blocked(reason)) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::SwitchPreview::Ready { token }) => {
                 let Some(PendingSwitch::AwaitingPreview { target }) = pending else {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
@@ -5259,6 +5349,7 @@ impl App {
                 self.pending_switch = Some(PendingSwitch::Confirming { token, target });
             }
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
@@ -5325,6 +5416,7 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::SwitchResult::Unavailable => {
+                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::switch_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -5332,6 +5424,7 @@ impl App {
                 }
             },
             Err(error) => {
+                self.overlay_generation = self.overlay_generation.wrapping_add(1);
                 self.overlays.remove(index);
                 // **Back to the picker, under prikk's refusal** (§3e). A dirty worktree or a
                 // file in the way is something the reader fixes and tries again, and the picker
@@ -5349,7 +5442,7 @@ impl App {
     /// rather than on the screen behind it.
     fn reopen_ref_picker(&mut self) {
         let seq = self.dispatch(RequestKind::Refs);
-        self.overlays.push(Overlay::Loading { what: "refs", seq });
+        self.push_overlay(Overlay::Loading { what: "refs", seq });
     }
 
     /// Record that the worker thread itself has stopped (RFC 010 §7/ER-04) — there is no
@@ -5380,7 +5473,7 @@ impl App {
         match present(error, op, self.prikk_minor()) {
             Presentation::RefusalOverlay(card) => {
                 self.refusals.record(card.verbatim.clone(), "refusal", op);
-                self.overlays.push(Overlay::Refusal { card, cursor: 0 });
+                self.push_overlay(Overlay::Refusal { card, cursor: 0 });
             }
             // Never folded into `RefusalOverlay`/`refusals` (design-review C1): nothing here is
             // prikk's message, so it must not be recorded as one nor rendered under prikk's label.
@@ -5391,7 +5484,7 @@ impl App {
                 gloss,
                 next_steps,
             } => {
-                self.overlays.push(Overlay::Stale {
+                self.push_overlay(Overlay::Stale {
                     operation,
                     cause,
                     headline,
@@ -5451,7 +5544,7 @@ impl App {
             Target::RefPicker => self.open_ref_picker(),
             Target::Changes => self.open_changes(),
             Target::Queue => self.open_queue(),
-            Target::Glossary => self.overlays.push(Overlay::Glossary {
+            Target::Glossary => self.push_overlay(Overlay::Glossary {
                 offset: std::cell::Cell::new(0),
             }),
             // RFC 016: the full-queue refusal's own next-step lands here — the same entry point the
@@ -5646,6 +5739,57 @@ impl App {
         self.resolved.colours_row()
     }
 
+    /// **The top overlay's scroll state** (RFC 060 decision 3), reset if the overlay on top is not
+    /// the one it was last used for.
+    #[must_use]
+    pub fn overlay_scroll(&self) -> &crate::overlay::Scroll {
+        self.overlay_scroll.for_overlay(self.overlay_generation)
+    }
+
+    /// **What the reader has seen of the card on top**, in the shape `stikk_core::confirm` asks for
+    /// (RFC 060 decision 3).
+    ///
+    /// Read *before* the card is popped, since popping gives the next overlay a reader of its own.
+    /// `select` already refuses to dispatch without the latch; passing the real answer here is what
+    /// makes core's own gate load-bearing rather than decorative.
+    fn seen(&self) -> Seen {
+        if self.overlay_scroll().seen_whole_card() {
+            Seen::WholeCard
+        } else {
+            Seen::NotYet
+        }
+    }
+
+    /// The top overlay's selection, where it has one — what `↑` asks before it scrolls (RFC 060
+    /// decision 3). `None` for a card that is read rather than chosen from.
+    fn overlay_cursor(&self) -> Option<usize> {
+        match self.overlays.last() {
+            Some(
+                Overlay::RefPicker { cursor, .. }
+                | Overlay::Refusal { cursor, .. }
+                | Overlay::Stale { cursor, .. }
+                | Overlay::Palette { cursor, .. }
+                | Overlay::Refusals { cursor, .. },
+            ) => Some(*cursor),
+            _ => None,
+        }
+    }
+
+    /// Push an overlay, and give it a reader of its own (RFC 060 decision 3).
+    ///
+    /// **The only way an overlay reaches the stack**, so the reading latch cannot be inherited by a
+    /// card that was never read. `pub(crate)` for the tests that push a card directly.
+    pub(crate) fn push_overlay(&mut self, overlay: Overlay) {
+        self.overlay_generation = self.overlay_generation.wrapping_add(1);
+        self.overlays.push(overlay);
+    }
+
+    /// Pop the top overlay; whatever is under it is a different card, with its own reader.
+    fn pop_overlay(&mut self) -> Option<Overlay> {
+        self.overlay_generation = self.overlay_generation.wrapping_add(1);
+        self.overlays.pop()
+    }
+
     /// The top overlay, if any (the one that renders and receives navigation keys).
     #[must_use]
     pub fn top_overlay(&self) -> Option<&Overlay> {
@@ -5671,19 +5815,13 @@ impl App {
 
     /// Close the top overlay, if any.
     pub fn close_overlay(&mut self) {
-        self.overlays.pop();
+        self.pop_overlay();
     }
 
     /// Push a screen directly, without loading through the seam — for tests.
     #[cfg(test)]
     pub(crate) fn push_screen(&mut self, screen: Screen) {
         self.screens.push(screen);
-    }
-
-    /// Push an overlay directly — for tests (RFC 013's confirmation overlay has no live trigger yet).
-    #[cfg(test)]
-    pub(crate) fn push_overlay(&mut self, overlay: Overlay) {
-        self.overlays.push(overlay);
     }
 
     /// Surface a seam error directly — for tests (drives the ER-03 routing).

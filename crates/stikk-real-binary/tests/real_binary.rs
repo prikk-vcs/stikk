@@ -1854,7 +1854,7 @@ fn rfc030_a_branch_switch_between_preview_and_confirmation_is_stale_and_commits_
             &repo,
             *token,
             readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             "confirmed after a branch switch",
         );
         Fixture::clear_env();
@@ -1931,7 +1931,7 @@ fn rfc030_a_file_added_between_preview_and_confirmation_is_stale_then_a_fresh_pr
             &repo,
             *token,
             readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             "confirmed after a file was added",
         );
         Fixture::clear_env();
@@ -1981,7 +1981,7 @@ fn rfc030_a_file_added_between_preview_and_confirmation_is_stale_then_a_fresh_pr
             &repo,
             *token,
             readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             "confirmed at once",
         )
         .unwrap_or_else(|e| panic!("0.{}: a fresh confirmation must commit: {e}", bin.minor));
@@ -2165,7 +2165,7 @@ fn rfc030_a_rename_declared_between_preview_and_confirmation_is_stale_then_a_fre
             &repo,
             *token,
             readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             "confirmed after a rename was declared",
         );
         Fixture::clear_env();
@@ -2209,7 +2209,7 @@ fn rfc030_a_rename_declared_between_preview_and_confirmation_is_stale_then_a_fre
             &repo,
             *token,
             readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             "rename confirmed at once",
         )
         .unwrap_or_else(|e| panic!("0.{}: a fresh confirmation must commit: {e}", bin.minor));
@@ -2381,7 +2381,7 @@ fn rfc029b_prikks_current_branch_is_reported_and_named_on_both_confirmations() {
                 &repo,
                 *token,
                 readiness,
-                stikk_core::Evidence::ExplicitYes,
+                stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
                 "committed to heads/main, where prikk names no current branch",
             )
             .unwrap_or_else(|e| panic!("0.{}: the confirmed commit: {e}", bin.minor));
@@ -3596,7 +3596,7 @@ fn rfc032_a_ref_with_no_published_history_is_named_and_its_first_commit_is_not_s
             &repo,
             *token,
             readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             "first",
         );
         Fixture::clear_env();
@@ -3936,7 +3936,7 @@ fn rfc034_a_first_commit_on_a_fresh_repository_reads_previews_and_commits_at_bot
             &repo,
             *token,
             readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             "first",
         );
         Fixture::clear_env();
@@ -6187,7 +6187,7 @@ fn rfc044_the_three_ref_writes_change_the_lists_at_the_ceiling() {
                 &repo,
                 token,
                 readiness,
-                stikk_core::Evidence::ExplicitYes,
+                stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
                 "heads/feature",
                 "heads/main",
             )
@@ -6234,7 +6234,7 @@ fn rfc044_the_three_ref_writes_change_the_lists_at_the_ceiling() {
                 &repo,
                 token,
                 readiness,
-                stikk_core::Evidence::ExplicitYes,
+                stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
                 tag,
             )
         },
@@ -6280,7 +6280,7 @@ fn rfc044_the_three_ref_writes_change_the_lists_at_the_ceiling() {
                 &repo,
                 token,
                 readiness,
-                stikk_core::Evidence::ExplicitYes,
+                stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
                 "heads/feature",
                 "heads/main",
             )
@@ -6315,7 +6315,7 @@ fn rfc044_the_three_ref_writes_change_the_lists_at_the_ceiling() {
                 &repo,
                 token,
                 readiness,
-                stikk_core::Evidence::ExplicitYes,
+                stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
                 "heads/feature",
             )
         },
@@ -6504,7 +6504,7 @@ fn rfc045_the_preview_is_what_the_switch_does_at_the_ceiling() {
                 &repo,
                 *token,
                 readiness,
-                stikk_core::Evidence::ExplicitYes,
+                stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
                 target,
             )
         };
@@ -7292,7 +7292,7 @@ fn rfc047_a_merge_into_the_current_branch_writes_the_worktree_from_0_56() {
             &repo,
             *token,
             readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             &stikk_core::MergeTarget {
                 baseline: plan.baseline.clone(),
                 into: "heads/main".to_string(),
@@ -7678,7 +7678,7 @@ fn rfc047_a_merge_lands_and_a_switch_to_it_writes_the_adopted_file() {
         &repo,
         *token,
         readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         &stikk_core::MergeTarget {
             baseline: plan.baseline.clone(),
             into: "heads/feature".to_string(),
@@ -8575,7 +8575,7 @@ fn rfc050_an_import_lands_and_an_older_bundle_is_declined() {
             .readiness(&there)
             .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
             .readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         &target,
     )
     .unwrap_or_else(|e| panic!("0.{}: import: {e}", bin.minor));
@@ -8778,7 +8778,7 @@ fn rfc050_an_export_refuses_the_two_destinations_and_round_trips_otherwise() {
             .readiness(&repo)
             .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
             .readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         &target,
     )
     .unwrap_or_else(|e| panic!("0.{}: export: {e}", bin.minor));
@@ -8820,7 +8820,7 @@ fn rfc050_an_export_refuses_the_two_destinations_and_round_trips_otherwise() {
             .readiness(second.repo())
             .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
             .readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         &stikk_core::ImportTarget {
             path: out,
             received: "remotes/heads/main".to_string(),
@@ -8974,7 +8974,7 @@ fn rfc053_one_file_is_saved_with_prikks_own_bytes_at_the_ceiling() {
             .readiness(&repo)
             .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
             .readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         &stikk_core::SaveFileTarget {
             block: block.clone(),
             path: "a.txt".to_string(),
@@ -9045,7 +9045,7 @@ fn rfc053_every_file_is_saved_and_matches_prikks_tree_at_the_ceiling() {
             .readiness(&repo)
             .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
             .readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         &stikk_core::SaveAllTarget {
             block: block.clone(),
             dir: dir.clone(),
@@ -10004,7 +10004,7 @@ fn rfc054_a_sealer_naming_a_trusted_key_is_proved_only_by_verify_after_import() 
             .readiness(receiver.repo())
             .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
             .readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         &stikk_core::ImportTarget {
             path: bundle.clone(),
             received: "remotes/heads/main".to_string(),
@@ -10133,7 +10133,7 @@ fn rfc056_adopt(
         repo,
         *token,
         rfc056_operator(),
-        stikk_core::Evidence::TypedName(key_id.to_string()),
+        stikk_core::Evidence::TypedName(key_id.to_string(), stikk_core::Seen::WholeCard),
         key_id,
         public,
     )
@@ -10157,7 +10157,7 @@ fn rfc056_remove(
         repo,
         *token,
         rfc056_operator(),
-        stikk_core::Evidence::TypedName(key_id.to_string()),
+        stikk_core::Evidence::TypedName(key_id.to_string(), stikk_core::Seen::WholeCard),
         key_id,
     )
     .unwrap_or_else(|e| panic!("0.{minor}: the removal: {e}"))
@@ -10208,7 +10208,7 @@ fn rfc056_adopting_grows_the_list_and_the_two_declines_write_nothing_at_the_ceil
         &repo,
         *token,
         rfc056_operator(),
-        stikk_core::Evidence::TypedName(their_id.clone()),
+        stikk_core::Evidence::TypedName(their_id.clone(), stikk_core::Seen::WholeCard),
         &their_id,
         &theirs,
     )
@@ -10370,7 +10370,7 @@ fn rfc056_removing_shrinks_the_list_and_a_removed_id_is_prikks_refusal_at_the_ce
         &repo,
         *token,
         rfc056_operator(),
-        stikk_core::Evidence::TypedName(their_id.clone()),
+        stikk_core::Evidence::TypedName(their_id.clone(), stikk_core::Seen::WholeCard),
         &their_id,
         &mine.public_key,
     );
@@ -10601,7 +10601,7 @@ fn rfc056_removing_your_own_key_leaves_the_maintainer_role_not_adopted_at_the_ce
         &repo,
         *token,
         rfc056_operator(),
-        stikk_core::Evidence::TypedName(mine.key_id.clone()),
+        stikk_core::Evidence::TypedName(mine.key_id.clone(), stikk_core::Seen::WholeCard),
         &mine.key_id,
     )
     .unwrap_or_else(|e| panic!("0.{}: the removal: {e}", bin.minor));
@@ -11048,7 +11048,7 @@ fn going_back_to_an_earlier_block_through_a_tag_at_the_ceiling() {
         &repo,
         *token,
         readiness(),
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         tag,
     )
     .unwrap_or_else(|e| panic!("0.{}: the tag: {e}", bin.minor));
@@ -11067,7 +11067,7 @@ fn going_back_to_an_earlier_block_through_a_tag_at_the_ceiling() {
         &repo,
         *token,
         readiness(),
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         "heads/back",
         "tags/back",
     )
@@ -11104,7 +11104,7 @@ fn going_back_to_an_earlier_block_through_a_tag_at_the_ceiling() {
         &repo,
         *token,
         readiness(),
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         "heads/back",
     )
     .unwrap_or_else(|e| panic!("0.{}: the switch: {e}", bin.minor));
@@ -11276,7 +11276,7 @@ fn rfc058_undo(
         &repo,
         *token,
         readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
     );
     Fixture::clear_env();
     result
@@ -12145,7 +12145,7 @@ fn rfc063_an_interrupted_seal_is_read_as_one_and_stikks_seal_finishes_it() {
         &repo,
         *token,
         readiness,
-        stikk_core::Evidence::ExplicitYes,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
         "heads/main",
     )
     .unwrap_or_else(|e| panic!("0.{}: the confirmed seal: {e}", bin.minor));
@@ -12386,7 +12386,7 @@ fn rfc063_the_bundle_card_reads_each_seal_as_prikk_checked_it() {
                 .readiness(receiver.repo())
                 .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
                 .readiness,
-            stikk_core::Evidence::ExplicitYes,
+            stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
             &stikk_core::ImportTarget {
                 path: bundle.clone(),
                 received: "remotes/heads/main".to_string(),

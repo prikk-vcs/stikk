@@ -18,6 +18,31 @@ fn draw(overlay: &Overlay) -> String {
     draw_at(overlay, 90, 45)
 }
 
+/// Render one overlay at an explicit terminal size, **with a scroll state the caller keeps** — so a
+/// test can scroll a card the way a reader does and see what changes (RFC 060 decision 3).
+fn draw_scrolled(overlay: &Overlay, scroll: &Scroll, w: u16, h: u16) -> String {
+    let backend = TestBackend::new(w, h);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| render(overlay, None, &Palette::default(), scroll, f, f.area()))
+        .unwrap();
+    buffer_text(terminal.backend().buffer())
+}
+
+/// Draw `overlay` at `w` x `h`, then scroll to the end of its text and draw again — the reading path
+/// `↓` walks (RFC 060 decision 3). Answers the last screen, and how many presses it took.
+fn read_to_the_end(overlay: &Overlay, w: u16, h: u16) -> (String, usize) {
+    let scroll = Scroll::default();
+    let mut text = draw_scrolled(overlay, &scroll, w, h);
+    let mut presses = 0;
+    while !scroll.at_end() && presses < 500 {
+        scroll.down();
+        text = draw_scrolled(overlay, &scroll, w, h);
+        presses += 1;
+    }
+    (text, presses)
+}
+
 /// Render one overlay at an explicit terminal size.
 ///
 /// The default 90×45 is roomy on purpose — most of these tests are about *content*, and a size that
@@ -29,7 +54,16 @@ fn draw_at(overlay: &Overlay, w: u16, h: u16) -> String {
     let backend = TestBackend::new(w, h);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(overlay, None, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                overlay,
+                None,
+                &Palette::default(),
+                &Scroll::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -280,7 +314,16 @@ fn draw_80x24(overlay: &Overlay) -> String {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(overlay, None, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                overlay,
+                None,
+                &Palette::default(),
+                &Scroll::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -451,7 +494,16 @@ fn stale_next_step_is_reachable_at_80x12() {
     let backend = TestBackend::new(80, 12);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(&overlay, None, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                &overlay,
+                None,
+                &Palette::default(),
+                &Scroll::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     let text = buffer_text(terminal.backend().buffer());
     assert!(text.contains("stikk stopped"));
@@ -2400,7 +2452,7 @@ fn continuation_rows_are_styled_like_the_first() {
     };
     let palette = Palette::default();
     terminal
-        .draw(|f| render(&overlay, None, &palette, f, f.area()))
+        .draw(|f| render(&overlay, None, &palette, &Scroll::default(), f, f.area()))
         .unwrap();
     let buffer = terminal.backend().buffer();
     let mut checked = 0;
@@ -4223,9 +4275,18 @@ fn capture_the_import_confirmation_at_80x24() {
     assert!(text.contains("Consumes: no signing key"), "{text}");
     assert!(!text.contains("MAINTAINER"), "{text}");
     assert!(!text.contains("AUTHOR"), "{text}");
-    // An explicit yes, never a typed name: Tier Two.
-    assert!(text.contains("Enter to confirm"), "{text}");
-    assert!(!text.contains("to confirm:"), "{text}");
+    // **The card does not fit at 80 × 24, so no confirmation is offered yet** (RFC 060 decision 3):
+    // what the reader is shown is the way to the rest of it.
+    assert!(
+        text.contains("read to the end to confirm"),
+        "the gate, while the card is only part shown:\n{text}"
+    );
+    assert!(!text.contains("Enter to confirm"), "{text}");
+    // And once it has been read to the end, an explicit yes — never a typed name, at Tier Two.
+    let (whole, presses) = read_to_the_end(&overlay, 80, 24);
+    println!("--- after {presses} presses of ↓\n{whole}");
+    assert!(whole.contains("Enter to confirm"), "{whole}");
+    assert!(!whole.contains("to confirm:"), "{whole}");
     // prikk's caveat is on the card, in prikk's words.
     assert!(flattened(&text).contains("not a trust decision"), "{text}");
 }
@@ -5171,7 +5232,7 @@ fn capture_rfc063_the_security_warning_from_each_caller() {
                 let backend = TestBackend::new(w, h);
                 let mut terminal = Terminal::new(backend).unwrap();
                 terminal
-                    .draw(|f| render(&overlay, None, &palette, f, f.area()))
+                    .draw(|f| render(&overlay, None, &palette, &Scroll::default(), f, f.area()))
                     .unwrap();
                 let text = buffer_text(terminal.backend().buffer());
                 println!("--- RFC 063: {name}, {w}×{h}, {theme}\n{text}");
@@ -5218,4 +5279,176 @@ fn capture_rfc063_the_security_warning_from_each_caller() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Scrolling, pinned actions, and the confirm-after-seen rule (RFC 060 decision 3; Handoff A §3)
+// ---------------------------------------------------------------------------------------------
+
+/// A confirmation card with more text than a short terminal can hold.
+fn tall_confirmation() -> Overlay {
+    let mut summary = summary(vec!["heads/main"], None);
+    summary.notices = (1..=8)
+        .map(|n| {
+            format!("Notice {n}: something this operation will produce that a reader must see.")
+        })
+        .collect();
+    Overlay::Confirmation {
+        summary: Box::new(summary),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    }
+}
+
+/// **`↓` scrolls the text to its end, and the foot line says which key** (RFC 060 decision 3).
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib capture_rfc060_a_card_scrolling -- --nocapture
+/// ```
+#[test]
+fn capture_rfc060_a_card_scrolling_at_60x15() {
+    let overlay = tall_confirmation();
+    let scroll = Scroll::default();
+    let first = draw_scrolled(&overlay, &scroll, 60, 15);
+    println!("--- RFC 060: a confirmation card, 60x15, as opened\n{first}");
+    // Where you are, in the Glossary's idiom, and which key — said once each (decision 3, trap 4).
+    assert!(first.contains("lines 1–"), "the title says where:\n{first}");
+    assert!(
+        first.contains("↓ more below"),
+        "the foot says which key:\n{first}"
+    );
+    assert!(
+        !first.contains("↑ more above"),
+        "only one of the two:\n{first}"
+    );
+    // **Not offered yet**: the card's whole text has not been on screen.
+    assert!(
+        first.contains("read to the end to confirm"),
+        "the gate:\n{first}"
+    );
+    assert!(!first.contains("Enter to confirm"), "{first}");
+
+    let (last, presses) = read_to_the_end(&overlay, 60, 15);
+    println!("--- after {presses} presses of ↓, at the end\n{last}");
+    assert!(presses > 0, "a card that does not fit must scroll");
+    assert!(
+        last.contains("↑ more above"),
+        "the foot turns around:\n{last}"
+    );
+    assert!(!last.contains("↓ more below"), "{last}");
+    // **And now it is offered.**
+    assert!(last.contains("Enter to confirm"), "{last}");
+    assert!(!last.contains("read to the end"), "{last}");
+}
+
+/// **The pinned part never scrolls away** (RFC 060 decision 3): the confirm line is on screen at
+/// every offset, from the first row to the last.
+#[test]
+fn the_actions_stay_on_screen_at_every_offset() {
+    let overlay = tall_confirmation();
+    let scroll = Scroll::default();
+    let mut offsets = 0;
+    loop {
+        let text = draw_scrolled(&overlay, &scroll, 60, 15);
+        assert!(
+            text.contains("read to the end to confirm") || text.contains("Enter to confirm"),
+            "the pinned confirm line is gone at offset {offsets}:\n{text}"
+        );
+        if scroll.at_end() {
+            break;
+        }
+        scroll.down();
+        offsets += 1;
+        assert!(offsets < 200, "the scroll never reached the end");
+    }
+    assert!(offsets > 0);
+}
+
+/// **Where the text fits, nothing changes** (RFC 060 decision 3): no foot line, no gate, and the
+/// confirmation is offered on the first draw — today's behaviour at 80 × 24.
+#[test]
+fn a_card_that_fits_is_unchanged_at_80x24() {
+    let overlay = Overlay::Confirmation {
+        summary: Box::new(summary(vec!["heads/main"], None)),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    };
+    let scroll = Scroll::default();
+    let text = draw_scrolled(&overlay, &scroll, 80, 24);
+    assert!(text.contains("Enter to confirm"), "{text}");
+    assert!(!text.contains("read to the end"), "{text}");
+    assert!(
+        !text.contains("more below"),
+        "no foot line is needed:\n{text}"
+    );
+    assert!(!text.contains("lines 1–"), "nothing is hidden:\n{text}");
+    assert!(scroll.seen_whole_card(), "the whole card was on screen");
+}
+
+/// **Fail closed** (RFC 060 decision 3): a window too short for the pinned part above one row of
+/// text offers no confirmation at all, and only `Esc` works.
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib capture_rfc060_a_card_that_cannot_fit -- --nocapture
+/// ```
+#[test]
+fn capture_rfc060_a_card_that_cannot_fit_its_actions() {
+    let overlay = tall_confirmation();
+    let scroll = Scroll::default();
+    let text = draw_scrolled(&overlay, &scroll, 60, 4);
+    println!("--- RFC 060: a card that cannot fit its actions, 60x4\n{text}");
+    assert!(
+        text.contains("Make the window bigger"),
+        "it says what to do:\n{text}"
+    );
+    assert!(text.contains("Esc"), "and Esc still works:\n{text}");
+    assert!(!text.contains("Enter to confirm"), "{text}");
+    assert!(
+        !scroll.seen_whole_card(),
+        "nothing was read, so nothing may be confirmed"
+    );
+}
+
+/// **The Glossary says it the same way** (RFC 060 decision 3): the title says where, one foot line
+/// says which key.
+#[test]
+fn the_glossary_has_the_same_foot_line() {
+    let overlay = Overlay::Glossary {
+        offset: std::cell::Cell::new(0),
+    };
+    let text = draw_at(&overlay, 60, 15);
+    assert!(text.contains("lines 1–"), "{text}");
+    assert!(text.contains("↓ more below"), "{text}");
+    // Tall enough for all of it: no foot line, nothing hidden.
+    let whole = draw_at(&overlay, 90, 240);
+    assert!(!whole.contains("more below"), "{whole}");
+    assert!(!whole.contains("more above"), "{whole}");
+}
+
+/// **A 64-character id splits evenly** (RFC 060 decision 4), through `text`'s own `even_rows`: 32
+/// and 32 at 60 columns, never 57 and 7, and never cut.
+#[test]
+fn a_long_id_splits_evenly_at_60_columns() {
+    let id = "b".repeat(64);
+    let overlay = Overlay::SealResult {
+        result: seal_result(vec![]),
+    };
+    let text = draw_at(&overlay, 60, 20);
+    // The id's own rows: nothing but `b`, which no sentence on this card can be mistaken for.
+    let rows: Vec<String> = panel_rows(&text)
+        .into_iter()
+        .map(|row| row.trim().to_string())
+        .filter(|row| !row.is_empty() && row.chars().all(|c| c == 'b'))
+        .collect();
+    println!("--- RFC 060: a 64-hex id at 60 columns\n{text}");
+    let halves: Vec<usize> = rows
+        .iter()
+        .map(|row| row.chars().filter(|c| *c == 'b').count())
+        .collect();
+    assert_eq!(halves, vec![32, 32], "the id splits evenly:\n{text}");
+    // And nothing of it is lost.
+    let joined: String = rows.join("");
+    assert!(joined.contains(&id), "every character survives:\n{text}");
 }

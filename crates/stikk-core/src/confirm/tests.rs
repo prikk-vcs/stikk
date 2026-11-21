@@ -15,6 +15,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use crate::confirm::Seen;
 use std::path::Path;
 
 use stikk_model::{Capability, ChangeToken, Readiness, RequestCategory, RoleReadiness, StikkError};
@@ -112,7 +113,7 @@ fn confirm_succeeds_when_nothing_moved() {
         Path::new("/r"),
         token,
         readiness,
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect("confirm succeeds when the token is unchanged and evidence is correct");
 }
@@ -128,7 +129,7 @@ fn confirm_refuses_when_the_change_token_moved_between_preview_and_confirm() {
         Path::new("/r"),
         token,
         ready(true, false, false),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect_err("must refuse — the world moved");
     assert_eq!(err.class(), "stale");
@@ -144,7 +145,7 @@ fn execute_refuses_when_the_change_token_moved_between_confirm_and_execute() {
         Path::new("/r"),
         token,
         ready(true, false, false),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect("confirm succeeds");
 
@@ -164,7 +165,7 @@ fn execute_succeeds_and_carries_the_operation_name_when_nothing_moved() {
         Path::new("/r"),
         token,
         ready(true, false, false),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect("confirm succeeds");
     let outcome = execute(&backend, Path::new("/r"), confirmed, || Ok(7))
@@ -184,7 +185,7 @@ fn read_only_refuses_tier_two_and_tier_three_with_keys_present() {
             Path::new("/r"),
             token,
             fully_keyed_but_read_only,
-            Evidence::ExplicitYes,
+            Evidence::ExplicitYes(Seen::WholeCard),
         )
         .expect_err("read-only must refuse even with every key present");
         assert_eq!(err.class(), "not-ready");
@@ -201,7 +202,7 @@ fn read_only_refuses_tier_two_and_tier_three_without_keys_either() {
             Path::new("/r"),
             token,
             ready(false, false, true),
-            Evidence::ExplicitYes,
+            Evidence::ExplicitYes(Seen::WholeCard),
         )
         .expect_err("read-only must refuse regardless of key presence");
         assert_eq!(err.class(), "not-ready");
@@ -231,7 +232,7 @@ fn tier_two_refuses_at_viewer_capability() {
         Path::new("/r"),
         token,
         Readiness::none(), // Viewer: no keys, not read-only
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect_err("Viewer must not satisfy tier 2");
     assert_eq!(err.class(), "not-ready");
@@ -246,7 +247,7 @@ fn tier_three_refuses_at_author_capability() {
         Path::new("/r"),
         token,
         ready(true, false, false), // Author, not Maintainer
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect_err("Author must not satisfy tier 3");
     assert_eq!(err.class(), "not-ready");
@@ -261,7 +262,7 @@ fn tier_three_succeeds_at_maintainer_capability() {
         Path::new("/r"),
         token,
         ready(true, true, false),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect("Maintainer satisfies tier 3");
 }
@@ -277,7 +278,7 @@ fn tier_three_typed_needs_no_signing_capability_only_read_write() {
         Path::new("/r"),
         token,
         Readiness::none(),
-        Evidence::TypedName("my-key".to_string()),
+        Evidence::TypedName("my-key".to_string(), Seen::WholeCard),
     )
     .expect("no signing readiness is required for tier 3-typed, only read-write");
 }
@@ -291,7 +292,7 @@ fn tier_three_typed_exact_match_passes() {
         Path::new("/r"),
         token,
         Readiness::none(),
-        Evidence::TypedName("heads/main".to_string()),
+        Evidence::TypedName("heads/main".to_string(), Seen::WholeCard),
     )
     .expect("an exact match must pass");
 }
@@ -305,7 +306,7 @@ fn tier_three_typed_a_wrong_name_refuses() {
         Path::new("/r"),
         token,
         Readiness::none(),
-        Evidence::TypedName("heads/other".to_string()),
+        Evidence::TypedName("heads/other".to_string(), Seen::WholeCard),
     )
     .expect_err("a wrong name must refuse");
     assert_eq!(err.class(), "declined");
@@ -320,7 +321,7 @@ fn tier_three_typed_a_near_miss_refuses() {
         Path::new("/r"),
         token,
         Readiness::none(),
-        Evidence::TypedName("heads/mai".to_string()), // one character short
+        Evidence::TypedName("heads/mai".to_string(), Seen::WholeCard), // one character short
     )
     .expect_err("a near-miss must refuse — exact match only");
     assert_eq!(err.class(), "declined");
@@ -335,7 +336,7 @@ fn tier_three_typed_empty_input_refuses() {
         Path::new("/r"),
         token,
         Readiness::none(),
-        Evidence::TypedName(String::new()),
+        Evidence::TypedName(String::new(), Seen::WholeCard),
     )
     .expect_err("empty input must refuse");
     assert_eq!(err.class(), "declined");
@@ -352,7 +353,7 @@ fn wrong_evidence_shape_for_the_tier_also_refuses() {
         Path::new("/r"),
         token,
         Readiness::none(),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect_err("an explicit yes must not satisfy a tier-3-typed requirement");
     assert_eq!(err.class(), "declined");
@@ -364,8 +365,50 @@ fn wrong_evidence_shape_for_the_tier_also_refuses() {
         Path::new("/r"),
         token2,
         ready(true, false, false),
-        Evidence::TypedName("anything".to_string()),
+        Evidence::TypedName("anything".to_string(), Seen::WholeCard),
     )
     .expect_err("a typed name must not satisfy a tier-2 requirement");
     assert_eq!(err2.class(), "declined");
+}
+
+/// **The gate lives here, not only in the renderer** (RFC 060 decision 3): a confirmation whose card
+/// had not been read to the end is refused, whatever the front end drew.
+#[test]
+fn confirm_refuses_a_card_that_was_not_read_to_the_end() {
+    let backend = backend_with_token("a");
+    let (_, token) = scripted_op(&backend, RequestCategory::QueueMutation, None).unwrap();
+    let readiness = ready(true, false, false);
+    let error = confirm(
+        &backend,
+        Path::new("/r"),
+        token,
+        readiness,
+        Evidence::ExplicitYes(Seen::NotYet),
+    )
+    .expect_err("an unread card is not a confirmation");
+    match error {
+        StikkError::Declined { detail } => assert!(
+            detail.contains("had not been read to the end"),
+            "the refusal says why: {detail:?}"
+        ),
+        other => panic!("expected Declined, got {other:?}"),
+    }
+}
+
+/// The same for a typed confirmation: typing the name is not reading the card.
+#[test]
+fn a_typed_confirmation_is_refused_unread_too() {
+    let backend = backend_with_token("a");
+    let (_, token) =
+        scripted_op(&backend, RequestCategory::Publication, Some("heads/main")).unwrap();
+    let readiness = ready(true, true, false);
+    let error = confirm(
+        &backend,
+        Path::new("/r"),
+        token,
+        readiness,
+        Evidence::TypedName("heads/main".to_string(), Seen::NotYet),
+    )
+    .expect_err("an unread card is not a confirmation");
+    assert!(matches!(error, StikkError::Declined { .. }), "{error:?}");
 }

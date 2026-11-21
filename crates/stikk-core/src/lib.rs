@@ -70,9 +70,10 @@ pub use compare::{
 };
 pub use confirm::{
     Aside, ConfirmationSummary, ConfirmedToken, Evidence, FilePlan, FrozenPatches, Intent,
-    KeyClaim, Outcome, PreviewToken, SHORT_ID_CHARS, TargetId, branch_notice, capability_gate,
-    confirm, execute, preview, signing_key_claim, unshown_declarations_line, unshown_patches_line,
-    unshown_paths_line, unshown_plan_lines_line,
+    KeyClaim, MAKE_THE_WINDOW_BIGGER, Outcome, PreviewToken, READ_TO_THE_END_TO_CONFIRM,
+    SHORT_ID_CHARS, Seen, TargetId, branch_notice, capability_gate, confirm, execute, preview,
+    signing_key_claim, unshown_declarations_line, unshown_patches_line, unshown_paths_line,
+    unshown_plan_lines_line,
 };
 pub use files::{
     BlockCursorRow, COPY_CONSEQUENCE, DESTINATION_EXISTS as FILES_DESTINATION_EXISTS,

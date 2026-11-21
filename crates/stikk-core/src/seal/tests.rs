@@ -2,6 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use crate::confirm::Seen;
 use stikk_model::Binding;
 use stikk_model::{ChangeToken, Readiness, RoleReadiness, Tier};
 use stikk_prikk::{NullBackend, Orientation, SealResult};
@@ -150,7 +151,7 @@ fn confirm_and_execute_carries_the_seal_result_through() {
         repo,
         *token,
         maintainer_readiness(RoleReadiness::Unknown),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "heads/main",
     )
     .expect("confirm+execute succeeds");
@@ -178,7 +179,7 @@ fn execute_refuses_when_the_change_token_moved_between_preview_and_confirm() {
         repo,
         *token,
         maintainer_readiness(RoleReadiness::Unknown),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "heads/main",
     )
     .expect_err("must refuse");
@@ -201,7 +202,7 @@ fn a_cross_ref_race_reaching_the_seam_propagates_as_cross_ref_not_lock_conflict(
         repo,
         *token,
         maintainer_readiness(RoleReadiness::Unknown),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "heads/main",
     )
     .expect_err("must refuse");
@@ -226,7 +227,7 @@ fn a_trust_refusal_reaching_the_seam_propagates_as_not_ready() {
         repo,
         *token,
         maintainer_readiness(RoleReadiness::Unknown),
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "heads/main",
     )
     .expect_err("must refuse");
@@ -252,7 +253,7 @@ fn read_only_refuses_even_with_maintainer_keys_present() {
         repo,
         *token,
         read_only,
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "heads/main",
     )
     .expect_err("must refuse");
@@ -279,7 +280,7 @@ fn author_only_capability_refuses() {
         repo,
         *token,
         author_only,
-        crate::confirm::Evidence::ExplicitYes,
+        crate::confirm::Evidence::ExplicitYes(Seen::WholeCard),
         "heads/main",
     )
     .expect_err("must refuse");
@@ -302,7 +303,7 @@ fn declined_evidence_refuses_without_touching_the_seam() {
         repo,
         *token,
         maintainer_readiness(RoleReadiness::Unknown),
-        crate::confirm::Evidence::TypedName("heads/main".to_string()),
+        crate::confirm::Evidence::TypedName("heads/main".to_string(), Seen::WholeCard),
         "heads/main",
     )
     .expect_err("must refuse");

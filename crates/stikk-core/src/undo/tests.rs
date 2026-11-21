@@ -8,6 +8,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
+use crate::confirm::Seen;
 use stikk_model::{ChangeToken, CurrentBranch, Readiness, RoleReadiness};
 use stikk_prikk::{
     BlockRow, CommitResult, Diff, DiffEntry, DiffFile, DiffSide, DiffTarget, History, NullBackend,
@@ -1079,7 +1080,7 @@ fn the_gate_asks_for_author_readiness_as_commit_does() {
         scratch.path(),
         *token,
         viewer,
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect_err("an undo without AUTHOR readiness is not run");
     assert!(matches!(error, StikkError::NotReady { .. }), "{error:?}");
@@ -1095,7 +1096,7 @@ fn the_gate_asks_for_author_readiness_as_commit_does() {
         scratch.path(),
         *token,
         read_only,
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect_err("read-only mode runs no undo");
     assert!(matches!(error, StikkError::NotReady { .. }), "{error:?}");
@@ -1143,7 +1144,7 @@ fn the_order_is_fetch_everything_then_rename_then_remove_then_copy_then_commit()
         scratch.path(),
         *token,
         author(),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect("the undo runs");
 
@@ -1216,7 +1217,7 @@ fn a_failure_fetching_leaves_the_worktree_byte_identical() {
         scratch.path(),
         *token,
         author(),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect_err("a fetch that failed is an error, not a stopped undo");
     match &error {
@@ -1258,7 +1259,7 @@ fn a_failure_in_step_2_names_exactly_the_paths_it_changed() {
         scratch.path(),
         *token,
         author(),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect("a stopped undo is a result, not an error");
     let stopped = match outcome.result {
@@ -1299,7 +1300,7 @@ fn a_failure_committing_names_every_path_changed_and_carries_prikks_words() {
         scratch.path(),
         *token,
         author(),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect("a stopped undo is a result, not an error");
     let stopped = match outcome.result {
@@ -1334,7 +1335,7 @@ fn only_the_directories_the_undo_emptied_are_removed() {
         scratch.path(),
         *token,
         author(),
-        Evidence::ExplicitYes,
+        Evidence::ExplicitYes(Seen::WholeCard),
     )
     .expect("the undo runs");
 

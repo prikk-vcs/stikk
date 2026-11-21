@@ -8,6 +8,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use std::sync::mpsc;
+use stikk_core::Seen;
 
 use stikk_core::{
     BlockDetailView, BlockPatches, ChangeEntry, ChangeKind, ChangesView, CommitPreviewOutcome,
@@ -1256,6 +1257,7 @@ fn confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result
     );
     app.begin_commit();
     app.input_char('x');
+    read_the_card(&app);
     app.select(); // message step -> preview request
     let preview_req = next_request(&rx);
     let backend = commit_backend();
@@ -1265,6 +1267,8 @@ fn confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result
         seq: preview_req.seq,
         kind: ResponseKind::CommitPreview(Ok(outcome)),
     });
+
+    read_the_card(&app);
 
     app.select(); // confirm step -> confirm+execute request
     let confirm_req = next_request(&rx);
@@ -1312,6 +1316,7 @@ fn a_failed_commit_confirm_execute_surfaces_through_present_not_silently() {
     );
     app.begin_commit();
     app.input_char('x');
+    read_the_card(&app);
     app.select();
     let preview_req = next_request(&rx);
     let backend = commit_backend();
@@ -1321,6 +1326,7 @@ fn a_failed_commit_confirm_execute_surfaces_through_present_not_silently() {
         seq: preview_req.seq,
         kind: ResponseKind::CommitPreview(Ok(outcome)),
     });
+    read_the_card(&app);
     app.select();
     let confirm_req = next_request(&rx);
     app.apply(Response {
@@ -1474,6 +1480,8 @@ fn confirming_a_seal_opens_consent_not_confirm_execute() {
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
 
+    read_the_card(&app);
+
     app.select(); // the confirmation's own Enter — the ceremony's first act
     match app.top_overlay() {
         Some(Overlay::SealConsent { reff, acknowledged }) => {
@@ -1507,7 +1515,9 @@ fn an_unacknowledged_enter_on_consent_does_nothing() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
+    read_the_card(&app);
     app.select(); // -> SealConsent, unacknowledged
+    read_the_card(&app);
     app.select(); // Enter again, still unacknowledged
     assert!(
         matches!(app.top_overlay(), Some(Overlay::SealConsent { .. })),
@@ -1535,12 +1545,14 @@ fn toggling_then_confirming_consent_dispatches_confirm_execute() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
+    read_the_card(&app);
     app.select(); // -> SealConsent
     app.toggle_seal_consent();
     match app.top_overlay() {
         Some(Overlay::SealConsent { acknowledged, .. }) => assert!(*acknowledged),
         other => panic!("expected SealConsent, got {other:?}"),
     }
+    read_the_card(&app);
     app.select(); // consent's own Enter — the ceremony's second act
     let confirm_req = next_request(&rx);
     assert!(matches!(
@@ -1569,8 +1581,10 @@ fn a_successful_seal_shows_the_result_verbatim_and_refreshes_orientation() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
+    read_the_card(&app);
     app.select();
     app.toggle_seal_consent();
+    read_the_card(&app);
     app.select();
     let confirm_req = next_request(&rx);
 
@@ -1615,8 +1629,10 @@ fn a_trust_refusal_mid_ceremony_surfaces_with_adoption_guidance() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
+    read_the_card(&app);
     app.select();
     app.toggle_seal_consent();
+    read_the_card(&app);
     app.select();
     let confirm_req = next_request(&rx);
     app.apply(Response {
@@ -1753,6 +1769,19 @@ fn status_line(app: &App) -> String {
     crate::test_util::buffer_text(terminal.backend().buffer())
 }
 
+/// **Read the card on top the way a reader does: by looking at it** (RFC 060 decision 3).
+///
+/// A confirmation is offered only once its whole text has been on screen, and the renderer is what
+/// latches that — so a test that presses `Enter` without ever drawing the card is a reader who
+/// confirmed with their eyes shut, and `select` rightly does nothing. At 80 × 24 every card in these
+/// tests fits, so one draw is all it takes.
+fn read_the_card(app: &App) {
+    // Nothing on top is nothing to read: the key under test is then a screen's, not a card's.
+    if app.top_overlay().is_some() {
+        let _ = top_overlay_text(app);
+    }
+}
+
 fn top_overlay_text(app: &App) -> String {
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
     terminal
@@ -1761,6 +1790,7 @@ fn top_overlay_text(app: &App) -> String {
                 app.top_overlay().unwrap(),
                 app.marked_ref(),
                 app.palette(),
+                app.overlay_scroll(),
                 f,
                 f.area(),
             )
@@ -3279,6 +3309,7 @@ fn a_successful_ref_write_shows_prikks_lines_and_re_reads_the_refs() {
         seq: preview_req.seq,
         kind: ResponseKind::RefWritePreview(Ok(preview)),
     });
+    read_the_card(&app);
     app.select(); // confirm
     let exec_req = next_request(&rx);
     let lines = vec![
@@ -3555,6 +3586,7 @@ fn a_successful_switch_moves_focus_and_re_reads() {
         seq: preview_req.seq,
         kind: ResponseKind::SwitchPreview(Ok(switch_core_preview())),
     });
+    read_the_card(&app);
     app.select(); // confirm
     let exec_req = next_request(&rx);
     app.apply(Response {
@@ -3600,6 +3632,7 @@ fn a_refused_switch_hands_back_to_the_picker() {
         seq: preview_req.seq,
         kind: ResponseKind::SwitchPreview(Ok(switch_core_preview())),
     });
+    read_the_card(&app);
     app.select();
     let exec_req = next_request(&rx);
     app.apply(Response {
@@ -4626,12 +4659,14 @@ fn a_landed_merge_shows_prikks_lines_and_re_reads() {
             },
         )))),
     });
+    read_the_card(&app);
     app.select();
     let seq = next_request(&rx).seq;
     app.apply(Response {
         seq,
         kind: ResponseKind::MergePreview(Ok(merge_core_preview())),
     });
+    read_the_card(&app);
     app.select(); // the explicit yes Tier Three takes
     let seq = next_request(&rx).seq;
     app.apply(Response {
@@ -4982,6 +5017,7 @@ fn rfc050_a_landed_import_moves_focus_to_the_received_branch() {
             ..
         })
     ));
+    read_the_card(&app);
     app.select(); // the confirmation's yes
     let req = next_request(&rx);
     assert!(matches!(req.kind, RequestKind::ImportConfirmExecute { .. }));
@@ -5683,7 +5719,7 @@ fn a_removal_is_confirmed_by_typing_the_id_and_points_at_verify() {
         } => {
             assert_eq!(key_id, RFC056_THEIRS);
             assert!(
-                matches!(evidence, stikk_core::Evidence::TypedName(ref typed) if typed == RFC056_THEIRS)
+                matches!(evidence, stikk_core::Evidence::TypedName(ref typed, Seen::WholeCard) if typed == RFC056_THEIRS)
             );
         }
         other => panic!("expected the removal, got {other:?}"),
@@ -5999,12 +6035,14 @@ fn a_blocked_undo_preview_is_a_banner_with_nothing_armed() {
 fn a_recorded_undo_shows_prikks_commit_result() {
     let (mut app, rx) = undoing();
     app.begin_undo_block();
+    read_the_card(&app);
     app.select();
     let seq = next_request(&rx).seq;
     app.apply(Response {
         seq,
         kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
     });
+    read_the_card(&app);
     app.select();
     let request = next_request(&rx);
     assert!(
@@ -6042,12 +6080,14 @@ fn a_recorded_undo_shows_prikks_commit_result() {
 fn a_stopped_undo_names_what_it_changed_and_carries_prikks_words() {
     let (mut app, rx) = undoing();
     app.begin_undo_block();
+    read_the_card(&app);
     app.select();
     let seq = next_request(&rx).seq;
     app.apply(Response {
         seq,
         kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
     });
+    read_the_card(&app);
     app.select();
     let seq = next_request(&rx).seq;
     app.apply(Response {
@@ -6355,7 +6395,9 @@ fn rfc063_a_refused_adopt_opens_the_warning_card() {
     };
     app.begin_adopt_key();
     type_in(&mut app, RFC056_NEW_KEY);
+    read_the_card(&app);
     app.select();
+    read_the_card(&app);
     app.select();
     let req = next_request(&rx);
     app.apply(Response {
@@ -6363,6 +6405,7 @@ fn rfc063_a_refused_adopt_opens_the_warning_card() {
         kind: ResponseKind::TrustAdoptPreview(Ok(stikk_core::AdoptPreview::Ready { token })),
     });
     type_in(&mut app, RFC056_NEW_ID);
+    read_the_card(&app);
     app.select();
     let req = next_request(&rx);
     app.apply(Response {
@@ -6397,4 +6440,188 @@ fn rfc063_a_refused_adopt_opens_the_warning_card() {
         "and it says why the id is not in the list: {text}"
     );
     assert!(text.contains("prikk refused"), "prikk's own words: {text}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// The reading path, and the confirm key that waits for it (RFC 060 decision 3; Handoff A §3)
+// ---------------------------------------------------------------------------------------------
+
+/// Draw the top overlay at an explicit size, so a test can put the app in front of a window too
+/// small for its card.
+fn draw_top_overlay_at(app: &App, w: u16, h: u16) -> String {
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+    terminal
+        .draw(|f| {
+            crate::overlay::render(
+                app.top_overlay().unwrap(),
+                app.marked_ref(),
+                app.palette(),
+                app.overlay_scroll(),
+                f,
+                f.area(),
+            )
+        })
+        .unwrap();
+    crate::test_util::buffer_text(terminal.backend().buffer())
+}
+
+/// An app with a commit's confirmation card open and its token armed — the shape
+/// `confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result_verbatim` drives,
+/// stopped one key earlier.
+fn commit_awaiting_confirmation() -> (App, std::sync::mpsc::Receiver<Request>) {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(author_orientation_view()),
+        Palette::default(),
+    );
+    app.begin_commit();
+    app.input_char('x');
+    read_the_card(&app);
+    app.select(); // the message step -> a preview request
+    let preview = next_request(&rx);
+    let backend = commit_backend();
+    let outcome = commit_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("preview succeeds");
+    app.apply(Response {
+        seq: preview.seq,
+        kind: ResponseKind::CommitPreview(Ok(outcome)),
+    });
+    (app, rx)
+}
+
+/// **The confirm key does nothing, and dispatches nothing, until the card has been read to the end**
+/// (RFC 060 decision 3) — then it works.
+///
+/// Driven through the request recorder: the proof that nothing happened is that no request was sent.
+#[test]
+fn enter_on_an_unread_confirmation_dispatches_nothing() {
+    let (mut app, rx) = commit_awaiting_confirmation();
+    // Drawn at a size the card cannot fit in, which is what leaves it unread.
+    let small = draw_top_overlay_at(&app, 60, 10);
+    assert!(
+        small.contains("read to the end to confirm"),
+        "the card says what is missing:\n{small}"
+    );
+
+    app.select();
+    assert!(
+        rx.try_recv().is_err(),
+        "an unread card must dispatch nothing at all"
+    );
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::Confirmation { .. })),
+        "and the card stays open"
+    );
+
+    // Now read it: `↓` to the end, as a reader would.
+    for _ in 0..200 {
+        let _ = draw_top_overlay_at(&app, 60, 10);
+        if app.overlay_scroll().at_end() {
+            break;
+        }
+        app.nav_down();
+    }
+    let read = draw_top_overlay_at(&app, 60, 10);
+    assert!(
+        read.contains("Enter to confirm"),
+        "and now it is offered:\n{read}"
+    );
+
+    app.select();
+    let request = next_request(&rx);
+    assert!(
+        matches!(request.kind, RequestKind::CommitConfirmExecute { .. }),
+        "the confirmation went through: {:?}",
+        request.kind
+    );
+}
+
+/// **`↓` scrolls the text before it moves the highlight, and `↑` comes back the same way** (RFC 060
+/// decision 3's one reading path), on a card that has both text and an action list.
+#[test]
+fn down_scrolls_the_text_before_it_moves_the_highlight() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.push_overlay(Overlay::Refusal {
+        card: stikk_core::RefusalCard {
+            verbatim: (1..=20)
+                .map(|n| format!("prikk said line {n} of something long"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            gloss: None,
+            glossary_codes: Vec::new(),
+            next_steps: vec![
+                stikk_core::NextStep {
+                    label: "Choose another ref".to_string(),
+                    target: stikk_core::NextTarget::OpenView(stikk_core::Target::RefPicker),
+                },
+                stikk_core::NextStep {
+                    label: "Refresh".to_string(),
+                    target: stikk_core::NextTarget::Refresh,
+                },
+            ],
+        },
+        cursor: 0,
+    });
+    let cursor = |app: &App| match app.top_overlay() {
+        Some(Overlay::Refusal { cursor, .. }) => *cursor,
+        other => panic!("expected the refusal card, got {other:?}"),
+    };
+
+    // The text does not fit at this height, so the first `↓`s scroll it and the highlight stays put.
+    let _ = draw_top_overlay_at(&app, 60, 12);
+    assert_eq!(cursor(&app), 0);
+    let mut scrolls = 0;
+    while !app.overlay_scroll().at_end() {
+        app.nav_down();
+        let _ = draw_top_overlay_at(&app, 60, 12);
+        scrolls += 1;
+        assert_eq!(cursor(&app), 0, "the highlight waits for the text");
+        assert!(scrolls < 100);
+    }
+    assert!(scrolls > 0, "the card had text to scroll");
+
+    // At the end, `↓` moves into the actions.
+    app.nav_down();
+    let _ = draw_top_overlay_at(&app, 60, 12);
+    assert_eq!(cursor(&app), 1, "and only then the highlight moves");
+
+    // `↑` walks back through the actions to the first, and then up the text.
+    app.nav_up();
+    let _ = draw_top_overlay_at(&app, 60, 12);
+    assert_eq!(cursor(&app), 0);
+    app.nav_up();
+    let _ = draw_top_overlay_at(&app, 60, 12);
+    assert_eq!(
+        cursor(&app),
+        0,
+        "the cursor stays while the text comes back"
+    );
+    assert!(
+        app.overlay_scroll().more_above() || scrolls == 1,
+        "the text scrolled back up"
+    );
+}
+
+/// **A new card is a new reader** (RFC 060 decision 3): the latch belongs to the overlay that earned
+/// it, and does not pass to the next one.
+#[test]
+fn the_reading_latch_does_not_outlive_its_card() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(orientation_view(0, None, None)),
+        Palette::default(),
+    );
+    app.open_glossary();
+    let _ = draw_top_overlay_at(&app, 90, 240); // the whole Glossary on screen
+    assert!(app.overlay_scroll().seen_whole_card() || app.top_overlay().is_some());
+    app.back();
+    app.open_refusals();
+    assert!(
+        !app.overlay_scroll().seen_whole_card(),
+        "the next card starts unread, whatever was read before it"
+    );
 }

@@ -126,7 +126,14 @@ fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
     status_bar::render(app, frame, status);
 
     if let Some(top) = app.top_overlay() {
-        overlay::render(top, app.marked_ref(), palette, frame, area);
+        overlay::render(
+            top,
+            app.marked_ref(),
+            palette,
+            app.overlay_scroll(),
+            frame,
+            area,
+        );
     }
 }
 

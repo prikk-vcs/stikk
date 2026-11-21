@@ -46,7 +46,11 @@ fn orientation_naming_heads_main() -> Orientation {
 
 fn open(repo: &str, config: &Config) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
-    (App::open(repo, config, None, tx), rx)
+    // The colours this `Config` resolves to with no terminal to ask (RFC 059): an explicit theme
+    // gives its own palette, and `system` -- the default here -- gives `plain`, which is what a
+    // session that cannot ask really does get.
+    let resolved = crate::theme::resolve(&crate::theme::Environment::configured(config.theme));
+    (App::open(repo, resolved, None, tx), rx)
 }
 
 /// Answer every request currently queued against `backend`, applying each response in turn.

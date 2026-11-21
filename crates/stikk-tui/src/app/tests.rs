@@ -26,7 +26,13 @@ use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
 fn open(repo: &str, config: &Config) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
-    (App::open(repo, config, None, tx), rx)
+    (App::open(repo, resolved(config.theme), None, tx), rx)
+}
+
+/// The colours a test's `Config` resolves to, with no terminal to ask and nothing in the environment
+/// (RFC 059: `system` with no answer is `plain`).
+fn resolved(theme: stikk_state::config::Theme) -> crate::theme::Resolved {
+    crate::theme::resolve(&crate::theme::Environment::configured(theme))
 }
 
 fn from_state(
@@ -3646,7 +3652,10 @@ fn with_session(
         state_dir: state_dir.to_path_buf(),
         canonical_root: root.to_path_buf(),
     };
-    (App::open(root, &Config::default(), Some(session), tx), rx)
+    (
+        App::open(root, resolved(Config::default().theme), Some(session), tx),
+        rx,
+    )
 }
 
 fn session_orientation(current: &str) -> stikk_core::OrientationView {

@@ -80,8 +80,9 @@ pub struct Session {
 }
 
 /// Run the interactive TUI over `repo`, driving prikk through the seam on a worker thread and
-/// rendering with the palette from `config`. The caller must have confirmed stdout is a TTY
-/// ([`stdout_is_tty`]); the terminal is restored on every exit path including panic (handoff §6).
+/// rendering with the palette resolved from `config` and the terminal itself (RFC 059). The caller
+/// must have confirmed stdout is a TTY ([`stdout_is_tty`]); the terminal is restored on every exit
+/// path including panic (handoff §6).
 ///
 /// `session` is where this repository is remembered, or `None` for a launch that remembers
 /// nothing (RFC 046).
@@ -96,6 +97,26 @@ pub fn run(
     config: &Config,
     session: Option<Session>,
 ) -> Result<()> {
+    // **The colours are resolved first, and the terminal is asked here or nowhere** (RFC 059
+    // decision 5; Handoff A trap 1): the query goes out before the alternate screen and raw mode,
+    // never from inside the UI loop, and never twice. Every environment read is here, so
+    // `theme::resolve` itself reads nothing and its bands are plain unit tests (trap 2).
+    let mut environment = theme::Environment {
+        theme: config.theme,
+        no_color: std::env::var("NO_COLOR").ok(),
+        colorterm: std::env::var("COLORTERM").ok(),
+        wt_session: std::env::var_os("WT_SESSION").is_some(),
+        colorfgbg: std::env::var("COLORFGBG").ok(),
+        windows: cfg!(windows),
+        answer: None,
+    };
+    // Asked of the resolver, not decided here a second time: `dark`, `light` and `plain` send no
+    // query, and neither does `NO_COLOR` with `system`.
+    if theme::resolve(&environment).wants_an_answer {
+        environment.answer = theme::detect();
+    }
+    let resolved = theme::resolve(&environment);
+
     let _guard = TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))
         .map_err(|e| StikkError::environment("could not initialize the terminal", e))?;
@@ -113,7 +134,7 @@ pub fn run(
                 worker::run(prikk, repo, req_rx, res_tx);
             }));
         });
-        ui_loop(&mut terminal, repo, config, session, req_tx, &res_rx)
+        ui_loop(&mut terminal, repo, resolved, session, req_tx, &res_rx)
     })
 }
 
@@ -122,12 +143,12 @@ pub fn run(
 fn ui_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     repo: &Path,
-    config: &Config,
+    resolved: theme::Resolved,
     session: Option<Session>,
     req_tx: mpsc::Sender<worker::Request>,
     res_rx: &mpsc::Receiver<worker::Response>,
 ) -> Result<()> {
-    let mut app = App::open(repo, config, session, req_tx);
+    let mut app = App::open(repo, resolved, session, req_tx);
     // Tracked locally, not on `App`: once the worker is gone there is nothing left to poll, and this
     // must flip at most once so the fault it records stays dismissible (§ `App::worker_stopped`).
     let mut worker_alive = true;

@@ -152,6 +152,8 @@ fn the_palette_agrees_with_palette059_to_two_decimals() {
         let scheme = match kind {
             SchemeKind::Dark => Scheme::dark(),
             SchemeKind::Light => Scheme::light(),
+            // `plain` chooses no colour, so `palette059.txt` has no row for it.
+            SchemeKind::Plain => continue,
         };
         let palette = scheme.for_depth(depth);
         for (role, measured) in expected {
@@ -232,5 +234,289 @@ fn no_palette_role_is_a_colour_only_the_terminal_knows() {
                 );
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The resolver (RFC 059 decisions 4, 5, 6 and 9; Handoff A §2)
+//
+// **Every one of these runs with no terminal and no environment variable.** `resolve` reads
+// nothing: `crate::run` does the reading and hands it over as an `Environment`, which is what lets
+// each band below be an ordinary unit test (trap 2).
+// ---------------------------------------------------------------------------------------------
+
+/// `system`, with nothing else said.
+fn system() -> Environment {
+    Environment::configured(ConfigTheme::System)
+}
+
+/// What the terminal answered: which way round it is, and the background itself.
+fn answered(light: bool, background: (u8, u8, u8)) -> Option<Answer> {
+    Some(Answer { light, background })
+}
+
+/// Decision 4: `COLORTERM`, `WT_SESSION` and the platform pick the depth, and a terminal that
+/// promises nothing gets the 256-colour values.
+#[test]
+fn the_depth_follows_what_the_terminal_promised() {
+    let truecolor = Environment {
+        colorterm: Some("truecolor".to_string()),
+        ..system()
+    };
+    let bit24 = Environment {
+        colorterm: Some("24bit".to_string()),
+        ..system()
+    };
+    let windows_terminal = Environment {
+        wt_session: true,
+        ..system()
+    };
+    let windows = Environment {
+        windows: true,
+        ..system()
+    };
+    for (what, environment) in [
+        ("COLORTERM=truecolor", truecolor),
+        ("COLORTERM=24bit", bit24),
+        ("WT_SESSION set", windows_terminal),
+        ("Windows", windows),
+    ] {
+        assert_eq!(
+            resolve(&environment).depth,
+            Depth::TrueColour,
+            "{what} promises 24-bit colour"
+        );
+    }
+    // **Nothing promised is 256 colours**, which is macOS Terminal: it sets no `COLORTERM` (F3).
+    assert_eq!(resolve(&system()).depth, Depth::Ansi256);
+    // A `COLORTERM` that says something else is not a promise.
+    let other = Environment {
+        colorterm: Some("8bit".to_string()),
+        ..system()
+    };
+    assert_eq!(resolve(&other).depth, Depth::Ansi256);
+    // The depth is decided for an explicit theme too — it is the terminal's, not the theme's.
+    let dark_on_windows = Environment {
+        windows: true,
+        ..Environment::configured(ConfigTheme::Dark)
+    };
+    assert_eq!(resolve(&dark_on_windows).depth, Depth::TrueColour);
+}
+
+/// Decision 5: an answer gives `light` or `dark`, and says so.
+#[test]
+fn an_answer_picks_the_palette_and_is_named_as_the_reason() {
+    let light = Environment {
+        answer: answered(true, (0xff, 0xff, 0xff)),
+        ..system()
+    };
+    let resolved = resolve(&light);
+    assert_eq!(resolved.palette.kind, SchemeKind::Light);
+    assert_eq!(resolved.reason, Reason::Detected { light: true });
+    assert_eq!(resolved.fell_back, 0);
+
+    let dark = Environment {
+        answer: answered(false, (0x2e, 0x34, 0x40)),
+        ..system()
+    };
+    let resolved = resolve(&dark);
+    assert_eq!(resolved.palette.kind, SchemeKind::Dark);
+    assert_eq!(resolved.reason, Reason::Detected { light: false });
+    assert_eq!(resolved.fell_back, 0);
+}
+
+/// Decision 5: no answer, but `COLORFGBG`'s last field says which way round the terminal is — and
+/// **anything else in that field is no answer at all**.
+#[test]
+fn colorfgbg_decides_only_where_it_says_something() {
+    for value in ["0;15", "15", "default;15", "0;default;7", " 7 ", "7"] {
+        let environment = Environment {
+            colorfgbg: Some(value.to_string()),
+            ..system()
+        };
+        let resolved = resolve(&environment);
+        assert_eq!(
+            resolved.palette.kind,
+            SchemeKind::Light,
+            "COLORFGBG={value:?} names a light background"
+        );
+        assert_eq!(resolved.reason, Reason::FromColorFgBg { light: true });
+    }
+    for value in ["15;0", "0", "15;8", "7;6", "1"] {
+        let environment = Environment {
+            colorfgbg: Some(value.to_string()),
+            ..system()
+        };
+        let resolved = resolve(&environment);
+        assert_eq!(
+            resolved.palette.kind,
+            SchemeKind::Dark,
+            "COLORFGBG={value:?} names a dark background"
+        );
+        assert_eq!(resolved.reason, Reason::FromColorFgBg { light: false });
+    }
+    // **Not an answer:** a colour index above 15, a word, an empty field, no field at all. A
+    // terminal that writes one of these has not said which way round it is.
+    for value in [
+        "0;9",
+        "0;33",
+        "0;default",
+        "15;",
+        "",
+        ";",
+        "0;15;x",
+        "0;0x7",
+    ] {
+        let environment = Environment {
+            colorfgbg: Some(value.to_string()),
+            ..system()
+        };
+        let resolved = resolve(&environment);
+        assert_eq!(
+            resolved.palette.kind,
+            SchemeKind::Plain,
+            "COLORFGBG={value:?} says nothing stikk can use"
+        );
+        assert_eq!(resolved.reason, Reason::NoAnswer);
+    }
+}
+
+/// Decision 5: no answer at all is `plain` — safe on any background.
+#[test]
+fn no_answer_at_all_is_plain() {
+    let resolved = resolve(&system());
+    assert_eq!(resolved.palette.kind, SchemeKind::Plain);
+    assert_eq!(resolved.reason, Reason::NoAnswer);
+    for (role, colour) in resolved.palette.roles() {
+        assert_eq!(colour, Color::Reset, "{role} is the terminal's own");
+    }
+    assert_eq!(resolved.palette.bg, None, "plain paints no background");
+}
+
+/// Decision 9: `NO_COLOR` *"present and not an empty string"*.
+#[test]
+fn no_color_is_honoured_when_it_is_set_to_anything_at_all() {
+    for value in ["1", "0", "no", "true", " "] {
+        let environment = Environment {
+            no_color: Some(value.to_string()),
+            ..system()
+        };
+        let resolved = resolve(&environment);
+        assert_eq!(
+            resolved.palette.kind,
+            SchemeKind::Plain,
+            "NO_COLOR={value:?} is set"
+        );
+        assert_eq!(resolved.reason, Reason::NoColor);
+        // **And no query is wanted**: the answer could not change what this resolves to.
+        assert!(
+            !resolved.wants_an_answer,
+            "NO_COLOR={value:?} sends no query"
+        );
+    }
+    // **Empty is not set**, so `system` goes on to ask.
+    let empty = Environment {
+        no_color: Some(String::new()),
+        ..system()
+    };
+    let resolved = resolve(&empty);
+    assert!(resolved.wants_an_answer, "an empty NO_COLOR is ignored");
+    assert_eq!(resolved.reason, Reason::NoAnswer);
+}
+
+/// Decision 9: **an explicit theme in the config wins over `NO_COLOR`**, as no-color.org's own FAQ
+/// asks — *"user-level configuration files … should override the `NO_COLOR` environment variable"*.
+#[test]
+fn an_explicit_theme_wins_over_no_color() {
+    for (theme, kind) in [
+        (ConfigTheme::Dark, SchemeKind::Dark),
+        (ConfigTheme::Light, SchemeKind::Light),
+    ] {
+        let environment = Environment {
+            no_color: Some("1".to_string()),
+            ..Environment::configured(theme)
+        };
+        let resolved = resolve(&environment);
+        assert_eq!(resolved.palette.kind, kind);
+        assert_eq!(resolved.reason, Reason::FromConfig(kind));
+        assert!(!resolved.wants_an_answer);
+    }
+}
+
+/// **The query is sent for `system` and for nothing else** (decision 5) — and this is the same
+/// question `crate::run` asks before it calls `detect`, so a theme that must not query cannot start
+/// querying without this test failing.
+#[test]
+fn only_system_wants_an_answer_from_the_terminal() {
+    assert!(resolve(&system()).wants_an_answer);
+    for theme in [ConfigTheme::Dark, ConfigTheme::Light] {
+        assert!(
+            !resolve(&Environment::configured(theme)).wants_an_answer,
+            "an explicit theme sends no query"
+        );
+    }
+    let no_color = Environment {
+        no_color: Some("1".to_string()),
+        ..system()
+    };
+    assert!(!resolve(&no_color).wants_an_answer);
+}
+
+/// **Decision 6's guard**, on the two backgrounds the palette's references do not cover: a mid-grey,
+/// where nothing stikk chose can reach 7 : 1, and a tinted dark scheme, where everything still does.
+#[test]
+fn the_guard_sends_a_role_back_to_the_terminals_own_colour_below_seven_to_one() {
+    // A mid-grey is the worst background there is: both palettes are built against backgrounds that
+    // are decidedly one thing or the other, and against this one every role falls.
+    for (light, kind) in [(false, SchemeKind::Dark), (true, SchemeKind::Light)] {
+        for depth in [
+            ("", Depth::Ansi256),
+            ("COLORTERM=truecolor", Depth::TrueColour),
+        ] {
+            let environment = Environment {
+                answer: answered(light, (0x80, 0x80, 0x80)),
+                colorterm: (!depth.0.is_empty()).then(|| "truecolor".to_string()),
+                ..system()
+            };
+            let resolved = resolve(&environment);
+            assert_eq!(resolved.depth, depth.1);
+            assert_eq!(resolved.palette.kind, kind, "the detected palette is kept");
+            assert_eq!(
+                resolved.fell_back,
+                4,
+                "{} at {:?} on #808080: every chosen role falls",
+                kind.name(),
+                depth.1
+            );
+            for (role, colour) in resolved.palette.roles() {
+                assert_eq!(
+                    colour,
+                    Color::Reset,
+                    "{} {role} fell back to the terminal's own colour",
+                    kind.name()
+                );
+            }
+            // **The reason is still the answer**, not `plain`: the terminal did answer, and what the
+            // row has to say is that every role fell back on top of that (decision 10).
+            assert_eq!(resolved.reason, Reason::Detected { light });
+        }
+    }
+
+    // A tinted dark scheme none of the references includes. The dark palette clears 7 : 1 on it at
+    // both depths, so nothing falls and nothing is dimmed for no reason.
+    for depth in [Depth::Ansi256, Depth::TrueColour] {
+        let environment = Environment {
+            answer: answered(false, (0x3b, 0x2f, 0x4a)),
+            colorterm: matches!(depth, Depth::TrueColour).then(|| "truecolor".to_string()),
+            ..system()
+        };
+        let resolved = resolve(&environment);
+        assert_eq!(resolved.depth, depth);
+        assert_eq!(resolved.fell_back, 0, "#3b2f4a at {depth:?}");
+        assert_eq!(
+            resolved.palette,
+            Scheme::dark().for_depth(depth),
+            "the palette is untouched at {depth:?}"
+        );
     }
 }

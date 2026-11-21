@@ -50,7 +50,6 @@ pub(crate) const LIGHT_REFERENCES: [(u8, u8, u8); 3] = [
 /// The contrast every colour stikk chooses must reach: WCAG AAA for body text (NFR-A03, as RFC 059
 /// decision 12 amends it). WCAG AA's 4.5 : 1 is the bar stikk 0.20.0 aimed at and missed in every
 /// column of F1's table.
-#[cfg(test)]
 pub(crate) const MINIMUM_CONTRAST: f64 = 7.0;
 
 /// Which colour depth stikk draws at (RFC 059 decision 4).
@@ -63,13 +62,6 @@ pub enum Depth {
     /// 24-bit colour: the role's `rgb` value, written as an RGB escape.
     TrueColour,
     /// 256 colours: the role's **chosen** palette index.
-    ///
-    /// Constructed by the resolver RFC 059 decision 4 asks for, which is this handoff's next commit;
-    /// until then only the palette's own test draws at this depth.
-    #[allow(
-        dead_code,
-        reason = "the resolver that picks a depth is the next commit"
-    )]
     Ansi256,
 }
 
@@ -84,6 +76,9 @@ pub enum SchemeKind {
     Dark,
     /// The light palette.
     Light,
+    /// No colour of stikk's own (decision 7) — **and decision 5's fallback**, which is why it arrives
+    /// with the resolver rather than with `high-contrast`.
+    Plain,
 }
 
 impl SchemeKind {
@@ -94,6 +89,8 @@ impl SchemeKind {
         match self {
             Self::Dark => &DARK_REFERENCES,
             Self::Light => &LIGHT_REFERENCES,
+            // Nothing to promise: `plain` chooses no colour at all.
+            Self::Plain => &[],
         }
     }
 
@@ -103,6 +100,7 @@ impl SchemeKind {
         match self {
             Self::Dark => "dark",
             Self::Light => "light",
+            Self::Plain => "plain",
         }
     }
 }
@@ -199,6 +197,25 @@ impl Scheme {
         }
     }
 
+    /// **No colour of stikk's own** (decision 7): every role is the terminal's own text colour, and no
+    /// background is painted.
+    ///
+    /// Safe on any background, which is why it is also where `system` lands when the terminal does not
+    /// answer (decision 5). Nothing is lost: every status carries text or a shape (NFR-A03), and
+    /// emphasis keeps bold and reverse video.
+    #[must_use]
+    pub const fn plain() -> Self {
+        Self {
+            kind: SchemeKind::Plain,
+            fg: RoleColour::terminals_own(),
+            bg: None,
+            dim: RoleColour::terminals_own(),
+            accent: RoleColour::terminals_own(),
+            ok: RoleColour::terminals_own(),
+            warn: RoleColour::terminals_own(),
+        }
+    }
+
     /// The colours to draw with at `depth`: `Color::Rgb` at 24-bit, `Color::Indexed` at 256.
     #[must_use]
     pub const fn for_depth(&self, depth: Depth) -> Palette {
@@ -256,19 +273,6 @@ impl Palette {
         ]
     }
 
-    /// Build a palette from the configured theme, at 24-bit colour.
-    ///
-    /// **Superseded within this RFC** by `theme::resolve` (RFC 059 decision 5), which is where the
-    /// terminal's answer, `NO_COLOR` and the depth are weighed. It stays for this one commit so the
-    /// palette's values can move before the resolver that chooses between them exists.
-    #[must_use]
-    pub fn from_theme(theme: ConfigTheme) -> Self {
-        match theme {
-            ConfigTheme::Light => Scheme::light().for_depth(Depth::TrueColour),
-            ConfigTheme::Dark | ConfigTheme::System => Scheme::dark().for_depth(Depth::TrueColour),
-        }
-    }
-
     /// The light palette at 24-bit, for the render tests that capture a view in both themes.
     #[cfg(test)]
     #[must_use]
@@ -287,7 +291,6 @@ impl Default for Palette {
 
 /// The relative luminance of an sRGB colour, as WCAG 2 defines it — the same formula, written once,
 /// that `palette059.py` uses and that the headless matrix reuses on rendered cells.
-#[cfg(test)]
 #[must_use]
 pub(crate) fn relative_luminance((r, g, b): (u8, u8, u8)) -> f64 {
     fn channel(value: u8) -> f64 {
@@ -303,7 +306,6 @@ pub(crate) fn relative_luminance((r, g, b): (u8, u8, u8)) -> f64 {
 
 /// The WCAG contrast ratio between two sRGB colours: 1.0 for a colour against itself, 21.0 for black
 /// against white.
-#[cfg(test)]
 #[must_use]
 pub(crate) fn contrast_ratio(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
     let (x, y) = (relative_luminance(a), relative_luminance(b));
@@ -315,7 +317,6 @@ pub(crate) fn contrast_ratio(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
 /// 16–231 are the 6 × 6 × 6 cube and 232–255 the grey ramp, both standard: **this is why a chosen
 /// index has a known contrast** (F3). **0–15 have none** — they are the terminal's own sixteen, the
 /// same unknown as a named colour — so they answer `None` and the contrast tests refuse them.
-#[cfg(test)]
 #[must_use]
 pub(crate) fn xterm_rgb(index: u8) -> Option<(u8, u8, u8)> {
     /// The cube's six levels per channel.
@@ -335,7 +336,6 @@ pub(crate) fn xterm_rgb(index: u8) -> Option<(u8, u8, u8)> {
 }
 
 /// What a rendered `Color` is worth to a contrast check.
-#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Checkable {
     /// A colour stikk chose, with a known value.
@@ -348,7 +348,6 @@ pub(crate) enum Checkable {
 }
 
 /// Classify a rendered colour for a contrast check.
-#[cfg(test)]
 #[must_use]
 pub(crate) fn checkable(colour: Color) -> Checkable {
     match colour {
@@ -360,6 +359,264 @@ pub(crate) fn checkable(colour: Color) -> Checkable {
         },
         _ => Checkable::TerminalsGuess,
     }
+}
+
+/// What the terminal answered (RFC 059 decision 5).
+///
+/// Both halves are used: the mode decides which palette, and the background itself is what decision
+/// 6's guard re-checks every chosen colour against — the palette's references cover the common
+/// backgrounds, and this covers the rest, such as a mid-grey or a tinted scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Answer {
+    /// Whether the terminal's background is the light one, by the crate's own `theme_mode()` — which
+    /// compares the terminal's foreground and background rather than guessing from the background
+    /// alone.
+    pub light: bool,
+    /// The background itself, scaled to 8 bits per channel.
+    pub background: (u8, u8, u8),
+}
+
+/// Everything [`resolve`] is told about the world. **It reads nothing itself** (Handoff A trap 2): the
+/// reads happen in [`crate::run`] and arrive here as data, so every band below is a unit test with no
+/// terminal and no environment variable.
+#[derive(Debug, Clone, Default)]
+pub struct Environment {
+    /// The configured theme.
+    pub theme: ConfigTheme,
+    /// `NO_COLOR`, as the environment holds it. **Present and non-empty** is what counts
+    /// (no-color.org), so the empty string is not a request for anything.
+    pub no_color: Option<String>,
+    /// `COLORTERM`.
+    pub colorterm: Option<String>,
+    /// Whether `WT_SESSION` is set — Windows Terminal.
+    pub wt_session: bool,
+    /// `COLORFGBG`, whose last `;`-separated field some terminals use to say which way round they are.
+    pub colorfgbg: Option<String>,
+    /// Whether the host is Windows.
+    pub windows: bool,
+    /// What the terminal answered, or `None` — **which is both "no answer" and "not asked"**, and the
+    /// two need no telling apart: a theme that sends no query does not look here.
+    pub answer: Option<Answer>,
+}
+
+impl Environment {
+    /// The configured theme and nothing else — no `NO_COLOR`, no `COLORTERM`, no answer. What a render
+    /// test means when it names a theme.
+    #[cfg(test)]
+    #[must_use]
+    pub fn configured(theme: ConfigTheme) -> Self {
+        Self {
+            theme,
+            ..Self::default()
+        }
+    }
+
+    /// Whether `NO_COLOR` applies: *"present and not an empty string"* (no-color.org).
+    fn no_color(&self) -> bool {
+        self.no_color
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    /// Whether the resolver would use an answer from the terminal — which is the only reason to send a
+    /// query.
+    ///
+    /// **An explicit theme never queries** (decision 5), so a user can always choose one to avoid it,
+    /// and `NO_COLOR` with `system` does not either: the answer could not change what it resolves to.
+    fn wants_an_answer(&self) -> bool {
+        match self.theme {
+            ConfigTheme::System => !self.no_color(),
+            ConfigTheme::Light | ConfigTheme::Dark => false,
+        }
+    }
+
+    /// Which way round `COLORFGBG` says the terminal is, or `None` for no answer (decision 5).
+    ///
+    /// The last `;`-separated field is the background: `7` or `15` is light, `0`–`6` or `8` is dark.
+    /// **Anything else counts as no answer**, including `default`, a colour index above 15 and a field
+    /// that is not a number at all — a terminal that writes something else has not told stikk which
+    /// way round it is.
+    fn colorfgbg_is_light(&self) -> Option<bool> {
+        let value = self.colorfgbg.as_deref()?;
+        let last = value.rsplit(';').next()?.trim();
+        match last.parse::<u8>() {
+            Ok(7 | 15) => Some(true),
+            Ok(0..=6 | 8) => Some(false),
+            Ok(_) | Err(_) => None,
+        }
+    }
+
+    /// Which depth to draw at (decision 4).
+    ///
+    /// 24-bit where a terminal promises it (`COLORTERM`), where Windows Terminal is running
+    /// (`WT_SESSION`), or on Windows at all — Microsoft's console blog (2016-09-22) announced 24-bit
+    /// colour in the Windows console from Windows 10 Insider build 14931. **256 colours otherwise**,
+    /// which is macOS Terminal, the common case (F3).
+    fn depth(&self) -> Depth {
+        let promised = matches!(self.colorterm.as_deref(), Some("truecolor" | "24bit"));
+        if promised || self.wt_session || self.windows {
+            Depth::TrueColour
+        } else {
+            Depth::Ansi256
+        }
+    }
+}
+
+/// Why the palette in a [`Resolved`] is the one in use — the Orientation row's own words (decision
+/// 10), and the support line when a user says the colours look wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reason {
+    /// The terminal answered, and this is which way round it is.
+    Detected {
+        /// Whether the answer was the light background.
+        light: bool,
+    },
+    /// The terminal did not answer, but `COLORFGBG` said which way round it is.
+    FromColorFgBg {
+        /// Whether `COLORFGBG`'s background field was a light one.
+        light: bool,
+    },
+    /// No answer, and no `COLORFGBG` to fall back on: `plain`, which is safe on any background.
+    NoAnswer,
+    /// `NO_COLOR` is set, and the theme is `system`.
+    NoColor,
+    /// The config named this palette, and an explicit choice wins — over `NO_COLOR` too, as
+    /// no-color.org's own FAQ asks (decision 9).
+    FromConfig(SchemeKind),
+}
+
+/// The outcome of [`resolve`]: what to draw with, at which depth, and why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Resolved {
+    /// The colours to draw with — already at `depth`, and already past decision 6's guard.
+    pub palette: Palette,
+    /// Which depth they were resolved at.
+    pub depth: Depth,
+    /// Why this palette (decision 10).
+    #[allow(
+        dead_code,
+        reason = "the Orientation row that shows it is this handoff's commit 4"
+    )]
+    pub reason: Reason,
+    /// How many roles decision 6's guard sent back to the terminal's own colour.
+    #[allow(
+        dead_code,
+        reason = "the Orientation row that shows it is this handoff's commit 4"
+    )]
+    pub fell_back: usize,
+    /// Whether the resolver would have used an answer from the terminal.
+    ///
+    /// **This is what decides whether a query is sent at all**, and [`crate::run`] asks it of this
+    /// same function before asking again with the answer — so what the tests assert about querying is
+    /// what production does, not a second rule beside it.
+    pub wants_an_answer: bool,
+}
+
+#[cfg(test)]
+impl Resolved {
+    /// A resolution that was not one: the palette a render test hands in, as if the config had named
+    /// it. No guard ran, because no terminal answered.
+    pub(crate) fn drawing_with(palette: Palette) -> Self {
+        Self {
+            palette,
+            depth: Depth::TrueColour,
+            reason: Reason::FromConfig(palette.kind),
+            fell_back: 0,
+            wants_an_answer: false,
+        }
+    }
+}
+
+/// Resolve the configured theme, the environment and the terminal's answer into the colours to draw
+/// with (RFC 059 decisions 4, 5, 6 and 9). **Pure**: it reads nothing, sends nothing, and waits for
+/// nothing.
+#[must_use]
+pub fn resolve(environment: &Environment) -> Resolved {
+    let depth = environment.depth();
+    let wants_an_answer = environment.wants_an_answer();
+    let (scheme, reason) = match environment.theme {
+        ConfigTheme::Dark => (Scheme::dark(), Reason::FromConfig(SchemeKind::Dark)),
+        ConfigTheme::Light => (Scheme::light(), Reason::FromConfig(SchemeKind::Light)),
+        ConfigTheme::System if environment.no_color() => (Scheme::plain(), Reason::NoColor),
+        ConfigTheme::System => match environment.answer {
+            Some(answer) => {
+                let scheme = if answer.light {
+                    Scheme::light()
+                } else {
+                    Scheme::dark()
+                };
+                // **Checked again on the background the terminal reported** (decision 6), which is the
+                // one background the palette's references could not cover.
+                let (palette, fell_back) = guard(scheme.for_depth(depth), answer.background);
+                return Resolved {
+                    palette,
+                    depth,
+                    reason: Reason::Detected {
+                        light: answer.light,
+                    },
+                    fell_back,
+                    wants_an_answer,
+                };
+            }
+            None => match environment.colorfgbg_is_light() {
+                Some(true) => (Scheme::light(), Reason::FromColorFgBg { light: true }),
+                Some(false) => (Scheme::dark(), Reason::FromColorFgBg { light: false }),
+                None => (Scheme::plain(), Reason::NoAnswer),
+            },
+        },
+    };
+    Resolved {
+        palette: scheme.for_depth(depth),
+        depth,
+        reason,
+        fell_back: 0,
+        wants_an_answer,
+    }
+}
+
+/// **Decision 6's guard.** Any role whose colour is below 7 : 1 on the background the terminal
+/// reported shows in the terminal's own text colour instead, and the count of those comes back.
+///
+/// Applied **at the chosen depth**, because that is the colour the user will actually see: a role can
+/// clear the bar in 24-bit and miss it as a cube entry, or the other way round.
+fn guard(mut palette: Palette, background: (u8, u8, u8)) -> (Palette, usize) {
+    let mut fell_back = 0;
+    for role in [
+        &mut palette.fg,
+        &mut palette.dim,
+        &mut palette.accent,
+        &mut palette.ok,
+        &mut palette.warn,
+    ] {
+        if let Checkable::Known(rgb) = checkable(*role)
+            && contrast_ratio(rgb, background) < MINIMUM_CONTRAST
+        {
+            *role = Color::Reset;
+            fell_back += 1;
+        }
+    }
+    (palette, fell_back)
+}
+
+/// **Ask the terminal what its background is** (RFC 059 decision 5) — the one impure step, and the
+/// only one in this module.
+///
+/// `None` is *"it did not answer"*, which [`resolve`] turns into `plain`. A terminal that does not
+/// know `OSC 11` still answers `DA1`, so it is recognised as not answering at once rather than after
+/// the wait (F2); the wait itself is the crate's default 1 s, which matters only where neither query
+/// is answered and where latency is real, such as over SSH.
+///
+/// **Called before the alternate screen and raw mode**, once, by [`crate::run`] — never inside the UI
+/// loop, and never a second time (trap 1). It needs stdin and stdout to be a terminal, which stikk
+/// has already required of itself before it starts the TUI at all.
+#[must_use]
+pub fn detect() -> Option<Answer> {
+    let answered =
+        terminal_colorsaurus::color_palette(terminal_colorsaurus::QueryOptions::default()).ok()?;
+    Some(Answer {
+        light: answered.theme_mode() == terminal_colorsaurus::ThemeMode::Light,
+        background: answered.background.scale_to_8bit(),
+    })
 }
 
 #[cfg(test)]

@@ -17,5 +17,8 @@ stikk-core  = { workspace = true }
 
 ratatui     = { workspace = true }
 
+# RFC 059 decision 5: the one terminal query, sent before the alternate screen is entered.
+terminal-colorsaurus = { workspace = true }
+
 [lints]
 workspace = true

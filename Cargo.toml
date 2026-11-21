@@ -30,6 +30,15 @@ stikk-tui   = { version = "0.20.0", path = "crates/stikk-tui" }
 # for why that sets the workspace MSRV, rather than restating the reason here too (RFC 020 §4).
 ratatui = "0.30"
 
+# RFC 059 (accepted 2026-11-21) decision 5: *system* asks the terminal whether its background is light
+# or dark, over `OSC 11`/`DA1`. Used by `stikk-tui` only, through `theme::detect`, once at startup.
+# The alternative is writing the query by hand -- raw byte reads with a timeout on Unix, and console VT
+# input on Windows, which is `terminal-trx`'s whole job (F4). By crate name it adds four small crates
+# over stikk's own tree (`terminal-colorsaurus`, `terminal-trx`, `xterm-color`, `memchr`), and on
+# Windows `windows-sys` with its `windows-link` shim; every one is MIT or Apache-2.0 and the highest
+# minimum Rust among them is 1.74, against this workspace's 1.88.
+terminal-colorsaurus = "1.0.3"
+
 # Lint discipline mirrors prikk's: unsafe is forbidden (no FFI in stikk yet; the TUI/GUI toolkit
 # decision is deferred to Program Design), public items must be documented, and the panic-prone
 # clippy lints warn so review holds the line — stikk owns no repository authority and must never

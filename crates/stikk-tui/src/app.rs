@@ -31,10 +31,9 @@ use stikk_core::{
 };
 use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
-use stikk_state::Config;
 
 use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
-use crate::theme::Palette;
+use crate::theme::{Palette, Resolved};
 use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
 /// The fallback ref (RFC 029 Handoff B §2, §4): focused on open **only** when prikk names no current
@@ -420,7 +419,7 @@ pub struct App {
     banner: Option<String>,
     /// A stikk-internal fault: the repository was untouched; the user may continue read-only (ER-04).
     fault: Option<String>,
-    palette: Palette,
+    resolved: Resolved,
     should_quit: bool,
     next_seq: u64,
     /// The channel to the worker thread (RFC 010). Sending is best-effort: if the worker has already
@@ -826,21 +825,18 @@ enum PendingRefWrite {
 }
 
 impl App {
-    /// Open `repo` and send the initial orientation request, building the palette from `config`. The
-    /// caller (normally [`crate::run`]) owns the paired worker and receiver.
+    /// Open `repo` and send the initial orientation request, drawing with the colours `resolved`
+    /// settled (RFC 059 decision 5 — resolved by [`crate::run`], which is where the terminal is asked
+    /// and the environment is read). The caller (normally [`crate::run`]) owns the paired worker and
+    /// receiver.
     #[must_use]
     pub(crate) fn open(
         repo: impl Into<PathBuf>,
-        config: &Config,
+        resolved: Resolved,
         session: Option<crate::Session>,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
-        let mut app = Self::new(
-            repo,
-            OrientationState::Loading,
-            Palette::from_theme(config.theme),
-            req_tx,
-        );
+        let mut app = Self::new(repo, OrientationState::Loading, resolved, req_tx);
         // Read before the first dispatch, and **shown nowhere** until prikk has confirmed it
         // (RFC 046 decision 5). `load` answers `None` for every failure, so a corrupt or foreign
         // record is simply a launch that starts fresh.
@@ -874,7 +870,7 @@ impl App {
         palette: Palette,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
-        let mut app = Self::new(repo, state, palette, req_tx);
+        let mut app = Self::new(repo, state, Resolved::drawing_with(palette), req_tx);
         if matches!(app.state, OrientationState::Loaded(_)) {
             app.ref_focus = RefFocus::Ref(DEFAULT_REF.to_string());
         }
@@ -884,7 +880,7 @@ impl App {
     fn new(
         repo: impl Into<PathBuf>,
         state: OrientationState,
-        palette: Palette,
+        resolved: Resolved,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
         Self {
@@ -897,7 +893,7 @@ impl App {
             refusals: RefusalHistory::new(),
             banner: None,
             fault: None,
-            palette,
+            resolved,
             should_quit: false,
             next_seq: 0,
             req_tx,
@@ -5640,7 +5636,7 @@ impl App {
     /// The active colour palette.
     #[must_use]
     pub fn palette(&self) -> &Palette {
-        &self.palette
+        &self.resolved.palette
     }
 
     /// The top overlay, if any (the one that renders and receives navigation keys).

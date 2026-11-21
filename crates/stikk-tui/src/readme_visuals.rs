@@ -100,6 +100,10 @@ fn orientation() -> stikk_core::OrientationView {
 }
 
 /// An `App` focused on the invented repository, with nothing loaded yet.
+///
+/// **The palette is the explicit dark one, at 24-bit** (RFC 059 decision 11): an image is not a
+/// terminal, so there is nothing to detect and nothing that could answer, and the page behind the
+/// cells supplies the dark background these colours were chosen against ([`BACKGROUND`]).
 fn app() -> (App, mpsc::Receiver<crate::worker::Request>) {
     let (tx, rx) = mpsc::channel();
     let app = App::from_state(

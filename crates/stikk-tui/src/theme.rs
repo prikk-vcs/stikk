@@ -19,6 +19,7 @@
 //! terminal rounds does not.
 
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 
 use stikk_state::config::Theme as ConfigTheme;
 
@@ -360,6 +361,43 @@ pub fn selected(palette: &Palette) -> Style {
     Style::default()
         .fg(palette.accent)
         .add_modifier(Modifier::BOLD)
+        // **Reverse video, and the whole row** (RFC 061 decision 4): a colour alone said *this row*
+        // in one word of it, and a reader scanning forty rows had to find that word. Every terminal
+        // in RFC 059's survey supports SGR 7, and `select_row` carries it to the row's other spans.
+        .add_modifier(Modifier::REVERSED)
+}
+
+/// **The selected row, across its whole width** (RFC 061 decision 4): every span of it takes reverse
+/// video, and the row is padded to `width` so the highlight runs to the panel's edge rather than
+/// stopping at the last word.
+///
+/// Each span keeps its own colour — a dim update-seq stays dim, under the swap — so a row says the
+/// same things it said unselected. **The swap is decided here and nowhere else** (decision 4), which
+/// is what `emphasis_guard` enforces.
+#[must_use]
+pub fn select_row(line: Line<'_>, width: usize) -> Line<'_> {
+    let drawn: usize = line
+        .spans
+        .iter()
+        .map(|span| span.content.chars().count())
+        .sum();
+    let mut spans: Vec<Span<'_>> = line
+        .spans
+        .into_iter()
+        .map(|span| {
+            let style = span.style.add_modifier(Modifier::REVERSED);
+            Span::styled(span.content, style)
+        })
+        .collect();
+    if let Some(pad) = width.checked_sub(drawn).filter(|pad| *pad > 0) {
+        // **The terminal's own pair, swapped** (decision 4): the padding carries no colour of
+        // stikk's, so its contrast is the one the terminal already chose for itself.
+        spans.push(Span::styled(
+            " ".repeat(pad),
+            Style::default().add_modifier(Modifier::REVERSED),
+        ));
+    }
+    Line::from(spans)
 }
 
 /// The relative luminance of an sRGB colour, as WCAG 2 defines it — the same formula, written once,

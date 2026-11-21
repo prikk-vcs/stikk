@@ -55,7 +55,9 @@ pub fn render(
         offset,
     } = focus;
     let width = usize::from(area.width.saturating_sub(3));
-    let lines = compare_lines(view, opened, cursor, raw, palette, width);
+    // The width the rows are drawn in, one wider than they wrap to (RFC 061 decision 4).
+    let inner = usize::from(area.width.saturating_sub(2));
+    let lines = compare_lines(view, opened, cursor, raw, palette, width, inner);
 
     let viewport = area.height.saturating_sub(2);
     let max_offset = u16::try_from(lines.len())
@@ -93,6 +95,7 @@ pub fn render(
 }
 
 /// Every row, already wrapped to `width`, so the caller's scroll clamp is exact.
+#[allow(clippy::too_many_arguments)] // one more: the width the rows are drawn in (RFC 061)
 fn compare_lines<'a>(
     view: &CompareView,
     opened: &crate::app::CompareSource,
@@ -100,6 +103,7 @@ fn compare_lines<'a>(
     raw: bool,
     palette: &Palette,
     width: usize,
+    inner: usize,
 ) -> Vec<Line<'a>> {
     let mut lines: Vec<Line> = Vec::new();
     let say = |lines: &mut Vec<Line<'a>>, text: &str, indent: &str, style: Style| {
@@ -167,7 +171,7 @@ fn compare_lines<'a>(
     }
 
     for (at, entry) in compared.entries.iter().enumerate() {
-        entry_lines(&mut lines, entry, at == cursor, raw, palette, width);
+        entry_lines(&mut lines, entry, at == cursor, raw, palette, width, inner);
     }
 
     if !compared.unsupported.is_empty() {
@@ -199,6 +203,7 @@ fn compare_lines<'a>(
 }
 
 /// One entry's section.
+#[allow(clippy::too_many_arguments)] // one more: the width the rows are drawn in (RFC 061)
 fn entry_lines<'a>(
     lines: &mut Vec<Line<'a>>,
     entry: &ComparedEntry,
@@ -206,6 +211,7 @@ fn entry_lines<'a>(
     raw: bool,
     palette: &Palette,
     width: usize,
+    inner: usize,
 ) {
     let marker = if selected { "\u{25b8} " } else { "  " };
     let title_style = if selected {
@@ -218,6 +224,13 @@ fn entry_lines<'a>(
         // Core composes the status word and the path(s) as pieces (RFC 036 decision 8).
         Span::styled(compose(&entry.title), title_style),
     ]));
+    if selected {
+        // The whole row, to the view's edge (RFC 061 decision 4).
+        let row = lines.len() - 1;
+        if let Some(rows) = lines.get_mut(row..) {
+            crate::view::select_rows(rows, inner);
+        }
+    }
 
     if raw && selected {
         // **One line per row, each wrapped verbatim** — Patch detail's own raw path, for the same

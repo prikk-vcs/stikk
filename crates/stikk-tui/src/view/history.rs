@@ -17,7 +17,7 @@ use stikk_prikk::BlockRow;
 use crate::text::{compose, identifier, wrap_indented};
 use crate::theme::Palette;
 use crate::title::Title;
-use crate::view::wrap_spans;
+use crate::view::wrap_row;
 
 /// The queued tier's label, and the indent its continuation rows line up under — the same columns,
 /// so a wrapped sentence reads as one tier rather than as a second row of the lineage.
@@ -95,7 +95,7 @@ pub fn render(
             // **Wrapped, never clipped** (RFC 024). A row carrying every marker at once — a
             // rollback merge that needs attestations and is the tip — is 85 columns, so at 80 it
             // lost `\u{2190} tip` entirely, and was cut mid-word before reaching it. Measured, not assumed.
-            lines.extend(wrap_spans(spans, text_width, ROW_INDENT));
+            lines.extend(wrap_row(spans, text_width, ROW_INDENT, i == cursor));
             if i == cursor {
                 selected_end = u16::try_from(lines.len().saturating_sub(1)).unwrap_or(u16::MAX);
             }

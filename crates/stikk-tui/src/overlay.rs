@@ -1546,6 +1546,9 @@ fn render_action_list(
                 ),
             ],
         );
+        if i == cursor {
+            row.select();
+        }
         lines.push(row);
         if let Some(reason) = reason {
             // **On the row below it**, not beside it: an entry's name and its reason both read whole
@@ -1655,6 +1658,9 @@ fn render_palette(
         // cut at the border.
         let mut row = Body::new();
         row.spans("    ", spans);
+        if selected {
+            row.select();
+        }
         lines.push(row);
     }
     ListPanel {
@@ -3856,6 +3862,9 @@ impl Scroll {
 #[derive(Default, Clone)]
 pub(crate) struct Body<'a> {
     items: Vec<Item<'a>>,
+    /// Which items are the selection (RFC 061 decision 4) — every row they wrap to is drawn in
+    /// reverse video, padded to the panel's width.
+    selected: Vec<usize>,
 }
 
 /// **How much of the panel's inner width an item may use** (RFC 024 §2, kept by RFC 060).
@@ -4115,6 +4124,15 @@ impl<'a> Body<'a> {
         self
     }
 
+    /// **Mark the row just pushed as the selection** (RFC 061 decision 4), so every row it wraps to
+    /// is drawn in reverse video and padded to the panel's width.
+    pub(crate) fn select(&mut self) -> &mut Self {
+        if let Some(last) = self.items.len().checked_sub(1) {
+            self.selected.push(last);
+        }
+        self
+    }
+
     /// A selectable row (RFC 024 §2): the cursor marker, then the label, hanging under the label.
     pub(crate) fn selectable(
         &mut self,
@@ -4134,7 +4152,11 @@ impl<'a> Body<'a> {
             marker,
             "  ",
             text,
-        )
+        );
+        if selected {
+            self.select();
+        }
+        self
     }
 
     /// A selectable row that also carries a **mark** (RFC 041 decision 1): two marker columns, then
@@ -4163,6 +4185,9 @@ impl<'a> Body<'a> {
             text: text.as_ref().to_string(),
             style,
         });
+        if selected {
+            self.select();
+        }
         self
     }
 
@@ -4180,7 +4205,11 @@ impl<'a> Body<'a> {
         let width = gutter;
         let mut out: Vec<Line<'a>> = Vec::new();
         let mut confirm_lines: Vec<(usize, Line<'a>)> = Vec::new();
-        for item in self.items {
+        let selected = self.selected;
+        for (index, item) in self.items.into_iter().enumerate() {
+            // **Where this item's rows begin** (RFC 061 decision 4): one entry can wrap to several
+            // rows, and the whole of a selected entry is reversed, not only its first row.
+            let from = out.len();
             match item {
                 Item::Blank => out.push(Line::from("")),
                 Item::Prose {
@@ -4303,6 +4332,11 @@ impl<'a> Body<'a> {
                     out.push(not_yet);
                 }
                 Item::Row(line) => out.push(line),
+            }
+            if selected.contains(&index) {
+                for row in out.iter_mut().skip(from) {
+                    *row = crate::theme::select_row(std::mem::take(row), full);
+                }
             }
         }
         (out, confirm_lines)

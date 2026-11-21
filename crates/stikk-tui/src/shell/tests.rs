@@ -1479,15 +1479,36 @@ fn keeps_seven_to_one(
     what: &str,
     palette: &crate::theme::Palette,
     depth: crate::theme::Depth,
-) -> (usize, usize) {
+) -> (usize, usize, usize) {
     use crate::theme::{Checkable, MINIMUM_CONTRAST, checkable, contrast_ratio};
 
     let area = buffer.area;
-    let (mut cells, mut checks) = (0_usize, 0_usize);
+    let (mut cells, mut checks, mut reversed_cells) = (0_usize, 0_usize, 0_usize);
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
             let cell = buffer.cell((x, y)).expect("a cell inside the buffer");
-            let fg = match checkable(cell.fg) {
+            // **Reverse video swaps the pair before anything is compared** (RFC 061 decision 4): a
+            // selected row's cell draws its foreground as its background, so checking it unswapped
+            // would check a pair the terminal never shows.
+            let reversed = cell.modifier.contains(ratatui::style::Modifier::REVERSED);
+            if reversed {
+                reversed_cells += 1;
+            }
+            let (front, back) = if reversed {
+                (cell.bg, cell.fg)
+            } else {
+                (cell.fg, cell.bg)
+            };
+            // A swapped cell whose text is now the terminal's own and whose background is one of
+            // stikk's is **the same two values**, so it is checked as that colour against the
+            // theme's references — the ratio RFC 059 already holds (decision 4). Where both ends
+            // are the terminal's own, the swap is of a pair stikk did not choose, and it is skipped
+            // as before.
+            let (front, back) = match (checkable(front), checkable(back)) {
+                (Checkable::TerminalsOwn, Checkable::Known(_)) => (back, front),
+                _ => (front, back),
+            };
+            let fg = match checkable(front) {
                 // The terminal's own pair: nothing of stikk's to check, and nothing stikk could
                 // check (RFC 059 decision 2).
                 Checkable::TerminalsOwn => continue,
@@ -1498,38 +1519,36 @@ fn keeps_seven_to_one(
                     palette.kind.name(),
                     depth.words(),
                     cell.symbol(),
-                    cell.fg,
+                    front,
                 ),
             };
-            let against: Vec<(u8, u8, u8)> = match checkable(cell.bg) {
+            let against: Vec<(u8, u8, u8)> = match checkable(back) {
                 Checkable::Known(bg) => vec![bg],
                 Checkable::TerminalsOwn => palette.kind.references().to_vec(),
                 Checkable::TerminalsGuess => panic!(
-                    "{what} in {}: cell {x},{y} has background {:?}, a colour only the terminal \
-                     knows",
+                    "{what} in {}: cell {x},{y} has background {back:?}, a colour only the \
+                     terminal knows",
                     palette.kind.name(),
-                    cell.bg,
                 ),
             };
             assert!(
                 !against.is_empty(),
-                "{what} in {}: cell {x},{y} ({:?}) is drawn in {:?} with no background to check \
-                 it against",
+                "{what} in {}: cell {x},{y} ({:?}) is drawn in {front:?} with no background to \
+                 check it against",
                 palette.kind.name(),
                 cell.symbol(),
-                cell.fg,
             );
             cells += 1;
             for bg in against {
                 let ratio = contrast_ratio(fg, bg);
                 assert!(
                     ratio >= MINIMUM_CONTRAST,
-                    "{what} in {} ({}): cell {x},{y} ({:?}) is {ratio:.2}:1 — {:?} on \
+                    "{what} in {} ({}): cell {x},{y} ({:?}{}) is {ratio:.2}:1 — {front:?} on \
                      #{:02x}{:02x}{:02x}, below {MINIMUM_CONTRAST}:1",
                     palette.kind.name(),
                     depth.words(),
                     cell.symbol(),
-                    cell.fg,
+                    if reversed { ", reversed" } else { "" },
                     bg.0,
                     bg.1,
                     bg.2,
@@ -1538,7 +1557,7 @@ fn keeps_seven_to_one(
             }
         }
     }
-    (cells, checks)
+    (cells, checks, reversed_cells)
 }
 
 /// Every theme, at both depths — the matrix's outer two dimensions, which the too-small notice
@@ -1565,6 +1584,7 @@ fn every_theme_and_depth() -> Vec<crate::theme::Resolved> {
 fn every_screen_keeps_seven_to_one() {
     let mut cells = 0_usize;
     let mut checks = 0_usize;
+    let mut reversed = 0_usize;
     let mut screens_drawn = 0_usize;
     for resolved in every_theme_and_depth() {
         for screen in screens() {
@@ -1591,20 +1611,28 @@ fn every_screen_keeps_seven_to_one() {
             for (w, h) in [(60, 15), (72, 20), (80, 24), (120, 40)] {
                 let buffer = drawn(&app, w, h);
                 let what = format!("{} at {w}x{h}", screen.name);
-                let (c, k) = keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
+                let (c, k, r) =
+                    keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
                 cells += c;
                 checks += k;
+                reversed += r;
             }
         }
     }
     println!(
         "RFC 059 matrix: {screens_drawn} screens drawn ({} per theme-depth), {cells} coloured \
-         cells, {checks} contrast checks",
+         cells, {checks} contrast checks, {reversed} of them reversed",
         screens().len()
     );
     assert!(
         cells > 10_000,
         "the matrix checked only {cells} coloured cells, which is too few to have drawn the views"
+    );
+    // **And the selection was actually drawn in reverse video** (RFC 061 decision 4): a matrix that
+    // saw no reversed cell would be asserting nothing about the swap it just learned.
+    assert!(
+        reversed > 1_000,
+        "only {reversed} reversed cells: the selected rows are not being drawn across their width"
     );
 }
 
@@ -1628,7 +1656,7 @@ fn the_too_small_notice_keeps_seven_to_one() {
             );
             let buffer = drawn(&app, w, h);
             let what = format!("the too-small notice at {w}x{h}");
-            let (c, _) = keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
+            let (c, _, _) = keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
             cells += c;
         }
     }
@@ -2001,4 +2029,74 @@ fn capture_rfc061_what_can_be_done_here_on_every_screen() {
     }
     assert!(found.is_empty(), "rows overflowed:\n{}", found.join("\n"));
     assert!(opened >= 10, "only {opened} screens opened a list");
+}
+
+/// **The selected row is reverse video, across its whole width** (RFC 061 decision 4).
+///
+/// Every list view and every list overlay: the row the cursor marks is reversed from the marker to
+/// the panel's inner edge, with no unreversed cell in between — which is the half-highlight the
+/// padding exists to prevent, where a colour on one word was all a reader had.
+#[test]
+fn the_selected_row_is_reversed_across_its_width() {
+    use ratatui::style::Modifier;
+
+    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
+    let mut rows_checked = 0_usize;
+    for screen in screens() {
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+        for with_list in [false, true] {
+            if with_list {
+                // And again with Enter's own list on top, whose entries are rows like any other.
+                app.select();
+            }
+            for (w, h) in [(80, 24), (120, 40)] {
+                let buffer = drawn(&app, w, h);
+                for y in buffer.area.top()..buffer.area.bottom() {
+                    let symbol = |x: u16| {
+                        buffer
+                            .cell((x, y))
+                            .map(|cell| cell.symbol().to_string())
+                            .unwrap_or_default()
+                    };
+                    // The cursor markers every list uses.
+                    let Some(marker) = (buffer.area.left()..buffer.area.right())
+                        .find(|x| matches!(symbol(*x).as_str(), "\u{25b6}" | "\u{25b8}"))
+                    else {
+                        continue;
+                    };
+                    // The row ends at the next border to its right: an inner panel's, where one is
+                    // open over the view.
+                    let Some(edge) =
+                        (marker..buffer.area.right()).find(|x| symbol(*x) == "\u{2502}")
+                    else {
+                        continue;
+                    };
+                    rows_checked += 1;
+                    for x in marker..edge {
+                        let cell = buffer.cell((x, y)).expect("inside the buffer");
+                        assert!(
+                            cell.modifier.contains(Modifier::REVERSED),
+                            "{} at {w}x{h}: the selected row at {y} is not reversed at {x} \
+                             ({:?}) — the highlight stops short of the edge at {edge}",
+                            screen.name,
+                            cell.symbol(),
+                        );
+                    }
+                }
+            }
+            if with_list {
+                app.back();
+            }
+        }
+    }
+    assert!(
+        rows_checked >= 20,
+        "only {rows_checked} selected rows were found to check"
+    );
 }

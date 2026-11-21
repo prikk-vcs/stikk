@@ -73,6 +73,39 @@ pub(crate) fn wrap_hanging(text: &str, width: usize, indent: &str, hang: &str) -
 /// columns, and a word wrap rebuilds a line from its whitespace-separated words, which would
 /// collapse them. Nothing is added, removed or reordered — concatenating the output rows, each
 /// without its indent, gives back exactly the input text.
+/// **Reverse these rows, across the view's whole width** (RFC 061 decision 4) — for a view that
+/// pushes its rows itself rather than wrapping a row's spans.
+///
+/// `inner` is the width the view is **drawn** in — `area.width - 2`, inside its borders — and not
+/// always the width it wraps to: a view that wraps one column short so prose never touches the
+/// border (RFC 024 §2) still lights that column, because a lit row with one unlit column against the
+/// border reads as a highlight that failed rather than as a margin.
+pub(crate) fn select_rows(rows: &mut [ratatui::text::Line<'_>], inner: usize) {
+    for row in rows {
+        *row = crate::theme::select_row(std::mem::take(row), inner);
+    }
+}
+
+/// **A row, wrapped, and reversed across its whole width where it is the selection** (RFC 061
+/// decision 4).
+///
+/// Every list view draws its rows through this, so the highlight is one rule rather than five: the
+/// cursor marker stays, and the whole row — every wrapped row of it, to the panel's edge — is drawn
+/// in reverse video.
+pub(crate) fn wrap_row<'a>(
+    spans: Vec<ratatui::text::Span<'a>>,
+    width: usize,
+    indent: &str,
+    selected: bool,
+) -> Vec<ratatui::text::Line<'a>> {
+    let mut rows = wrap_spans(spans, width, indent);
+    if selected {
+        // This view wraps to the width it is drawn in, so the two are the same here.
+        select_rows(&mut rows, width);
+    }
+    rows
+}
+
 pub(crate) fn wrap_spans<'a>(
     spans: Vec<ratatui::text::Span<'a>>,
     width: usize,

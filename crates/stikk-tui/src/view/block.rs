@@ -263,6 +263,13 @@ fn block_lines<'a>(
                         ));
                     }
                     lines.push(Line::from(spans));
+                    if selected {
+                        // The whole row, to the view's edge (RFC 061 decision 4).
+                        let row = lines.len() - 1;
+                        if let Some(rows) = lines.get_mut(row..) {
+                            crate::view::select_rows(rows, width);
+                        }
+                    }
                 }
             }
         }
@@ -318,9 +325,16 @@ fn block_lines<'a>(
                     Span::styled(format!("    {marker}"), Style::default()),
                     Span::styled(head, style),
                 ]));
+                let entry = lines.len() - 1;
                 for rest in wrapped {
                     // Under the summary, not under the marker.
                     lines.push(Line::from(Span::styled(format!("      {rest}"), style)));
+                }
+                if selected {
+                    // Every row of the selected entry, to the view's edge (RFC 061 decision 4).
+                    if let Some(rows) = lines.get_mut(entry..) {
+                        crate::view::select_rows(rows, width);
+                    }
                 }
             }
         }

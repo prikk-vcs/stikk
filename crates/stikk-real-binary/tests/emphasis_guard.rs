@@ -18,6 +18,10 @@
 //!   `theme::selected` live (RFC 060 decision 8). A renderer asks for one of those two, or for no
 //!   emphasis at all.
 //! - **`Modifier::ITALIC` appears nowhere** (decision 7), with one exemption below.
+//! - **`Modifier::REVERSED` appears only in `theme.rs`** (RFC 061 decision 4): the selection's
+//!   highlight is decided by `theme::selected` and carried across the row by `theme::select_row`,
+//!   and a renderer that reversed a span of its own would be a second highlight nothing else knew
+//!   about.
 //!
 //! **Tests are exempt** where they assert a modifier: a test that checks the selection is bold has to
 //! name `Modifier::BOLD` to do it, and that is the test doing its job.
@@ -118,6 +122,30 @@ fn bold_is_named_only_where_the_two_styles_live() {
     );
 }
 
+/// **Reverse video comes from `theme.rs` and nowhere else** (RFC 061 decision 4).
+#[test]
+fn reverse_video_is_named_only_where_the_selection_is_decided() {
+    let allowed: Vec<&str> = ALLOWED.iter().map(|(path, _)| *path).collect();
+    let mut found: Vec<String> = Vec::new();
+    for (path, source) in sources() {
+        if allowed.contains(&path.as_str()) {
+            continue;
+        }
+        for (number, line) in source.lines().enumerate() {
+            if line.contains("Modifier::REVERSED") {
+                found.push(format!("{path}:{}: {}", number + 1, line.trim()));
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "the selected row's reverse video comes from `theme::selected` and `theme::select_row` \
+         (RFC 061 decision 4), not from {} place(s):\n{}",
+        found.len(),
+        found.join("\n")
+    );
+}
+
 /// **Nothing is italic** (RFC 060 decision 7).
 #[test]
 fn nothing_is_italic() {
@@ -157,5 +185,14 @@ fn theme_adds_bold_in_exactly_two_places() {
     assert!(
         !theme.contains("Modifier::ITALIC"),
         "not even the palette asks for italic"
+    );
+    // **And reverse video comes from two places in it**: `selected`, which decides the highlight,
+    // and `select_row`, which carries it to the row's other spans and its padding (RFC 061
+    // decision 4).
+    let reversed = theme.matches("add_modifier(Modifier::REVERSED)").count();
+    assert_eq!(
+        reversed, 3,
+        "`selected` adds it once and `select_row` twice (the spans and the padding); `theme.rs` \
+         adds it {reversed} time(s)"
     );
 }

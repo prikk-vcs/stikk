@@ -51,7 +51,10 @@ pub fn render(
 ) {
     // Inside the border, less a one-column gutter so wrapped text does not sit against the edge.
     let width = usize::from(area.width.saturating_sub(3));
-    let (lines, patch_rows) = queue_lines(view, cursor, palette, width);
+    // **The width the rows are drawn in**, one column wider than they wrap to: the selected row's
+    // highlight runs to the border (RFC 061 decision 4).
+    let inner = usize::from(area.width.saturating_sub(2));
+    let (lines, patch_rows) = queue_lines(view, cursor, palette, width, inner);
 
     let viewport = area.height.saturating_sub(2);
     let max_offset = u16::try_from(lines.len())
@@ -99,11 +102,13 @@ pub fn render(
 /// Every row of the view, already wrapped to `width`, so the scroll clamp is exact — and, beside it,
 /// the first and last wrapped row of each patch, in the view's order, so the caller can scroll to the
 /// selected one.
+#[allow(clippy::too_many_arguments)] // one more: the width the rows are drawn in (RFC 061)
 fn queue_lines<'a>(
     view: &QueueView,
     cursor: usize,
     palette: &Palette,
     width: usize,
+    inner: usize,
 ) -> (Vec<Line<'a>>, Vec<(usize, usize)>) {
     let mut lines: Vec<Line> = Vec::new();
     let mut patch_rows: Vec<(usize, usize)> = Vec::new();
@@ -176,6 +181,7 @@ fn queue_lines<'a>(
         // The marker goes in the **indent**, not in the text: `wrap_indented` word-wraps, so leading
         // spaces inside the text would be collapsed and the two kinds of row would not line up.
         let marker = if selected { SELECTED } else { UNSELECTED };
+        let id_row = lines.len();
         push_identifier(
             &mut lines,
             width,
@@ -187,6 +193,12 @@ fn queue_lines<'a>(
                 Style::default().fg(palette.accent)
             },
         );
+        if selected {
+            // The whole row, to the view's edge (RFC 061 decision 4).
+            if let Some(rows) = lines.get_mut(id_row..) {
+                crate::view::select_rows(rows, inner);
+            }
+        }
         if let Some(message) = &patch.message {
             push(
                 &mut lines,

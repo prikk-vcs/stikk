@@ -43,7 +43,9 @@ pub fn render(
     area: Rect,
 ) {
     let width = usize::from(area.width.saturating_sub(3));
-    let (lines, cursor_row) = lines(view, cursor, palette, width);
+    // The width the rows are drawn in, one wider than they wrap to (RFC 061 decision 4).
+    let inner = usize::from(area.width.saturating_sub(2));
+    let (lines, cursor_row) = lines(view, cursor, palette, width, inner);
 
     let viewport = area.height.saturating_sub(2);
     let max_offset = u16::try_from(lines.len())
@@ -104,6 +106,7 @@ fn lines<'a>(
     cursor: usize,
     palette: &Palette,
     width: usize,
+    inner: usize,
 ) -> (Vec<Line<'a>>, Option<usize>) {
     match view {
         TrustView::Unavailable(message) | TrustView::Failed(message) => {
@@ -164,6 +167,13 @@ fn lines<'a>(
                     ));
                 }
                 lines.push(Line::from(spans));
+                if selected {
+                    // The whole row, to the view's edge (RFC 061 decision 4).
+                    let row = lines.len() - 1;
+                    if let Some(rows) = lines.get_mut(row..) {
+                        crate::view::select_rows(rows, inner);
+                    }
+                }
                 // The public key, **hard-split** the way Block detail splits a 64-hex id: it is
                 // one value, and a word wrap would break it on nothing.
                 for row in wrap_verbatim(&identifier(&key.public_key), width, UNDER) {

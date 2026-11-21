@@ -31,7 +31,7 @@ _Design settled; implementer may start; work has not yet shipped._
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
 | 059 | [Readable colours](./accepted/059-readable-colours.md) | body text in the terminal's own colour, light or dark detected, 7 : 1 for every colour stikk chooses, a high-contrast theme, `plain`, and `NO_COLOR` | [A: readable colours](./handoffs/059-readable-colours/a-readable-colours-handoff-v1.md) |
-| 060 | [Bigger text](./accepted/060-bigger-text.md) | stikk down to 60 × 15, so text can be about twice as big; overlays wrap and scroll in the space they have, and confirm only once read; no italic; bold for headings and the selection | [A: bigger text](./handoffs/060-bigger-text/a-bigger-text-handoff-v1.md) · [B: the help scrolls with ↓](./handoffs/060-bigger-text/b-the-help-scrolls-with-down-handoff-v1.md) |
+| 060 | [Bigger text](./accepted/060-bigger-text.md) | stikk down to 60 × 15, so text can be about twice as big; overlays wrap and scroll in the space they have, and confirm only once read; no italic; bold for headings and the selection | [A: bigger text](./handoffs/060-bigger-text/a-bigger-text-handoff-v1.md) · [B: the help scrolls with ↓](./handoffs/060-bigger-text/b-the-help-scrolls-with-down-handoff-v1.md) · [C: Block detail scrolls](./handoffs/060-bigger-text/c-block-detail-scrolls-handoff-v1.md) |
 
 ## Done (implemented)
 

@@ -1431,7 +1431,7 @@ fn render_action_list(
             "    ",
             vec![
                 Span::styled(
-                    if i == cursor { "▶ " } else { "  " },
+                    crate::theme::marker(i == cursor),
                     Style::default().fg(palette.accent),
                 ),
                 Span::styled(format!("{:<38}", action.name), name_style),
@@ -1529,7 +1529,7 @@ fn render_palette(
             (true, false) => crate::theme::selected(palette),
             (false, false) => Style::default().fg(palette.fg),
         };
-        let marker = if selected { "▶ " } else { "  " };
+        let marker = crate::theme::marker(selected);
         let mut spans = vec![
             Span::styled(marker, Style::default().fg(palette.accent)),
             Span::styled(format!("{:<28}", cmd.name), name_style),
@@ -4035,7 +4035,7 @@ impl<'a> Body<'a> {
         selected: bool,
         text: impl AsRef<str>,
     ) -> &mut Self {
-        let marker = if selected { "\u{25b6} " } else { "  " };
+        let marker = crate::theme::marker(selected);
         let style = if selected {
             crate::theme::selected(palette)
         } else {
@@ -4063,7 +4063,7 @@ impl<'a> Body<'a> {
         marked: bool,
         text: impl AsRef<str>,
     ) -> &mut Self {
-        let cursor = if selected { "\u{25b6} " } else { "  " };
+        let cursor = crate::theme::marker(selected);
         let mark = if marked { "\u{25cf} " } else { "  " };
         let style = if selected {
             crate::theme::selected(palette)

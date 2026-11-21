@@ -20,7 +20,7 @@
 <rect x="636" y="68" width="1" height="17" fill="#d8dee4"/>
 <rect x="4" y="85" width="1" height="17" fill="#d8dee4"/>
 <rect x="8" y="85" width="16" height="17" fill="#97cbf0"/>
-<text x="8" y="98" textLength="16" lengthAdjust="spacing" fill="#12161b">▸ </text>
+<text x="8" y="98" textLength="16" lengthAdjust="spacing" fill="#12161b">▶ </text>
 <rect x="24" y="85" width="168" height="17" fill="#97cbf0"/>
 <text x="24" y="98" textLength="168" lengthAdjust="spacing" fill="#12161b" font-weight="bold">modified  src/main.rs</text>
 <rect x="192" y="85" width="440" height="17" fill="#d8dee4"/>

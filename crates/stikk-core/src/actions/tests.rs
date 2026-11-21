@@ -407,3 +407,65 @@ fn a_keys_tokens_are_the_words_it_is_named_by() {
         );
     }
 }
+
+/// **The reason names the catalog's own name for the action, and no key** (RFC 061 review v1 C3).
+///
+/// It said *"Press b to pick one"*. `b` is a key like any other, and a sentence that spelled it
+/// would have outlived it — which is what happened to seven other sentences of stikk's own.
+#[test]
+fn the_reason_names_the_catalogs_own_name_and_no_key() {
+    let pick = by_id("ref.pick").expect("ref.pick is in the catalog");
+    assert_eq!(
+        no_focused_ref_reason(),
+        format!("No ref focused. Pick one in {}.", pick.name)
+    );
+    // No key is named: not `b`, and not one of the named keys either.
+    let reason = no_focused_ref_reason();
+    for naming in ["Press", "press", "key", "`"] {
+        assert!(
+            !reason.contains(naming),
+            "{reason:?} names a key: {naming:?}"
+        );
+    }
+    for action in all() {
+        if let Some(key) = action.key {
+            for token in key.tokens() {
+                assert!(
+                    !reason.split_whitespace().any(|word| word == token),
+                    "{reason:?} names the key {token:?}"
+                );
+            }
+        }
+    }
+}
+
+/// **And every action that needs a focused ref gives exactly that reason** — one sentence, from one
+/// place (RFC 029 Handoff B §2, unchanged but for its words).
+#[test]
+fn every_focus_needing_action_gives_the_one_reason() {
+    let ready = Readiness {
+        author: RoleReadiness::Unknown,
+        maintainer: RoleReadiness::Unknown,
+        read_only: false,
+    };
+    let mut needed = 0;
+    for action in all() {
+        if !action.needs_focused_ref {
+            continue;
+        }
+        needed += 1;
+        assert_eq!(
+            action.unavailable_reason(ready, false),
+            Some(no_focused_ref_reason()),
+            "{}",
+            action.id
+        );
+        assert_eq!(
+            action.unavailable_reason(ready, true),
+            None,
+            "{}",
+            action.id
+        );
+    }
+    assert_eq!(needed, 5, "five actions act on the focused ref");
+}

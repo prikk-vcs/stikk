@@ -290,7 +290,10 @@ fn the_patches_section_lists_each_patch_with_its_joined_message() {
         "{text}"
     );
     // The cursor marks the second row, and only it.
-    let marked: Vec<&str> = text.lines().filter(|line| line.contains('▸')).collect();
+    let marked: Vec<&str> = text
+        .lines()
+        .filter(|line| line.contains(crate::theme::SELECTED_MARKER.trim()))
+        .collect();
     let [marked] = marked.as_slice() else {
         panic!("exactly one row marked: {text}")
     };
@@ -316,7 +319,10 @@ fn below_the_json_floor_the_section_names_stikks_own_limit() {
         "{text}"
     );
     assert!(!text.contains("prikk does not report"), "{text}");
-    assert!(!text.contains('▸'), "nothing to select: {text}");
+    assert!(
+        !text.contains(crate::theme::SELECTED_MARKER.trim()),
+        "nothing to select: {text}"
+    );
 }
 
 /// A patch message is repository content and reaches the screen inert (`C-T2a`).
@@ -375,13 +381,13 @@ fn a_failed_patches_read_leaves_the_rest_of_the_block_on_screen() {
     // one file is row zero, and marking it is what lets `F` save it. A failed *patches* read
     // does not take the *files* away.
     assert_eq!(
-        text.matches('▸').count(),
+        text.matches(crate::theme::SELECTED_MARKER.trim()).count(),
         1,
         "the file is selectable even though the patches are not: {text}"
     );
     assert!(
         text.lines()
-            .any(|l| l.contains('▸') && l.contains("readme.txt")),
+            .any(|l| l.contains(crate::theme::SELECTED_MARKER.trim()) && l.contains("readme.txt")),
         "and it is the file that is marked: {text}"
     );
 }
@@ -772,7 +778,10 @@ fn the_patch_cursor_still_selects_the_right_row_below_wrapped_fields() {
     let detail = wide_detail();
     for (cursor, short) in [(0, "4db1669a176b"), (1, "c23a5d7d4d5d")] {
         let text = draw_at(&detail, cursor, 80);
-        let marked: Vec<&str> = text.lines().filter(|line| line.contains('▸')).collect();
+        let marked: Vec<&str> = text
+            .lines()
+            .filter(|line| line.contains(crate::theme::SELECTED_MARKER.trim()))
+            .collect();
         let [marked] = marked.as_slice() else {
             panic!("exactly one patch row marked at cursor {cursor}: {text}")
         };

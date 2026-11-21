@@ -66,7 +66,8 @@ has is in one catalog, and these are the ones with a key of their own; the rest 
 |---|---|
 | `Enter` | what can be done here: the actions for the selected row, then the screen's |
 | `→` | open the selected row — the first of those actions, at once |
-| `←`, `Esc`, `q` | back; at the root, quit |
+| `Esc`, `q` | back; at the root, quit |
+| `←` | back, and never quit — at the root it does nothing |
 | `↑` `↓`, `k` `j` | move the selection; in a card, read on |
 | `?` | the glossary and this key list |
 | `:` | every action, by name |

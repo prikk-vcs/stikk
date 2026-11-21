@@ -208,7 +208,7 @@ fn entry_lines<'a>(
     width: usize,
     inner: usize,
 ) {
-    let marker = if selected { "\u{25b8} " } else { "  " };
+    let marker = crate::theme::marker(selected);
     let title_style = if selected {
         crate::theme::selected(palette)
     } else {

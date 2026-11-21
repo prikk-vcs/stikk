@@ -149,7 +149,7 @@ fn lines<'a>(
                 }
                 let mut spans = vec![
                     Span::styled(
-                        if selected { "\u{25b8} " } else { TOP },
+                        crate::theme::marker(selected),
                         Style::default().fg(palette.accent),
                     ),
                     // The id. prikk's id is repository text.

@@ -40,7 +40,7 @@ pub mod trust;
 pub mod undo;
 pub mod verify;
 
-pub use actions::{Action, Key, NO_FOCUSED_REF_REASON, RowKind, ScreenKind, Where};
+pub use actions::{Action, Key, RowKind, ScreenKind, Where, no_focused_ref_reason};
 pub use bundle::{
     ALREADY_HELD, ALREADY_RECEIVED, BUNDLE_EFFECTS_SHOWN, BUNDLE_FROM_MINOR, BUNDLE_LINEAGE_LIMIT,
     BundleOpened, BundleView, CLOSED_IS_NOT_EXPORTED, COMPARED_WITH_AFTER, COMPARED_WITH_BEFORE,

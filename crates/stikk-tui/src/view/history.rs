@@ -142,7 +142,7 @@ fn block_spans<'a>(
     // **Two different marks, in two columns** (RFC 038 decision 3): the cursor is where you are,
     // and `m`'s mark is what you set. One column could not show a row that is both, which is the
     // ordinary case right before `d`.
-    let marker = if selected { "\u{25b6} " } else { "  " };
+    let marker = crate::theme::marker(selected);
     let mark = if marked { "\u{25cf} " } else { "  " };
     let id_style = if selected {
         crate::theme::selected(palette)

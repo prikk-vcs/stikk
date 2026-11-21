@@ -4152,7 +4152,23 @@ impl App {
     /// Go back one step: dismiss a fault or banner, close the top overlay, pop a screen (a pending
     /// [`Screen::Loading`] included — this is the "stop waiting" semantics, RFC 010 decision 4), else
     /// quit.
+    ///
+    /// **`Esc` and `q` arrive here; the left arrow arrives at `back_without_quit`** (RFC 061
+    /// review v1 C2), which goes back the same way and stops at the root instead of quitting.
     pub fn back(&mut self) {
+        self.go_back(true);
+    }
+
+    /// **Back, and never quit** — the left arrow (RFC 061 review v1 C2).
+    ///
+    /// `Esc` and `q` quit at the root, as they always have. An arrow key does not: a reader moving
+    /// around presses it constantly, and one press too many at the root would end the session.
+    pub(crate) fn back_without_quit(&mut self) {
+        self.go_back(false);
+    }
+
+    /// Back one step. `may_quit` is false for the one key that must never end the session.
+    fn go_back(&mut self, may_quit: bool) {
         if self.fault.take().is_some() {
             return;
         }
@@ -4211,7 +4227,11 @@ impl App {
             self.flush_session();
             return;
         }
-        self.should_quit = true;
+        // At the root there is nothing left to go back to: `Esc` and `q` quit here, and the left
+        // arrow does nothing at all (RFC 061 review v1 C2).
+        if may_quit {
+            self.should_quit = true;
+        }
     }
 
     /// Apply a response from the worker (RFC 010's one entry point for results). A response whose
@@ -5881,7 +5901,7 @@ impl App {
     fn require_focus(&mut self) -> Option<String> {
         let focused = self.focused_ref().map(str::to_string);
         if focused.is_none() {
-            self.banner = Some(stikk_core::NO_FOCUSED_REF_REASON.to_string());
+            self.banner = Some(stikk_core::no_focused_ref_reason());
         }
         focused
     }

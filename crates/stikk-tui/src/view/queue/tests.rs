@@ -328,7 +328,10 @@ fn a_tall_queue_scrolls_to_follow_the_selected_patch_and_says_where_it_is() {
     assert!(top.contains(" Queue — lines 1–22 of 53 "), "{top}");
     assert!(top.contains("12 patch(es) queued for heads/main"), "{top}");
     assert!(
-        top.contains("▸ 00000000000"),
+        top.contains(&format!(
+            "{} 00000000000",
+            crate::theme::SELECTED_MARKER.trim()
+        )),
         "the first patch is marked: {top}"
     );
     assert_eq!(offset.get(), 0, "nothing to scroll to yet");
@@ -416,7 +419,10 @@ fn rfc035_the_queue_marks_the_selected_patch_at_80_columns() {
     );
     let text = draw_at(&view, &std::cell::Cell::new(0), 1);
     println!("--- RFC 035 §6: the Queue with its selection, 80 columns\n{text}");
-    let marked: Vec<&str> = text.lines().filter(|line| line.contains('▸')).collect();
+    let marked: Vec<&str> = text
+        .lines()
+        .filter(|line| line.contains(crate::theme::SELECTED_MARKER.trim()))
+        .collect();
     assert_eq!(marked.len(), 1, "one patch marked: {text}");
     assert!(
         marked[0].contains("71c62d0a05e58564356ee39573c0baba7abac83f87553c0b7f00c417089d2478"),

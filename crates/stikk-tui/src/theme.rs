@@ -367,6 +367,28 @@ pub fn selected(palette: &Palette) -> Style {
         .add_modifier(Modifier::REVERSED)
 }
 
+/// **The one selection marker** (RFC 061 decision 4, review v1 C1): `\u{25b6}`, kept beside reverse
+/// video for a terminal that cannot show it and for `plain`.
+///
+/// It was written by hand in ten places and had become two glyphs for one meaning — this triangle in
+/// History and the overlays, a smaller one in Block detail, Compare, the Queue and Trust — so the
+/// same row looked like two different kinds of thing depending on which list it was in. One
+/// constant, and `emphasis_guard` refuses either glyph anywhere else.
+pub(crate) const SELECTED_MARKER: &str = "\u{25b6} ";
+
+/// [`SELECTED_MARKER`]'s blank twin, **the same width**, so a selected and an unselected row line up.
+pub(crate) const UNSELECTED_MARKER: &str = "  ";
+
+/// The marker, or its blank twin — one call, so the two can never differ in width.
+#[must_use]
+pub(crate) fn marker(selected: bool) -> &'static str {
+    if selected {
+        SELECTED_MARKER
+    } else {
+        UNSELECTED_MARKER
+    }
+}
+
 /// **The selected row, across its whole width** (RFC 061 decision 4): every span of it takes reverse
 /// video, and the row is padded to `width` so the highlight runs to the panel's edge rather than
 /// stopping at the last word.

@@ -174,6 +174,7 @@ fn ui_loop(
                 // action goes to `run_action`, which is the one place that says what an action does.
                 match keys::dispatch(key, app.wants_text_input()) {
                     Action::Quit => app.quit(),
+                    Action::BackWithoutQuit => app.back_without_quit(),
                     Action::Up => app.nav_up(),
                     Action::Down => app.nav_down(),
                     Action::Run(action) => {

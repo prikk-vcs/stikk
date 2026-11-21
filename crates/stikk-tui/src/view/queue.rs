@@ -34,8 +34,9 @@ use crate::title::{Position, Title};
 /// Indents, by level: the heading and foot, a patch's id (selected or not), its message, and its
 /// operations. The two id indents are the same width, so the ids line up whichever is marked.
 const TOP: &str = "  ";
-const SELECTED: &str = "  ▸ ";
-const UNSELECTED: &str = "    ";
+/// The patch id's own indent, which the marker goes inside — the glyph itself is `theme::marker`
+/// (RFC 061 review v1 C1), so there is one marker in stikk and not six.
+const ID_INDENT: &str = "  ";
 const MESSAGE: &str = "    ";
 const OPERATION: &str = "      ";
 
@@ -173,13 +174,13 @@ fn queue_lines<'a>(
         let selected = at == cursor;
         // The marker goes in the **indent**, not in the text: `wrap_indented` word-wraps, so leading
         // spaces inside the text would be collapsed and the two kinds of row would not line up.
-        let marker = if selected { SELECTED } else { UNSELECTED };
+        let marker = format!("{ID_INDENT}{}", crate::theme::marker(selected));
         let id_row = lines.len();
         push_identifier(
             &mut lines,
             width,
             &patch.id,
-            marker,
+            &marker,
             if selected {
                 crate::theme::selected(palette)
             } else {

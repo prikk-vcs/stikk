@@ -24,14 +24,20 @@ use stikk_core::{Action as CatalogAction, Key, actions};
 /// A resolved user intent.
 ///
 /// **[`Self::Run`] carries the catalog entry itself**, so nothing here repeats what an action is
-/// called or what key it has. The four that are not catalog actions are the two halves of
-/// `app.move`, which the catalog lists as one key, and text entry's own two.
+/// called or what key it has. The rest are the two halves of `app.move`, which the catalog lists as
+/// one key, the gentler half of `app.back`, and text entry's own two.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     /// No bound action for this key.
     None,
     /// Quit the application unconditionally (Ctrl-C).
     Quit,
+    /// Back, **and never quit** — the left arrow, `app.back`'s gentler half (RFC 061 review v1 C2).
+    ///
+    /// The catalog binds one action to `←`, `Esc` and `q`; this is the one of the three that stops at
+    /// the root instead of ending the session, because a reader moving around presses an arrow key
+    /// constantly.
+    BackWithoutQuit,
     /// Move the selection up — `app.move`'s upper half.
     Up,
     /// Move the selection down — `app.move`'s lower half.
@@ -76,7 +82,10 @@ pub fn dispatch(key: KeyEvent, text_entry: bool) -> Action {
         };
     }
     match key.code {
-        KeyCode::Esc | KeyCode::Left => run(Key::Back),
+        // **The left arrow goes back and never quits** (RFC 061 review v1 C2): one action, and the
+        // one of its three keys that must not end the session at the root.
+        KeyCode::Left => Action::BackWithoutQuit,
+        KeyCode::Esc => run(Key::Back),
         KeyCode::Enter => run(Key::Enter),
         KeyCode::Right => run(Key::Right),
         // **Folded like every other letter** (decision 2): `K` moves up, and `Q` goes back.

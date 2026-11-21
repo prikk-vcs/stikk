@@ -18,6 +18,9 @@
 //!   `theme::selected` live (RFC 060 decision 8). A renderer asks for one of those two, or for no
 //!   emphasis at all.
 //! - **`Modifier::ITALIC` appears nowhere** (decision 7), with one exemption below.
+//! - **The selection marker appears only in `theme.rs`** (RFC 061 review v1 C1): it was written by
+//!   hand in ten places and had become two glyphs for one meaning, so the same row looked like two
+//!   different kinds of thing depending on which list it was in.
 //! - **`Modifier::REVERSED` appears only in `theme.rs`** (RFC 061 decision 4): the selection's
 //!   highlight is decided by `theme::selected` and carried across the row by `theme::select_row`,
 //!   and a renderer that reversed a span of its own would be a second highlight nothing else knew
@@ -143,6 +146,53 @@ fn reverse_video_is_named_only_where_the_selection_is_decided() {
          (RFC 061 decision 4), not from {} place(s):\n{}",
         found.len(),
         found.join("\n")
+    );
+}
+
+/// **There is one selection marker, and it lives in `theme.rs`** (RFC 061 review v1 C1).
+#[test]
+fn the_selection_marker_is_named_only_where_it_is_defined() {
+    let allowed: Vec<&str> = ALLOWED.iter().map(|(path, _)| *path).collect();
+    let mut found: Vec<String> = Vec::new();
+    for (path, source) in sources() {
+        if allowed.contains(&path.as_str()) {
+            continue;
+        }
+        for (number, line) in source.lines().enumerate() {
+            // Both glyphs, in either spelling: the literal character and the escape.
+            for marker in ["\u{25b6}", "\u{25b8}", "u{25b6}", "u{25b8}"] {
+                if line.contains(marker) {
+                    found.push(format!("{path}:{}: {}", number + 1, line.trim()));
+                }
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "the selection marker comes from `theme::SELECTED_MARKER` (RFC 061 review v1 C1), not from \
+         {} place(s):\n{}",
+        found.len(),
+        found.join("\n")
+    );
+}
+
+/// **And `theme.rs` defines one marker, not two**, so the constant cannot grow a sibling.
+#[test]
+fn theme_defines_one_selection_marker() {
+    let root = repo_root();
+    let theme =
+        std::fs::read_to_string(root.join("crates/stikk-tui/src/theme.rs")).expect("read theme.rs");
+    // The pointing triangle, once, in the constant that is it.
+    assert_eq!(
+        theme
+            .matches("SELECTED_MARKER: &str = \"\\u{25b6} \"")
+            .count(),
+        1,
+        "`SELECTED_MARKER` is the one marker"
+    );
+    assert!(
+        !theme.contains("\u{25b8}") && !theme.contains("u{25b8}"),
+        "the second glyph is gone: one marker, one meaning"
     );
 }
 

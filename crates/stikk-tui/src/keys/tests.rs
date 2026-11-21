@@ -20,10 +20,21 @@ fn id(code: KeyCode) -> Option<&'static str> {
 }
 
 #[test]
-fn back_is_left_esc_and_q() {
-    for code in [KeyCode::Char('q'), KeyCode::Esc, KeyCode::Left] {
+fn back_is_esc_and_q() {
+    for code in [KeyCode::Char('q'), KeyCode::Esc] {
         assert_eq!(id(code), Some("app.back"), "{code:?}");
     }
+}
+
+/// **The left arrow goes back and never quits** (RFC 061 review v1 C2): it is the same action, by the
+/// one of its three keys that stops at the root.
+#[test]
+fn the_left_arrow_is_backs_gentler_half() {
+    assert_eq!(dispatch(key(KeyCode::Left), false), Action::BackWithoutQuit);
+    // And the catalog still binds all three to one action, which is what the Glossary teaches.
+    let back = actions::by_key(Key::Back).expect("back is bound");
+    assert_eq!(back.id, "app.back");
+    assert_eq!(back.key.expect("a key").tokens(), ["\u{2190}", "Esc", "q"]);
 }
 
 #[test]
@@ -59,7 +70,9 @@ fn every_key_the_catalog_binds_is_dispatched() {
             Key::Letter(c) => vec![KeyCode::Char(c), KeyCode::Char(c.to_ascii_uppercase())],
             Key::Enter => vec![KeyCode::Enter],
             Key::Right => vec![KeyCode::Right],
-            Key::Back => vec![KeyCode::Esc, KeyCode::Left, KeyCode::Char('q')],
+            // **The left arrow is `the_left_arrow_is_backs_gentler_half`'s**: the same action, by a
+            // key that must not quit at the root, so dispatch answers it with its own intent.
+            Key::Back => vec![KeyCode::Esc, KeyCode::Char('q')],
             // `app.move` is the one entry dispatch answers with its own halves, because up and down
             // are two intents under one key.
             Key::Move => {

@@ -1957,7 +1957,7 @@ fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_
         act(&mut app);
         assert_eq!(
             app.banner(),
-            Some("No ref focused. Press b to pick one."),
+            Some(stikk_core::no_focused_ref_reason().as_str()),
             "{label}"
         );
         assert!(rx.try_recv().is_err(), "{label} dispatched a request");
@@ -1982,11 +1982,9 @@ fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_
             command.id,
             "view.history" | "view.changes" | "op.commit" | "op.seal" | "block.undo"
         )
-        .then_some("No ref focused. Press b to pick one.");
+        .then(stikk_core::no_focused_ref_reason);
         assert_eq!(
-            command
-                .unavailable_reason(readiness, ref_focused)
-                .as_deref(),
+            command.unavailable_reason(readiness, ref_focused),
             expected,
             "{}",
             command.id
@@ -6855,4 +6853,73 @@ fn each_row_kinds_list_is_titled_by_its_row() {
     assert!(text.contains("Save every file at this block"), "{text}");
     // **Not the patch rows' action**, which is what the rows above offer.
     assert!(!text.contains("Open this patch"), "{text}");
+}
+
+// =============================================================================================
+// RFC 061 review v1 C2 — the left arrow goes back, and never quits.
+// =============================================================================================
+
+/// **At the root, `←` does nothing at all** — it does not quit, and it does not change the screen.
+/// `Esc` and `q` quit there, as they always have.
+#[test]
+fn the_left_arrow_never_quits_and_esc_and_q_still_do() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    let before = format!("{:?}", app.focus());
+    // Three presses at the root, which is three more than it takes to end a session by accident.
+    for _ in 0..3 {
+        app.back_without_quit();
+        assert!(!app.should_quit(), "the left arrow quit stikk");
+    }
+    assert_eq!(format!("{:?}", app.focus()), before, "the screen changed");
+    assert!(matches!(app.focus(), Focus::Orientation(_)));
+
+    // `Esc` and `q` are unchanged: both arrive at `back`, which quits at the root.
+    let quits = |label: &str| {
+        let (mut app, _rx) = from_state(
+            "/repo",
+            loaded(files_orientation_view()),
+            Palette::default(),
+        );
+        app.back();
+        assert!(app.should_quit(), "{label} did not quit at the root");
+    };
+    quits("Esc");
+    quits("q");
+}
+
+/// **And it still goes back everywhere else**: a card, a banner, a screen — the same steps `Esc`
+/// takes, in the same order.
+#[test]
+fn the_left_arrow_goes_back_through_every_step_but_the_last() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    // A card on top of a screen: the card goes first, then the screen, then nothing.
+    app.select_screen_or_row();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::History(Ok(two_block_history())),
+    });
+    assert!(matches!(app.focus(), Focus::History(..)));
+    app.select();
+    assert!(matches!(
+        app.top_overlay(),
+        Some(Overlay::ActionList { .. })
+    ));
+    app.back_without_quit();
+    assert!(!app.has_overlay(), "the card is closed");
+    assert!(matches!(app.focus(), Focus::History(..)));
+    app.back_without_quit();
+    assert!(
+        matches!(app.focus(), Focus::Orientation(_)),
+        "the screen is popped"
+    );
+    assert!(!app.should_quit());
 }

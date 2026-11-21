@@ -13,7 +13,8 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   and tags, `w` changes, `p` patches waiting to be sealed, `v` verify, `t` trust, `o` open a bundle
   file, `c` commit, `s` seal, `r` refresh, `d` compare, `m` mark, `f` prikk's own fields, `u` show
   untracked, `?` help, `:` every action by name, `Enter` what can be done here, `→` open the
-  selected row, and `←`, `Esc` or `q` to go back. **Fourteen actions gave up their letter** and are
+  selected row, and `←`, `Esc` or `q` to go back — of which `Esc` and `q` quit at the root, and `←`
+  never does. **Fourteen actions gave up their letter** and are
   found by name instead: switch, merge plan, close a branch, new branch, new tag, import, export,
   adopt and remove a key, undo a block, save a file, save all, the refusals list and background
   operations. stikk has no users yet, so the keys are set right once, before anyone learns the old
@@ -35,6 +36,8 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   and named one key — `g o` — that nothing bound. The palette, Enter's lists, the key line, the
   Glossary's *Keys* and the key map itself all read that one catalog, so a key exists only where it
   is bound and no two lists can disagree about what stikk can do.
+- **A banner that needs a focused ref says which view picks one**, by name — *"No ref focused. Pick
+  one in Branches and tags."* It named the key, and a sentence that spells a key outlives it.
 - **The documents say what is built.** `TU-05`, `TU-06` and `TU-07` describe the catalog instead of
   listing keys the code had moved on from; a find within a view (`FR-013`), copying the focused id or
   path (`FR-124`), a pane cycle and rebinding keys in the config (`CF-03`) are recorded as **not

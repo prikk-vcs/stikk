@@ -2830,19 +2830,17 @@ fn every_disabled_palette_reason_renders_whole_at_80_columns() {
                 }
                 joined
             };
+            // **Compared with the whitespace taken out of both**: a composed row is hard-split and
+            // its continuation is joined with nothing, so a row that happened to break at a space
+            // loses that space. What this test asks is whether anything was *cut*, and every
+            // character in order answers that.
+            let squeezed =
+                |text: &str| -> String { text.chars().filter(|c| !c.is_whitespace()).collect() };
             for command in stikk_core::actions::matching("") {
                 let line = entry(command.name);
                 match command.unavailable_reason(readiness, ref_focused) {
                     Some(reason) => assert!(
-                        line.split_whitespace()
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                            .contains(
-                                &format!("— {reason}")
-                                    .split_whitespace()
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            ),
+                        squeezed(&line).contains(&squeezed(&format!("— {reason}"))),
                         "{who}, focused {ref_focused}: {}'s reason {reason:?} is not whole in {line:?}",
                         command.name
                     ),

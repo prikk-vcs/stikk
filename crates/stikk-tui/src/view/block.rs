@@ -234,7 +234,7 @@ fn block_lines<'a>(
                     let selected = cursor == first_file + at;
                     let mut spans = vec![
                         Span::styled(
-                            if selected { "  \u{25b8} " } else { "    " },
+                            format!("  {}", crate::theme::marker(selected)),
                             Style::default().fg(palette.accent),
                         ),
                         // The mode first, in the fixed-width octal Patch detail already shows
@@ -303,7 +303,7 @@ fn block_lines<'a>(
             for (at, row) in rows.iter().enumerate() {
                 // The selected row is marked the way History's own cursor marks one.
                 let selected = at == cursor;
-                let marker = if selected { "▸ " } else { "  " };
+                let marker = crate::theme::marker(selected);
                 let style = if selected {
                     crate::theme::selected(palette)
                 } else {

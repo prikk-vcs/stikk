@@ -29,9 +29,26 @@ use stikk_model::{Readiness, RequestCategory, StikkError, Tier};
 
 use crate::confirm::capability_gate;
 
+/// The id of the action that picks a ref — the one the reason below sends a reader to.
+const REF_PICK: &str = "ref.pick";
+
 /// The reason every action that needs a focused ref gives when none is focused (RFC 029 Handoff B §2):
 /// the banner a key sets and a disabled entry's reason are these same words.
-pub const NO_FOCUSED_REF_REASON: &str = "No ref focused. Press b to pick one.";
+///
+/// **It names the action, not its key** (RFC 061 review v1 C1–C3's rule): it said *"Press b to pick
+/// one"*, and `b` is a key like any other — a sentence that spelled it would have outlived it, as
+/// seven other sentences of stikk's own did. The name comes from `ref.pick`'s own entry, so there
+/// is nothing here to drift.
+///
+/// **This is the one place RFC 061's trap 3 is broken on purpose** (review v1 C3): the words changed
+/// because naming a key in a sentence is the thing the catalog exists to stop.
+#[must_use]
+pub fn no_focused_ref_reason() -> String {
+    // An id the catalog does not hold cannot happen -- `the_reason_names_the_catalogs_own_name`
+    // asserts it -- and an empty name would still read as a sentence rather than as a key.
+    let name = by_id(REF_PICK).map_or("", |action| action.name);
+    format!("No ref focused. Pick one in {name}.")
+}
 
 /// A key the catalog binds (RFC 061 decision 2).
 ///
@@ -200,7 +217,7 @@ pub struct Action {
     /// an entry cannot disagree with the `Intent` the operation itself carries.
     pub category: Option<RequestCategory>,
     /// Whether it acts on the focused ref (RFC 029 Handoff B §2). With none focused it stays visible
-    /// and disabled, with [`NO_FOCUSED_REF_REASON`].
+    /// and disabled, with [`no_focused_ref_reason`].
     pub needs_focused_ref: bool,
     /// Its place in the key line (RFC 061 decision 5): the line drops **whole entries, lowest rank
     /// first**. `255` never drops; `0` never appears.
@@ -254,9 +271,8 @@ impl Action {
     /// a ref it still could not commit to.
     #[must_use]
     pub fn unavailable_reason(&self, readiness: Readiness, ref_focused: bool) -> Option<String> {
-        self.unmet_reason(readiness).or_else(|| {
-            (self.needs_focused_ref && !ref_focused).then(|| NO_FOCUSED_REF_REASON.to_string())
-        })
+        self.unmet_reason(readiness)
+            .or_else(|| (self.needs_focused_ref && !ref_focused).then(no_focused_ref_reason))
     }
 
     /// Whether this is a way of *moving*, rather than something to do with what is on screen: the

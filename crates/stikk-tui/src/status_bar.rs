@@ -37,7 +37,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             .file_name()
             .map(|n| identifier(&n.to_string_lossy()))
             .unwrap_or_else(|| "?".to_string()),
-        focus: focus_spans(app, palette),
+        focus: focus_spans(app),
         default: prikks_default(app),
         tail: tail_spans(app, palette),
     };
@@ -47,12 +47,25 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     );
 }
 
+/// What the line says about the focus (RFC 029 Handoff B §3's table).
+///
+/// A value rather than finished spans since RFC 060 decision 5: the focused ref is the line's last
+/// resort, and shortening it means rebuilding the piece, marked.
+enum Focused {
+    /// Pending — nothing at all; the `(loading)` or `(error)` marker says why.
+    Nothing,
+    /// `no ref focused`. stikk's own words, and short: never shortened.
+    Unfocused,
+    /// The focused ref, already inert.
+    Ref(String),
+}
+
 /// The line's pieces, before anything is shed. Every string is already inert (`C-T2a`).
 struct Parts {
     /// The repository's short name.
     repo: String,
-    /// The focus, or `no ref focused`, led by its separator. Never shortened.
-    focus: Vec<Span<'static>>,
+    /// The focus, or `no ref focused`. **Shortened only as the last step** (RFC 060 decision 5).
+    focus: Focused,
     /// prikk's current branch or its unresolved text, when it belongs beside the focus.
     default: Option<String>,
     /// `(loading)`/`(error)`, or `●n queued` and the badges; then `⟳ n`. Never shortened.
@@ -64,6 +77,7 @@ fn line(
     parts: &Parts,
     palette: &Palette,
     repo: &str,
+    focus: Option<usize>,
     default: Option<&str>,
     hint: bool,
 ) -> Line<'static> {
@@ -71,7 +85,28 @@ fn line(
         repo.to_string(),
         Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
     )];
-    spans.extend(parts.focus.iter().cloned());
+    match &parts.focus {
+        Focused::Nothing => {}
+        Focused::Unfocused => {
+            spans.push(sep(palette));
+            spans.push(Span::styled(
+                "no ref focused",
+                Style::default().fg(palette.warn),
+            ));
+        }
+        // The focused ref — a client-side pointer, not a HEAD (design FR-055). **Shortened from its
+        // end and marked when it has to be** (RFC 060 decision 5): a cut name with nothing to show
+        // it can read as another ref, which is the one thing a ref name must never do.
+        Focused::Ref(name) => {
+            spans.push(sep(palette));
+            let chars: Vec<char> = name.chars().collect();
+            let text = match focus {
+                Some(keep) if keep < chars.len() => shortened(&chars, keep),
+                _ => name.clone(),
+            };
+            spans.push(Span::styled(text, Style::default().fg(palette.accent)));
+        }
+    }
     if let Some(value) = default {
         spans.push(sep(palette));
         spans.push(Span::styled(
@@ -97,20 +132,22 @@ fn line(
 /// 2. shorten the repository name from its end, marked with `…`, down to one character and `…` — the
 ///    header already shows the name, so it is the first thing worth giving up (review v2 §2);
 /// 3. shorten prikk's default from its end, marked with `…`, down to `prikk's default: …`;
-/// 4. drop the `prikk's default` segment, separator included.
+/// 4. drop the `prikk's default` segment, separator included;
+/// 5. shorten the focused ref from its end, marked with `…`, down to one character and `…` (RFC 060
+///    decision 5) — last, because the ref is what the line is about.
 ///
-/// **Never shortened:** the focus (or `no ref focused`), `(loading)`/`(error)`, `●n queued`, every badge,
-/// and `⟳ n` — `[MNT ?]` must never go missing (`C-T2c′`, `FR-104`). Beyond step 4 the line clips at the
-/// right edge, as it always did. Widths are cells ([`Line::width`]), not bytes or chars, because `inert` can
+/// **Never shortened, and never dropped:** `no ref focused`, `(loading)`/`(error)`, `●n queued`, every
+/// badge, and `⟳ n` — `[MNT ?]` must never go missing (`C-T2c′`, `FR-104`), and the badges are the
+/// signing state. Beyond step 5 the line clips at the right edge, as it always did. Widths are cells ([`Line::width`]), not bytes or chars, because `inert` can
 /// emit wide characters; shortening cuts on a character boundary and then measures.
 fn fit(parts: &Parts, palette: &Palette, width: usize) -> Line<'static> {
     let default = parts.default.as_deref();
-    let full = line(parts, palette, &parts.repo, default, true);
+    let full = line(parts, palette, &parts.repo, None, default, true);
     if full.width() <= width {
         return full;
     }
     // 1. The key hint.
-    let without_hint = line(parts, palette, &parts.repo, default, false);
+    let without_hint = line(parts, palette, &parts.repo, None, default, false);
     if without_hint.width() <= width {
         return without_hint;
     }
@@ -119,7 +156,7 @@ fn fit(parts: &Parts, palette: &Palette, width: usize) -> Line<'static> {
     let mut repo = parts.repo.clone();
     for keep in (1..repo_chars.len()).rev() {
         repo = shortened(&repo_chars, keep);
-        let candidate = line(parts, palette, &repo, default, false);
+        let candidate = line(parts, palette, &repo, None, default, false);
         if candidate.width() <= width {
             return candidate;
         }
@@ -128,14 +165,39 @@ fn fit(parts: &Parts, palette: &Palette, width: usize) -> Line<'static> {
     if let Some(value) = default {
         let chars: Vec<char> = value.chars().collect();
         for keep in (0..chars.len()).rev() {
-            let candidate = line(parts, palette, &repo, Some(&shortened(&chars, keep)), false);
+            let candidate = line(
+                parts,
+                palette,
+                &repo,
+                None,
+                Some(&shortened(&chars, keep)),
+                false,
+            );
             if candidate.width() <= width {
                 return candidate;
             }
         }
     }
-    // 4. The whole segment. Past this the line clips at the right edge, as it always did.
-    line(parts, palette, &repo, None, false)
+    // 4. The whole segment.
+    let without_default = line(parts, palette, &repo, None, None, false);
+    if without_default.width() <= width {
+        return without_default;
+    }
+    // 5. **The focused ref, shortened from its end and marked** (RFC 060 decision 5) — last, and only
+    // once everything else has gone, because the ref is what the line is about. The badges are never
+    // dropped: they are the signing state (`C-T2c′`, `FR-104`). Past this the line clips at the right
+    // edge, as it always did.
+    if let Focused::Ref(name) = &parts.focus {
+        let chars: Vec<char> = name.chars().collect();
+        for keep in (1..chars.len()).rev() {
+            let candidate = line(parts, palette, &repo, Some(keep), None, false);
+            if candidate.width() <= width {
+                return candidate;
+            }
+        }
+        return line(parts, palette, &repo, Some(1), None, false);
+    }
+    without_default
 }
 
 /// The first `keep` characters of `chars`, marked as shortened.
@@ -147,18 +209,11 @@ fn shortened(chars: &[char], keep: usize) -> String {
 
 /// The focus piece, led by its separator (RFC 029 Handoff B §3's table): nothing while pending (the
 /// `(loading)` or `(error)` marker says why), `no ref focused`, or the focused ref.
-fn focus_spans(app: &App, palette: &Palette) -> Vec<Span<'static>> {
+fn focus_spans(app: &App) -> Focused {
     match app.ref_focus() {
-        RefFocus::Pending => Vec::new(),
-        RefFocus::Unfocused => vec![
-            sep(palette),
-            Span::styled("no ref focused", Style::default().fg(palette.warn)),
-        ],
-        // The focused ref — a client-side pointer, not a HEAD (design FR-055).
-        RefFocus::Ref(name) => vec![
-            sep(palette),
-            Span::styled(identifier(name), Style::default().fg(palette.accent)),
-        ],
+        RefFocus::Pending => Focused::Nothing,
+        RefFocus::Unfocused => Focused::Unfocused,
+        RefFocus::Ref(name) => Focused::Ref(identifier(name)),
     }
 }
 

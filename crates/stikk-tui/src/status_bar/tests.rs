@@ -383,9 +383,11 @@ fn at_80_columns_every_row_keeps_its_focus_queue_and_badges_whole() {
 }
 
 #[test]
-fn at_40_columns_the_name_is_shed_to_one_character_and_what_cannot_fit_clips_at_the_edge() {
-    // The never-shortened pieces are wider than 40 cells whenever a queue is shown: `a…` (2) + `  ·  heads/main`
-    // (15) + `  ·  ●3 queued` (14) + `  ·  [AUT ?] [MNT ?]` (20) = 51. Every step fires, and the line clips.
+fn at_40_columns_the_name_is_shed_to_one_character_and_the_ref_is_marked() {
+    // The pieces that are never dropped are wider than 40 cells whenever a queue is shown: `a…` (2)
+    // + `  ·  heads/main` (15) + `  ·  ●3 queued` (14) + `  ·  [AUT ?] [MNT ?]` (20) = 51. Every step
+    // fires, and **since RFC 060 decision 5 the ref is shortened and marked rather than clipped** —
+    // a cut ref name with nothing to show it can read as another ref.
     for (label, app, focus) in [
         (
             "equal",
@@ -412,7 +414,13 @@ fn at_40_columns_the_name_is_shed_to_one_character_and_what_cannot_fit_clips_at_
         let text = render_at(&app, 40);
         show(label, 40, &text);
         assert!(text.starts_with("a…  ·  "), "{label}: {text:?}");
-        assert!(text.contains(focus), "{label}: {text:?}");
+        // The focus is there, whole or marked — never silently cut. At 40 cells, with a queue and
+        // the badges to fit, the mark is all that is left of it: `h…`, which is decision 5's floor.
+        let head = focus.get(..1).unwrap_or(focus);
+        assert!(
+            text.contains(focus) || text.contains(&format!("{head}…")),
+            "{label}: the focus is whole or marked: {text:?}"
+        );
         assert!(!text.contains("prikk's default"), "{label}: {text:?}");
     }
     let pending = render_at(&pending_app(LONG_REPO), 40);
@@ -517,4 +525,74 @@ fn shortening_is_measured_in_cells_for_wide_characters() {
     show("a wide-character repository name", 60, &text);
     assert_never_shortened("wide", &text, "heads/main", true);
     assert!(text.contains("…"), "{text:?}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// The last step: the focused ref, shortened and marked (RFC 060 decision 5; Handoff A §4)
+// ---------------------------------------------------------------------------------------------
+
+/// A branch name far longer than any bar.
+const LONG_REF: &str = "heads/a-branch-name-that-is-very-long-indeed-and-then-some";
+
+/// `from_state`'s loaded view focuses `heads/main`; this focuses a long ref instead.
+fn focused_on(repo: &str, reff: &str, queued: u64) -> App {
+    let mut app = focused_app(repo, branch("heads/main"), queued);
+    app.focus_ref_for_tests(reff);
+    app
+}
+
+/// **At 60 columns every shortened part is marked, and the badges are always there** (RFC 060
+/// decision 5): a long repository name, a long ref, both, and a ref longer than the whole bar.
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib capture_rfc060_the_status_bar -- --nocapture
+/// ```
+#[test]
+fn capture_rfc060_the_status_bar_at_60_columns() {
+    for (label, app) in [
+        (
+            "a long repository name",
+            focused_app(LONG_REPO, branch("heads/main"), 3),
+        ),
+        ("a long ref", focused_on("repo", LONG_REF, 3)),
+        ("both", focused_on(LONG_REPO, LONG_REF, 3)),
+        (
+            "a ref longer than the bar",
+            focused_on("r", &"heads/".to_string().repeat(20), 3),
+        ),
+    ] {
+        let text = render_at(&app, 60);
+        show(label, 60, &text);
+        let line = text.trim_end();
+        // **Every shortening is marked.** The line is at most 60 cells, so anything missing from a
+        // name must be announced by the mark rather than left to be guessed at.
+        if !line.contains(LONG_REPO) || !line.contains(LONG_REF) {
+            assert!(
+                line.contains('…'),
+                "{label}: something was shortened without saying so: {line:?}"
+            );
+        }
+        // **The badges are never dropped**: they are the signing state (`C-T2c′`, `FR-104`).
+        assert!(
+            line.contains("[AUT ?]") && line.contains("[MNT ?]"),
+            "{label}: the badges are the signing state: {line:?}"
+        );
+        // And the queue is still named.
+        assert!(line.contains("●3 queued"), "{label}: {line:?}");
+    }
+}
+
+/// **The ref is the *last* thing shortened** (RFC 060 decision 5): where the line fits with the whole
+/// ref once the hint and prikk's default have gone, the ref is left whole.
+#[test]
+fn the_ref_is_only_shortened_when_nothing_else_is_left_to_give() {
+    // Short repository, no queue: the ref fits once the hint goes.
+    let app = focused_on("r", "heads/release-candidate", 0);
+    let text = render_at(&app, 60);
+    show("the ref is kept whole", 60, &text);
+    assert!(
+        text.contains("heads/release-candidate"),
+        "the ref is whole while anything else can give: {text:?}"
+    );
+    assert!(!text.contains(":palette"), "the hint went first: {text:?}");
 }

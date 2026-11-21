@@ -5824,6 +5824,13 @@ impl App {
         self.screens.push(screen);
     }
 
+    /// Focus a ref directly — for tests about how the status bar fits a long one (RFC 060
+    /// decision 5).
+    #[cfg(test)]
+    pub(crate) fn focus_ref_for_tests(&mut self, reff: &str) {
+        self.ref_focus = RefFocus::Ref(reff.to_string());
+    }
+
     /// Surface a seam error directly — for tests (drives the ER-03 routing).
     #[cfg(test)]
     pub(crate) fn surface_error(&mut self, error: &stikk_model::StikkError, op: OperationContext) {

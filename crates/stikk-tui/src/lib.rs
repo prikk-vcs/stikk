@@ -169,41 +169,17 @@ fn ui_loop(
             if let Event::Key(key) = ev
                 && key.kind == KeyEventKind::Press
             {
+                // **One arm per intent, not one per action** (RFC 061 decision 1): a catalog
+                // action goes to `run_action`, which is the one place that says what an action does.
                 match keys::dispatch(key, app.wants_text_input()) {
                     Action::Quit => app.quit(),
-                    Action::Back => app.back(),
-                    Action::Select => app.select(),
                     Action::Up => app.nav_up(),
                     Action::Down => app.nav_down(),
-                    Action::OpenRefPicker => app.open_ref_picker(),
-                    Action::OpenChanges => app.open_changes(),
-                    Action::OpenQueue => app.open_queue(),
-                    Action::OpenVerify => app.open_verify(),
-                    Action::ToggleUntracked => app.toggle_untracked(),
-                    Action::MarkBlock => app.mark_block(),
-                    Action::Compare => app.compare(),
-                    Action::ToggleRaw => app.toggle_raw(),
-                    Action::Commit => app.begin_commit(),
-                    Action::Seal => app.begin_seal(),
-                    Action::CreateBranch => app.begin_create_branch(),
-                    Action::CreateTag => app.begin_create_tag(),
-                    Action::CloseBranch => app.begin_close_branch(),
-                    Action::SwitchBranch => app.begin_switch_branch(),
-                    Action::MergePlan => app.begin_merge_plan(),
-                    Action::OpenBundle => app.begin_open_bundle(),
-                    Action::Import => app.begin_import(),
-                    Action::Export => app.begin_export(),
-                    Action::OpenTrust => app.open_trust(),
-                    Action::AdoptKey => app.begin_adopt_key(),
-                    Action::UndoBlock => app.begin_undo_block(),
-                    Action::SaveFile => app.begin_save_file(),
-                    Action::SaveAll => app.begin_save_all(),
-                    Action::ToggleSealConsent => app.toggle_seal_consent(),
-                    Action::OpenGlossary => app.open_glossary(),
-                    Action::OpenPalette => app.open_palette(),
-                    Action::OpenRefusals => app.open_refusals(),
-                    Action::OpenOperations => app.open_operations(),
-                    Action::Refresh => app.reload(),
+                    Action::Run(action) => {
+                        // Every catalog id has an arm (`every_catalog_action_runs`); the key press
+                        // is spent either way.
+                        let _ran = app.run_action(action.id);
+                    }
                     Action::Input(c) => app.input_char(c),
                     Action::Backspace => app.backspace(),
                     Action::None => {}

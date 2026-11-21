@@ -5613,10 +5613,12 @@ fn the_id_prompt_sends_the_preview_with_what_was_typed() {
 
 /// **`x` acts on the selected row** (decision 3), which `↓` moved.
 #[test]
-fn x_sends_a_remove_preview_for_the_selected_key() {
+fn removing_a_key_sends_a_remove_preview_for_the_selected_one() {
     let (mut app, rx) = on_trust();
     app.nav_down();
-    app.begin_close_branch(); // `x`, which the Trust view takes
+    // **By name, not by `x`** (RFC 061 decision 2): `x` meant *close a branch* in the picker and
+    // *remove a key* here, and that letter is gone from both.
+    assert!(app.run_action("trust.remove"));
     match next_request(&rx).kind {
         RequestKind::TrustRemovePreview { key_id, .. } => assert_eq!(key_id, RFC056_THEIRS),
         other => panic!("expected a remove preview, got {other:?}"),
@@ -5664,7 +5666,7 @@ fn the_security_event_has_no_confirmation_and_sends_nothing() {
 fn a_removal_is_confirmed_by_typing_the_id_and_points_at_verify() {
     let (mut app, rx) = on_trust();
     app.nav_down();
-    app.begin_close_branch();
+    assert!(app.run_action("trust.remove"));
     let seq = next_request(&rx).seq;
     let backend = NullBackend::supported()
         .with_version(0, 55, 0)
@@ -5788,7 +5790,7 @@ fn below_the_band_neither_key_spawns_anything() {
         "{:?}",
         app.banner()
     );
-    app.begin_close_branch();
+    assert!(app.run_action("trust.remove"));
     assert!(rx.try_recv().is_err(), "nothing was spawned");
 }
 
@@ -6628,4 +6630,22 @@ fn the_reading_latch_does_not_outlive_its_card() {
         !app.overlay_scroll().seen_whole_card(),
         "the next card starts unread, whatever was read before it"
     );
+}
+
+/// **Every action the catalog lists is one this build runs** (RFC 061 decision 1): the catalog is
+/// what a reader is offered — in the palette, in an action list, on the key line — so an entry
+/// nothing answers would be an offer stikk cannot keep.
+#[test]
+fn every_catalog_action_runs() {
+    for action in stikk_core::actions::all() {
+        let (mut app, _rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, false)));
+        assert!(
+            app.run_action(action.id),
+            "{} is listed and nothing runs it",
+            action.id
+        );
+    }
+    // And an id nobody listed is refused rather than silently ignored.
+    let (mut app, _rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, false)));
+    assert!(!app.run_action("no.such.action"));
 }

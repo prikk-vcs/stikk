@@ -1806,11 +1806,11 @@ impl App {
     /// core's** ([`stikk_core::CLOSING_THE_CURRENT_BRANCH`]), because only the preview's own read
     /// knows which branch that is at the moment the key is pressed.
     pub fn begin_close_branch(&mut self) {
-        // **`x` on the Trust view removes a key** (RFC 056 decision 3). One key, two screens:
-        // the Trust view has no branch to close, and the ref picker has no key to remove, so
-        // neither can be reached from the other's screen.
+        // **Neither of these has a key any more** (RFC 061 decision 2): `x` meant *close a branch*
+        // in the picker and *remove a key* on Trust, and each is now found by name where it applies
+        // (`ref.close`, `trust.remove`). The Trust guard stays, so that `ref.close` run from the
+        // palette on the Trust screen still cannot close the branch under it.
         if self.overlays.is_empty() && matches!(self.screens.last(), Some(Screen::Trust { .. })) {
-            self.begin_remove_key();
             return;
         }
         let Some(name) = self.ref_write_source() else {
@@ -5568,11 +5568,13 @@ impl App {
     /// all arrive here, so there is one place that says what an action *does* — and the catalog is the
     /// one place that says what it is called and what key it has.
     ///
-    /// An id with no arm is an action the catalog lists and nothing runs, which
-    /// `every_catalog_action_runs` refuses.
-    pub(crate) fn run_action(&mut self, id: &str) {
+    /// Returns whether the id was one this build runs: `every_catalog_action_runs` asserts it for
+    /// every entry, so an action the catalog lists and nothing answers cannot ship.
+    pub(crate) fn run_action(&mut self, id: &str) -> bool {
         match id {
             // moving around
+            "row.actions" => self.select(),
+            "row.open" => self.select_screen_or_row(),
             "app.back" => self.back(),
             "app.move" => {}
             // the views
@@ -5596,7 +5598,7 @@ impl App {
             "op.compare" => self.compare(),
             "changes.untracked" => self.toggle_untracked(),
             // a ref
-            "ref.open-history" => self.select_screen_or_row(),
+            "ref.open-history" => self.select(),
             "ref.switch" => self.begin_switch_branch(),
             "ref.merge-plan" => self.begin_merge_plan(),
             "ref.branch" => self.begin_create_branch(),
@@ -5616,8 +5618,12 @@ impl App {
             "bundle.import" => self.begin_import(),
             // a card's own key
             "seal.consent" => self.toggle_seal_consent(),
-            _ => {}
+            // **Not an action this build runs.** `every_catalog_action_runs` refuses an id the
+            // catalog lists and nothing here answers, so this arm is only ever reached by a caller
+            // inventing an id.
+            _ => return false,
         }
+        true
     }
 
     /// The session's signing readiness (RFC 014 §6) — the tier-aware palette affordance and

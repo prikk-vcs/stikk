@@ -119,11 +119,16 @@ fn help_and_back_never_drop() {
     for id in ["view.glossary", "app.back"] {
         assert_eq!(by_id(id).expect(id).rank, 255, "{id}");
     }
-    // Nothing else comes near them: 254 is reserved for `Enter actions`, which arrives with the
-    // list it opens (RFC 061 decision 3).
+    // And `Enter actions` drops last of the rest.
+    let first = by_id("row.actions").expect("row.actions");
+    assert_eq!(first.rank, 254);
     for action in all() {
-        if !["view.glossary", "app.back"].contains(&action.id) {
-            assert!(action.rank < 254, "{} outranks the two", action.id);
+        if !["view.glossary", "app.back", "row.actions"].contains(&action.id) {
+            assert!(
+                action.rank < first.rank,
+                "{} outranks `Enter actions`",
+                action.id
+            );
         }
     }
 }

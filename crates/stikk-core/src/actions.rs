@@ -234,11 +234,33 @@ const ANY: &[Where] = &[Where::Everywhere];
 
 /// **Every action stikk offers.** The order is the order a reader meets them: the keys that move
 /// around first, then the views, then the operations, then what belongs to one row or one screen.
-///
-/// (`row.open` and `row.actions` arrive with the keys that run them — `→` in RFC 061 decision 2, and
-/// `Enter`'s action list in decision 3 — so that no commit lists an action nothing can do.)
 static ACTIONS: &[Action] = &[
     // ----- moving around (RFC 061 decision 2's table) -----
+    Action {
+        id: "row.actions",
+        name: "What can be done here",
+        hint: Some("actions"),
+        key: Some(Key::Enter),
+        applies: ANY,
+        operation: "actions",
+        category: None,
+        needs_focused_ref: false,
+        // Dropped only after every other entry but help and back (decision 5).
+        rank: 254,
+    },
+    Action {
+        id: "row.open",
+        name: "Open the selected row",
+        // Never in the key line: `Enter actions` is how a reader finds it, and the list's first
+        // entry says the arrow beside itself.
+        hint: None,
+        key: Some(Key::Right),
+        applies: ANY,
+        operation: "open",
+        category: None,
+        needs_focused_ref: false,
+        rank: 0,
+    },
     Action {
         id: "app.move",
         name: "Move the selection",

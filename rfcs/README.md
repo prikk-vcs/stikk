@@ -22,7 +22,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 
 | ID | Title | Addresses |
 |----|-------|-----------|
-| 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
 
@@ -100,5 +99,6 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Why |
 |----|-------|-----|
+| 002 | [Action-id catalog and keybindings](./archive/002-action-id-catalog-and-keybindings.md) | Proposed 2026-08-30, superseded 2026-11-21 by RFC 061, which builds its rules 1–4 as `stikk-core`'s one catalog. **Rule 5, rebinding keys in the config, is not built** and gets its own RFC when a user needs it; rule 6 is replaced by RFC 061 decision 2 |
 | 033 | [The prikk 0.43 re-baseline](./archive/033-prikk-0-43-rebaseline.md) | Proposed 2026-09-16, superseded 2026-09-22 by RFC 034, never accepted, never built. prikk 0.44.0 fixed the defect its open question was about, and 0.45/0.46 moved the baseline twice more. **Its measurements stand** and its carried work moves to RFC 034 |
 | 025 | [Trust adoption and the fourth state](./archive/025-trust-adoption-and-the-fourth-state.md) | Proposed and withdrawn the same day, never accepted, never built. Its mechanism was `trust maintainer check`; prikk 0.41's `key status` answers more, from the computation the signing path itself uses. Its finding that `trusted: false` is a state the type lacks **was right** — prikk named it `not-adopted` independently — and carries into RFC 026 |

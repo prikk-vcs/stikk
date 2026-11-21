@@ -121,25 +121,26 @@ one-shot print instead. The TUI is built on `ratatui` (RFC 001), and from there 
 Block detail, worktree Changes and the Queue view, **Patch detail** — what one patch changed, from
 prikk's own report, with content shown byte for byte — **Compare**, what changed between two points
 in prikk's own `diff` hunks (prikk ≥ 0.46), including **any two refs** marked and selected in the
-ref picker, **Verify** (`V`) — prikk's verdict on whether the repository is sound, with its failing
+ref picker, **Verify** (`v`) — prikk's verdict on whether the repository is sound, with its failing
 conditions and every stage it ran (prikk ≥ 0.39) — and commit or seal behind preview-first
-confirmation, and from the ref picker **create a branch** (`n`), **create a tag** (`t`, or at any
-block from History), **close a branch** (`x`) and **switch to a branch** (`s`, previewed as the
-exact files it will write and delete) — prikk ≥ 0.42, and ≥ 0.46 for a switch. stikk also
-**merges one branch into another** — mark the branch to merge from (`m`), select the one it goes
-into, `M` for prikk's own plan, `Enter` to run it — only where prikk's plan proves the two sides
-confluent, previewed like every other write and never into the branch you are on (prikk ≥ 0.42).
-stikk **shares work as a bundle file** — `i` opens one and shows prikk's own verification of it
-and what prikk says importing it would change, `I` imports it as a received branch beside your
-own, and `E` writes a branch out to a file outside the repository — each previewed, and nothing
-written until you confirm (prikk ≥ 0.53).
-stikk **gets an earlier version of your files back** — in Block detail, `F` saves one file as it
-was at that block and `A` saves every file at it into a new folder, always outside the repository
-and never over anything already there, with nothing in the repository or your worktree changed
-(prikk ≥ 0.54).
-stikk **chooses which keys this repository trusts** — `T` lists the adopted maintainer keys with
+confirmation. **`Enter` on any row says what can be done with it**, from one catalog of every
+action stikk has: on a branch or tag, *switch to this branch*, *new branch at its tip*, *new tag*,
+*close this branch*, *export it to a bundle file* and *merge plan* — prikk ≥ 0.42, and ≥ 0.46 for a
+switch. stikk also **merges one branch into another** — mark the branch to merge from (`m`), select
+the one it goes into, open its merge plan, and run it from there — only where prikk's plan proves
+the two sides confluent, previewed like every other write and never into the branch you are on
+(prikk ≥ 0.42).
+stikk **shares work as a bundle file** — `o` opens one and shows prikk's own verification of it
+and what prikk says importing it would change, *import this bundle* stores it as a received branch
+beside your own, and *export it to a bundle file* writes a branch out to a file outside the
+repository — each previewed, and nothing written until you confirm (prikk ≥ 0.53).
+stikk **gets an earlier version of your files back** — in Block detail, *save this file, as it was
+here* saves one file as it was at that block and *save every file at this block* saves all of them
+into a new folder, always outside the repository and never over anything already there, with
+nothing in the repository or your worktree changed (prikk ≥ 0.54).
+stikk **chooses which keys this repository trusts** — `t` lists the adopted maintainer keys with
 your own marked, and a bundle card says which of them, if any, each recorded sealer's id names
-(Verify after an import is what checks the signature). **`a` adopts a key and `x` removes one**,
+(Verify after an import is what checks the signature). **`Enter` adopts a key or removes one**,
 each previewed and confirmed by typing the key id; a removal warns first that it can make blocks
 that key sealed fail Verify until the key is adopted again, and an id already trusted under a
 different key is shown as the security event it is (prikk ≥ 0.54).

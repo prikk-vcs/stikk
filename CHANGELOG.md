@@ -6,6 +6,40 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Changed
 
+- **A letter means one action, in either case.** Nine letters used to mean one thing in lower case
+  and another in upper — `s` switched a branch and `S` sealed, `u` filtered untracked files and `U`
+  undid a block — so with Caps Lock on stikk was a different program. Outside a text prompt a letter
+  is now matched without regard to case, and no letter has two meanings. The keys are: `b` branches
+  and tags, `w` changes, `p` patches waiting to be sealed, `v` verify, `t` trust, `o` open a bundle
+  file, `c` commit, `s` seal, `r` refresh, `d` compare, `m` mark, `f` prikk's own fields, `u` show
+  untracked, `?` help, `:` every action by name, `Enter` what can be done here, `→` open the
+  selected row, and `←`, `Esc` or `q` to go back. **Fourteen actions gave up their letter** and are
+  found by name instead: switch, merge plan, close a branch, new branch, new tag, import, export,
+  adopt and remove a key, undo a block, save a file, save all, the refusals list and background
+  operations. stikk has no users yet, so the keys are set right once, before anyone learns the old
+  ones.
+- **`Enter` on a row says what can be done with it.** It used to mean *open*, or nothing at all: on
+  a Changes row, on Verify, on an opened bundle and on a trusted key it did nothing, and the only
+  way to find out what a row could do was to remember a letter. Enter now opens a small list — the
+  row's own actions, then the screen's — each with its key where it has one, and each one you cannot
+  run now still listed, dimmed, with the reason. Its first entry is what the row's `Enter` did
+  before, so Enter, Enter is yesterday's Enter, and `→` is that in one key.
+- **The whole selected row is highlighted**, in reverse video across the full width of the panel,
+  rather than one word of it in a colour. `▶` stays, for a terminal that cannot show reverse video.
+- **A key line stays on screen**, one row above the status bar, saying which keys this screen has:
+  *"Enter actions · ↑↓ move · b branches · w changes · c commit · s seal · ? help · q back"*. When it
+  does not fit, whole entries drop, lowest first; `? help` and `q back` never drop. It is the one
+  place keys are named — the status bar's hint is gone, and a view's title is now a name and a
+  position.
+- **One catalog of every action.** The command palette lists all of them, where it listed 13 of 37
+  and named one key — `g o` — that nothing bound. The palette, Enter's lists, the key line, the
+  Glossary's *Keys* and the key map itself all read that one catalog, so a key exists only where it
+  is bound and no two lists can disagree about what stikk can do.
+- **The documents say what is built.** `TU-05`, `TU-06` and `TU-07` describe the catalog instead of
+  listing keys the code had moved on from; a find within a view (`FR-013`), copying the focused id or
+  path (`FR-124`), a pane cycle and rebinding keys in the config (`CF-03`) are recorded as **not
+  built** rather than claimed; and a test holds the guide's key reference to the catalog, so the
+  prose and the keys cannot drift apart again.
 - **stikk works in a window as small as 60 × 15 columns and rows**, down from 80 × 24 — so the text
   can be made about twice as big, or more, on a laptop screen. Making the text bigger is the main
   thing a person with weaker eyesight does, and in a terminal bigger text means a smaller grid: at
@@ -41,7 +75,7 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   branch, which is what stikk's own letter asked for, and that changes three things below.
 - **A commit goes to prikk's current branch.** stikk commits the files in your folder, and your
   folder is on one branch — so a commit to another one is not offered, and stikk names the switch
-  that gets you there (`b`, then the branch, then `s`). On prikk 0.55 that commit went through, and
+  that gets you there (`b`, then the branch, then *Switch to this branch*). On prikk 0.55 that commit went through, and
   your next commit on the current branch quietly carried the same files into it as well; from 0.56
   prikk refuses one commit or the other.
 - **Merging into the branch you are on is offered from prikk 0.56**, where prikk writes the merged

@@ -75,6 +75,39 @@ impl Key {
         }
     }
 
+    /// **Every key that runs this action**, for a reader being taught them (the Glossary). The key
+    /// line has room for one, which is [`Self::label`].
+    #[must_use]
+    pub fn every(self) -> String {
+        match self {
+            Self::Back => "\u{2190}, Esc or q".to_string(),
+            Self::Move => "\u{2191} \u{2193} or k j".to_string(),
+            other => other.label(),
+        }
+    }
+
+    /// **Every key that runs this action, one token each** — what a document's key reference must
+    /// name, and nothing else (RFC 061 decision 6, which a test over the guide enforces).
+    #[must_use]
+    pub fn tokens(self) -> Vec<String> {
+        match self {
+            Self::Letter(c) => vec![c.to_string()],
+            Self::Enter => vec!["Enter".to_string()],
+            Self::Right => vec!["\u{2192}".to_string()],
+            Self::Back => ["\u{2190}", "Esc", "q"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            Self::Move => ["\u{2191}", "\u{2193}", "k", "j"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            Self::Help => vec!["?".to_string()],
+            Self::Palette => vec![":".to_string()],
+            Self::Space => vec!["Space".to_string()],
+        }
+    }
+
     /// The letter this key is, if it is one — what `keys.rs` matches, folded to lower case.
     #[must_use]
     pub fn letter(self) -> Option<char> {

@@ -179,10 +179,15 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
     assert!(text.contains("Git")); // the Git → prikk section
     assert!(text.contains("HEAD")); // a load-bearing redirect
     assert!(text.contains("rollback")); // revert → rollback
-    // **Every key the panel claims to document.** `V` shipped in 0.11.0 and the Keys section
-    // listed `Q` beside it and not `V` until RFC 040 Handoff C; a key a reader cannot find in
-    // the one place that lists keys may as well not exist.
-    for key in ["b", "w", "d", "Q", "V", "C", "S", "n", "t", "x", "s", "r"] {
+    // **Every key the catalog binds**, read off the catalog itself (RFC 061 decision 6). The list
+    // used to be the panel's own, and it was the one that drifted furthest: it still taught `Q`,
+    // `C`, `S`, `i` and `I` after those keys changed, and `v` for two different things.
+    let bound: Vec<String> = stikk_core::actions::all()
+        .iter()
+        .filter_map(|action| action.key.map(stikk_core::Key::every))
+        .collect();
+    assert!(bound.len() > 15, "only {} keys are bound", bound.len());
+    for key in bound.iter().map(String::as_str) {
         // The row exactly as `key_line` lays it out, with the panel's border dropped — so a key
         // word appearing in a *description*, or in the terminology table below, cannot stand in
         // for the row that is missing.
@@ -244,10 +249,10 @@ fn glossary_never_writes_claim_cannot_stand_beside_mutating_keys() {
         offset: std::cell::Cell::new(0),
     });
     let shows_mutating_keys =
-        text.contains("commit worktree changes") && text.contains("seal the active WAL");
+        text.contains("Commit worktree changes") && text.contains("Seal the active WAL");
     assert!(
         shows_mutating_keys,
-        "glossary should list C/S — if it doesn't, this test is vacuous"
+        "the glossary should list commit and seal — if it does not, this test is vacuous"
     );
     assert!(!text.to_lowercase().contains("never writes"));
 }
@@ -962,8 +967,10 @@ fn the_glossary_does_not_fit_at_80x24_which_is_why_it_scrolls() {
 #[test]
 fn the_glossary_lists_its_own_scroll_key() {
     let (_, text) = glossary_scrolled(0, 80, 24);
-    assert!(text.contains("scroll this panel"), "{text}");
-    assert!(text.contains("↑/↓ or j/k"), "{text}");
+    // **The catalog's own words** (RFC 061 decision 6): `app.move` is *move the selection*, and in a
+    // card that is reading on (RFC 060 decision 3) — one entry, named once.
+    assert!(text.contains("Move the selection"), "{text}");
+    assert!(text.contains("↑ ↓ or k j"), "{text}");
 }
 
 /// **The last terminology entry is reachable by scrolling** — the exact thing RFC 018's revert says

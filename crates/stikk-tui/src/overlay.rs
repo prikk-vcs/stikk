@@ -846,130 +846,25 @@ fn glossary_lines<'a>(palette: &Palette) -> Body<'a> {
     );
     lines.blank();
     section(&mut lines, palette, "Keys");
-    key_line(&mut lines, palette, "↑/↓ or j/k", "scroll this panel");
-    key_line(&mut lines, palette, "Enter", "open / drill in / activate");
-    key_line(&mut lines, palette, "b", "choose which ref to view");
-    key_line(&mut lines, palette, "w", "changes — worktree vs baseline");
-    key_line(&mut lines, palette, "u", "toggle untracked (in Changes)");
-    key_line(
-        &mut lines,
-        palette,
-        "v",
-        "prikk's own fields (in Patch detail, Compare)",
+    // **From the catalog** (RFC 061 decision 6): this section used to be a list of its own, and it
+    // was the list that drifted furthest -- it still taught `Q`, `C`, `S`, `i` and `I` after the
+    // keys changed, and `v` for two different things. Every key here is one `keys.rs` dispatches,
+    // because both read `actions`.
+    lines.prose(
+        Style::default().fg(palette.dim),
+        "  ",
+        "A letter means one action, in either case.",
     );
-    key_line(
-        &mut lines,
-        palette,
-        "m",
-        "mark this block for a comparison (in History)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "d",
-        "compare — what changed between two points",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "Q",
-        "queue — patches waiting to be sealed",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "V",
-        "verify — prikk's verdict on the repository",
-    );
-    key_line(&mut lines, palette, "C", "commit worktree changes");
-    key_line(&mut lines, palette, "S", "seal the active WAL");
-    key_line(
-        &mut lines,
-        palette,
-        "n",
-        "new branch at this ref's tip (in the ref picker)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "t",
-        "tag this ref's tip, or this block (History, Block detail)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "x",
-        "close this branch (in the ref picker)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "s",
-        "switch to this branch — rewrites the worktree (ref picker)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "M",
-        "merge plan — the marked branch into this one (ref picker)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "i",
-        "open a bundle file — what it is, and what it would change",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "I",
-        "import the open bundle as a received branch (in Bundle)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "E",
-        "export this branch to a bundle file (in the ref picker)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "T",
-        "the maintainer keys this repository trusts",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "a",
-        "adopt a maintainer key \u{b7} x removes one (in Trust)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "U",
-        "undo this block \u{b7} puts back what it changed (History, Block)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "F",
-        "save the selected file as it was at this block (in Block)",
-    );
-    key_line(
-        &mut lines,
-        palette,
-        "A",
-        "save all of this block's files into a new folder (in Block)",
-    );
-    key_line(&mut lines, palette, ":", "command palette");
-    key_line(&mut lines, palette, "R", "recent refusals");
-    key_line(&mut lines, palette, "o", "background operations");
-    key_line(&mut lines, palette, "r", "refresh — re-read from prikk");
-    key_line(
-        &mut lines,
-        palette,
-        "? / Esc / q",
-        "close · back · quit at root",
+    for action in actions::all() {
+        let Some(key) = action.key else { continue };
+        key_line(&mut lines, palette, &key.every(), action.name);
+    }
+    // The actions with no key of their own are found by name.
+    lines.prose(
+        Style::default().fg(palette.dim),
+        "  ",
+        "Every other action is found by name: press : for the list, or Enter for what can be done \
+         with the selected row.",
     );
     lines.blank();
     section(&mut lines, palette, "Git → prikk");
@@ -3722,7 +3617,7 @@ fn section<'a>(into: &mut Body<'a>, palette: &Palette, title: &'a str) {
     into.prose(crate::theme::heading(palette.accent), "  ", title);
 }
 
-fn key_line<'a>(into: &mut Body<'a>, palette: &Palette, key: &'a str, desc: &'a str) {
+fn key_line(into: &mut Body<'_>, palette: &Palette, key: &str, desc: &str) {
     // **The description hangs under its own column** (RFC 060 decision 2): at 60 columns several of
     // these ran into the border, which is the Glossary's half of F3.
     into.hanging(

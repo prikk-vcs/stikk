@@ -1,6 +1,12 @@
 # RFC 002 — Action-id catalog and keybinding configuration
 
-**Status.** Proposed
+**Status.** **SUPERSEDED 2026-11-21 by RFC 061 (the catalog)** — its rules 1–4 are built there, in
+`stikk-core`'s `actions`: one entry per user action, with a stable kebab-case id, the name a reader
+reads, its key or none, where it applies, its category, and its rank in the key line; every consumer
+reads it and none keeps a list of its own. **Rule 5, rebinding keys in the config, is not built, and
+gets its own RFC when wanted** — nothing in stikk reads a `[keybindings]` table, and `CF-03`'s claim
+that every key is rebindable is withdrawn with `TU-05`'s. Rule 6 is replaced by RFC 061 decision 2:
+one letter, one action, in either case.
 **Tracks.** The stable catalog of user actions and how the config binds keys to them. Referenced by
 the internal design (`CF-03`, `TU-05`) as a Program-Design deliverable.
 **Touches.** A new action-id definition (proposed home: `stikk-core`, since actions are operations,

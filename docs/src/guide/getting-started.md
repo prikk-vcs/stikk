@@ -53,24 +53,54 @@ History and Changes keep working.
 choose another ref the status bar shows prikk's default beside it. Below 0.42, or when prikk reports its
 current branch unresolved, stikk opens on `heads/main` if that is published, and otherwise with no ref
 focused and the ref picker open. Choosing a ref in stikk never moves prikk's current branch and never
-touches the worktree. `C` commits to prikk's current branch, because that is where your folder's files
-belong; to commit to another branch, switch to it first (`b`, then the branch, then `s`).
+touches the worktree. `c` commits to prikk's current branch, because that is where your folder's files
+belong; to commit to another branch, switch to it first: `b`, then the branch, then `Enter` and
+*Switch to this branch*.
 
-Key reference: `Enter` opens History and drills into a block; `b` chooses which ref to view; `w` opens
-Changes (worktree vs. baseline), `u` toggles its display-only untracked filter; `Q` opens the Queue view,
-the patches waiting to be sealed; `V` runs prikk's repository verification and shows its
-verdict; `C` commits worktree changes and `S` seals the queue, each after a
-preview and a confirmation; `:` opens the command palette; `R` shows the session's recent refusals; `o` lists background operations still in flight or
-recently finished (a listing only — there is no cancel action); `?` opens the glossary and full key
-reference; `m` marks a block in History and `d` compares — see *Compare* below; `v` toggles Patch
-detail's, Compare's and Verify's raw view of prikk's own fields; `r` refreshes Orientation and the
-screen you are on — History, the Queue, Changes, the tip's Block detail, a Patch detail opened from
-the Queue, or Verify (which re-runs it) — **in place**, each view staying visible while its read runs, and **re-reading the ref that screen
-shows**, which need not be the ref you have focused; `Esc`/`q` steps back, and quits at the root.
+## Key reference
 
-**Is the repository sound?** `V` runs prikk's own verification and shows what prikk said: the
+**A letter means one action, in either case** — Caps Lock on is the same keyboard. Every action stikk
+has is in one catalog, and these are the ones with a key of their own; the rest are found by name.
+
+| Key | What it does |
+|---|---|
+| `Enter` | what can be done here: the actions for the selected row, then the screen's |
+| `→` | open the selected row — the first of those actions, at once |
+| `←`, `Esc`, `q` | back; at the root, quit |
+| `↑` `↓`, `k` `j` | move the selection; in a card, read on |
+| `?` | the glossary and this key list |
+| `:` | every action, by name |
+| `b` | branches and tags |
+| `w` | changes in the worktree |
+| `p` | **p**atches waiting to be sealed |
+| `v` | verify the repository |
+| `t` | keys this repository trusts |
+| `o` | **o**pen a bundle file |
+| `c` | commit worktree changes |
+| `s` | seal the active WAL |
+| `r` | refresh — re-read from prikk |
+| `d` | compare |
+| `m` | mark it, to compare |
+| `f` | prikk's own **f**ields |
+| `u` | show untracked files |
+| `Space` | acknowledge, inside the card that asks |
+
+**Everything else is found by name.** Press `Enter` on a row for what can be done with it — switch to
+this branch, new branch at its tip, new tag, close this branch, export it to a bundle file, import
+this bundle, adopt a key, remove this key, undo this block, save this file, save every file at this
+block — or `:` for the whole list, including *Recent refusals* and *Background operations*. An action
+you cannot run now is still listed, dimmed, with the reason.
+
+**Where each key applies.** `d`, `m`, `f` and `u` belong to a screen or a row, and the key line above
+the status bar lists the keys you have wherever you are: it names them so that you never have to
+remember which. `r` refreshes Orientation and the screen you are on — History, the Queue, Changes,
+the tip's Block detail, a Patch detail opened from the Queue, or Verify (which re-runs it) — **in
+place**, each view staying visible while its read runs, and **re-reading the ref that screen shows**,
+which need not be the ref you have focused.
+
+**Is the repository sound?** `v` runs prikk's own verification and shows what prikk said: the
 verdict, every condition prikk is currently failing in prikk's own words, and every stage prikk ran
-with its status. `v` shows prikk's own JSON report and `r` re-runs it — a verdict is about the
+with its status. `f` shows prikk's own JSON report and `r` re-runs it — a verdict is about the
 moment it was taken, so stikk never shows you a cached one. **Verify changes nothing**: it repairs
 nothing, clears no lock, and never runs on its own, because it scans the whole repository.
 
@@ -106,7 +136,7 @@ binary or repository needed).
 **Patch detail** is built, at prikk ≥ 0.39. Open a block from History and its **patches** are listed:
 `Enter` on one shows what it changed — a text edit's spans, a create's content and mode, a delete's
 preimage, a binary replacement's blob ids and sizes, a permission change's two modes, and a rename with
-the key that asserted it. `v` switches to prikk's own fields. The Queue opens a *queued* patch the same
+the key that asserted it. `f` switches to prikk's own fields. The Queue opens a *queued* patch the same
 way.
 
 **File content is shown quoted**, one row per line, with the line's own newline inside the quotes:
@@ -145,7 +175,7 @@ line's own ending inside the quotes, so a trailing space, a CRLF and a missing f
 visible — two lines that differ in any byte never look the same. prikk's `@@` header and its
 `\ No newline at end of file` note are prikk's words and are not quoted. A rename names both paths,
 a `mode` entry shows both modes, and a `binary` entry shows both sizes and content ids — never
-bytes. `↑`/`↓` move between entries and `v` shows prikk's own fields for the selected one.
+bytes. `↑`/`↓` move between entries and `f` shows prikk's own fields for the selected one.
 
 **stikk computes no part of a comparison**: it does not renumber, re-hunk or infer a rename. Where
 prikk says its hunks are not the shortest edit script, stikk says so too. Below prikk 0.46, Compare
@@ -176,8 +206,9 @@ newer.
 Open **History** with `Enter`, put the cursor on the block you want and press `Enter` again: that
 block's detail lists its patches and then **its files**. `↓` walks down through both.
 
-- **`F`** on a file saves **that file**, as it was at that block.
-- **`A`** anywhere in the block saves **every file at it** into a new folder.
+- **`Enter` on a file**, then *Save this file, as it was here*, saves **that file** as it was at
+  that block.
+- **`Enter`**, then *Save every file at this block*, saves **all of them** into a new folder.
 
 Either way stikk suggests a destination beside your repository — `a-f687c8ff7394.txt` for a file,
 `<your repository>-f687c8ff7394` for a folder — and you can type another. The card then names the
@@ -192,7 +223,7 @@ instead.
 Two things the card tells you when they apply. Saving **one** file keeps its bytes but not its
 execute permission, so a script comes back needing `chmod +x` — saving all of them keeps it. And
 where prikk has no trusted checkpoint in reach it replays the files from the start of history and
-says so: the copy matches that history, but nothing has checked the history itself. `V` does that.
+says so: the copy matches that history, but nothing has checked the history itself. `v` does that.
 
 **Nothing in your repository or your worktree changes.** To actually use what came back, copy what
 you want into your worktree yourself and commit it — which is also the honest answer while stikk
@@ -200,18 +231,18 @@ cannot take a change back for you.
 
 ### Going back to an earlier block
 
-The last section is for **looking at or copying** an old version: `F` and `A` write outside your
-repository and change nothing. This one is for **working from** an earlier block — having its
+The last section is for **looking at or copying** an old version: saving a file, or all of them,
+writes outside your repository and changes nothing. This one is for **working from** an earlier block — having its
 files in your worktree and carrying on from there.
 
 prikk writes no block id into a worktree: a checkout needs a branch, and a branch cannot be
 created straight from a block id. **The route that works is three steps, each one a key stikk
 already has:**
 
-1. **`t`** on the block — in History, or in its detail — tags it. Give the tag a name you can
-   live with (see below).
-2. **`n`** in the ref picker (`b`), with that tag selected, creates a branch at it.
-3. **`s`** in the ref picker, with that branch selected, switches to it.
+1. **`Enter`** on the block — in History, or in its detail — then *New tag at this block*. Give the
+   tag a name you can live with (see below).
+2. **`Enter`** in the ref picker (`b`), with that tag selected, then *New branch at its tip*.
+3. **`Enter`** in the ref picker, with that branch selected, then *Switch to this branch*.
 
 **What each step writes.** The tag and the branch are **published names**: they are part of the
 repository and anyone you share it with will see them. The switch is the step that touches your
@@ -226,26 +257,26 @@ the card says which. Commit or seal first, or switch somewhere else.
 of one does not exist — so the name you choose is the name that stays. Something like
 `tags/before-the-rewrite` is kinder to read later than `tags/tmp`.
 
-**Going forward again** is the same third step: select your original branch in the ref picker and
-press `s`.
+**Going forward again** is the same third step: select your original branch in the ref picker,
+press `Enter` and choose *Switch to this branch*.
 
 **If what you want is to take a change back**, see [Undoing a block](#undoing-a-block) below. That
 one records the reversal as a new change instead of moving you to an older one.
 
 ## Undoing a block
 
-You sealed something and it was a mistake. **`U` puts back what that block changed**, as a new
+You sealed something and it was a mistake. **Undoing a block puts back what it changed**, as a new
 change on top of it. Needs prikk 0.54 or newer.
 
-Open **History** with `Enter`, put the cursor on the block you regret, and press **`U`**. It works
-from the block's detail screen too.
+Open **History**, put the cursor on the block you regret, press **`Enter`** and choose **Undo this
+block**. It works from the block's detail screen too.
 
 1. **The message.** stikk fills in `Undo: <the block's own message>`; edit it if you like. This is
    what `prikk log` will show for the undo.
 2. **The card.** It lists every file, one line each, with what will happen to it: *put back*,
    *remove*, *rename back*, *put back the permissions*. Read that list — it is the whole of what
    will change. `Enter` does it; `Esc` walks away and changes nothing.
-3. **Seal it.** The undo is an ordinary commit, so press **`S`** when you are ready for it to
+3. **Seal it.** The undo is an ordinary commit, so press **`s`** when you are ready for it to
    become part of the history.
 
 **Nothing is erased.** The block you undid is still there, and so is the undo — History shows
@@ -284,14 +315,14 @@ Two people share prikk history by **bundle files**. One exports a branch to a fi
 way they like — prikk moves no bytes over a network — and the other checks it, sees what it would
 change, and imports it. Needs prikk 0.53 or newer.
 
-**To export**, open the ref picker with `b`, put the cursor on one of your own open branches and
-press `E`. stikk suggests a name beside the repository (`<branch>-<short tip>.bundle`), which you
+**To export**, open the ref picker with `b`, put the cursor on one of your own open branches, press
+`Enter` and choose *Export it to a bundle file*. stikk suggests a name beside the repository (`<branch>-<short tip>.bundle`), which you
 can edit. **stikk will not write inside the repository** — the bundle would sit in your worktree
 as an untracked file, and your next commit would capture it — and **will not write over a file
 that is already there**. Tags, received refs, closed branches and a branch with nothing published
 are each declined, with the reason, before anything runs.
 
-**To open a bundle someone sent you**, press `i` anywhere a repository is open and give the path.
+**To open a bundle someone sent you**, press `o` anywhere a repository is open and give the path.
 stikk shows two things:
 
 - **prikk's verification**, word for word, including prikk's own caveat that it checks structure
@@ -305,7 +336,7 @@ stikk shows two things:
 Nothing is written by opening a bundle. If prikk will not read the file, you get prikk's reason
 and nothing else.
 
-**To import it**, press `I` on that view and confirm. The bundle is stored as a **received
+**To import it**, press `Enter` on that view, choose *Import this bundle*, and confirm. The bundle is stored as a **received
 branch** — `remotes/<name>`, read-only history beside your own. No branch of yours is created or
 moved, nothing is written to your worktree, and nobody's signing key is trusted by it. Afterwards
 stikk takes you to that branch's history, which is where what arrived can be read.
@@ -329,14 +360,14 @@ is not trusting one. Needs prikk 0.54 or newer; below that you get prikk's ids a
 
 **A name is not a signature, and the card says so.** A bundle records the id its sealer chose
 and nothing to check it against, so anyone can seal under an id you trust and the preview will
-still read clean. **Import it, then press `V`:** verifying is where prikk checks each signature
+still read clean. **Import it, then press `v`:** verifying is where prikk checks each signature
 against the key trusted here, and a seal that does not verify fails the check.
 
 **None of this stops an import.** An untrusted sealer is a fact about what you are looking at,
 not a refusal — received branches exist precisely so history you have not vouched for can sit
-beside your own, where `V` can check it.
+beside your own, where `v` can check it.
 
-**`T`** shows the keys this repository trusts, anywhere a repository is open: each key's id and
+**`t`** shows the keys this repository trusts, anywhere a repository is open: each key's id and
 public key, with your own marked. Adopting a key means prikk accepts that key's signatures on
 what it signed; it never lets the key move one of your branches. Where nothing is adopted, the
 view says so and gives prikk's own command — and the one caution worth repeating: **get the
@@ -344,7 +375,8 @@ public key from its owner, not from a bundle they sent.**
 
 ### Adopting and removing keys
 
-From the Trust view, **`a`** adopts a key and **`x`** removes the one you have selected. Each is
+From the Trust view, **`Enter`** offers *Adopt a key* and *Remove this key* for the one you have
+selected. Each is
 previewed and confirmed by **typing the key id**, which is stikk's most deliberate confirmation:
 nothing here happens by a stray `Enter`. Neither needs a signing key of your own. Needs prikk
 0.54 or newer.
@@ -367,7 +399,7 @@ removing **your own** key means you cannot seal here until it is adopted back. p
 least one trusted key, so the last one cannot be removed at all.
 
 After either, stikk shows prikk's own words and the list as it now stands. After a removal, press
-**`V`** to see what Verify says.
+**`v`** to see what Verify says.
 
 ## Capability and signing
 

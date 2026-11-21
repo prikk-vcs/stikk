@@ -381,3 +381,29 @@ fn every_list_holds_catalog_entries_only() {
         }
     }
 }
+
+/// **Every key a reader is taught is one the catalog binds** — the two spellings of a key agree, so a
+/// document built from either names the same keys (RFC 061 decision 6).
+#[test]
+fn a_keys_tokens_are_the_words_it_is_named_by() {
+    for action in all() {
+        let Some(key) = action.key else { continue };
+        let every = key.every();
+        let tokens = key.tokens();
+        assert!(!tokens.is_empty(), "{}", action.id);
+        for token in &tokens {
+            assert!(
+                every.contains(token.as_str()),
+                "{}: {token:?} is not in {every:?}",
+                action.id
+            );
+        }
+        // The key line's label is one of the tokens, or — where one key is two arrows — made of them.
+        let label = key.label();
+        assert!(
+            tokens.contains(&label) || label == format!("{}{}", tokens[0], tokens[1]),
+            "{}: the label {label:?} is not among {tokens:?}",
+            action.id
+        );
+    }
+}

@@ -1780,8 +1780,9 @@ fn capture_rfc060_the_three_overlays_f3_found_cut() {
             "overlay: glossary (the help overlay)",
             vec![
                 "Every repository write happens inside prikk itself, never in stikk.",
-                "prikk's own fields (in Patch detail, Compare)",
-                "mark this block for a comparison (in History)",
+                // The catalog's own words, which the Keys section now lists (RFC 061 decision 6).
+                "A letter means one action, in either case.",
+                "What can be done here",
             ],
         ),
     ] {

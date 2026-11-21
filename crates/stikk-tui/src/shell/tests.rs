@@ -145,7 +145,9 @@ fn a_tiny_terminal_shows_the_too_small_notice() {
     let (mut app, rx) = open("/repo", &Config::default());
     drain(&mut app, &rx, &backend);
     let text = draw(&app, 40, 10);
-    assert!(text.contains("terminal too small"));
+    // RFC 060 decision 6: it says what to do, and names the size it needs.
+    assert!(text.contains("too small for stikk"), "{text}");
+    assert!(text.contains("60 columns and 15 rows"), "{text}");
 }
 
 #[test]
@@ -1580,7 +1582,9 @@ fn every_screen_keeps_seven_to_one() {
                 resolved.palette.kind.name(),
                 screen.marker,
             );
-            for (w, h) in [(80, 24), (120, 40)] {
+            // **60 × 15 and 72 × 20 as well** (RFC 060 §5.3): the minimum, and a size between it
+            // and yesterday's.
+            for (w, h) in [(60, 15), (72, 20), (80, 24), (120, 40)] {
                 let buffer = drawn(&app, w, h);
                 let what = format!("{} at {w}x{h}", screen.name);
                 let (c, k) = keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
@@ -1600,9 +1604,9 @@ fn every_screen_keeps_seven_to_one() {
     );
 }
 
-/// **The one screen the matrix's sizes cannot show**: below 80 x 24 the shell draws the too-small
-/// notice instead of a view (design TU-10), so it is held to 7 : 1 here, in every theme and at both
-/// depths.
+/// **The one screen the matrix's sizes cannot show**: below the minimum the shell draws the
+/// too-small notice instead of a view (design TU-10, as RFC 060 decision 1 amends it), so it is held
+/// to 7 : 1 here, in every theme and at both depths.
 #[test]
 fn the_too_small_notice_keeps_seven_to_one() {
     let backend = stocked();
@@ -1612,10 +1616,10 @@ fn the_too_small_notice_keeps_seven_to_one() {
         let mut app = App::open("/repo", resolved, None, tx);
         drain(&mut app, &rx, &backend);
         // One column short, one row short, and far too small for either.
-        for (w, h) in [(79, 24), (80, 23), (40, 10)] {
+        for (w, h) in [(59, 15), (60, 14), (40, 10)] {
             let text = draw(&app, w, h);
             assert!(
-                text.contains("too small"),
+                text.contains("too small for stikk") || text.contains("too small"),
                 "{w}x{h} is below the minimum:\n{text}"
             );
             let buffer = drawn(&app, w, h);
@@ -1639,9 +1643,8 @@ fn the_too_small_notice_keeps_seven_to_one() {
 /// draw against the width it has (`text::record_overflow`), and this drains the list and asserts it
 /// is empty, naming each one.
 ///
-/// The minimum is still 80 × 24 in this commit, so the screens are drawn through `shell`'s own
-/// `cfg(test)` seam rather than by editing the constant (Handoff A §2.3); commit 4 lowers the
-/// minimum and the seam goes with it.
+/// Drawn at **60 × 15 and 72 × 20** — the minimum (RFC 060 decision 1) and a size between it and
+/// yesterday's 80 × 24.
 #[test]
 fn no_row_overflows_its_area_below_the_minimum() {
     let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
@@ -1657,10 +1660,8 @@ fn no_row_overflows_its_area_below_the_minimum() {
         (screen.reach)(&mut app, &rx, &backend);
         // Drain what reaching the screen recorded: `reach` draws, and those draws were at 120×40.
         let _ = crate::text::drain_overflows();
-        for (w, h) in [(60, 18), (72, 20)] {
-            crate::shell::below_the_minimum(|| {
-                let _ = drawn(&app, w, h);
-            });
+        for (w, h) in [(60, 15), (72, 20)] {
+            let _ = drawn(&app, w, h);
             screens_drawn += 1;
             for overflow in crate::text::drain_overflows() {
                 found.push(format!(
@@ -1730,7 +1731,7 @@ fn capture_rfc060_the_three_overlays_f3_found_cut() {
             drain(&mut app, &rx, &backend);
         }
         (screen.reach)(&mut app, &rx, &backend);
-        let text = crate::shell::below_the_minimum(|| draw(&app, 60, 18));
+        let text = draw(&app, 60, 18);
         println!("--- RFC 060 F3: {name}, 60x18\n{text}");
         // Flattened the way every capture here is: the border off, the rows joined, so a sentence
         // that wrapped is one line again and `contains` means "whole on screen".
@@ -1748,4 +1749,74 @@ fn capture_rfc060_the_three_overlays_f3_found_cut() {
             );
         }
     }
+}
+
+/// **The screen that says what to do, at every size below the minimum** (RFC 060 decision 6): it
+/// wraps, it drops its sentences from the last, and down to 20 × 5 the first one is whole.
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib capture_rfc060_the_too_small_screen -- --nocapture
+/// ```
+#[test]
+fn capture_rfc060_the_too_small_screen() {
+    let backend = stocked();
+    let (mut app, rx) = open("/repo", &Config::default());
+    drain(&mut app, &rx, &backend);
+    for (w, h) in [(59, 15), (60, 14), (40, 10), (20, 5), (10, 3)] {
+        let text = draw(&app, w, h);
+        println!("--- RFC 060: the too-small screen at {w}x{h}\n{text}");
+        let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        // **The size it needs, and the size it has**, in the first sentence — which is the one
+        // sentence that is never dropped.
+        assert!(
+            flat.contains(&format!(
+                "it needs 60 columns and 15 rows, and has {w} × {h}."
+            )) || (w, h) == (10, 3),
+            "{w}x{h}: the first sentence is whole:\n{text}"
+        );
+        // **Nothing is cut**: every row was wrapped to the window.
+        for row in text.lines() {
+            assert!(
+                row.chars().count() <= usize::from(w),
+                "{w}x{h}: a row is wider than the window: {row:?}"
+            );
+        }
+        // **The terminal's own colours** — no colour of stikk's at all (decision 6).
+        let buffer = drawn(&app, w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let cell = buffer.cell((x, y)).expect("a cell inside the buffer");
+                assert_eq!(
+                    (cell.fg, cell.bg),
+                    (ratatui::style::Color::Reset, ratatui::style::Color::Reset),
+                    "{w}x{h}: cell {x},{y} is coloured"
+                );
+            }
+        }
+    }
+
+    // At 59 × 15 there is room for all three sentences; at 20 × 5 for the first alone.
+    let roomy = draw(&app, 59, 15);
+    let flat = roomy.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(flat.contains("Make the window bigger"), "{roomy}");
+    assert!(
+        flat.contains("https://prikk-vcs.github.io/stikk/"),
+        "the guide is named by its address:\n{roomy}"
+    );
+    let tiny = draw(&app, 20, 5);
+    assert!(
+        !tiny.contains("Help:"),
+        "the last sentence is the first to go:\n{tiny}"
+    );
+    // And at 10 × 3, as much of the first sentence as fits — still wrapped, never cut.
+    let smallest = draw(&app, 10, 3);
+    assert!(smallest.contains("This"), "{smallest}");
+    assert_eq!(
+        smallest
+            .lines()
+            .filter(|row| !row.trim().is_empty())
+            .count(),
+        3,
+        "three rows, all of them used:\n{smallest}"
+    );
 }

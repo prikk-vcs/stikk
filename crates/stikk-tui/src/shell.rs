@@ -13,35 +13,20 @@ use crate::text::{identifier, inert};
 use crate::theme::Palette;
 use crate::{overlay, status_bar, view};
 
-/// Minimum usable terminal size (design TU-10).
-const MIN_WIDTH: u16 = 80;
-const MIN_HEIGHT: u16 = 24;
-
-// **The seam RFC 060's own tests draw through** (Handoff A §2.3).
-//
-// The minimum is still 80 x 24 in this commit, and the wrap this commit fixes is what has to be
-// checked at 60 — so a test draws every screen with the size guard set aside, rather than editing
-// the constant and testing a tree nobody ships. It goes away with the lower minimum (§5.1).
-#[cfg(test)]
-thread_local! {
-    static GUARD_SET_ASIDE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Draw `f` with the too-small guard set aside — see [`GUARD_SET_ASIDE`].
-#[cfg(test)]
-pub(crate) fn below_the_minimum<R>(f: impl FnOnce() -> R) -> R {
-    GUARD_SET_ASIDE.set(true);
-    let out = f();
-    GUARD_SET_ASIDE.set(false);
-    out
-}
+/// Minimum usable terminal size (design TU-10, as RFC 060 decision 1 amends it).
+///
+/// **60 × 15, lowered from 80 × 24**, which is what lets the text be made about 2.3 times bigger on
+/// every screen RFC 060 F1 measured — a 1366 × 768 laptop was locked out by one row at 1.6 times.
+/// Rows run out long before columns: a terminal cell is about 2.3 times taller than it is wide, and
+/// screens are wider than they are tall.
+const MIN_WIDTH: u16 = 60;
+const MIN_HEIGHT: u16 = 15;
 
 /// Whether the too-small screen is owed for this size.
+///
+/// (RFC 060's own tests used to draw through a `cfg(test)` seam here, because the sizes they check
+/// were below the minimum. The minimum is 60 × 15 now, so they draw at it like anything else.)
 fn too_small(area: Rect) -> bool {
-    #[cfg(test)]
-    if GUARD_SET_ASIDE.get() {
-        return false;
-    }
     area.width < MIN_WIDTH || area.height < MIN_HEIGHT
 }
 
@@ -337,20 +322,68 @@ fn centered_note(palette: &Palette, frame: &mut Frame, area: Rect, note: &str, w
     );
 }
 
-fn render_too_small(palette: &Palette, frame: &mut Frame, area: Rect) {
-    let msg = format!(
-        "terminal too small — need at least {MIN_WIDTH}×{MIN_HEIGHT}, have {}×{}",
-        area.width, area.height
-    );
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            msg,
-            Style::default().fg(palette.warn),
-        )))
-        .alignment(HorizontalAlignment::Center)
-        .wrap(Wrap { trim: true }),
-        area,
-    );
+/// **The screen that says what to do** (RFC 060 decision 6), in three sentences, most important
+/// first.
+///
+/// - **The window comes first**, because a reader who made the text bigger did it on purpose, and
+///   telling them to undo it is telling them to give up what they came for.
+/// - **The keys are "often"**, because they differ by terminal — kitty's are Ctrl, Shift and −, and
+///   ⌘ and − is Apple's own documented *"Make fonts smaller"*.
+/// - **The guide is named by its address.** *"The guide"* alone tells a reader nothing about where it
+///   is.
+///
+/// The numbers come from [`MIN_WIDTH`] and [`MIN_HEIGHT`], never written twice: a sentence that
+/// states a constant is a sentence that will one day state the wrong one.
+fn too_small_sentences(area: Rect) -> [String; 3] {
+    [
+        format!(
+            "This window is too small for stikk: it needs {MIN_WIDTH} columns and {MIN_HEIGHT} \
+             rows, and has {} \u{d7} {}.",
+            area.width, area.height
+        ),
+        "Make the window bigger, or the text a little smaller (often Ctrl and \u{2212}; on a Mac, \
+         \u{2318} and \u{2212})."
+            .to_string(),
+        "Help: https://prikk-vcs.github.io/stikk/ \u{2192} \"Making the text bigger\".".to_string(),
+    ]
+}
+
+/// Render [`too_small_sentences`] into `area`: wrapped to the window, **in the terminal's own
+/// colours** (`Color::Reset`), and **dropping sentences from the last until what is left fits**.
+///
+/// It must itself fit down to 20 × 5 (RFC 060 decision 6), and below that it draws as much of the
+/// first sentence as there is room for — which is still the sentence that names the size needed.
+/// Left-aligned from the top row, because three sentences read as a paragraph and a centred
+/// paragraph in a tiny window reads as a shrug.
+fn render_too_small(_palette: &Palette, frame: &mut Frame, area: Rect) {
+    let width = usize::from(area.width).max(1);
+    let height = usize::from(area.height);
+    let sentences = too_small_sentences(area);
+    // Wrap each on its own, so dropping one cannot change where another breaks.
+    let wrapped: Vec<Vec<String>> = sentences
+        .iter()
+        .map(|sentence| crate::text::wrap_indented(sentence, width, ""))
+        .collect();
+    let mut rows: Vec<String> = Vec::new();
+    for sentence in &wrapped {
+        if rows.len() + sentence.len() > height {
+            break;
+        }
+        rows.extend(sentence.iter().cloned());
+    }
+    if rows.is_empty() {
+        // Not even the first sentence fits: as much of it as there is room for, still wrapped.
+        rows = wrapped
+            .first()
+            .map(|sentence| sentence.iter().take(height).cloned().collect())
+            .unwrap_or_default();
+    }
+    let lines: Vec<Line> = rows
+        .into_iter()
+        .map(|row| Line::from(Span::styled(row, Style::default())))
+        .collect();
+    crate::text::record_overflow("terminal too small", &lines, width);
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 # Handoff A — RFC 061: finding your place (v1)
 
-**Companion to:** [RFC 061](../../accepted/061-finding-your-place.md), **accepted 2026-11-21**, decision 2's key change
+**Companion to:** [RFC 061](../../done/061-finding-your-place.md), **accepted 2026-11-21**, decision 2's key change
 included. **Read the RFC first**: F1–F5 and decisions 1–6. **Covers:** all of it. **0.21.0's increment 4, the last.**
 **Not a release.**
 

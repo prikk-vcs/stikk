@@ -553,12 +553,18 @@ way in, for everyone, and especially for older users and anyone with weaker eyes
 2. **Readable colours — landed on `main`** ([RFC 059](rfcs/accepted/059-readable-colours.md), `3e284a8`): body text
    in the terminal's own colour; light or dark detected; 7 : 1 for every colour stikk chooses; high-contrast and
    plain; `NO_COLOR`. The owner's Windows checks close it.
-3. **Bigger text** ([RFC 060](rfcs/accepted/060-bigger-text.md), accepted):
+3. **Bigger text — landed on `main`** ([RFC 060](rfcs/accepted/060-bigger-text.md), `472e6e0`; its real-terminal
+   check closes it):
    - stikk works down to 60 × 15, so text can be about twice as big;
    - overlays wrap and scroll in the space they have, and offer a confirmation only once it has been read;
    - no italic; bold for headings and the selection only;
    - *"Making the text bigger"* in the guide.
-4. **Finding your place** (RFC 061): a full-row highlight, a key line that stays, and Enter opening a list of actions.
+4. **Finding your place — landed on `main`** ([RFC 061](rfcs/done/061-finding-your-place.md), `af9da85`):
+   - one catalog of every action, and a palette that lists it;
+   - each letter one meaning, in either case;
+   - Enter lists what can be done with the selected row, and `→` opens it;
+   - the whole row highlighted;
+   - a key line that stays.
 
 **The mouse is withdrawn from the TUI** (owner, 2026-11-21). In a terminal it costs drag-to-copy of ids. In the GUI it
 comes for free, so it is part of the GUI's design.

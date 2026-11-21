@@ -1,6 +1,6 @@
 # RFC 061 — Finding your place
 
-**Status.** **Accepted by the project owner 2026-11-21**, decision 2's key change included (*"Accepted."*, answering the question put on acceptance); [Handoff A](../handoffs/061-finding-your-place/a-finding-your-place-handoff-v1.md). **Proposed 2026-11-21** by the architect, as 0.21.0's increment 4, the last
+**Status.** **Done 2026-11-21**: Handoff A delivered on `main` (`c23820d`..`af9da85`), green on the full platform matrix; ships in **0.21.0**. **Decision 2 amended in review** (`←` never quits; see *Delivered*). **Accepted by the project owner 2026-11-21**, decision 2's key change included (*"Accepted."*, answering the question put on acceptance); [Handoff A](../handoffs/061-finding-your-place/a-finding-your-place-handoff-v1.md). **Proposed 2026-11-21** by the architect, as 0.21.0's increment 4, the last
 (`.git-exclude/release/0-21-0-scope.md`, authorized 2026-11-04, last amended 2026-11-21). Written to the owner's
 philosophy (memory, 2026-11-21): *"finally clean, safe and secure, and robust and sophisticated design"*, and
 *"APIs and UI/UX for users not to be confused or misunderstand"*. **One decision goes beyond the scope's words,
@@ -145,7 +145,8 @@ Each selected item's other actions are separate letters, several of them F1's pa
    |---|---|---|
    | `Enter` | the actions for the selected row (decision 3) | open |
    | `→` | open the selected row: Enter's first action, at once | — |
-   | `←`, `Esc`, `q` | back; at the root, quit | `Esc`, `q` |
+   | `Esc`, `q` | back; at the root, quit | same |
+   | `←` | back; at the root, **nothing** (amended in review: an arrow pressed once too often must not end the session) | — |
    | `↑` `↓`, `k` `j` | move; in a card, read on (RFC 060) | same |
    | `?` | help | same |
    | `:` | every action, by name | same |
@@ -257,3 +258,38 @@ Each selected item's other actions are separate letters, several of them F1's pa
   - the whole selected row is highlighted;
   - a key line that stays on screen;
   - the palette lists every action.
+
+## Delivered
+
+**One handoff, eight commits, `c23820d`..`af9da85`, green on `main`:** CI, Docs, supply chain, and the real-binary
+suite on the full platform matrix (run `44905946166`): 100 cases on Linux, macOS and Windows at 0.28.0 + 0.58.0.
+- **The catalog**, `stikk-core/src/actions.rs`, has 42 entries, and the palette lists 41. **RFC 002 is archived**,
+  superseded by it.
+- **The keys:** `keys.rs` keeps no bindings, and letters fold case.
+- **Enter's lists** follow one rule (`here()`: the row's, then the screen's, then everywhere's where there is no row).
+- **The selected row** is reversed across its width. RFC 059's matrix swaps reversed cells: 1,469,298 checks, 17,200
+  of them reversed, none below 7 : 1.
+- **The key line** keeps `? help` and `q back` at every size. No title and no status bar names a key.
+- **The documents:** `TU-05`, `TU-06` and `TU-07` describe the catalog. `TU-13` is the key line. The guide is held to
+  the catalog by two tests.
+- **Beyond the handoff**, nine sentences of stikk's own that named keys, seven of them withdrawn ones, now name
+  actions.
+
+**Amended in review** (Handoff A review v1):
+- **C1:** **one selection marker**, `▶`, defined once in `theme.rs`. There had been two glyphs in ten hand-written
+  places.
+- **C2:** **`←` goes back, and never quits.** This corrects decision 2's table, which had `←` with `Esc` and `q`.
+- **C3:** the no-focused-ref reason names the action (*"Pick one in Branches and tags."*), composed from the catalog,
+  and no key.
+
+**Real terminal, Linux** (the architect, 2026-11-21): Alacritty 0.17.0 at its default font, 113 × 52 as niri tiles
+it, Wayland, isolated `HOME` and XDG directories, driven by a relay that passes every byte both ways
+(`.git-exclude/reports/061-finding-your-place/linux/real-terminal-061.sh` → `real-terminal-061-af9da85.txt`):
+- **On Orientation:** Enter opened its list, *"Open History"*, in reverse video; Enter again opened History.
+- **On the tip block:** Enter opened *"Block faf7165d566f"*, with *Open this block*, *Mark it, to compare*, *Undo this
+  block* and *New tag at this block*.
+- **Esc** closed it, and `→` opened Block detail at once.
+- **The key line's** `? help` and `q back` were on screen throughout.
+
+**Carried:** `TU-05`'s `/` find, `FR-124`'s `y` copy, `Tab` pane cycling, and `CF-03`'s rebindable keys are recorded
+as not built.

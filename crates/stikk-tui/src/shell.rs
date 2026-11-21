@@ -249,8 +249,8 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
                 .map(|m| m.block_id.as_str());
             view::history::render(v, cursor, marked, palette, frame, area);
         }
-        Focus::BlockDetail(detail, cursor) => {
-            view::block::render(detail, cursor, palette, frame, area);
+        Focus::BlockDetail(detail, cursor, offset) => {
+            view::block::render(detail, cursor, offset, palette, frame, area);
         }
         Focus::Bundle(opened, offset) => {
             view::bundle::render(opened, offset, palette, frame, area);
@@ -258,7 +258,7 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         Focus::Trust(trust, cursor, offset) => {
             view::trust::render(trust, cursor, offset, palette, frame, area);
         }
-        Focus::Changes(v, hide_untracked, history) => {
+        Focus::Changes(v, hide_untracked, history, offset) => {
             // RFC 032: the `renames` count is shown at prikk ≥ 0.38, where a rename can be declared.
             let renames_reported =
                 matches!(app.state(), OrientationState::Loaded(o) if o.prikk_minor >= 38);
@@ -275,6 +275,7 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
                     renames_reported,
                     compares,
                 },
+                offset,
                 palette,
                 frame,
                 area,

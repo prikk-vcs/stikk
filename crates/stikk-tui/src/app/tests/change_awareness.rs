@@ -570,7 +570,7 @@ fn r_refreshes_changes_in_place_and_keeps_the_untracked_filter() {
     };
     assert_eq!(reff, "heads/main");
     assert!(
-        matches!(app.focus(), Focus::Changes(view, true, _) if !view.clean),
+        matches!(app.focus(), Focus::Changes(view, true, _, _) if !view.clean),
         "the view stays visible while it refreshes"
     );
 
@@ -585,7 +585,7 @@ fn r_refreshes_changes_in_place_and_keeps_the_untracked_filter() {
         })),
     });
     match app.focus() {
-        Focus::Changes(view, hide, _) => {
+        Focus::Changes(view, hide, _, _) => {
             assert!(view.clean);
             assert!(hide, "hide_untracked is kept as the user set it");
         }
@@ -620,7 +620,7 @@ fn a_failed_changes_refresh_keeps_the_view_and_surfaces_the_error() {
             message: "worktree-status failed".into(),
         })),
     });
-    assert!(matches!(app.focus(), Focus::Changes(view, false, _) if !view.clean));
+    assert!(matches!(app.focus(), Focus::Changes(view, false, _, _) if !view.clean));
     assert!(matches!(app.top_overlay(), Some(Overlay::Refusal { .. })));
 }
 
@@ -628,6 +628,7 @@ fn block_detail_screen(is_tip: bool) -> Screen {
     Screen::BlockDetail {
         cursor: 0,
         reff: "heads/main".into(),
+        offset: std::cell::Cell::new(0),
         view: BlockDetailView {
             row: block("bbbb", 2),
             is_tip,
@@ -654,7 +655,7 @@ fn r_refreshes_the_tips_block_detail_in_place() {
         }
         other => panic!("expected a BlockState request, got {other:?}"),
     }
-    assert!(matches!(app.focus(), Focus::BlockDetail(view, _) if view.row.block_id == "bbbb"));
+    assert!(matches!(app.focus(), Focus::BlockDetail(view, _, _) if view.row.block_id == "bbbb"));
 
     app.apply(Response {
         seq: requests[1].seq,
@@ -800,7 +801,7 @@ fn main_tip_detail_on_top(app: &mut App, rx: &mpsc::Receiver<Request>) {
         seq: block_req.seq,
         kind: tip_detail("heads/main", "bbbb", 2),
     });
-    assert!(matches!(app.focus(), Focus::BlockDetail(_, _)));
+    assert!(matches!(app.focus(), Focus::BlockDetail(_, _, _)));
 }
 
 /// `b`, pick `heads/dev`: its History is pushed above whatever is on top, and focus moves to it.
@@ -833,7 +834,7 @@ fn a_tip_block_detail_refresh_rereads_its_own_ref_after_focus_moved() {
     main_tip_detail_on_top(&mut app, &rx); // 1
     pick_dev_above(&mut app, &rx); // 2
     app.back(); // 3: heads/main's tip detail is back on top, focus still heads/dev
-    assert!(matches!(app.focus(), Focus::BlockDetail(view, _) if view.row.block_id == "bbbb"));
+    assert!(matches!(app.focus(), Focus::BlockDetail(view, _, _) if view.row.block_id == "bbbb"));
     assert_eq!(app.focused_ref(), Some("heads/dev"));
 
     app.reload(); // 4
@@ -911,7 +912,7 @@ fn a_changes_refresh_updates_the_publication_state_beside_the_view() {
     });
     assert!(matches!(
         app.focus(),
-        Focus::Changes(_, _, RefHistory::Unpublished(UnpublishedQueue::Empty))
+        Focus::Changes(_, _, RefHistory::Unpublished(UnpublishedQueue::Empty), _)
     ));
 
     app.reload();
@@ -925,6 +926,6 @@ fn a_changes_refresh_updates_the_publication_state_beside_the_view() {
     });
     assert!(matches!(
         app.focus(),
-        Focus::Changes(_, _, RefHistory::Published)
+        Focus::Changes(_, _, RefHistory::Published, _)
     ));
 }

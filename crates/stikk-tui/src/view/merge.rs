@@ -70,6 +70,12 @@ pub fn render(
         &lines,
         usize::from(area.width.saturating_sub(2)),
     );
+    crate::text::record_cut(
+        "Merge plan",
+        lines.len(),
+        usize::from(viewport),
+        position.is_some(),
+    );
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 

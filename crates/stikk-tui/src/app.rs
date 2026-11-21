@@ -115,6 +115,12 @@ pub enum Screen {
         /// The selected patch in the block's Patches section (RFC 035 §4.1), `0` where there are none.
         /// `Enter` opens Patch detail for it, **from the report already read**.
         cursor: usize,
+        /// First content row drawn, counting from zero after wrapping — the Queue's idiom, and for
+        /// the Queue's reason (RFC 060 Handoff C §1): this view is a header and a list, and at
+        /// 60 × 15 it drew eleven rows of twenty-two and said nothing. The renderer clamps the value
+        /// and writes it back, because only it knows the wrapped height; where a row is selected it
+        /// also **follows the cursor**, so the selected row is never off screen.
+        offset: std::cell::Cell<u16>,
         /// The `seq` of an in-flight refresh, if any (RFC 031 §7). Only the tip's detail is ever
         /// refreshed: an older block's detail cannot change.
         refreshing: Option<u64>,
@@ -128,6 +134,11 @@ pub enum Screen {
         /// Whether the ref has published history (RFC 032 decision 5), read **beside** the view and kept
         /// beside it here; a refresh updates both.
         history: RefHistory,
+        /// First content row drawn, counting from zero after wrapping (RFC 060 Handoff C §2): this
+        /// view has no selectable row — what `d` compares is the whole worktree — so `↑`/`↓` scroll
+        /// its content, Patch detail's idiom. It had neither a scroll nor a position, and at 60 × 15
+        /// a worktree of fourteen rows showed ten of them in silence.
+        offset: std::cell::Cell<u16>,
         /// The `seq` of an in-flight refresh (`r`, or a detected change), if any — the view stays
         /// visible while it runs, as History's does (RFC 010 §5; RFC 031 §7).
         refreshing: Option<u64>,
@@ -318,12 +329,17 @@ pub enum Focus<'a> {
     /// A History screen and its selection cursor.
     History(&'a HistoryView, usize),
     /// A Block-detail screen and its selected patch.
-    BlockDetail(&'a BlockDetailView, usize),
+    BlockDetail(&'a BlockDetailView, usize, &'a std::cell::Cell<u16>),
     /// The Trust view (RFC 054 decision 2): the keys this repository trusts, and the scroll
     /// offset the renderer clamps and writes back.
     Trust(&'a stikk_core::TrustView, usize, &'a std::cell::Cell<u16>),
     /// The Changes view, whether untracked entries are hidden, and whether the ref has published history.
-    Changes(&'a ChangesView, bool, &'a RefHistory),
+    Changes(
+        &'a ChangesView,
+        bool,
+        &'a RefHistory,
+        &'a std::cell::Cell<u16>,
+    ),
     /// The Queue view, its scroll offset and its selected patch.
     Queue(&'a QueueView, &'a std::cell::Cell<u16>, usize),
     /// One patch's detail, whether the raw view is showing, and its scroll offset.
@@ -4009,10 +4025,22 @@ impl App {
             None => match self.screens.last_mut() {
                 Some(Screen::History { cursor, .. }) => *cursor = cursor.saturating_sub(1),
                 // RFC 035 §4.2: the Queue now has a selection, and the renderer scrolls to follow it.
-                Some(Screen::Queue { cursor, .. })
-                | Some(Screen::BlockDetail { cursor, .. })
-                | Some(Screen::Compare { cursor, .. }) => {
+                Some(Screen::Queue { cursor, .. }) | Some(Screen::Compare { cursor, .. }) => {
                     *cursor = cursor.saturating_sub(1);
+                }
+                // As `nav_down`: the cursor where the block offers a row, the content where it does
+                // not (RFC 060 Handoff C §1).
+                Some(Screen::BlockDetail {
+                    view,
+                    cursor,
+                    offset,
+                    ..
+                }) => {
+                    if stikk_core::block_cursor_len(view) == 0 {
+                        offset.set(offset.get().saturating_sub(1));
+                    } else {
+                        *cursor = cursor.saturating_sub(1);
+                    }
                 }
                 // Patch detail has no selection — it scrolls, the Glossary's idiom. The Merge
                 // plan is prikk's prose, so it scrolls the same way and for the same reason, and
@@ -4024,6 +4052,7 @@ impl App {
                     Screen::PatchDetail { offset, .. }
                     | Screen::MergePlan { offset, .. }
                     | Screen::Bundle { offset, .. }
+                    | Screen::Changes { offset, .. }
                     | Screen::Verify { offset, .. },
                 ) => {
                     offset.set(offset.get().saturating_sub(1));
@@ -4115,9 +4144,25 @@ impl App {
                     *cursor = next_index(*cursor, view.patches.len());
                 }
                 // **Patches, then files** (RFC 053 decision 3): one cursor over both sections,
-                // so `↓` reaches a file without a second selection to keep in step.
-                Some(Screen::BlockDetail { view, cursor, .. }) => {
-                    *cursor = next_index(*cursor, stikk_core::block_cursor_len(view));
+                // so `↓` reaches a file without a second selection to keep in step — and the
+                // renderer scrolls to follow it (RFC 060 Handoff C §1).
+                //
+                // **Where the block offers no row at all**, which is every block below prikk's
+                // JSON floor and every one whose files prikk did not list, `↓` scrolls the content
+                // instead: the view is twenty-two rows at 60 × 15 either way, and a key that did
+                // nothing there is the defect this handoff is about.
+                Some(Screen::BlockDetail {
+                    view,
+                    cursor,
+                    offset,
+                    ..
+                }) => {
+                    let rows = stikk_core::block_cursor_len(view);
+                    if rows == 0 {
+                        offset.set(offset.get().saturating_add(1));
+                    } else {
+                        *cursor = next_index(*cursor, rows);
+                    }
                 }
                 // Deliberately unclamped here: only the renderer knows the wrapped height, so it clamps
                 // and writes the clamped value back, as the Glossary does.
@@ -4125,6 +4170,7 @@ impl App {
                     Screen::PatchDetail { offset, .. }
                     | Screen::MergePlan { offset, .. }
                     | Screen::Bundle { offset, .. }
+                    | Screen::Changes { offset, .. }
                     | Screen::Verify { offset, .. },
                 ) => {
                     offset.set(offset.get().saturating_add(1));
@@ -4642,6 +4688,7 @@ impl App {
                             view: detail,
                             cursor: 0,
                             refreshing: None,
+                            offset: std::cell::Cell::new(0),
                         };
                     }
                 }
@@ -5021,6 +5068,7 @@ impl App {
                             hide_untracked: self.hide_untracked_default,
                             history: read.history,
                             refreshing: None,
+                            offset: std::cell::Cell::new(0),
                         };
                     }
                 }
@@ -5976,13 +6024,19 @@ impl App {
         match self.screens.last() {
             Some(Screen::Loading { what, .. }) => Focus::Loading(what),
             Some(Screen::History { view, cursor, .. }) => Focus::History(view, *cursor),
-            Some(Screen::BlockDetail { view, cursor, .. }) => Focus::BlockDetail(view, *cursor),
+            Some(Screen::BlockDetail {
+                view,
+                cursor,
+                offset,
+                ..
+            }) => Focus::BlockDetail(view, *cursor, offset),
             Some(Screen::Changes {
                 view,
                 hide_untracked,
                 history,
+                offset,
                 ..
-            }) => Focus::Changes(view, *hide_untracked, history),
+            }) => Focus::Changes(view, *hide_untracked, history, offset),
             Some(Screen::Queue {
                 view,
                 offset,

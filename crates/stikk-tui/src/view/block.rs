@@ -26,6 +26,8 @@
 //! F2 is why this project wraps by hand). **Ids and paths are identifiers and are hard-split**
 //! ([`wrap_verbatim`]); stikk's own sentences word-wrap ([`wrap_indented`]).
 
+use std::cell::Cell;
+
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -36,27 +38,58 @@ use stikk_core::BlockDetailView;
 
 use crate::text::{compose, identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
-use crate::title::Title;
+use crate::title::{Position, Title};
 
 /// Render the Block-detail view for `detail` into `area`, with `cursor` selecting one of the block's
-/// patches.
+/// patches or files.
+///
+/// **It scrolls** (RFC 060 Handoff C §1), the Queue's way and for the Queue's reason: this view is a
+/// header and a list, and at 60 × 15 it drew eleven rows of twenty-two, with no position, no foot
+/// line and no way to reach the rest. Where a row is selected the window **follows the cursor**, by
+/// the least it can, so the selected row is never off screen and the header rows above it scroll
+/// back into view as `↑` walks up past the first one.
 pub fn render(
     detail: &BlockDetailView,
     cursor: usize,
+    offset: &Cell<u16>,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
 ) {
     // Inside the border. Every row below is wrapped to this, so the count is exact.
     let width = usize::from(area.width.saturating_sub(2));
-    let lines = block_lines(detail, cursor, palette, width);
+    let (lines, cursor_rows) = block_lines(detail, cursor, palette, width);
 
-    // One title builder, for every frame (RFC 060 review v1 C1).
+    let viewport = area.height.saturating_sub(2);
+    let max_offset = u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_sub(viewport);
+    let mut scroll = offset.get().min(max_offset);
+    // **The window follows the cursor, by the least it can** — the Queue's own rule (RFC 028 A review
+    // v1 §2.1): the selected row's own rows are brought on screen and nothing else moves.
+    // `cursor_rows` is where each selectable row's block of rows starts and ends in the wrapped
+    // output, which only `block_lines` knows.
+    if let Some((from, to)) = cursor_rows.get(cursor).copied() {
+        let from = u16::try_from(from).unwrap_or(u16::MAX);
+        let to = u16::try_from(to).unwrap_or(u16::MAX);
+        if from < scroll {
+            scroll = from;
+        } else if viewport > 0 && to >= scroll.saturating_add(viewport) {
+            scroll = to.saturating_sub(viewport).saturating_add(1);
+        }
+        scroll = scroll.min(max_offset);
+    }
+    offset.set(scroll);
+
+    // One title builder, for every frame (RFC 060 review v1 C1), and the position says what is
+    // hidden (RFC 024 §4) — `record_cut` below refuses a frame that hides rows without it.
+    let position = Position::of(scroll, viewport, lines.len());
     let title = Title::of(if detail.is_tip {
         "Block \u{00b7} tip"
     } else {
         "Block"
     })
+    .position(position)
     .render(area.width);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -71,18 +104,34 @@ pub fn render(
         &lines,
         usize::from(area.width.saturating_sub(2)),
     );
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    // **And no row is left below the area in silence** (RFC 060 Handoff C §2).
+    crate::text::record_cut(
+        "Block detail",
+        lines.len(),
+        usize::from(viewport),
+        position.is_some(),
+    );
+    frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 
-/// Every row of the view, already wrapped to `width`.
+/// Every row of the view, already wrapped to `width`, so the scroll clamp is exact — and, beside it,
+/// **the first and last wrapped row of each selectable row**, in the *cursor's* order, so the caller
+/// can scroll to the selected one (RFC 060 Handoff C §1).
+///
+/// The cursor's order is patches, then files (`stikk_core::block_cursor_row`), while the rendered
+/// order is files, then patches. That is RFC 053's, not this handoff's, and it is why these spans are
+/// collected separately and joined in the cursor's order rather than in the order they were drawn.
 fn block_lines<'a>(
     detail: &BlockDetailView,
     cursor: usize,
     palette: &Palette,
     width: usize,
-) -> Vec<Line<'a>> {
+) -> (Vec<Line<'a>>, Vec<(usize, usize)>) {
     let row = &detail.row;
     let mut lines: Vec<Line> = Vec::new();
+    // Where each selectable row's own rows are, by section; joined in the cursor's order at the end.
+    let mut patch_rows: Vec<(usize, usize)> = Vec::new();
+    let mut file_rows: Vec<(usize, usize)> = Vec::new();
     field_id(&mut lines, palette, width, "block", &row.block_id);
     field_id(&mut lines, palette, width, "ref-state", &row.ref_state_id);
     field_said(
@@ -263,9 +312,10 @@ fn block_lines<'a>(
                         ));
                     }
                     lines.push(Line::from(spans));
+                    let row = lines.len() - 1;
+                    file_rows.push((row, row));
                     if selected {
                         // The whole row, to the view's edge (RFC 061 decision 4).
-                        let row = lines.len() - 1;
                         if let Some(rows) = lines.get_mut(row..) {
                             crate::view::select_rows(rows, width);
                         }
@@ -330,6 +380,7 @@ fn block_lines<'a>(
                     // Under the summary, not under the marker.
                     lines.push(Line::from(Span::styled(format!("      {rest}"), style)));
                 }
+                patch_rows.push((entry, lines.len() - 1));
                 if selected {
                     // Every row of the selected entry, to the view's edge (RFC 061 decision 4).
                     if let Some(rows) = lines.get_mut(entry..) {
@@ -340,7 +391,9 @@ fn block_lines<'a>(
         }
     }
 
-    lines
+    // **The cursor's order**: patches first, then files, as `block_cursor_row` indexes them.
+    let cursor_rows = patch_rows.into_iter().chain(file_rows).collect();
+    (lines, cursor_rows)
 }
 
 /// The `patches` field's value: the count alone when it agrees with the message list, or the count

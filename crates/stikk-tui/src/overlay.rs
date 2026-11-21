@@ -790,9 +790,17 @@ fn render_glossary(palette: &Palette, scroll: &Scroll, frame: &mut Frame, area: 
     // to guess. Only shown when there is somewhere to go.
     // **The title no longer names the scroll key** (RFC 060 decision 3, held by review v1 C1): the
     // foot line below names it, and two idioms for one fact is what that decision removed.
+    let position = crate::title::Position::of(offset, viewport, lines.len());
     let title = crate::title::Title::of("Glossary & Help")
-        .position(crate::title::Position::of(offset, viewport, lines.len()))
+        .position(position)
         .render(region.width);
+    // **And no row is left below the area in silence** (RFC 060 Handoff C §2).
+    crate::text::record_cut(
+        "Glossary & Help",
+        lines.len(),
+        usize::from(viewport),
+        position.is_some(),
+    );
 
     frame.render_widget(Clear, region);
     let block = block.title(title);
@@ -4288,6 +4296,8 @@ impl Panel<'_> {
         let outer = self.width.min(area.width);
         let inner_width = usize::from(outer.saturating_sub(2));
         let title = self.title;
+        // The same name, kept for the height guard below, which runs after `title` is consumed.
+        let title_text_for_cut = self.title;
         let prose = self.prose.rows(inner_width);
         let (actions, confirm_lines) = self.actions.rows_marking(inner_width);
         crate::text::record_overflow(title.trim(), &prose, inner_width);
@@ -4363,13 +4373,18 @@ impl Panel<'_> {
 
         // **The one title builder** (RFC 060 review v1 C1): the position is never cut, and an
         // overlay's title never names the scroll key — the foot line below does.
+        let position = crate::title::Position::of(offset, prose_area_height, prose.len());
         let title = crate::title::Title::of(title.trim())
-            .position(crate::title::Position::of(
-                offset,
-                prose_area_height,
-                prose.len(),
-            ))
+            .position(position)
             .render(outer);
+        // **And no row of prose is left below the area in silence** (RFC 060 Handoff C §2). The
+        // actions are anchored at the bottom and are never hidden, so only the prose can be.
+        crate::text::record_cut(
+            title_text_for_cut.trim(),
+            prose.len(),
+            usize::from(prose_area_height),
+            position.is_some(),
+        );
         let _ = last;
         if foot_needed {
             // **Which key**, said once, in the label colour: down while there is more below, and up
@@ -4480,13 +4495,21 @@ impl ListPanel<'_> {
 
         // The one title builder (RFC 060 review v1 C1); the window moves in rows, so the position is
         // the rows it shows.
+        let position = (items_len > viewport).then_some(crate::title::Position {
+            first: start + 1,
+            last: end,
+            total: rows.len(),
+        });
         let title = crate::title::Title::of(title_text.trim())
-            .position((items_len > viewport).then_some(crate::title::Position {
-                first: start + 1,
-                last: end,
-                total: rows.len(),
-            }))
+            .position(position)
             .render(outer);
+        // **And no entry is left below the area in silence** (RFC 060 Handoff C §2).
+        crate::text::record_cut(
+            title_text.trim(),
+            rows.len(),
+            usize::from(viewport),
+            position.is_some(),
+        );
 
         let block = Block::default()
             .borders(Borders::ALL)

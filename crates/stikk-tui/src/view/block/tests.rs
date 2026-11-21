@@ -47,7 +47,16 @@ fn draw(detail: &BlockDetailView) -> String {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(detail, 0, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                detail,
+                0,
+                &std::cell::Cell::new(0),
+                &Palette::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -225,7 +234,16 @@ const PATCH_TWO: &str = "c23a5d7d4d5d639b3e41e76806158e4bc475f113f3ed85858501010
 fn draw_at(detail: &BlockDetailView, cursor: usize, width: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
     terminal
-        .draw(|f| render(detail, cursor, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                detail,
+                cursor,
+                &std::cell::Cell::new(0),
+                &Palette::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }

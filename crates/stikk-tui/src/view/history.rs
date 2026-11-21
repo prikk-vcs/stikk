@@ -16,7 +16,7 @@ use stikk_prikk::BlockRow;
 
 use crate::text::{compose, identifier, wrap_indented};
 use crate::theme::Palette;
-use crate::title::Title;
+use crate::title::{Position, Title};
 use crate::view::wrap_row;
 
 /// The queued tier's label, and the indent its continuation rows line up under — the same columns,
@@ -112,20 +112,32 @@ pub fn render(
         ),
         None => format!("History \u{00b7} {}", identifier(&view.reff)),
     };
-    let title = Title::of(&name).render(area.width);
+    // Keep the selected row visible, all of it: scroll so its last line is the bottom one.
+    let inner_height = area.height.saturating_sub(2); // borders
+    let scroll = selected_end.saturating_sub(inner_height.saturating_sub(1));
+
+    // **And the title says what is hidden** (RFC 024 §4; RFC 060 Handoff C §2). The window has
+    // always followed the cursor here, but a reader at 60 × 15 with forty blocks was never told that
+    // there were rows above or below the six they could see — the same silence Block detail had.
+    let position = Position::of(scroll, inner_height, lines.len());
+    let title = Title::of(&name).position(position).render(area.width);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
         .style(Style::default().fg(palette.fg));
 
-    // Keep the selected row visible, all of it: scroll so its last line is the bottom one.
-    let inner_height = area.height.saturating_sub(2); // borders
-    let scroll = selected_end.saturating_sub(inner_height.saturating_sub(1));
-
     // **No row may be wider than the area it is drawn in** (RFC 060 decision 2). This view
     // wraps its own rows to a width taken from `area`, and draws them through a `Paragraph`
     // with no `Wrap`: a row too wide would be cut, so it is recorded in tests instead.
     crate::text::record_overflow("History", &lines, usize::from(area.width.saturating_sub(2)));
+    // **History's window follows the cursor and its title says nothing** — so where rows are hidden,
+    // the guard names it (RFC 060 Handoff C §2).
+    crate::text::record_cut(
+        "History",
+        lines.len(),
+        usize::from(inner_height),
+        position.is_some(),
+    );
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 

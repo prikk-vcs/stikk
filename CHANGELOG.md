@@ -36,6 +36,13 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   and named one key — `g o` — that nothing bound. The palette, Enter's lists, the key line, the
   Glossary's *Keys* and the key map itself all read that one catalog, so a key exists only where it
   is bound and no two lists can disagree about what stikk can do.
+- **No view stops without saying so.** Block detail showed eleven of its twenty-two rows at 60 × 15
+  and said nothing: no position in its title, no scroll, and no way to reach `prev-ref-state`, the
+  file list or the patches line. It scrolls now — following the selected row where there is one, and
+  the content where there is not — and its title says *"lines a–b of c"*, as every other view's
+  does. **Changes** gained the same, and **History** now says where you are in a long lineage. A new
+  structural check holds every view and overlay to it: a surface with more rows than its area must
+  say so, at 60 × 15 and 72 × 20, in every theme.
 - **The help overlay scrolls with `↓`.** It said *"↓ more below"* and `↓` moved nothing: the help
   kept a scroll of its own that the arrow keys never reached, and the only key that scrolled it was
   `Enter`, which it never named. Found in a real terminal at 2.3 times the default font, where the

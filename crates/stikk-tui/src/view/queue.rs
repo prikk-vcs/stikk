@@ -90,6 +90,12 @@ pub fn render(
     // wraps its own rows to a width taken from `area`, and draws them through a `Paragraph`
     // with no `Wrap`: a row too wide would be cut, so it is recorded in tests instead.
     crate::text::record_overflow("Queue", &lines, usize::from(area.width.saturating_sub(2)));
+    crate::text::record_cut(
+        "Queue",
+        lines.len(),
+        usize::from(viewport),
+        position.is_some(),
+    );
     frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 

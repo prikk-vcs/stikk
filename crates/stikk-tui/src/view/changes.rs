@@ -35,7 +35,7 @@ use stikk_core::{Authoring, ChangeEntry, ChangeKind, ChangesView, QueuedElsewher
 
 use crate::text::{compose, identifier, inert, wrap_indented, wrap_verbatim};
 use crate::theme::Palette;
-use crate::title::Title;
+use crate::title::{Position, Title};
 
 /// The columns an entry row spends before its path: two of margin, an 11-column kind tag, one space.
 /// A refused entry's marker row starts here, so the marker costs the path row nothing.
@@ -56,11 +56,13 @@ pub struct Bands {
     pub compares: bool,
 }
 
+#[allow(clippy::too_many_arguments)] // one more: the scroll offset (RFC 060 Handoff C §2)
 pub fn render(
     view: &ChangesView,
     history: &RefHistory,
     hide_untracked: bool,
     bands: Bands,
+    offset: &std::cell::Cell<u16>,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -300,9 +302,22 @@ pub fn render(
         lines.push(Line::from(Span::styled(row, dim)));
     }
 
+    // **The scroll, and the position that says what is hidden** (RFC 060 Handoff C §2). This view
+    // has no selectable row — what `d` compares is the whole worktree — so `↑`/`↓` scroll its
+    // content, which is Patch detail's idiom; the renderer clamps the offset and writes it back,
+    // because only it knows the wrapped height.
+    let viewport = area.height.saturating_sub(2);
+    let max_offset = u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_sub(viewport);
+    let scroll = offset.get().min(max_offset);
+    offset.set(scroll);
+
     // One title builder, for every frame (RFC 060 review v1 C1).
-    let title =
-        Title::of(&format!("Changes \u{00b7} {}", identifier(&view.reff))).render(area.width);
+    let position = Position::of(scroll, viewport, lines.len());
+    let title = Title::of(&format!("Changes \u{00b7} {}", identifier(&view.reff)))
+        .position(position)
+        .render(area.width);
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -311,7 +326,13 @@ pub fn render(
     // wraps its own rows to a width taken from `area`, and draws them through a `Paragraph`
     // with no `Wrap`: a row too wide would be cut, so it is recorded in tests instead.
     crate::text::record_overflow("Changes", &lines, usize::from(area.width.saturating_sub(2)));
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    crate::text::record_cut(
+        "Changes",
+        lines.len(),
+        usize::from(viewport),
+        position.is_some(),
+    );
+    frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
 }
 
 /// One change: a text-forward kind tag, the inert path, and prikk's dimmed note — then, for an entry

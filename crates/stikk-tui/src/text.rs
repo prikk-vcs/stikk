@@ -350,6 +350,42 @@ pub(crate) fn record_overflow_text(what: &str, text: &str, width: usize) {
     record_row(what, 0, text, width);
 }
 
+/// **A surface that cannot show all its rows must say so** (RFC 060 Handoff C §2), structurally, in
+/// tests — the same check as [`record_overflow`], turned ninety degrees.
+///
+/// `record_overflow` holds a row to the **width** it is drawn in. It cannot see a surface that stops
+/// at the **bottom** of its area: Block detail drew eleven rows of twenty-two at 60 × 15 with no
+/// position and no scroll, and every width check passed (Handoff B's request §6). A row that is below
+/// the area and a row that does not exist look identical on screen, which is why this is recorded
+/// where the rows meet their height rather than read off the buffer.
+///
+/// `rows` is how many the renderer wrapped, `viewport` how many it can draw, and `says_position` is
+/// whether the frame's title carries RFC 024 §4's *"lines a–b of c"*. Hiding rows is fine; hiding them
+/// **in silence** is the defect.
+#[cfg(test)]
+pub(crate) fn record_cut(what: &str, rows: usize, viewport: usize, says_position: bool) {
+    if rows > viewport && !says_position {
+        OVERFLOWS.with_borrow_mut(|list| {
+            list.push(Overflow {
+                what: what.to_string(),
+                row: viewport,
+                width: viewport,
+                drawn: rows,
+                text: format!(
+                    "{rows} row(s) in {viewport}, and the title says nothing: {} row(s) cannot be \
+                     reached",
+                    rows - viewport
+                ),
+            });
+        });
+    }
+}
+
+/// See [`record_cut`]. In a release build this does nothing at all.
+#[cfg(not(test))]
+#[inline]
+pub(crate) fn record_cut(_what: &str, _rows: usize, _viewport: usize, _says_position: bool) {}
+
 /// See [`record_overflow_text`]. In a release build this does nothing at all.
 #[cfg(not(test))]
 #[inline]
@@ -379,7 +415,8 @@ fn record_row(what: &str, index: usize, text: &str, width: usize) {
 #[inline]
 pub(crate) fn record_overflow(_what: &str, _rows: &[ratatui::text::Line<'_>], _width: usize) {}
 
-/// One row that was wider than the area it was drawn in.
+/// One row that was wider than the area it was drawn in — or, from [`record_cut`], a surface whose
+/// rows ran below it in silence.
 #[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) struct Overflow {

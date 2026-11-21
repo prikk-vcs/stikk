@@ -2232,6 +2232,23 @@ fn key(code: ratatui::crossterm::event::KeyCode) -> ratatui::crossterm::event::K
     ratatui::crossterm::event::KeyEvent::new(code, ratatui::crossterm::event::KeyModifiers::NONE)
 }
 
+/// A screen with its box border dropped and its whitespace collapsed, so a phrase that wrapped still
+/// matches.
+fn flattened(screen: &str) -> String {
+    screen
+        .chars()
+        .filter(|c| {
+            !matches!(
+                c,
+                '\u{2502}' | '\u{250c}' | '\u{2510}' | '\u{2514}' | '\u{2518}' | '\u{2500}'
+            )
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// The `lines a–b of c` the title says, or `None` where the surface does not say one.
 fn position(text: &str) -> Option<(usize, usize, usize)> {
     let row = text.lines().find(|line| line.contains("lines "))?;
@@ -2488,10 +2505,147 @@ fn rows_to_select(app: &App) -> usize {
         None => match app.focus() {
             Focus::History(view, _) => view.blocks.len(),
             Focus::Queue(view, _, _) => view.patches.len(),
-            Focus::BlockDetail(view, _) => stikk_core::block_cursor_len(view),
+            Focus::BlockDetail(view, _, _) => stikk_core::block_cursor_len(view),
             Focus::Trust(stikk_core::TrustView::Listed { rows, .. }, _, _) => rows.len(),
             Focus::Compare(focus) => focus.view.listed().map_or(0, |c| c.entries.len()),
             _ => 0,
         },
     }
+}
+
+// =============================================================================================
+// RFC 060 Handoff C — no view stops without saying so.
+// =============================================================================================
+
+/// **Every surface that cannot show all its rows says so** (RFC 060 Handoff C §2), over RFC 059's
+/// whole matrix at 60 × 15 and 72 × 20.
+///
+/// `record_cut` is `record_overflow` turned ninety degrees: the width check holds a row to its area,
+/// and this holds a *surface* to its area's height. Block detail drew eleven rows of twenty-two at
+/// 60 × 15 with no position and no scroll, and every width check passed.
+///
+/// **It is not vacuous**: the count of surfaces that really did hide rows is asserted, so a matrix
+/// whose fixtures all fit would fail rather than pass quietly.
+#[test]
+fn capture_rfc060c_no_view_stops_without_saying_so() {
+    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
+    let mut silent: Vec<String> = Vec::new();
+    let mut said: Vec<String> = Vec::new();
+    for screen in screens() {
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+        // What reaching the screen recorded was drawn at another size.
+        let _ = crate::text::drain_overflows();
+        for (w, h) in [(60, 15), (72, 20)] {
+            let text = draw(&app, w, h);
+            for overflow in crate::text::drain_overflows() {
+                // The height check's own record, which names itself.
+                if overflow.text.contains("the title says nothing") {
+                    silent.push(format!(
+                        "{} at {w}x{h}: {} — {}",
+                        screen.name, overflow.what, overflow.text
+                    ));
+                }
+            }
+            if let Some((first, last, total)) = position(&text)
+                && total > last - first + 1
+            {
+                said.push(format!(
+                    "{} at {w}x{h} ({first}–{last} of {total})",
+                    screen.name
+                ));
+            }
+        }
+    }
+    println!(
+        "--- RFC 060 Handoff C: {} surface(s) hid rows and said so\n{}",
+        said.len(),
+        said.join("\n")
+    );
+    assert!(
+        silent.is_empty(),
+        "{} surface(s) stopped without saying so:\n{}",
+        silent.len(),
+        silent.join("\n")
+    );
+    assert!(
+        said.len() >= 10,
+        "only {} surface(s) hid rows at all, which is too few to have proven anything",
+        said.len()
+    );
+}
+
+/// **Block detail, by keys, at 60 × 15**: every row is reachable with `↓`, and the position says
+/// where (RFC 060 Handoff C §1). Through `handle_key` (trap 2).
+#[test]
+fn capture_rfc060c_block_detail_reaches_every_row_at_60x15() {
+    use ratatui::crossterm::event::KeyCode;
+
+    let backend = stocked();
+    let (tx, rx) = mpsc::channel();
+    let mut app = App::open(
+        "/repo",
+        resolved_for(stikk_state::config::Theme::Dark, None),
+        None,
+        tx,
+    );
+    drain(&mut app, &rx, &backend);
+    // History, then its tip block — with the right arrow, which opens a row (RFC 061 decision 2).
+    app.handle_key(key(KeyCode::Right));
+    drain(&mut app, &rx, &backend);
+    app.handle_key(key(KeyCode::Right));
+    drain(&mut app, &rx, &backend);
+
+    let top = draw(&app, 60, 15);
+    println!("--- Block detail at 60x15, at the top\n{top}");
+    let (first, last, total) = position(&top).unwrap_or_else(|| {
+        panic!("Block detail must say where the reader is at 60x15:\n{top}");
+    });
+    assert_eq!(first, 1, "it opens at the top");
+    assert!(total > last, "and it must not fit, or nothing is proven");
+
+    // Every row, with ↓ alone.
+    let mut seen = flattened(&top);
+    let mut presses = 0;
+    let mut text = top.clone();
+    while position(&text).is_some_and(|(_, last, total)| last < total) && presses < total + 10 {
+        app.handle_key(key(KeyCode::Down));
+        text = draw(&app, 60, 15);
+        seen.push(' ');
+        seen.push_str(&flattened(&text));
+        presses += 1;
+    }
+    println!("--- Block detail at 60x15, after {presses} presses of down\n{text}");
+    assert_eq!(
+        position(&text).map(|(_, last, total)| (last, total)),
+        Some((total, total)),
+        "↓ must reach the last row:\n{text}"
+    );
+    // The rows that were out of reach before this handoff.
+    for row in [
+        "prev-ref-state",
+        "state at tip",
+        "Patches not shown",
+        "Enter on a file saves it",
+    ] {
+        assert!(
+            seen.contains(row),
+            "{row:?} must be reachable at 60x15 with \u{2193}:\n{text}"
+        );
+    }
+    // And ↑ comes back to the top.
+    for _ in 0..presses {
+        app.handle_key(key(KeyCode::Up));
+    }
+    let back = draw(&app, 60, 15);
+    assert_eq!(
+        position(&back).map(|(first, _, _)| first),
+        Some(1),
+        "{back}"
+    );
 }

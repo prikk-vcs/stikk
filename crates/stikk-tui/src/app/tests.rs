@@ -379,7 +379,7 @@ fn a_pending_screen_shows_as_loading_until_it_resolves() {
         })),
     });
     match app.focus() {
-        Focus::Changes(view, hide, _) => {
+        Focus::Changes(view, hide, _, _) => {
             assert!(!view.clean);
             assert!(!hide);
         }
@@ -438,7 +438,7 @@ fn select_from_orientation_opens_history_then_a_block() {
         },
     });
     match app.focus() {
-        Focus::BlockDetail(detail, _) => {
+        Focus::BlockDetail(detail, _, _) => {
             assert!(detail.is_tip);
             assert_eq!(detail.state.listed().map(|s| s.files.len()), Some(1));
         }
@@ -480,7 +480,7 @@ fn nav_down_then_select_opens_a_non_tip_block_without_state() {
         },
     });
     match app.focus() {
-        Focus::BlockDetail(detail, _) => {
+        Focus::BlockDetail(detail, _, _) => {
             assert!(!detail.is_tip);
             // Below prikk 0.46 an older block's files are not reported (RFC 037 decision 2).
             assert!(detail.state.listed().is_none());
@@ -692,7 +692,7 @@ fn open_changes_pushes_the_view_and_toggle_hides_untracked() {
         })),
     });
     match app.focus() {
-        Focus::Changes(view, hide, _) => {
+        Focus::Changes(view, hide, _, _) => {
             assert!(!view.clean);
             assert_eq!(view.entries.len(), 2);
             assert!(!hide);
@@ -701,7 +701,7 @@ fn open_changes_pushes_the_view_and_toggle_hides_untracked() {
     }
     app.toggle_untracked();
     match app.focus() {
-        Focus::Changes(_, hide, _) => assert!(hide),
+        Focus::Changes(_, hide, _, _) => assert!(hide),
         other => panic!("expected Changes, got {other:?}"),
     }
 }
@@ -2310,7 +2310,7 @@ fn v_toggles_the_raw_view_without_a_second_read() {
 fn v_does_nothing_outside_patch_detail() {
     let (mut app, rx) = rfc035_on_block_detail();
     app.toggle_raw();
-    assert!(matches!(app.focus(), Focus::BlockDetail(_, _)));
+    assert!(matches!(app.focus(), Focus::BlockDetail(_, _, _)));
     assert!(rx.try_recv().is_err());
 }
 
@@ -5223,7 +5223,7 @@ fn the_block_cursor_reaches_the_files_and_comes_back() {
     );
     block_with_files(&mut app, &rx, 55);
 
-    let Focus::BlockDetail(view, cursor) = app.focus() else {
+    let Focus::BlockDetail(view, cursor, _) = app.focus() else {
         panic!("expected Block detail");
     };
     assert_eq!(cursor, 0);
@@ -5235,7 +5235,7 @@ fn the_block_cursor_reaches_the_files_and_comes_back() {
     assert_eq!(stikk_core::block_cursor_file(view, 0), Some("a.txt"));
 
     app.nav_down();
-    let Focus::BlockDetail(view, cursor) = app.focus() else {
+    let Focus::BlockDetail(view, cursor, _) = app.focus() else {
         panic!("expected Block detail");
     };
     assert_eq!(cursor, 1);
@@ -5243,13 +5243,13 @@ fn the_block_cursor_reaches_the_files_and_comes_back() {
 
     // **It stops at the end**, as every other list's cursor does.
     app.nav_down();
-    let Focus::BlockDetail(_, cursor) = app.focus() else {
+    let Focus::BlockDetail(_, cursor, _) = app.focus() else {
         panic!("expected Block detail");
     };
     assert_eq!(cursor, 1);
 
     app.nav_up();
-    let Focus::BlockDetail(_, cursor) = app.focus() else {
+    let Focus::BlockDetail(_, cursor, _) = app.focus() else {
         panic!("expected Block detail");
     };
     assert_eq!(cursor, 0);
@@ -6214,6 +6214,7 @@ fn u_works_in_block_detail_too() {
     }];
     app.push_screen(Screen::BlockDetail {
         reff: "heads/main".into(),
+        offset: std::cell::Cell::new(0),
         view: BlockDetailView {
             row,
             is_tip: true,

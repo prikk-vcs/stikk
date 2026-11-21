@@ -867,3 +867,762 @@ fn only_high_contrast_paints_a_background() {
         "high-contrast paints one"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// The headless contrast matrix (RFC 059 Handoff A §5)
+//
+// **Every screen the shell can show, in every theme, at both sizes, and at both depths where the
+// theme has two.** The palette's own test holds each role's value against its theme's reference
+// backgrounds; this one holds every *renderer* to drawing with those roles and nothing else. A
+// renderer that reached for a colour of its own — a named ANSI colour, one of the terminal's low
+// sixteen — fails here with the view, the cell and the theme named.
+// ---------------------------------------------------------------------------------------------
+
+/// prikk 0.58 with something in every surface the shell can open: a lineage, a queue with two
+/// patches, a dirty worktree, a verification, trusted keys, a merge plan and a diff.
+///
+/// Stocked rather than left at `NullBackend::supported()`'s 0.30 defaults so the views draw their
+/// rows, not only their below-the-band sentences.
+fn stocked() -> NullBackend {
+    NullBackend::supported()
+        .with_version(0, 58, 0)
+        .with_orientation(Orientation {
+            interrupted_materialization: None,
+            queued_patches: 2,
+            queued_target: Some("heads/main".to_string()),
+            main_ref_state: Some("237d0681".to_string()),
+            trailing_partial_wal_bytes: 24,
+            active_patch_warning: None,
+            current_branch: stikk_model::CurrentBranch::Branch(
+                stikk_model::RefName::parse("heads/main").expect("a valid ref name"),
+            ),
+        })
+        .with_readiness(stikk_prikk::ReadinessReport {
+            readiness: stikk_model::Readiness {
+                author: stikk_model::RoleReadiness::Known(stikk_model::Binding::Matches),
+                maintainer: stikk_model::RoleReadiness::Known(stikk_model::Binding::NotAdopted),
+                read_only: false,
+            },
+            author: stikk_prikk::RoleDetail::default(),
+            maintainer: stikk_prikk::RoleDetail::default(),
+        })
+        .with_history(stikk_prikk::History {
+            reff: "heads/main".to_string(),
+            blocks: vec![matrix_block("a", 2), matrix_block("b", 1)],
+        })
+        .with_refs(vec![
+            stikk_prikk::RefEntry {
+                name: "heads/main".to_string(),
+                id: "e".repeat(64),
+                closed: false,
+                received: false,
+            },
+            stikk_prikk::RefEntry {
+                name: "heads/dev".to_string(),
+                id: "f".repeat(64),
+                closed: false,
+                received: false,
+            },
+        ])
+        .with_merge_plan(
+            vec![
+                "would merge heads/dev into heads/main".to_string(),
+                "conflict: both sides changed a.txt".to_string(),
+            ],
+            stikk_prikk::MergeOutcome::Conflict,
+        )
+        .with_queue(stikk_prikk::QueueReport::Listed(stikk_prikk::Queue {
+            count: 2,
+            target: stikk_prikk::QueueTarget::Ref("heads/main".to_string()),
+            threshold: Some(stikk_prikk::QueueThreshold {
+                status: stikk_prikk::ThresholdStatus::None,
+                warn: 800,
+                hard_limit: 1000,
+            }),
+            patches: vec![
+                stikk_prikk::QueuedPatch {
+                    patch_id: "c".repeat(64),
+                    message: stikk_prikk::QueuedMessage::Text("add b".to_string()),
+                    operations: vec![stikk_prikk::QueuedOperation {
+                        kind: "create-file".to_string(),
+                        paths: vec![stikk_prikk::QueuedPath::Path("b.txt".to_string())],
+                        author_key_id: None,
+                    }],
+                },
+                stikk_prikk::QueuedPatch {
+                    patch_id: "d".repeat(64),
+                    message: stikk_prikk::QueuedMessage::Text("rename a to c".to_string()),
+                    operations: vec![stikk_prikk::QueuedOperation {
+                        kind: "rename-path".to_string(),
+                        paths: vec![
+                            stikk_prikk::QueuedPath::Path("a.txt".to_string()),
+                            stikk_prikk::QueuedPath::Path("c.txt".to_string()),
+                        ],
+                        author_key_id: Some("ed25519-0123456789abcdef".to_string()),
+                    }],
+                },
+            ],
+            already_sealed_in: None,
+        }))
+        .with_verification(stikk_prikk::Verification {
+            verdict: stikk_prikk::Verdict {
+                ok: false,
+                failed_conditions: vec![stikk_prikk::FailedCondition {
+                    id: "wal-replay".to_string(),
+                    message: "a torn tail at offset 4096".to_string(),
+                }],
+            },
+            active_sessions: Some(stikk_prikk::ActiveSessions {
+                count: 1,
+                verified_count: 1,
+            }),
+            stages: ["objects", "refs", "wal-replay"]
+                .into_iter()
+                .map(|stage| stikk_prikk::VerifyStage {
+                    stage: stage.to_string(),
+                    status: stikk_prikk::StageStatus::Evaluated,
+                })
+                .collect(),
+            raw: String::new(),
+        })
+        .with_diff(matrix_diff())
+        .with_bundle_verify(vec!["bundle verified: 1 block, 1 ref".to_string()])
+        .with_bundle_preview(stikk_prikk::BundlePreviewRead {
+            bundle_ref: "heads/main".to_string(),
+            local_ref: "heads/main".to_string(),
+            connectivity: stikk_prikk::Connectivity::FastForward,
+            conflict: Some(stikk_prikk::BundleConflict::AppliesCleanly),
+            conflict_detail: None,
+            sealed_by: vec!["z-maint".to_string()],
+            sealed_by_note: "recorded signer identity, continuity only".to_string(),
+            effects: Vec::new(),
+            rename_note: "a moved path is not yet distinguishable".to_string(),
+            seal_outcomes: None,
+            import_refusals: None,
+        })
+        .with_worktree_status(stikk_prikk::WorktreeStatus {
+            refused_declarations: None,
+            reff: "heads/main".to_string(),
+            clean: false,
+            tracked: 2,
+            unchanged: 0,
+            missing: 0,
+            modified: 1,
+            untracked: 1,
+            unsupported: 0,
+            refused: None,
+            entries: vec![
+                stikk_prikk::WorktreeEntry {
+                    kind: "modified".to_string(),
+                    path: "a.txt".to_string(),
+                    note: "content differs from the baseline".to_string(),
+                    authoring: stikk_prikk::Authoring::Authored,
+                },
+                stikk_prikk::WorktreeEntry {
+                    kind: "untracked".to_string(),
+                    path: "notes/new.txt".to_string(),
+                    note: "not in the baseline".to_string(),
+                    authoring: stikk_prikk::Authoring::Refused(
+                        "path is excluded by .prikkignore".to_string(),
+                    ),
+                },
+            ],
+            queued_elsewhere: None,
+            declarations: Vec::new(),
+        })
+        .with_trusted_keys(vec![
+            stikk_prikk::TrustedKey {
+                key_id: "ed25519-0123456789abcdef".to_string(),
+                public_key: "A".repeat(64),
+            },
+            stikk_prikk::TrustedKey {
+                key_id: "ed25519-fedcba9876543210".to_string(),
+                public_key: "B".repeat(64),
+            },
+        ])
+}
+
+/// As [`stocked`], with nothing queued: a merge plan is refused while work is waiting for the branch
+/// (RFC 047 decision 5), and the matrix wants the plan itself on screen.
+fn stocked_without_a_queue() -> NullBackend {
+    stocked().with_orientation(Orientation {
+        interrupted_materialization: None,
+        queued_patches: 0,
+        queued_target: None,
+        main_ref_state: Some("237d0681".to_string()),
+        trailing_partial_wal_bytes: 0,
+        active_patch_warning: None,
+        current_branch: stikk_model::CurrentBranch::Branch(
+            stikk_model::RefName::parse("heads/main").expect("a valid ref name"),
+        ),
+    })
+}
+
+/// As [`stocked`], with a dirty worktree prikk would commit: the confirmation card's own path, where
+/// [`stocked`]'s refused entry reaches the *would-refuse* card instead.
+fn stocked_committable() -> NullBackend {
+    stocked().with_worktree_status(stikk_prikk::WorktreeStatus {
+        refused_declarations: None,
+        reff: "heads/main".to_string(),
+        clean: false,
+        tracked: 1,
+        unchanged: 0,
+        missing: 0,
+        modified: 1,
+        untracked: 0,
+        unsupported: 0,
+        refused: Some(0),
+        entries: vec![stikk_prikk::WorktreeEntry {
+            kind: "modified".to_string(),
+            path: "a.txt".to_string(),
+            note: "content differs from the baseline".to_string(),
+            authoring: stikk_prikk::Authoring::Authored,
+        }],
+        queued_elsewhere: None,
+        declarations: Vec::new(),
+    })
+}
+
+/// One comparison, for the Compare view: a modified file with one hunk.
+fn matrix_diff() -> stikk_prikk::Diff {
+    let file = |size| stikk_prikk::DiffFile {
+        kind: "file".to_string(),
+        encoding: "text".to_string(),
+        mode: 0o100_644,
+        size,
+        content_id: None,
+    };
+    stikk_prikk::Diff {
+        from: stikk_prikk::DiffSide {
+            point: "b".repeat(64),
+            target: stikk_prikk::DiffTarget::Block("b".repeat(64)),
+            queued: stikk_prikk::QueuedOnSide::NotApplicable,
+        },
+        to: stikk_prikk::DiffSide {
+            point: "a".repeat(64),
+            target: stikk_prikk::DiffTarget::Block("a".repeat(64)),
+            queued: stikk_prikk::QueuedOnSide::NotApplicable,
+        },
+        entries: vec![stikk_prikk::DiffEntry {
+            path: "a.txt".to_string(),
+            status: "modified".to_string(),
+            from_path: None,
+            from: Some(file(42)),
+            to: Some(file(61)),
+            minimal: true,
+            hunks: vec!["@@ -1 +1 @@\n-one\n+two\n".to_string()],
+            raw: String::new(),
+        }],
+        unsupported_paths: Vec::new(),
+    }
+}
+
+/// One block for the matrix's lineage.
+fn matrix_block(tag: &str, seq: u64) -> stikk_prikk::BlockRow {
+    stikk_prikk::BlockRow {
+        block_id: tag.repeat(64),
+        ref_state_id: tag.repeat(64),
+        update_seq: seq,
+        kind: "Normal".to_string(),
+        rollback_block: false,
+        parents: u64::from(seq > 1),
+        patches: 1,
+        rollback_patches: 0,
+        required_attestations: 0,
+        messages: Vec::new(),
+        previous_ref_state: (seq > 1).then(|| "b".repeat(64)),
+    }
+}
+
+/// One screen of the matrix: a name, the backend it runs against, the keys that reach it, and **a
+/// marker that proves it was reached**.
+///
+/// The marker is why this test cannot pass vacuously: a `reach` that stopped short — a guard
+/// refusing, a key doing nothing — would leave the Orientation view on screen, which keeps 7 : 1 and
+/// would quietly cover none of what the screen's name claims.
+struct Screen {
+    /// What a failure prints.
+    name: &'static str,
+    /// The backend this screen needs.
+    backend: fn() -> NullBackend,
+    /// Whether to let the first read land before `reach`. `false` is how the screens *before* a read
+    /// are drawn.
+    first_read: bool,
+    /// Driven after the first read has landed, where it was let to.
+    reach: fn(&mut App, &mpsc::Receiver<Request>, &NullBackend),
+    /// Text that must be on the screen once `reach` is done.
+    marker: &'static str,
+}
+
+/// **Every screen the shell can show.** The views come first, then the overlays that draw over
+/// them; what is deliberately not here is listed in the review request.
+fn screens() -> Vec<Screen> {
+    vec![
+        Screen {
+            name: "orientation (loaded)",
+            marker: "prikk 0.58.0",
+            first_read: true,
+            backend: stocked,
+            reach: |_, _, _| {},
+        },
+        Screen {
+            name: "orientation (loading)",
+            marker: "loading",
+            first_read: false,
+            backend: stocked,
+            // Drawn before the first read lands at all (`first_read: false`): the view a session
+            // shows for as long as prikk takes to answer.
+            reach: |_, _, _| {},
+        },
+        Screen {
+            name: "orientation (failed)",
+            marker: "Cannot open repository",
+            first_read: true,
+            backend: || {
+                NullBackend::supported().with_orientation_refusal("repository is retired format 3")
+            },
+            reach: |_, _, _| {},
+        },
+        Screen {
+            name: "fault",
+            marker: "was not touched",
+            first_read: true,
+            backend: stocked,
+            reach: |app, _, _| {
+                app.surface_error(
+                    &stikk_model::StikkError::Internal {
+                        detail: "invariant X violated".into(),
+                    },
+                    stikk_core::OperationContext::Other,
+                );
+            },
+        },
+        Screen {
+            name: "banner",
+            marker: "another writer",
+            first_read: true,
+            backend: stocked,
+            reach: |app, _, _| {
+                app.surface_error(
+                    &stikk_model::StikkError::LockConflict {
+                        message: "lock held by another writer".into(),
+                    },
+                    stikk_core::OperationContext::Orient,
+                );
+            },
+        },
+        Screen {
+            name: "loading (history)",
+            marker: "loading history",
+            first_read: true,
+            backend: stocked,
+            // Not drained: the gap itself is a screen (RFC 010 §5).
+            reach: |app, _, _| app.open_history(),
+        },
+        Screen {
+            name: "history",
+            marker: "History · heads/main",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.open_history();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "block detail",
+            marker: "Block · tip",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.open_history();
+                drain(app, rx, backend);
+                app.select();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "changes",
+            marker: "2 change(s) against baseline",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.open_changes();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "queue",
+            marker: "2 patch(es) queued for heads/main",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.open_queue();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "verify",
+            marker: "prikk reports 1 problem(s)",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.open_verify();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "trust",
+            marker: "ed25519-fedcba9876543210",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.open_trust();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "merge plan",
+            marker: "Merge plan",
+            first_read: true,
+            backend: stocked_without_a_queue,
+            reach: |app, rx, backend| {
+                // `M` merges *the marked branch into the selected one* (RFC 047 decision 4), so the
+                // picker marks `heads/dev` with `m` first.
+                app.open_ref_picker();
+                drain(app, rx, backend);
+                app.nav_down();
+                app.mark_block();
+                app.nav_up();
+                app.begin_merge_plan();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "patch detail",
+            marker: "Patch \u{2014} v: prikk's own fields",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.open_queue();
+                drain(app, rx, backend);
+                app.select();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "compare",
+            marker: "this block, against the previous block",
+            first_read: true,
+            backend: stocked,
+            // `d` with nothing marked compares the selected block with the previous one in the
+            // lineage (RFC 038 decision 3).
+            reach: |app, rx, backend| {
+                app.open_history();
+                drain(app, rx, backend);
+                app.compare();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "bundle",
+            marker: "This bundle carries heads/main",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.begin_open_bundle();
+                for ch in "/tmp/v1.bundle".chars() {
+                    app.input_char(ch);
+                }
+                app.select();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "overlay: glossary (the help overlay)",
+            marker: "Glossary & Help",
+            first_read: true,
+            backend: stocked,
+            reach: |app, _, _| app.open_glossary(),
+        },
+        Screen {
+            name: "overlay: command palette",
+            marker: "Command palette",
+            first_read: true,
+            backend: stocked,
+            reach: |app, _, _| app.open_palette(),
+        },
+        Screen {
+            name: "overlay: refusal history",
+            marker: "Recent refusals",
+            first_read: true,
+            backend: stocked,
+            reach: |app, _, _| app.open_refusals(),
+        },
+        Screen {
+            name: "overlay: background operations",
+            marker: "Background operations",
+            first_read: true,
+            backend: stocked,
+            reach: |app, _, _| app.open_operations(),
+        },
+        Screen {
+            name: "overlay: ref picker",
+            marker: "Choose ref",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.open_ref_picker();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "overlay: the commit message prompt",
+            marker: "Commit message",
+            first_read: true,
+            backend: stocked,
+            reach: |app, rx, backend| {
+                app.begin_commit();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "overlay: a confirmation card",
+            marker: "Confirm",
+            first_read: true,
+            backend: stocked_committable,
+            reach: |app, rx, backend| {
+                app.begin_commit();
+                drain(app, rx, backend);
+                for ch in "a note".chars() {
+                    app.input_char(ch);
+                }
+                app.select();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "overlay: a commit prikk would refuse",
+            marker: "Commit unavailable",
+            first_read: true,
+            backend: stocked,
+            // The card comes after the message, where the preview re-reads the worktree and finds
+            // the refused path -- the same keys as the confirmation card, against a worktree prikk
+            // would refuse.
+            reach: |app, rx, backend| {
+                app.begin_commit();
+                drain(app, rx, backend);
+                for ch in "a note".chars() {
+                    app.input_char(ch);
+                }
+                app.select();
+                drain(app, rx, backend);
+            },
+        },
+        Screen {
+            name: "overlay: a refusal card",
+            marker: "prikk refused",
+            first_read: true,
+            backend: || {
+                stocked().with_history_refusal(
+                    "refusing to read heads/main: the WAL tail is torn; run `prikk doctor`",
+                )
+            },
+            reach: |app, rx, backend| {
+                app.open_history();
+                drain(app, rx, backend);
+            },
+        },
+    ]
+}
+
+/// Print every screen of the matrix, to show what it covered. Ignored: it is a listing, not a check.
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib list_the_matrix -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "prints the matrix's screens; run it on purpose"]
+fn list_the_matrix_screens() {
+    for screen in screens() {
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open(
+            "/repo",
+            resolved_for(stikk_state::config::Theme::Dark, None),
+            None,
+            tx,
+        );
+        drain(&mut app, &rx, &backend);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+        println!("=== {}\n{}", screen.name, draw(&app, 120, 40));
+    }
+}
+
+/// **Every drawn cell of one rendered screen**, held to 7 : 1 against every background it could be
+/// read on — its own, where the theme painted one, and every reference background of the theme
+/// otherwise. Answers the number of coloured cells it checked and the number of checks that took.
+///
+/// Shared by the matrix and by the too-small notice, which is the one screen the matrix's own sizes
+/// cannot produce.
+fn keeps_seven_to_one(
+    buffer: &ratatui::buffer::Buffer,
+    what: &str,
+    palette: &crate::theme::Palette,
+    depth: crate::theme::Depth,
+) -> (usize, usize) {
+    use crate::theme::{Checkable, MINIMUM_CONTRAST, checkable, contrast_ratio};
+
+    let area = buffer.area;
+    let (mut cells, mut checks) = (0_usize, 0_usize);
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            let cell = buffer.cell((x, y)).expect("a cell inside the buffer");
+            let fg = match checkable(cell.fg) {
+                // The terminal's own pair: nothing of stikk's to check, and nothing stikk could
+                // check (RFC 059 decision 2).
+                Checkable::TerminalsOwn => continue,
+                Checkable::Known(rgb) => rgb,
+                Checkable::TerminalsGuess => panic!(
+                    "{what} in {} ({}): cell {x},{y} ({:?}) is drawn in {:?}, a colour only the \
+                     terminal knows — every colour comes from the palette (RFC 059)",
+                    palette.kind.name(),
+                    depth.words(),
+                    cell.symbol(),
+                    cell.fg,
+                ),
+            };
+            let against: Vec<(u8, u8, u8)> = match checkable(cell.bg) {
+                Checkable::Known(bg) => vec![bg],
+                Checkable::TerminalsOwn => palette.kind.references().to_vec(),
+                Checkable::TerminalsGuess => panic!(
+                    "{what} in {}: cell {x},{y} has background {:?}, a colour only the terminal \
+                     knows",
+                    palette.kind.name(),
+                    cell.bg,
+                ),
+            };
+            assert!(
+                !against.is_empty(),
+                "{what} in {}: cell {x},{y} ({:?}) is drawn in {:?} with no background to check \
+                 it against",
+                palette.kind.name(),
+                cell.symbol(),
+                cell.fg,
+            );
+            cells += 1;
+            for bg in against {
+                let ratio = contrast_ratio(fg, bg);
+                assert!(
+                    ratio >= MINIMUM_CONTRAST,
+                    "{what} in {} ({}): cell {x},{y} ({:?}) is {ratio:.2}:1 — {:?} on \
+                     #{:02x}{:02x}{:02x}, below {MINIMUM_CONTRAST}:1",
+                    palette.kind.name(),
+                    depth.words(),
+                    cell.symbol(),
+                    cell.fg,
+                    bg.0,
+                    bg.1,
+                    bg.2,
+                );
+                checks += 1;
+            }
+        }
+    }
+    (cells, checks)
+}
+
+/// Every theme, at both depths — the matrix's outer two dimensions, which the too-small notice
+/// shares.
+fn every_theme_and_depth() -> Vec<crate::theme::Resolved> {
+    use stikk_state::config::Theme;
+
+    let mut out = Vec::new();
+    for theme in [Theme::Dark, Theme::Light, Theme::HighContrast, Theme::Plain] {
+        // Both depths for `dark` and `light`, whose roles differ between the two; `high-contrast`
+        // and `plain` are drawn at both as well, which costs nothing and shows that the pair and the
+        // nothing are the same either way.
+        for truecolour in [false, true] {
+            out.push(resolved_at(theme, None, truecolour));
+        }
+    }
+    out
+}
+
+/// **RFC 059's headless matrix.** Every screen above, in every theme, at both sizes, at both depths
+/// where the theme has two — with every drawn cell's foreground held to 7 : 1 against every
+/// background it could be read on.
+#[test]
+fn every_screen_keeps_seven_to_one() {
+    let mut cells = 0_usize;
+    let mut checks = 0_usize;
+    let mut screens_drawn = 0_usize;
+    for resolved in every_theme_and_depth() {
+        for screen in screens() {
+            let backend = (screen.backend)();
+            let (tx, rx) = mpsc::channel();
+            let mut app = App::open("/repo", resolved, None, tx);
+            if screen.first_read {
+                drain(&mut app, &rx, &backend);
+            }
+            (screen.reach)(&mut app, &rx, &backend);
+            screens_drawn += 1;
+            // **The screen was reached**, or what follows would be checking the Orientation view
+            // over and over and calling it coverage.
+            let shown = draw(&app, 120, 40);
+            assert!(
+                shown.contains(screen.marker),
+                "{} was not reached in {}: {:?} is not on screen\n{shown}",
+                screen.name,
+                resolved.palette.kind.name(),
+                screen.marker,
+            );
+            for (w, h) in [(80, 24), (120, 40)] {
+                let buffer = drawn(&app, w, h);
+                let what = format!("{} at {w}x{h}", screen.name);
+                let (c, k) = keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
+                cells += c;
+                checks += k;
+            }
+        }
+    }
+    println!(
+        "RFC 059 matrix: {screens_drawn} screens drawn ({} per theme-depth), {cells} coloured \
+         cells, {checks} contrast checks",
+        screens().len()
+    );
+    assert!(
+        cells > 10_000,
+        "the matrix checked only {cells} coloured cells, which is too few to have drawn the views"
+    );
+}
+
+/// **The one screen the matrix's sizes cannot show**: below 80 x 24 the shell draws the too-small
+/// notice instead of a view (design TU-10), so it is held to 7 : 1 here, in every theme and at both
+/// depths.
+#[test]
+fn the_too_small_notice_keeps_seven_to_one() {
+    let backend = stocked();
+    let mut cells = 0_usize;
+    for resolved in every_theme_and_depth() {
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        drain(&mut app, &rx, &backend);
+        // One column short, one row short, and far too small for either.
+        for (w, h) in [(79, 24), (80, 23), (40, 10)] {
+            let text = draw(&app, w, h);
+            assert!(
+                text.contains("too small"),
+                "{w}x{h} is below the minimum:\n{text}"
+            );
+            let buffer = drawn(&app, w, h);
+            let what = format!("the too-small notice at {w}x{h}");
+            let (c, _) = keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
+            cells += c;
+        }
+    }
+    println!("RFC 059: the too-small notice, {cells} coloured cells");
+}

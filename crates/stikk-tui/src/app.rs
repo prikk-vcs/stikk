@@ -3259,37 +3259,65 @@ impl App {
         });
     }
 
+    /// **Focus the selected ref and open its history** (the catalog's `ref.open-history`): what
+    /// `Enter` on a picker row did before RFC 061, and now its first action.
+    fn focus_selected_ref(&mut self) {
+        let Some(Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+            ..
+        }) = self.overlays.last()
+        else {
+            return;
+        };
+        // **The unpublished current branch needs no case of its own**: RFC 037 Handoff B §3 says
+        // selecting it focuses that ref like any other, and it is in `refs`.
+        let picked = if *unpublished_main {
+            // RFC 029 Handoff B §4: the one row an empty picker offers. It acts like any other
+            // pick: prikk reports an unpublished ref's history as empty (exit 0, at 0.28 and
+            // 0.42), and the History view says there are no sealed blocks yet.
+            Some(DEFAULT_REF.to_string())
+        } else {
+            refs.get(*cursor).cloned()
+        };
+        if let Some(name) = picked {
+            self.pop_overlay();
+            // **The next ref change ends the mark's life** (RFC 041 decision 1). It survives
+            // closing and reopening the picker -- that is where both halves of a pair are chosen,
+            // so a mark that died on `Esc` could never be paired -- but choosing a different ref
+            // means the reader has moved on.
+            self.clear_ref_mark_on_ref_change(&name);
+            self.ref_focus = RefFocus::Ref(name);
+            if matches!(self.screens.last(), Some(Screen::History { .. })) {
+                self.screens.pop();
+            }
+            self.open_history();
+        }
+    }
+
     /// The context-sensitive select/drill-in action (the `Enter` key). Overlays take priority.
     pub fn select(&mut self) {
         match self.overlays.last() {
-            Some(Overlay::RefPicker {
-                refs,
+            // **A row list answers Enter with its row's actions** (RFC 061 decision 3). The picker is
+            // an overlay, but its rows are rows: the trap's *"Enter inside an overlay is unchanged"*
+            // is about the cards that are read or chosen from, and decision 3 names a ref in the
+            // picker as a row kind with eight actions of its own.
+            Some(Overlay::RefPicker { .. }) => self.open_action_list(),
+            Some(Overlay::ActionList {
+                entries,
                 cursor,
-                unpublished_main,
+                readiness,
+                ref_focused,
                 ..
             }) => {
-                // **The unpublished current branch needs no case of its own**: RFC 037 Handoff B
-                // §3 says selecting it focuses that ref like any other, and it is in `refs`.
-                let picked = if *unpublished_main {
-                    // RFC 029 Handoff B §4: the one row an empty picker offers. It acts like any other
-                    // pick: prikk reports an unpublished ref's history as empty (exit 0, at 0.28 and
-                    // 0.42), and the History view says there are no sealed blocks yet.
-                    Some(DEFAULT_REF.to_string())
-                } else {
-                    refs.get(*cursor).cloned()
-                };
-                if let Some(name) = picked {
+                let chosen = entries.get(*cursor).copied();
+                let (readiness, ref_focused) = (*readiness, *ref_focused);
+                if let Some(action) = chosen
+                    && action.available(readiness, ref_focused)
+                {
                     self.pop_overlay();
-                    // **The next ref change ends the mark's life** (RFC 041 decision 1). It
-                    // survives closing and reopening the picker -- that is where both halves of a
-                    // pair are chosen, so a mark that died on `Esc` could never be paired -- but
-                    // choosing a different ref means the reader has moved on.
-                    self.clear_ref_mark_on_ref_change(&name);
-                    self.ref_focus = RefFocus::Ref(name);
-                    if matches!(self.screens.last(), Some(Screen::History { .. })) {
-                        self.screens.pop();
-                    }
-                    self.open_history();
+                    let _ran = self.run_action(action.id);
                 }
             }
             Some(Overlay::Refusal { card, cursor }) => {
@@ -3445,18 +3473,25 @@ impl App {
                 | Overlay::TrustResult { .. },
             )
             | None => {
+                // **A card is read, not chosen from** (RFC 061 trap 4): these take no Enter, and the
+                // key falls through to the screen under them only when there is no card at all.
                 if self.overlays.is_empty() {
-                    self.select_screen();
+                    self.open_action_list();
                 }
             }
         }
     }
 
-    /// `Enter` with no overlay open: drill into a block, or open History from the root.
     /// **Open the selected row** — what `Enter` did before RFC 061, and what `→` does now
     /// (decision 2). The catalog's `row.open`, and the first entry of every row's action list.
     pub(crate) fn select_screen_or_row(&mut self) {
-        self.select_screen();
+        if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
+            self.focus_selected_ref();
+            return;
+        }
+        if self.overlays.is_empty() {
+            self.select_screen();
+        }
     }
 
     fn select_screen(&mut self) {
@@ -3939,6 +3974,7 @@ impl App {
             | Some(Overlay::Refusal { cursor, .. })
             | Some(Overlay::Stale { cursor, .. })
             | Some(Overlay::Palette { cursor, .. })
+            | Some(Overlay::ActionList { cursor, .. })
             | Some(Overlay::Refusals { cursor, .. }) => *cursor = cursor.saturating_sub(1),
             // The Glossary has no selection — it scrolls (RFC 023 F2). Same keys as every other
             // overlay's cursor rather than a second scrolling idiom, which is why the Keys section of
@@ -4037,6 +4073,11 @@ impl App {
             Some(Overlay::Palette { filter, cursor, .. }) => {
                 let count = stikk_core::actions::matching(filter).len();
                 *cursor = next_index(*cursor, count);
+            }
+            Some(Overlay::ActionList {
+                entries, cursor, ..
+            }) => {
+                *cursor = next_index(*cursor, entries.len());
             }
             Some(
                 Overlay::Glossary { .. }
@@ -5564,6 +5605,153 @@ impl App {
     }
 
     /// Run a palette command (already checked available).
+    /// An id in the short form a seal confirmation and History both name one by.
+    fn short_id(id: &str) -> String {
+        id.chars()
+            .take(stikk_core::confirm::SHORT_ID_CHARS)
+            .collect()
+    }
+
+    /// **What Enter opens** (RFC 061 decision 3): the actions for the selected row, then for the
+    /// screen, titled by the row itself.
+    ///
+    /// The entries come from [`stikk_core::actions::here`], so the list and the palette cannot
+    /// disagree about what exists, what it is called or what key it has.
+    fn open_action_list(&mut self) {
+        let (row, subject) = self.selected_row().unzip();
+        // **The picker's rows belong to the picker, not to the screen under it** (RFC 061 decision
+        // 3): a ref row's list is the ref's eight actions, and the screen below is not *here*.
+        let screen = if self.overlays.is_empty() {
+            self.screen_kind()
+        } else {
+            None
+        };
+        let entries = stikk_core::actions::here(row, screen);
+        if entries.is_empty() {
+            return;
+        }
+        let subject = subject.unwrap_or_else(|| self.screen_name().to_string());
+        self.push_overlay(Overlay::ActionList {
+            subject,
+            entries,
+            cursor: 0,
+            readiness: self.readiness(),
+            ref_focused: self.focused_ref().is_some(),
+        });
+    }
+
+    /// Which screen is showing, for the catalog's `Where::Screen` (RFC 061 decision 1). `None` while
+    /// a load is pending: a screen that has not arrived offers nothing of its own.
+    fn screen_kind(&self) -> Option<stikk_core::ScreenKind> {
+        use stikk_core::ScreenKind as Kind;
+        Some(match self.screens.last() {
+            None => Kind::Orientation,
+            Some(Screen::History { .. }) => Kind::History,
+            Some(Screen::BlockDetail { .. }) => Kind::BlockDetail,
+            Some(Screen::Changes { .. }) => Kind::Changes,
+            Some(Screen::Queue { .. }) => Kind::Queue,
+            Some(Screen::PatchDetail { .. }) => Kind::PatchDetail,
+            Some(Screen::Compare { .. }) => Kind::Compare,
+            Some(Screen::Verify { .. }) => Kind::Verify,
+            Some(Screen::Trust { .. }) => Kind::Trust,
+            Some(Screen::MergePlan { .. }) => Kind::MergePlan,
+            Some(Screen::Bundle { .. }) => Kind::Bundle,
+            Some(Screen::Loading { .. }) => return None,
+        })
+    }
+
+    /// What the screen itself is called, for an action list with no row to name.
+    fn screen_name(&self) -> &'static str {
+        match self.screens.last() {
+            None => "Orientation",
+            Some(Screen::History { .. }) => "History",
+            Some(Screen::BlockDetail { .. }) => "Block",
+            Some(Screen::Changes { .. }) => "Changes",
+            Some(Screen::Queue { .. }) => "Queue",
+            Some(Screen::PatchDetail { .. }) => "Patch",
+            Some(Screen::Compare { .. }) => "Compare",
+            Some(Screen::Verify { .. }) => "Verify",
+            Some(Screen::Trust { .. }) => "Trust",
+            Some(Screen::MergePlan { .. }) => "Merge plan",
+            Some(Screen::Bundle { .. }) => "Bundle",
+            Some(Screen::Loading { .. }) => "Loading",
+        }
+    }
+
+    /// **The kind of row the cursor is on, and what to call it** (RFC 061 decision 3).
+    ///
+    /// The ref picker is included, because its rows are rows; every other overlay is a card that is
+    /// read or chosen from, and answers Enter as it did before (trap 4).
+    fn selected_row(&self) -> Option<(stikk_core::RowKind, String)> {
+        use stikk_core::RowKind as Kind;
+        if let Some(Overlay::RefPicker {
+            refs,
+            cursor,
+            unpublished_main,
+            ..
+        }) = self.overlays.last()
+        {
+            let name = if *unpublished_main {
+                DEFAULT_REF.to_string()
+            } else {
+                refs.get(*cursor).cloned()?
+            };
+            let is_tag = self
+                .ref_rows
+                .iter()
+                .find(|entry| entry.name == name)
+                .is_some_and(stikk_prikk::RefEntry::is_tag);
+            let what = if is_tag { "Tag" } else { "Branch" };
+            return Some((Kind::Ref, format!("{what} {name}")));
+        }
+        if !self.overlays.is_empty() {
+            return None;
+        }
+        match self.screens.last() {
+            Some(Screen::History { view, cursor, .. }) => {
+                let row = view.blocks.get(*cursor)?;
+                Some((
+                    Kind::Block,
+                    format!("Block {}", Self::short_id(&row.block_id)),
+                ))
+            }
+            Some(Screen::BlockDetail { view, cursor, .. }) => {
+                match stikk_core::block_cursor_row(view, *cursor)? {
+                    stikk_core::BlockCursorRow::Patch(at) => {
+                        let row = view.patches.rows().get(at)?;
+                        Some((
+                            Kind::BlockPatch,
+                            format!("Patch {}", Self::short_id(&row.patch.patch_id)),
+                        ))
+                    }
+                    stikk_core::BlockCursorRow::File(_) => {
+                        let path = stikk_core::block_cursor_file(view, *cursor)?;
+                        Some((Kind::File, format!("File {path}")))
+                    }
+                }
+            }
+            Some(Screen::Queue { view, cursor, .. }) => {
+                let patch = view.patches.get(*cursor)?;
+                Some((
+                    Kind::QueuedPatch,
+                    format!("Patch {}", Self::short_id(&patch.id)),
+                ))
+            }
+            Some(Screen::Trust { view, cursor, .. }) => {
+                let stikk_core::TrustView::Listed { rows, .. } = view else {
+                    // No list, so no row to be about: the screen's own actions answer Enter.
+                    return None;
+                };
+                let row = rows.get(*cursor)?;
+                Some((
+                    Kind::TrustKey,
+                    format!("Key {}", Self::short_id(&row.key_id)),
+                ))
+            }
+            _ => None,
+        }
+    }
+
     /// **Run one catalog action, by id** (RFC 061 decision 1). The palette, an action list and a key
     /// all arrive here, so there is one place that says what an action *does* — and the catalog is the
     /// one place that says what it is called and what key it has.
@@ -5598,7 +5786,7 @@ impl App {
             "op.compare" => self.compare(),
             "changes.untracked" => self.toggle_untracked(),
             // a ref
-            "ref.open-history" => self.select(),
+            "ref.open-history" => self.focus_selected_ref(),
             "ref.switch" => self.begin_switch_branch(),
             "ref.merge-plan" => self.begin_merge_plan(),
             "ref.branch" => self.begin_create_branch(),
@@ -5616,6 +5804,7 @@ impl App {
             "trust.remove" => self.begin_remove_key(),
             "bundle.open" => self.begin_open_bundle(),
             "bundle.import" => self.begin_import(),
+            "merge.run" => self.begin_merge(),
             // a card's own key
             "seal.consent" => self.toggle_seal_consent(),
             // **Not an action this build runs.** `every_catalog_action_runs` refuses an id the
@@ -5821,6 +6010,7 @@ impl App {
                 | Overlay::Refusal { cursor, .. }
                 | Overlay::Stale { cursor, .. }
                 | Overlay::Palette { cursor, .. }
+                | Overlay::ActionList { cursor, .. }
                 | Overlay::Refusals { cursor, .. },
             ) => Some(*cursor),
             _ => None,

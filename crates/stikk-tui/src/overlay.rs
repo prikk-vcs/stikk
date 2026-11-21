@@ -23,7 +23,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use stikk_core::{
-    ConfirmationSummary, KeyClaim, NextStep, RefusalCard, RefusalRecord, RefusedPath, actions,
+    ConfirmationSummary, Key, KeyClaim, NextStep, RefusalCard, RefusalRecord, RefusedPath, actions,
     glossary,
 };
 use stikk_model::{Capability, Tier};
@@ -147,7 +147,27 @@ pub enum Overlay {
         /// The declarations prikk would refuse, each with prikk's own refusal.
         declarations: Vec<stikk_core::RefusedDeclaration>,
     },
-    /// The command palette (TU-07): a filter and the highlighted match.
+    /// **What can be done with the selected row** (RFC 061 decision 3).
+    ///
+    /// Enter opens it, its first entry is what the right arrow runs at once, and `Esc`, the left
+    /// arrow and `q` close it. It holds no list of its own: the entries are catalog entries, so what
+    /// they are called and what keys they have cannot drift from the palette or the key line.
+    ActionList {
+        /// What the list is about, in stikk's words and the repository's own string: *"Block
+        /// 1a2b3c4d"*, *"Branch heads/dev"*. Rendered inert (RFC 061 trap 6).
+        subject: String,
+        /// The entries, from [`stikk_core::actions::here`].
+        entries: Vec<&'static stikk_core::Action>,
+        /// The highlighted entry; `0`, the row's own first action, when it opens.
+        cursor: usize,
+        /// The session's signing readiness, for the disabled entries' reasons (`FR-104`), as the
+        /// palette carries it.
+        readiness: stikk_model::Readiness,
+        /// Whether a ref is focused, for the entries that need one (RFC 029 Handoff B).
+        ref_focused: bool,
+    },
+    /// The command palette (`TU-07`): a filter and the highlighted match. **It lists every action
+    /// the catalog holds** (RFC 061 decision 1; `FR-125`).
     Palette {
         /// The current filter text.
         filter: String,
@@ -472,6 +492,9 @@ impl Overlay {
             Self::RefPicker { .. } => " Choose ref ",
             Self::Refusal { .. } => " prikk refused ",
             Self::Stale { .. } => " stikk stopped ",
+            // **The rendered title is the row's own** (*"Block 1a2b3c4d"*); this is the generic
+            // name, for a caller that wants one without a subject.
+            Self::ActionList { .. } => " What can be done here ",
             Self::Palette { .. } => " Command palette ",
             Self::Refusals { .. } => " Recent refusals ",
             Self::Confirmation { .. } => " Confirm ",
@@ -600,6 +623,22 @@ pub fn render(
         Overlay::CommitWouldRefuseDeclarations { declarations } => {
             render_commit_would_refuse_declarations(declarations, palette, scroll, frame, area);
         }
+        Overlay::ActionList {
+            subject,
+            entries,
+            cursor,
+            readiness,
+            ref_focused,
+        } => render_action_list(
+            subject,
+            entries,
+            *cursor,
+            *readiness,
+            *ref_focused,
+            palette,
+            frame,
+            area,
+        ),
         Overlay::Palette {
             filter,
             cursor,
@@ -1461,6 +1500,83 @@ fn render_commit_would_refuse(
         scroll,
         confirms: false,
         dim: Style::default().fg(palette.dim),
+    }
+    .render(frame, area);
+}
+
+/// **The action list** (RFC 061 decision 3): what can be done with the selected row, then with the
+/// screen.
+///
+/// One row per entry, its key beside its name where it has one, and an unavailable entry **dimmed
+/// with its reason on the row below it** (`TU-07`) rather than hidden — the same rule the palette
+/// keeps, from the same catalog method, so the two cannot disagree.
+// Eight: the overlay's four fields, plus the palette, the frame and the area every renderer takes.
+#[allow(clippy::too_many_arguments)]
+fn render_action_list(
+    subject: &str,
+    entries: &[&'static stikk_core::Action],
+    cursor: usize,
+    readiness: stikk_model::Readiness,
+    ref_focused: bool,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let mut lines: Vec<Body> = Vec::new();
+    for (i, action) in entries.iter().enumerate() {
+        let reason = action.unavailable_reason(readiness, ref_focused);
+        let disabled = reason.is_some();
+        let name_style = match (i == cursor, disabled) {
+            (_, true) => Style::default().fg(palette.dim),
+            (true, false) => crate::theme::selected(palette),
+            (false, false) => Style::default().fg(palette.fg),
+        };
+        let mut row = Body::new();
+        row.spans(
+            "    ",
+            vec![
+                Span::styled(
+                    if i == cursor { "▶ " } else { "  " },
+                    Style::default().fg(palette.accent),
+                ),
+                Span::styled(format!("{:<38}", action.name), name_style),
+                Span::styled(
+                    action.key.map(Key::label).unwrap_or_default(),
+                    Style::default().fg(palette.dim),
+                ),
+            ],
+        );
+        lines.push(row);
+        if let Some(reason) = reason {
+            // **On the row below it**, not beside it: an entry's name and its reason both read whole
+            // at 60 columns that way, where the palette's one-row form needs 80.
+            let mut row = Body::new();
+            row.prose(
+                Style::default().fg(palette.warn),
+                "      ",
+                format!("— {reason}").as_str(),
+            );
+            lines.push(row);
+        }
+    }
+    // The cursor indexes entries, and a disabled entry adds a row of its own, so the panel's
+    // selection is the row the entry starts on.
+    let selected_row = entries
+        .iter()
+        .take(cursor)
+        .filter(|action| action.unavailable_reason(readiness, ref_focused).is_some())
+        .count()
+        + cursor;
+    let title = format!(" {} ", inert(subject));
+    ListPanel {
+        title: &title,
+        // Narrower than the palette's 80: an entry here is a name and a key, with its reason on its
+        // own row, and the list belongs beside the row it is about.
+        width: 56,
+        header: Body::new(),
+        items: lines,
+        cursor: (!entries.is_empty()).then_some(selected_row),
+        style: Style::default().fg(palette.fg),
     }
     .render(frame, area);
 }

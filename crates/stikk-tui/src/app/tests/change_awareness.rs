@@ -790,7 +790,8 @@ fn main_tip_detail_on_top(app: &mut App, rx: &mpsc::Receiver<Request>) {
         seq: req.seq,
         kind: ResponseKind::History(Ok(two_block_history())),
     });
-    app.select();
+    // The right arrow: open the tip block (RFC 061 decision 2).
+    app.select_screen_or_row();
     let block_req = next_request(rx);
     assert!(
         matches!(&block_req.kind, RequestKind::BlockState { reff, .. } if reff == "heads/main")
@@ -814,6 +815,8 @@ fn pick_dev_above(app: &mut App, rx: &mpsc::Receiver<Request>) {
         ]))),
     });
     app.nav_up(); // the picker opens on the focused ref, heads/main; up to heads/dev
+    // Enter, Enter: the row's action list, then its first entry (RFC 061 decision 3).
+    app.select();
     app.select();
     assert_eq!(app.focused_ref(), Some("heads/dev"));
     let dev_req = next_request(rx);

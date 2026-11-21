@@ -400,7 +400,7 @@ fn select_from_orientation_opens_history_then_a_block() {
         Palette::default(),
     );
     // Orientation root → Select opens History for the focused ref.
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
     match &req.kind {
         RequestKind::History { reff } => assert_eq!(reff, "heads/main"),
@@ -419,7 +419,7 @@ fn select_from_orientation_opens_history_then_a_block() {
     }
 
     // Select again → the tip block's detail (state present because cursor 0 is the tip).
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
     match &req.kind {
         RequestKind::BlockState { is_tip, .. } => assert!(*is_tip),
@@ -465,7 +465,7 @@ fn nav_down_then_select_opens_a_non_tip_block_without_state() {
         kind: ResponseKind::History(Ok(two_block_history())),
     });
     app.nav_down(); // cursor 0 → 1 (the root block)
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
     let RequestKind::BlockState { is_tip, row, .. } = &req.kind else {
         panic!("expected a BlockState request, got {:?}", req.kind);
@@ -548,7 +548,7 @@ fn ref_picker_selects_a_ref_and_reopens_history() {
     assert!(matches!(app.top_overlay(), Some(Overlay::RefPicker { .. })));
 
     app.nav_down(); // highlight tags/v1
-    app.select(); // pick it
+    enter_twice(&mut app); // pick it
     assert!(!app.has_overlay());
     assert_eq!(app.focused_ref(), Some("tags/v1"));
 
@@ -1775,6 +1775,14 @@ fn status_line(app: &App) -> String {
 /// latches that — so a test that presses `Enter` without ever drawing the card is a reader who
 /// confirmed with their eyes shut, and `select` rightly does nothing. At 80 × 24 every card in these
 /// tests fits, so one draw is all it takes.
+/// **Enter, then Enter** — what `Enter` alone did before RFC 061 decision 3: the first opens the
+/// action list for the selected row, and the second runs its first entry, which is the row's own
+/// open action.
+fn enter_twice(app: &mut App) {
+    app.select();
+    app.select();
+}
+
 fn read_the_card(app: &App) {
     // Nothing on top is nothing to read: the key under test is then a screen's, not a card's.
     if app.top_overlay().is_some() {
@@ -1897,7 +1905,7 @@ fn a_pick_made_while_pending_survives_the_first_read() {
         seq: refs_req.seq,
         kind: ResponseKind::Refs(Ok(ref_list(vec![ref_entry("tags/v1")]))),
     });
-    app.select();
+    enter_twice(&mut app);
     assert_eq!(app.focused_ref(), Some("tags/v1"));
     assert!(matches!(
         next_request(&rx).kind,
@@ -1933,8 +1941,13 @@ fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_
     app.back(); // the picker's loading placeholder: escaping it leaves focus unfocused
     assert_eq!(app.ref_focus(), &RefFocus::Unfocused);
 
+    // **Not `Enter` any more** (RFC 061 decision 3): `Enter` at the root opens the list of what can
+    // be done, where the right arrow is the one that opens History.
     let actions: [(&str, AppAction); 5] = [
-        ("History (the Enter at the root)", App::select),
+        (
+            "History (the right arrow at the root)",
+            App::select_screen_or_row,
+        ),
         ("History (the palette's target)", App::open_history),
         ("Changes (w)", App::open_changes),
         ("commit (C)", App::begin_commit),
@@ -2012,7 +2025,7 @@ fn an_empty_ref_list_offers_an_unpublished_heads_main_and_picking_it_focuses_it(
     assert!(text.contains("▶ heads/main (not published)"), "{text}");
 
     app.nav_down(); // one row: stays on it
-    app.select();
+    enter_twice(&mut app);
     assert_eq!(app.focused_ref(), Some("heads/main"));
     assert!(!app.has_overlay());
     // Like any other pick (review v1 §2.3): prikk reports an unpublished ref's history as empty.
@@ -2241,7 +2254,7 @@ fn rfc035_on_block_detail() -> (App, mpsc::Receiver<Request>) {
         seq: req.seq,
         kind: ResponseKind::History(Ok(two_block_history())),
     });
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
     app.apply(Response {
         seq: req.seq,
@@ -2262,7 +2275,7 @@ fn rfc035_on_block_detail() -> (App, mpsc::Receiver<Request>) {
 fn opening_a_patch_from_block_detail_spawns_nothing() {
     let (mut app, rx) = rfc035_on_block_detail();
     app.nav_down(); // the second patch
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     assert!(
         rx.try_recv().is_err(),
         "no seam request may be sent: the block's report is already read"
@@ -2286,7 +2299,7 @@ fn opening_a_patch_from_block_detail_spawns_nothing() {
 #[test]
 fn v_toggles_the_raw_view_without_a_second_read() {
     let (mut app, rx) = rfc035_on_block_detail();
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let raw_now = |app: &App| match app.focus() {
         Focus::PatchDetail(_, raw, _) => raw,
         other => panic!("expected Patch detail, got {other:?}"),
@@ -2313,7 +2326,7 @@ fn v_does_nothing_outside_patch_detail() {
 #[test]
 fn r_on_a_block_opened_patch_re_reads_only_orientation() {
     let (mut app, rx) = rfc035_on_block_detail();
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     app.reload();
     let first = next_request(&rx);
     assert!(
@@ -2344,7 +2357,7 @@ fn opening_a_patch_from_the_queue_reads_once_and_r_re_reads_the_same_id() {
         kind: ResponseKind::Queue(Ok(queue_view_with("4 patch(es) queued for heads/main"))),
     });
     app.nav_down(); // the second queued patch
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
     let RequestKind::PatchDetail { patch_id, message } = &req.kind else {
         panic!("expected one PatchDetail request, got {:?}", req.kind);
@@ -2438,7 +2451,7 @@ fn the_picker_offers_the_unpublished_current_branch_and_selecting_it_focuses_tha
         }
         other => panic!("expected a RefPicker, got {other:?}"),
     }
-    app.select();
+    enter_twice(&mut app);
     assert!(!app.has_overlay());
     assert_eq!(app.focused_ref(), Some("heads/main"));
 }
@@ -2911,7 +2924,7 @@ fn the_ref_mark_survives_reopening_the_picker_and_dies_on_a_ref_change() {
 
     // **A ref change ends it.** A stale pair is worse than an empty one.
     app.nav_down();
-    app.select(); // focus heads/feature
+    enter_twice(&mut app); // focus heads/feature
     assert_eq!(app.focused_ref(), Some("heads/feature"));
     assert_eq!(app.marked_ref(), None);
 }
@@ -4493,7 +4506,7 @@ fn enter_on_the_plan_merges_only_when_prikk_proved_it_confluent() {
     // Confluent: the preview is asked for, with the **full** baseline to merge from and the
     // short one the card showed, so a baseline that moved can be noticed.
     let (mut app, rx) = open(stikk_prikk::MergeOutcome::Confluent);
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     match next_request(&rx).kind {
         RequestKind::MergePreview {
             target,
@@ -4521,7 +4534,7 @@ fn enter_on_the_plan_merges_only_when_prikk_proved_it_confluent() {
         stikk_prikk::MergeOutcome::InvalidCandidate,
     ] {
         let (mut app, rx) = open(outcome);
-        app.select();
+        app.select_screen_or_row(); // the right arrow, which opens the selected row
         let banner = app.banner().expect("a reason").to_string();
         assert!(banner.contains(outcome.name()), "{banner}");
         assert!(rx.try_recv().is_err(), "{outcome:?}: nothing dispatched");
@@ -4553,7 +4566,7 @@ fn a_merge_preview_arms_tier_three_or_blocks_to_a_banner() {
             },
         )))),
     });
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let seq = next_request(&rx).seq;
     app.apply(Response {
         seq,
@@ -4664,7 +4677,7 @@ fn a_landed_merge_shows_prikks_lines_and_re_reads() {
         )))),
     });
     read_the_card(&app);
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let seq = next_request(&rx).seq;
     app.apply(Response {
         seq,
@@ -4857,8 +4870,11 @@ fn rfc050_enter_does_nothing_on_the_bundle_view_and_the_arrows_scroll_it() {
         })),
     });
 
-    app.select();
-    assert!(rx.try_recv().is_err(), "Enter dispatches nothing here");
+    // **The right arrow dispatches nothing on a refused bundle** (RFC 050 Handoff A §4c): there is
+    // nothing to open. `Enter` now opens the list, whose *Import this bundle* this very bundle
+    // refuses, so the list is closed again before the arrows are tried.
+    app.select_screen_or_row();
+    assert!(rx.try_recv().is_err(), "the arrow dispatches nothing here");
     assert!(matches!(app.focus(), Focus::Bundle(..)));
 
     let Focus::Bundle(_, offset) = app.focus() else {
@@ -5171,13 +5187,15 @@ fn files_orientation_view() -> stikk_core::OrientationView {
 /// A Block detail with two patches and two files, pushed straight onto the screen stack.
 fn block_with_files(app: &mut App, rx: &mpsc::Receiver<Request>, minor: u32) {
     let _ = minor;
-    app.select();
+    // The right arrow, twice: open the focused ref's history, then its tip block (RFC 061
+    // decision 2). `Enter` now asks what can be done first.
+    app.select_screen_or_row();
     let req = next_request(rx);
     app.apply(Response {
         seq: req.seq,
         kind: ResponseKind::History(Ok(two_block_history())),
     });
-    app.select();
+    app.select_screen_or_row();
     let req = next_request(rx);
     let detail = BlockDetailView {
         row: block("bbbb", 2),
@@ -5312,13 +5330,13 @@ fn f_on_a_patch_row_says_which_key_saves_what() {
         loaded(files_orientation_view()),
         Palette::default(),
     );
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
     app.apply(Response {
         seq: req.seq,
         kind: ResponseKind::History(Ok(two_block_history())),
     });
-    app.select();
+    app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
     // A block whose patches are listed and whose files are not — so row 0 is a patch.
     let detail = BlockDetailView {
@@ -5392,13 +5410,13 @@ fn unreported_or_failed_files_answer_without_spawning() {
             loaded(files_orientation_view()),
             Palette::default(),
         );
-        app.select();
+        app.select_screen_or_row(); // the right arrow, which opens the selected row
         let req = next_request(&rx);
         app.apply(Response {
             seq: req.seq,
             kind: ResponseKind::History(Ok(two_block_history())),
         });
-        app.select();
+        app.select_screen_or_row(); // the right arrow, which opens the selected row
         let req = next_request(&rx);
         app.apply(Response {
             seq: req.seq,
@@ -6648,4 +6666,192 @@ fn every_catalog_action_runs() {
     // And an id nobody listed is refused rather than silently ignored.
     let (mut app, _rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, false)));
     assert!(!app.run_action("no.such.action"));
+}
+
+// =============================================================================================
+// RFC 061 decision 3 — what Enter opens.
+// =============================================================================================
+
+/// Which focus a run ended on, without its payload.
+fn focus_label(app: &App) -> String {
+    format!("{:?}", app.focus())
+        .chars()
+        .take_while(|c| *c != '(' && *c != ' ')
+        .collect()
+}
+
+/// **Enter, Enter and the right arrow each do what `Enter` alone did** (RFC 061 decision 3),
+/// asserted against the request the next screen is read with.
+#[test]
+fn enter_twice_and_the_right_arrow_agree_with_yesterdays_enter() {
+    // On History, the tip selected: both paths ask prikk for the same block's state.
+    let on_history = |act: fn(&mut App)| -> String {
+        let (mut app, rx) = from_state(
+            "/repo",
+            loaded(files_orientation_view()),
+            Palette::default(),
+        );
+        app.select_screen_or_row();
+        let req = next_request(&rx);
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::History(Ok(two_block_history())),
+        });
+        act(&mut app);
+        format!("{:?}", next_request(&rx).kind)
+    };
+    let arrow = on_history(|app| app.select_screen_or_row());
+    let twice = on_history(|app| {
+        app.select();
+        app.select();
+    });
+    assert_eq!(arrow, twice, "the two paths read different things");
+    assert!(arrow.contains("BlockState"), "{arrow}");
+
+    // And on the Queue: the selected patch, read once either way.
+    let on_queue = |act: fn(&mut App)| -> String {
+        let (mut app, rx) = from_state(
+            "/repo",
+            loaded(files_orientation_view()),
+            Palette::default(),
+        );
+        app.open_queue();
+        let req = next_request(&rx);
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::Queue(Ok(queue_view_with("4 patch(es) queued for heads/main"))),
+        });
+        act(&mut app);
+        format!("{:?}", next_request(&rx).kind)
+    };
+    let arrow = on_queue(|app| app.select_screen_or_row());
+    let twice = on_queue(|app| {
+        app.select();
+        app.select();
+    });
+    assert_eq!(arrow, twice);
+    assert!(arrow.contains("PatchDetail"), "{arrow}");
+}
+
+/// **A ref row, both ways** (decision 3): the picker's rows are rows, so Enter asks first and the
+/// right arrow focuses at once.
+#[test]
+fn a_ref_row_focuses_either_way() {
+    let picked = |act: fn(&mut App)| -> (Option<String>, String) {
+        let (mut app, rx) = open_with_first_read(Ok(view_on(CurrentBranch::NotReported, false)));
+        let refs_req = next_request(&rx);
+        app.apply(Response {
+            seq: refs_req.seq,
+            kind: ResponseKind::Refs(Ok(ref_list(vec![
+                ref_entry("heads/main"),
+                ref_entry("heads/dev"),
+            ]))),
+        });
+        app.nav_down();
+        act(&mut app);
+        (
+            app.focused_ref().map(ToString::to_string),
+            focus_label(&app),
+        )
+    };
+    let arrow = picked(|app| app.select_screen_or_row());
+    let twice = picked(|app| {
+        app.select();
+        app.select();
+    });
+    assert_eq!(arrow, twice);
+    assert_eq!(arrow.0.as_deref(), Some("heads/dev"));
+}
+
+/// **The list closes on each of `Esc`, the left arrow and `q`** (decision 3) — all three are the
+/// catalog's `app.back`, which `keys::tests::back_is_left_esc_and_q` asserts, and this is what it
+/// does to the list.
+#[test]
+fn the_action_list_closes_on_back() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    app.select();
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::ActionList { .. })),
+        "{:?}",
+        app.top_overlay()
+    );
+    app.back();
+    assert!(!app.has_overlay(), "{:?}", app.top_overlay());
+    // And the screen under it is untouched.
+    assert!(matches!(app.focus(), Focus::Orientation(_)));
+}
+
+/// **Enter inside a card is unchanged** (RFC 061 trap 4): only a row list answers it with actions.
+#[test]
+fn enter_inside_a_card_opens_no_action_list() {
+    let (mut app, _rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    app.open_glossary();
+    app.select();
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::Glossary { .. })),
+        "{:?}",
+        app.top_overlay()
+    );
+    // A card that takes no Enter at all keeps it: the key does not fall through to the screen
+    // under it, and no list opens.
+    app.back();
+    app.push_overlay(Overlay::Operations {
+        operations: Vec::new(),
+    });
+    app.select();
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::Operations { .. })),
+        "{:?}",
+        app.top_overlay()
+    );
+}
+
+/// **What the list is titled, per row kind** (decision 3): the row itself, in stikk's word and the
+/// repository's own string.
+#[test]
+fn each_row_kinds_list_is_titled_by_its_row() {
+    // A block, in History.
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    app.select_screen_or_row();
+    let req = next_request(&rx);
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::History(Ok(two_block_history())),
+    });
+    app.select();
+    let text = top_overlay_text(&app);
+    assert!(text.contains("Block bbbb"), "{text}");
+    assert!(text.contains("Open this block"), "{text}");
+    assert!(text.contains("Mark it, to compare"), "{text}");
+    // Its key comes from the catalog, and nothing else names it.
+    assert!(text.contains('m'), "{text}");
+
+    // A file, in Block detail: its own two actions, then the block's.
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(files_orientation_view()),
+        Palette::default(),
+    );
+    block_with_files(&mut app, &rx, 55);
+    app.nav_down();
+    app.select();
+    let text = top_overlay_text(&app);
+    // `block_with_files` leaves the cursor on the block's first row; one down is its second file.
+    assert!(text.contains("File run.sh"), "{text}");
+    assert!(text.contains("Save this file, as it was here"), "{text}");
+    assert!(text.contains("Save every file at this block"), "{text}");
+    // **Not the patch rows' action**, which is what the rows above offer.
+    assert!(!text.contains("Open this patch"), "{text}");
 }

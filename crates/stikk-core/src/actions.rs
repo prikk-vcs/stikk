@@ -119,13 +119,12 @@ pub enum RowKind {
     Ref,
     /// A block, in History.
     Block,
-    /// A file, in Block detail.
+    /// A file, in Block detail's file list.
     File,
+    /// A patch, in Block detail's patch list - the rows above the files.
+    BlockPatch,
     /// A queued patch, in the Queue.
     QueuedPatch,
-    /// A changed path, in Changes. **It has no action of its own** (RFC 061 decision 3): what `d`
-    /// compares is the whole worktree, not the row.
-    ChangesRow,
     /// An adopted key, in Trust.
     TrustKey,
 }
@@ -160,7 +159,7 @@ pub struct Action {
     /// Everywhere it applies.
     pub applies: &'static [Where],
     /// stikk's own short name for [`capability_gate`]'s message (`"commit"`, `"seal"`) — **not**
-    /// [`Self::name`]: the gate's reason already reads *"<operation> needs …"*, and the full display
+    /// [`Self::name`]: the gate's reason already reads *"`<operation>` needs …"*, and the full display
     /// name there produced an overlong disabled line.
     pub operation: &'static str,
     /// The request category, or `None` for an action that makes no prikk request of its own. **The
@@ -220,6 +219,16 @@ impl Action {
         self.unmet_reason(readiness).or_else(|| {
             (self.needs_focused_ref && !ref_focused).then(|| NO_FOCUSED_REF_REASON.to_string())
         })
+    }
+
+    /// Whether this is a way of *moving*, rather than something to do with what is on screen: the
+    /// ids under `row.` and `app.`.
+    ///
+    /// **[`here`] leaves these out.** A list of what can be done with the selected row that offered
+    /// *Back*, *Move the selection* and *What can be done here* would be a list of itself.
+    #[must_use]
+    pub fn is_navigation(&self) -> bool {
+        self.id.starts_with("row.") || self.id.starts_with("app.")
     }
 
     /// Whether it applies in one place.
@@ -300,8 +309,8 @@ static ACTIONS: &[Action] = &[
         name: "Commit worktree changes",
         hint: Some("commit"),
         key: Some(Key::Letter('c')),
-        // **One of Changes' own actions as well** (RFC 061 decision 3): a Changes row has no action
-        // of its own, so its list is what Changes offers.
+        // **One of Changes' own actions as well** (RFC 061 decision 3): Changes has no selectable
+        // row at all, so Enter there answers with what the screen offers.
         applies: &[Where::Everywhere, Where::Screen(ScreenKind::Changes)],
         operation: "commit",
         category: Some(RequestCategory::QueueMutation),
@@ -567,17 +576,6 @@ static ACTIONS: &[Action] = &[
     },
     // ----- a file, in Block detail -----
     Action {
-        id: "file.open-patch",
-        name: "Open the patch that wrote it",
-        hint: None,
-        key: None,
-        applies: &[Where::Row(RowKind::File)],
-        operation: "patch-detail",
-        category: Some(RequestCategory::ReadState),
-        needs_focused_ref: false,
-        rank: 0,
-    },
-    Action {
         id: "file.save",
         name: "Save this file, as it was here",
         hint: None,
@@ -599,13 +597,19 @@ static ACTIONS: &[Action] = &[
         needs_focused_ref: false,
         rank: 0,
     },
-    // ----- a queued patch, in the Queue -----
+    // ----- a patch, in the Queue or in Block detail -----
     Action {
         id: "patch.open",
         name: "Open this patch",
         hint: None,
         key: None,
-        applies: &[Where::Row(RowKind::QueuedPatch)],
+        // **One entry, two lists**: the Queue reads the patch, and Block detail opens it from the
+        // report it already read (RFC 035 4.1/4.2). What a reader does is the same, so what they are
+        // offered is one entry; which read it takes is the screen's business.
+        applies: &[
+            Where::Row(RowKind::QueuedPatch),
+            Where::Row(RowKind::BlockPatch),
+        ],
         operation: "patch-detail",
         category: Some(RequestCategory::ReadState),
         needs_focused_ref: false,
@@ -643,6 +647,20 @@ static ACTIONS: &[Action] = &[
         applies: &[Where::Screen(ScreenKind::Trust)],
         operation: "adopt-key",
         category: Some(RequestCategory::Trust),
+        needs_focused_ref: false,
+        rank: 0,
+    },
+    // ----- the merge plan -----
+    Action {
+        id: "merge.run",
+        name: "Merge, as this plan says",
+        hint: None,
+        key: None,
+        // **Offered only from a plan prikk judged confluent** (RFC 047 decision 6) - the screen
+        // itself refuses from any other verdict, in its own words.
+        applies: &[Where::Screen(ScreenKind::MergePlan)],
+        operation: "merge",
+        category: Some(RequestCategory::Publication),
         needs_focused_ref: false,
         rank: 0,
     },
@@ -691,7 +709,9 @@ static ACTIONS: &[Action] = &[
         name: "Open History",
         hint: None,
         key: None,
-        applies: ANY,
+        // **Orientation's own first action** (RFC 061 decision 3): `Enter` on the root opened the
+        // focused ref's history before this RFC, and it is what Enter, Enter does now.
+        applies: &[Where::Everywhere, Where::Screen(ScreenKind::Orientation)],
         operation: "history",
         category: Some(RequestCategory::ReadHistory),
         needs_focused_ref: true,
@@ -781,6 +801,53 @@ pub fn applying_to(place: Where) -> Vec<&'static Action> {
         .iter()
         .filter(|action| action.applies_to(place))
         .collect()
+}
+
+/// **What can be done here** (RFC 061 decision 3): the selected row's own actions, then the
+/// screen's own.
+///
+/// Within the screen's, **the screen's alone come before the ones it shares with every screen**, so
+/// that Changes — which has no selectable row, because `d` compares the whole worktree — reads
+/// *compare, untracked, commit* and not *commit* first.
+///
+/// **Where no row is selected**, as on Orientation and Changes, the actions that apply everywhere
+/// follow, less the ways of moving around ([`Action::is_navigation`]): with no row to be specific
+/// about, what can be done here is whatever a key does on any screen. Where a row *is* selected they
+/// are left out, so that a row's list stays about the row — its keys are on the key line, and all of
+/// them are in the palette.
+///
+/// The list is never empty.
+#[must_use]
+pub fn here(row: Option<RowKind>, screen: Option<ScreenKind>) -> Vec<&'static Action> {
+    let mut list: Vec<&'static Action> = Vec::new();
+    let push = |action: &'static Action, list: &mut Vec<&'static Action>| {
+        if !list.iter().any(|listed| listed.id == action.id) {
+            list.push(action);
+        }
+    };
+    if let Some(row) = row {
+        for action in applying_to(Where::Row(row)) {
+            push(action, &mut list);
+        }
+    }
+    if let Some(screen) = screen {
+        let own = applying_to(Where::Screen(screen));
+        for also_everywhere in [false, true] {
+            for action in &own {
+                if action.applies_to(Where::Everywhere) == also_everywhere {
+                    push(action, &mut list);
+                }
+            }
+        }
+    }
+    if row.is_none() {
+        for action in applying_to(Where::Everywhere) {
+            if !action.is_navigation() {
+                push(action, &mut list);
+            }
+        }
+    }
+    list
 }
 
 /// Actions whose name matches `filter` (case-insensitive substring; empty matches all) — the

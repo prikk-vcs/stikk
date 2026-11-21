@@ -165,15 +165,13 @@ fn each_row_kind_offers_what_rfc_061_lists() {
             "block.tag"
         ]
     );
-    assert_eq!(
-        ids(RowKind::File),
-        vec!["file.open-patch", "file.save", "file.save-all"]
-    );
+    assert_eq!(ids(RowKind::File), vec!["file.save", "file.save-all"]);
+    // **A block's patch row opens the patch**, which is what Enter did there before.
+    assert_eq!(ids(RowKind::BlockPatch), vec!["patch.open"]);
     assert_eq!(ids(RowKind::QueuedPatch), vec!["patch.open"]);
     assert_eq!(ids(RowKind::TrustKey), vec!["trust.remove"]);
-    // **A Changes row has no action of its own** (decision 3): what `d` compares is the whole
-    // worktree. Its list is what the screen offers.
-    assert!(ids(RowKind::ChangesRow).is_empty());
+    // **Changes has no selectable row** (decision 3): what `d` compares is the whole worktree, so
+    // Enter there answers with the screen's own actions.
     let changes: Vec<&str> = applying_to(Where::Screen(ScreenKind::Changes))
         .into_iter()
         .map(|action| action.id)
@@ -268,4 +266,118 @@ fn matching_filters_by_name_and_keeps_order() {
     );
     // A no-match filter returns nothing (but never errors).
     assert!(matching("zzzzz").is_empty());
+}
+
+/// **What a Changes row is offered, in the RFC's own order** (decision 3): the screen's own actions
+/// before the one it shares with every screen, so `commit` is not what Enter, Enter would run.
+#[test]
+fn a_changes_row_reads_compare_untracked_commit() {
+    let ids: Vec<&str> = here(None, Some(ScreenKind::Changes))
+        .into_iter()
+        .map(|action| action.id)
+        .collect();
+    assert_eq!(
+        ids.get(..3),
+        Some(&["op.compare", "changes.untracked", "op.commit"][..])
+    );
+    // Then what can be done anywhere, since no row is selected.
+    assert!(ids.contains(&"ref.pick"), "{ids:?}");
+}
+
+/// **A screen with no row and no actions of its own answers with what applies everywhere**, less the
+/// ways of moving around - never with an empty list.
+#[test]
+fn orientation_answers_with_the_actions_that_apply_everywhere() {
+    let list = here(None, Some(ScreenKind::Orientation));
+    assert!(list.len() > 8, "only {} entries", list.len());
+    // **Its own first**: `Enter` on the root opened History before RFC 061, so Enter, Enter does.
+    assert_eq!(list.first().map(|action| action.id), Some("view.history"));
+    for action in &list {
+        assert!(!action.is_navigation(), "{} is a way of moving", action.id);
+    }
+    for id in [
+        "row.actions",
+        "row.open",
+        "app.back",
+        "app.move",
+        "app.quit",
+    ] {
+        assert!(
+            !list.iter().any(|action| action.id == id),
+            "{id} is in the list"
+        );
+    }
+}
+
+/// **A row's list is about the row**: with a row selected, the actions that apply everywhere are
+/// left out, so the list does not bury five row actions under fifteen global ones.
+#[test]
+fn a_rows_list_leaves_out_what_applies_everywhere() {
+    let list = here(Some(RowKind::Block), Some(ScreenKind::History));
+    let ids: Vec<&str> = list.iter().map(|action| action.id).collect();
+    assert_eq!(
+        ids,
+        vec![
+            "block.open",
+            "block.mark",
+            "op.compare",
+            "block.undo",
+            "block.tag"
+        ]
+    );
+}
+
+/// **Every row kind's first entry is the one the right arrow runs** (decision 3).
+#[test]
+fn the_first_entry_of_each_row_kind_is_its_open_action() {
+    for (kind, first) in [
+        (RowKind::Ref, "ref.open-history"),
+        (RowKind::Block, "block.open"),
+        (RowKind::BlockPatch, "patch.open"),
+        (RowKind::QueuedPatch, "patch.open"),
+        (RowKind::TrustKey, "trust.remove"),
+        (RowKind::File, "file.save"),
+    ] {
+        let list = here(Some(kind), None);
+        assert_eq!(
+            list.first().map(|action| action.id),
+            Some(first),
+            "{kind:?}"
+        );
+    }
+}
+
+/// **Every entry of every list is an action the catalog holds**, and no list is ever empty.
+#[test]
+fn every_list_holds_catalog_entries_only() {
+    let kinds = [
+        RowKind::Ref,
+        RowKind::Block,
+        RowKind::File,
+        RowKind::BlockPatch,
+        RowKind::QueuedPatch,
+        RowKind::TrustKey,
+    ];
+    let screens = [
+        ScreenKind::Orientation,
+        ScreenKind::History,
+        ScreenKind::BlockDetail,
+        ScreenKind::Changes,
+        ScreenKind::Queue,
+        ScreenKind::PatchDetail,
+        ScreenKind::Compare,
+        ScreenKind::Verify,
+        ScreenKind::Trust,
+        ScreenKind::MergePlan,
+        ScreenKind::Bundle,
+    ];
+    for screen in screens {
+        for row in kinds.map(Some).into_iter().chain([None]) {
+            let list = here(row, Some(screen));
+            assert!(!list.is_empty(), "{row:?} on {screen:?} offers nothing");
+            for action in list {
+                assert!(by_id(action.id).is_some(), "{}", action.id);
+            }
+        }
+    }
 }

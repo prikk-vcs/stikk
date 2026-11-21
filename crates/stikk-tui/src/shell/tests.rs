@@ -263,7 +263,7 @@ fn block_detail_screen_shows_tip_state_and_where_patch_content_comes_from() {
     drain(&mut app, &rx, &backend);
     app.open_history();
     drain(&mut app, &rx, &backend);
-    app.select(); // drill into the tip
+    app.select_screen_or_row(); // the right arrow: drill into the tip
     drain(&mut app, &rx, &backend);
     let text = draw(&app, 90, 24);
     assert!(text.contains("Block")); // view title
@@ -352,6 +352,8 @@ fn picking_the_unpublished_heads_main_opens_its_empty_history_at_80x24() {
         "{:?}",
         app.top_overlay()
     );
+    // Enter, Enter: the row's action list, then its first entry (RFC 061 decision 3).
+    app.select();
     app.select();
     drain(&mut app, &rx, &backend);
     let text = draw(&app, 80, 24);
@@ -634,6 +636,8 @@ fn capture_rfc063_a_commit_off_the_current_branch_at_both_sizes_and_themes() {
             app.open_ref_picker();
             drain(&mut app, &rx, &backend);
             app.nav_up();
+            // Enter, Enter: the ref row's action list, then *Open its history* (RFC 061 decision 3).
+            app.select();
             app.select();
             drain(&mut app, &rx, &backend);
             assert_eq!(
@@ -1239,7 +1243,7 @@ fn screens() -> Vec<Screen> {
             reach: |app, rx, backend| {
                 app.open_history();
                 drain(app, rx, backend);
-                app.select();
+                app.select_screen_or_row();
                 drain(app, rx, backend);
             },
         },
@@ -1308,7 +1312,7 @@ fn screens() -> Vec<Screen> {
             reach: |app, rx, backend| {
                 app.open_queue();
                 drain(app, rx, backend);
-                app.select();
+                app.select_screen_or_row();
                 drain(app, rx, backend);
             },
         },
@@ -1899,4 +1903,102 @@ fn capture_rfc060_c1_titles_at_60_columns() {
         !glossary.contains("to scroll"),
         "the title no longer names the key as well:\n{glossary}"
     );
+}
+
+/// **What Enter opens, on every screen** (RFC 061 decision 3): one capture per row kind and per
+/// screen with no row, at 60 × 15 and 80 × 24.
+///
+/// The list is a `ListPanel`, so RFC 060's recorder covers it; this asserts the rest — that it opens
+/// where a row or a screen has actions, that it is titled by what it is about, that its first entry
+/// is on screen, and that an entry that cannot run now carries its reason.
+#[test]
+fn capture_rfc061_what_can_be_done_here_on_every_screen() {
+    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
+    let mut opened = 0_usize;
+    let mut found: Vec<String> = Vec::new();
+    for screen in screens() {
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+        let before = format!("{:?}", app.top_overlay().map(std::mem::discriminant));
+        app.select();
+        let Some(crate::overlay::Overlay::ActionList {
+            subject,
+            entries,
+            readiness,
+            ref_focused,
+            ..
+        }) = app.top_overlay()
+        else {
+            // Enter is unchanged on a card (RFC 061 trap 4), and a loading screen has no actions of
+            // its own: both are screens this capture has nothing to show for.
+            println!("--- {}: Enter opens no list (was {before})", screen.name);
+            continue;
+        };
+        let (subject, readiness, ref_focused) = (subject.clone(), *readiness, *ref_focused);
+        let entries: Vec<_> = entries.clone();
+        opened += 1;
+        let _ = crate::text::drain_overflows();
+        for (w, h) in [(60, 15), (80, 24)] {
+            let text = draw(&app, w, h);
+            println!(
+                "--- what can be done here: {} ({subject}), {w}x{h}\n{text}",
+                screen.name
+            );
+            for overflow in crate::text::drain_overflows() {
+                found.push(format!(
+                    "{} at {w}x{h}: {} row {} wants {} columns of {}: {:?}",
+                    screen.name,
+                    overflow.what,
+                    overflow.row,
+                    overflow.drawn,
+                    overflow.width,
+                    overflow.text
+                ));
+            }
+            // The first entry is the one the right arrow runs, and it is always on screen.
+            let first = entries.first().expect("a list is never empty");
+            assert!(
+                text.contains(first.name),
+                "{} at {w}x{h}: {} is not on screen\n{text}",
+                screen.name,
+                first.name
+            );
+            // **A reason, where one is on screen** (`TU-07`): a disabled entry is dimmed and says
+            // why, on the row below it.
+            for action in &entries {
+                if let Some(reason) = action.unavailable_reason(readiness, ref_focused)
+                    && text.contains(action.name)
+                {
+                    let flat = text
+                        .lines()
+                        .map(|line| line.trim_matches(|c: char| c == '│' || c.is_whitespace()))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let words = reason.split_whitespace().collect::<Vec<_>>().join(" ");
+                    assert!(
+                        flat.contains(&words) || h == 15,
+                        "{} at {w}x{h}: {} is disabled and its reason is not on screen\n{text}",
+                        screen.name,
+                        action.name
+                    );
+                }
+            }
+        }
+        // 60 x 15 is the floor, and the list must still be readable there: its title names what it
+        // is about, however short the panel gets.
+        let narrow = draw(&app, 60, 15);
+        assert!(
+            narrow.contains("What can be done")
+                || narrow.contains(subject.split(' ').next().unwrap_or("")),
+            "{} at 60x15: the list says nothing about what it is about\n{narrow}",
+            screen.name
+        );
+    }
+    assert!(found.is_empty(), "rows overflowed:\n{}", found.join("\n"));
+    assert!(opened >= 10, "only {opened} screens opened a list");
 }

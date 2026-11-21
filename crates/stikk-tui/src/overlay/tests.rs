@@ -1396,6 +1396,8 @@ fn coverage(overlay: &Overlay) -> Coverage {
         Overlay::Palette { filter, .. } => {
             Coverage::Selectable(stikk_core::actions::matching(filter).len())
         }
+        // RFC 061 decision 3: one entry per action, the cursor on one of them.
+        Overlay::ActionList { entries, .. } => Coverage::Selectable(entries.len()),
         Overlay::Refusals { records, .. } => Coverage::Selectable(records.len()),
         Overlay::Confirmation { .. } => Coverage::NoSelection,
         Overlay::CommitMessage { .. } => Coverage::NoSelection,
@@ -1648,6 +1650,33 @@ fn cases() -> Vec<Case> {
             }),
             last_row: "stale step 2".to_string(),
             entry: Some(Box::new(|i| format!("stale step {i}"))),
+        },
+        Case {
+            name: "ActionList",
+            // **A ref row's eight actions** (RFC 061 decision 3), with every one available, so the
+            // last row is an entry and not a reason. The disabled rendering has its own tests.
+            build: Box::new(|cursor| Overlay::ActionList {
+                subject: "Branch heads/dev".to_string(),
+                entries: stikk_core::actions::here(Some(stikk_core::RowKind::Ref), None),
+                cursor,
+                readiness: stikk_model::Readiness {
+                    author: RoleReadiness::Unknown,
+                    maintainer: stikk_model::RoleReadiness::Unknown,
+                    read_only: false,
+                },
+                ref_focused: true,
+            }),
+            last_row: stikk_core::actions::here(Some(stikk_core::RowKind::Ref), None)
+                .last()
+                .expect("a ref row has actions")
+                .name
+                .to_string(),
+            entry: Some(Box::new(|i| {
+                stikk_core::actions::here(Some(stikk_core::RowKind::Ref), None)
+                    .get(i)
+                    .map(|action| action.name.to_string())
+                    .unwrap_or_default()
+            })),
         },
         Case {
             name: "Palette",

@@ -416,6 +416,44 @@ To leave no trace of a launch, set `STIKK_PRIVATE=1`: stikk reads no record and 
 that run. (`STIKK_READ_ONLY=1` is a different thing — it forbids repository changes, and still
 remembers where you were.)
 
+## Colours
+
+stikk writes body text in **your terminal's own text colour**, and adds a few colours of its own for
+labels, headings and warnings. Every colour it adds is readable: at least 7 : 1 against the common
+terminal backgrounds, light and dark, and against the one your terminal reports.
+
+Set `theme` in stikk's config file (`stikk config path` prints where it is):
+
+```
+theme = system
+```
+
+| `theme` | What it does |
+|---|---|
+| `system` | The default. Asks your terminal whether its background is light or dark, once, at startup, and uses `plain` if it does not answer. |
+| `light` | The light palette, with no question asked. |
+| `dark` | The dark palette, with no question asked. |
+| `high-contrast` | stikk paints its own pair over the whole frame — black on white, or white on black where your terminal said it is dark. 21 : 1, whatever your terminal's own scheme is. |
+| `plain` | No colour of stikk's own: everything is your terminal's text colour. Emphasis stays. |
+
+Nothing is ever said by colour alone — every status also carries words or a shape — so `plain` loses
+no information.
+
+**`NO_COLOR`.** If `NO_COLOR` is set to anything other than an empty string, `system` behaves as
+`plain` and no question is asked of the terminal. A `theme` you set in the config wins over it: it is
+your choice, made later and more specifically.
+
+**What stikk is doing, in its own words.** The Orientation view has a `colours` row:
+
+```
+colours     dark background, detected · 256 colours
+```
+
+It says why this palette (detected, from `COLORFGBG`, from the config, from `NO_COLOR`, or no answer
+at all), at which depth stikk is drawing, and — if any — how many of its colours fell back to your
+terminal's own because they could not reach 7 : 1 on the background your terminal reported. **If the
+colours look wrong, that row is the line to read out.**
+
 ## Launcher utilities
 
 ```sh

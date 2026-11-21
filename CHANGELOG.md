@@ -6,6 +6,14 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Changed
 
+- **On a light terminal, stikk is now readable.** Its default theme always picked the dark palette,
+  so on a white background — macOS Terminal's default — body text was 1.4 : 1. Now *system* asks the
+  terminal whether its background is light or dark, and uses no colour of its own when the terminal
+  does not answer. Body text is the terminal's own colour, which the terminal already chose to be
+  readable on its own background, and **every colour stikk adds reaches 7 : 1** (WCAG AAA) on the
+  common terminal backgrounds and on the one the terminal reports. No colour stikk draws is a named
+  ANSI colour any more: a name is whatever the terminal's scheme says it is, which is the one thing
+  stikk cannot check.
 - **stikk now reads a prikk report that carries a value it does not use**, such as a negative or
   fractional number, or deep nesting, in a field it skips. Before, such a field made the whole
   report unreadable. A value in a field stikk *does* read is refused exactly as before, and the
@@ -30,6 +38,17 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Added
 
+- **A `high-contrast` theme**, in which stikk paints its own pair over the whole frame: black on
+  white, or white on black where the terminal said it is dark — 21 : 1 whatever the terminal's own
+  scheme is.
+- **A `plain` theme**, which adds no colour of stikk's own. It is also where *system* lands when the
+  terminal does not answer. Nothing is lost: every status carries words or a shape as well.
+- **`NO_COLOR` is honoured.** Set to anything but an empty string, it makes *system* behave as
+  `plain`, and no question is asked of the terminal. A `theme` in your config wins over it.
+- **The Orientation view says which colours are in use, and why**: a `colours` row with the reason
+  (detected, from `COLORFGBG`, from the config, from `NO_COLOR`, or no answer at all), the colour
+  depth, and how many colours fell back to the terminal's own because they could not reach 7 : 1 on
+  the background the terminal reported. If the colours look wrong, that is the row to read out.
 - **The bundle card says whether each seal checks out** (prikk ≥ 0.56). Before, stikk could only
   say that a bundle *named* a sealer, because that is all a bundle records; prikk now checks each
   signature against the keys your repository trusts and says what it found, so the card says it

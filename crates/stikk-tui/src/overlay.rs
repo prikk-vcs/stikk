@@ -23,8 +23,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use stikk_core::{
-    ConfirmationSummary, KeyClaim, NextStep, RefusalCard, RefusalRecord, RefusedPath, glossary,
-    palette,
+    ConfirmationSummary, KeyClaim, NextStep, RefusalCard, RefusalRecord, RefusedPath, actions,
+    glossary,
 };
 use stikk_model::{Capability, Tier};
 
@@ -1474,7 +1474,7 @@ fn render_palette(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let hits = palette::matching(filter);
+    let hits = actions::matching(filter);
     // The filter box is chrome the list is read *through* — it stays put while the list scrolls under
     // it, which is why it is the `ListPanel`'s header rather than its first row.
     let mut header = Body::new();
@@ -1503,11 +1503,7 @@ fn render_palette(
     let mut lines: Vec<Body> = Vec::new();
     if hits.is_empty() {
         let mut row = Body::new();
-        row.prose(
-            Style::default().fg(palette.dim),
-            "  ",
-            "no matching command",
-        );
+        row.prose(Style::default().fg(palette.dim), "  ", "no matching action");
         lines.push(row);
     }
     for (i, cmd) in hits.iter().enumerate() {
@@ -1523,8 +1519,12 @@ fn render_palette(
         let mut spans = vec![
             Span::styled(marker, Style::default().fg(palette.accent)),
             Span::styled(format!("{:<28}", cmd.name), name_style),
+            // **A key only where the catalog binds one** (RFC 061 decision 1): the phantom `g o`
+            // the palette used to print is gone, because a key now exists only here.
             Span::styled(
-                format!("[{}]", cmd.binding),
+                cmd.key
+                    .map(|key| format!("[{}]", key.label()))
+                    .unwrap_or_default(),
                 Style::default().fg(palette.dim),
             ),
         ];

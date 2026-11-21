@@ -25,9 +25,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use stikk_core::{
-    BlockDetailView, COMMIT_OPERATION, ChangesRead, ChangesView, Command, CommitPreviewOutcome,
-    HistoryView, NextTarget, OperationContext, Presentation, RefusalHistory, SEAL_OPERATION,
-    SealPreviewOutcome, Seen, Target, present, staleness_notice,
+    BlockDetailView, COMMIT_OPERATION, ChangesRead, ChangesView, CommitPreviewOutcome, HistoryView,
+    NextTarget, OperationContext, Presentation, RefusalHistory, SEAL_OPERATION, SealPreviewOutcome,
+    Seen, Target, present, staleness_notice,
 };
 use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
@@ -1588,7 +1588,7 @@ impl App {
             readiness,
         ) {
             Ok(()) => {
-                // After the capability check, as the palette orders its reasons (`Command::
+                // After the capability check, as the palette orders its reasons (`Action::
                 // unavailable_reason`): the two must agree.
                 let Some(reff) = self.require_focus() else {
                     return;
@@ -3309,12 +3309,12 @@ impl App {
                 }
             }
             Some(Overlay::Palette { filter, cursor, .. }) => {
-                let hits = stikk_core::palette::matching(filter);
-                if let Some(cmd) = hits.get(*cursor).copied() {
+                let hits = stikk_core::actions::matching(filter);
+                if let Some(action) = hits.get(*cursor).copied() {
                     let readiness = self.readiness();
-                    if cmd.available(readiness, self.focused_ref().is_some()) {
+                    if action.available(readiness, self.focused_ref().is_some()) {
                         self.pop_overlay();
-                        self.run_command(cmd);
+                        self.run_action(action.id);
                     }
                 }
             }
@@ -3453,6 +3453,12 @@ impl App {
     }
 
     /// `Enter` with no overlay open: drill into a block, or open History from the root.
+    /// **Open the selected row** — what `Enter` did before RFC 061, and what `→` does now
+    /// (decision 2). The catalog's `row.open`, and the first entry of every row's action list.
+    pub(crate) fn select_screen_or_row(&mut self) {
+        self.select_screen();
+    }
+
     fn select_screen(&mut self) {
         match self.screens.last() {
             Some(Screen::History { view, cursor, .. }) => {
@@ -4029,7 +4035,7 @@ impl App {
                 *cursor = next_index(*cursor, records.len());
             }
             Some(Overlay::Palette { filter, cursor, .. }) => {
-                let count = stikk_core::palette::matching(filter).len();
+                let count = stikk_core::actions::matching(filter).len();
                 *cursor = next_index(*cursor, count);
             }
             Some(
@@ -5558,18 +5564,58 @@ impl App {
     }
 
     /// Run a palette command (already checked available).
-    fn run_command(&mut self, cmd: &Command) {
-        if let Some(target) = cmd.opens {
-            self.activate_view(target);
-            return;
-        }
-        match cmd.id {
+    /// **Run one catalog action, by id** (RFC 061 decision 1). The palette, an action list and a key
+    /// all arrive here, so there is one place that says what an action *does* — and the catalog is the
+    /// one place that says what it is called and what key it has.
+    ///
+    /// An id with no arm is an action the catalog lists and nothing runs, which
+    /// `every_catalog_action_runs` refuses.
+    pub(crate) fn run_action(&mut self, id: &str) {
+        match id {
+            // moving around
+            "app.back" => self.back(),
+            "app.move" => {}
+            // the views
+            "view.orientation" => self.activate_view(Target::Orientation),
+            "view.history" => self.open_history(),
+            "ref.pick" => self.open_ref_picker(),
+            "view.changes" => self.open_changes(),
+            "view.queue" => self.open_queue(),
+            "view.verify" => self.open_verify(),
+            "view.trust" => self.open_trust(),
+            "view.glossary" => self.open_glossary(),
+            "view.palette" => self.open_palette(),
+            "view.operations" => self.open_operations(),
             "view.refresh" => self.reload(),
+            "view.raw" => self.toggle_raw(),
             "session.refusals" => self.open_refusals(),
-            "op.commit" => self.begin_commit(),
-            "op.undo-block" => self.begin_undo_block(),
-            "op.seal" => self.begin_seal(),
             "app.quit" => self.should_quit = true,
+            // the operations
+            "op.commit" => self.begin_commit(),
+            "op.seal" => self.begin_seal(),
+            "op.compare" => self.compare(),
+            "changes.untracked" => self.toggle_untracked(),
+            // a ref
+            "ref.open-history" => self.select_screen_or_row(),
+            "ref.switch" => self.begin_switch_branch(),
+            "ref.merge-plan" => self.begin_merge_plan(),
+            "ref.branch" => self.begin_create_branch(),
+            "ref.tag" | "block.tag" => self.begin_create_tag(),
+            "ref.close" => self.begin_close_branch(),
+            "ref.export" => self.begin_export(),
+            // a block, a file, a patch
+            "block.open" | "file.open-patch" | "patch.open" => self.select_screen_or_row(),
+            "block.mark" => self.mark_block(),
+            "block.undo" => self.begin_undo_block(),
+            "file.save" => self.begin_save_file(),
+            "file.save-all" => self.begin_save_all(),
+            // trust and bundles
+            "trust.adopt" => self.begin_adopt_key(),
+            "trust.remove" => self.begin_remove_key(),
+            "bundle.open" => self.begin_open_bundle(),
+            "bundle.import" => self.begin_import(),
+            // a card's own key
+            "seal.consent" => self.toggle_seal_consent(),
             _ => {}
         }
     }

@@ -1964,10 +1964,10 @@ fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_
     };
     let (readiness, ref_focused) = (*readiness, *ref_focused);
     assert!(!ref_focused);
-    for command in stikk_core::palette::commands() {
+    for command in stikk_core::actions::all() {
         let expected = matches!(
             command.id,
-            "view.history" | "view.changes" | "op.commit" | "op.seal" | "op.undo-block"
+            "view.history" | "view.changes" | "op.commit" | "op.seal" | "block.undo"
         )
         .then_some("No ref focused. Press b to pick one.");
         assert_eq!(
@@ -1979,8 +1979,11 @@ fn without_a_focused_ref_every_focus_needing_action_dispatches_nothing_and_says_
             command.id
         );
     }
-    // And the palette's Enter runs nothing it lists as disabled.
-    for ch in "his".chars() {
+    // And the palette's Enter runs nothing it lists as disabled. **`worktree` is the filter**
+    // (RFC 061 decision 1): it leaves only the two entries that need a focused ref, where `his` used
+    // to leave one and now also matches *"Open its history"*, *"Undo this block"* and the rest of a
+    // catalog that lists every action.
+    for ch in "worktree".chars() {
         app.input_char(ch);
     }
     app.select();
@@ -2091,11 +2094,12 @@ fn the_queue_opens_without_a_focused_ref() {
     }
 
     // The palette lists it available with no focused ref.
-    let queue = stikk_core::palette::commands()
+    let queue = stikk_core::actions::all()
         .iter()
         .find(|c| c.id == "view.queue")
         .expect("view.queue is registered");
-    assert_eq!(queue.binding, "Q");
+    // **`p`, as of RFC 061 decision 2** — it was `Q`, whose lower case meant *back*.
+    assert_eq!(queue.key, Some(stikk_core::Key::Letter('p')));
     assert_eq!(queue.unavailable_reason(Readiness::none(), false), None);
 }
 

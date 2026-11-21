@@ -539,12 +539,22 @@ fn palette_lists_every_tier_one_command_enabled_for_a_viewer() {
         ref_focused: true,
         readiness: viewer_readiness(),
     };
-    let text = draw(&overlay);
+    // **Taller than the default, because the palette now lists every action** (RFC 061 decision 1,
+    // `FR-125`): 39 entries where it listed 13, so a content test needs room for them.
+    let text = draw_at(&overlay, 90, 50);
     assert!(text.contains("Command palette"));
     assert!(text.contains("Open History"));
-    assert!(text.contains("[Enter]")); // its binding
-    // Every tier-one command is unconditionally free — none of their lines carries a reason.
-    for name in ["Open History", "Open Changes", "Glossary & Help", "Quit"] {
+    // **Its key, from the catalog** — `Enter` opens the action list now (decision 3), so History is
+    // found by name here and by `→` on a ref row.
+    assert!(text.contains("Glossary & Help"));
+    assert!(text.contains("[?]"));
+    // Every tier-one action is unconditionally free — none of their lines carries a reason.
+    for name in [
+        "Open History",
+        "Changes in the worktree",
+        "Glossary & Help",
+        "Quit",
+    ] {
         let line = text
             .lines()
             .find(|l| l.contains(name))
@@ -1384,7 +1394,7 @@ fn coverage(overlay: &Overlay) -> Coverage {
         // cursor to move.
         Overlay::CommitWouldRefuseDeclarations { .. } => Coverage::NoSelection,
         Overlay::Palette { filter, .. } => {
-            Coverage::Selectable(stikk_core::palette::matching(filter).len())
+            Coverage::Selectable(stikk_core::actions::matching(filter).len())
         }
         Overlay::Refusals { records, .. } => Coverage::Selectable(records.len()),
         Overlay::Confirmation { .. } => Coverage::NoSelection,
@@ -1651,13 +1661,13 @@ fn cases() -> Vec<Case> {
                     read_only: false,
                 },
             }),
-            last_row: stikk_core::palette::matching("")
+            last_row: stikk_core::actions::matching("")
                 .last()
                 .expect("commands")
                 .name
                 .to_string(),
             entry: Some(Box::new(|i| {
-                stikk_core::palette::matching("")
+                stikk_core::actions::matching("")
                     .get(i)
                     .map(|c| c.name.to_string())
                     .unwrap_or_default()
@@ -2754,9 +2764,11 @@ fn every_disabled_palette_reason_renders_whole_at_80_columns() {
                     ref_focused,
                 },
                 80,
-                24,
+                60,
             );
-            println!("--- palette, {who}, ref focused: {ref_focused}, 80×24\n{text}");
+            // **Tall enough for all of it** (RFC 061 decision 1): the palette lists every action
+            // now, and this test is about the reasons, not about what fits.
+            println!("--- palette, {who}, ref focused: {ref_focused}, 80 columns\n{text}");
             // **The entry, and its continuation rows** (RFC 060 decision 2): a reason that does not
             // fit the panel now continues on the next row instead of being cut at the border, so the
             // entry is read as the reader reads it — down the panel, to the next entry's binding.
@@ -2768,17 +2780,21 @@ fn every_disabled_palette_reason_renders_whole_at_80_columns() {
                     .unwrap_or_else(|| panic!("{name} not listed:\n{text}"));
                 let mut joined = rows[at].trim_matches(['│', ' ']).to_string();
                 for row in rows.iter().skip(at + 1) {
-                    let row = row.trim_matches(['│', ' ']);
-                    if row.is_empty() || row.contains('[') {
+                    // **A continuation is the only row that opens at the hanging indent.** An entry
+                    // row opens with its marker and then a word; `wrap_spans` indents what it had to
+                    // split by four. (Before RFC 061 this stopped at the next `[`, which worked only
+                    // while every entry had a key — most do not now.)
+                    let row = row.trim_matches('│');
+                    if !row.starts_with("    ") || row.trim().is_empty() {
                         break;
                     }
                     // **Joined with nothing**: a composed row is hard-split, so a continuation can
                     // begin mid-word, and a space between them would invent one.
-                    joined.push_str(row);
+                    joined.push_str(row.trim());
                 }
                 joined
             };
-            for command in stikk_core::palette::commands() {
+            for command in stikk_core::actions::matching("") {
                 let line = entry(command.name);
                 match command.unavailable_reason(readiness, ref_focused) {
                     Some(reason) => assert!(

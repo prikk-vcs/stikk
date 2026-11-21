@@ -15,6 +15,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod actions;
 pub mod bundle;
 pub mod change_token;
 pub mod changes;
@@ -26,7 +27,6 @@ pub mod glossary;
 pub mod history;
 pub mod merge;
 pub mod orient;
-pub mod palette;
 pub mod patch;
 pub mod piece;
 pub mod present;
@@ -40,6 +40,7 @@ pub mod trust;
 pub mod undo;
 pub mod verify;
 
+pub use actions::{Action, Key, NO_FOCUSED_REF_REASON, RowKind, ScreenKind, Where};
 pub use bundle::{
     ALREADY_HELD, ALREADY_RECEIVED, BUNDLE_EFFECTS_SHOWN, BUNDLE_FROM_MINOR, BUNDLE_LINEAGE_LIMIT,
     BundleOpened, BundleView, CLOSED_IS_NOT_EXPORTED, COMPARED_WITH_AFTER, COMPARED_WITH_BEFORE,
@@ -103,7 +104,6 @@ pub use orient::{
     INTERRUPTED_MATERIALIZATION, OrientationView, active_patch_sentence, interrupted_sentence,
     orient,
 };
-pub use palette::{Command, NO_FOCUSED_REF_REASON};
 pub use patch::{
     AS_AT_BLOCK_END, CONTENT_DISPLAY_BYTES, CONTENT_FROM_MINOR, NO_PATH_REPORTED, OperationRow,
     OperationView, PatchDetailView, PatchMessageState, patch_detail, patch_detail_in_block,

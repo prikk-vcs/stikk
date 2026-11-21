@@ -19,7 +19,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -110,7 +110,7 @@ fn lines<'a>(
         } => {
             let mut lines = vec![Line::from(Span::styled(
                 "  Keys this repository trusts",
-                Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+                crate::theme::heading(palette.fg),
             ))];
             // **stikk's sentence, above the list** — what being on it means, and what it does
             // not mean. A reader who skips it is the reader this view is for.
@@ -155,7 +155,7 @@ fn lines<'a>(
                 if key.yours {
                     spans.push(Span::styled(
                         "  \u{2014} yours",
-                        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+                        Style::default().fg(palette.fg),
                     ));
                 }
                 lines.push(Line::from(spans));

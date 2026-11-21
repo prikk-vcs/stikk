@@ -16,7 +16,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -103,9 +103,7 @@ fn refused_lines<'a>(path: &str, message: &str, palette: &Palette, width: usize)
     for row in wrap_verbatim(&inert(path), width, TOP) {
         lines.push(Line::from(Span::styled(
             row,
-            Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD),
+            crate::theme::heading(palette.accent),
         )));
     }
     lines.push(Line::from(""));
@@ -135,9 +133,7 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
     for row in wrap_verbatim(&inert(&view.path), width, TOP) {
         lines.push(Line::from(Span::styled(
             row,
-            Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD),
+            crate::theme::heading(palette.accent),
         )));
     }
 
@@ -173,9 +169,7 @@ fn read_lines<'a>(view: &BundleView, palette: &Palette, width: usize) -> Vec<Lin
     for row in crate::view::wrap_hanging(&heading, width, TOP, "      ") {
         lines.push(Line::from(Span::styled(
             row,
-            Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD),
+            crate::theme::heading(palette.accent),
         )));
     }
     // **The same label the import card carries** (review v1 C1): beside an advertised `I`, a

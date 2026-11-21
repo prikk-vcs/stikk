@@ -12,7 +12,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -83,7 +83,7 @@ fn line(
 ) -> Line<'static> {
     let mut spans = vec![Span::styled(
         repo.to_string(),
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        Style::default().fg(palette.fg),
     )];
     match &parts.focus {
         Focused::Nothing => {}
@@ -288,12 +288,7 @@ fn sep(palette: &Palette) -> Span<'static> {
 fn badges(palette: &Palette, readiness: Readiness) -> Vec<Span<'static>> {
     let mut out = Vec::new();
     if readiness.read_only {
-        out.push(Span::styled(
-            "[RO] ",
-            Style::default()
-                .fg(palette.warn)
-                .add_modifier(Modifier::BOLD),
-        ));
+        out.push(Span::styled("[RO] ", Style::default().fg(palette.warn)));
     }
     out.push(role_badge(palette, "AUT", readiness.author));
     out.push(Span::raw(" "));

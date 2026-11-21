@@ -24,7 +24,7 @@ use std::cell::Cell;
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -155,9 +155,7 @@ fn patch_lines<'a>(
         width,
         &view.patch_id,
         TOP,
-        Style::default()
-            .fg(palette.accent)
-            .add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.accent),
     );
     for row in &view.heading {
         push(
@@ -177,7 +175,7 @@ fn patch_lines<'a>(
             width,
             &operation.title,
             OPERATION,
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+            crate::theme::heading(palette.fg),
         );
         // The same operation, two ways, out of the one report: stikk's rendering, or prikk's fields.
         if raw {
@@ -218,14 +216,15 @@ fn patch_lines<'a>(
     }
     if let Some(foot) = &view.foot {
         push(&mut lines, width, "", TOP, Style::default());
+        // **"Note: …", in the label colour and nothing else** (RFC 060 decision 7). It was italic,
+        // which many terminal fonts draw thin or not at all — so the word says what the slant used
+        // to, and says it to a reader whose terminal has no italic.
         push(
             &mut lines,
             width,
-            foot,
+            &format!("Note: {foot}"),
             TOP,
-            Style::default()
-                .fg(palette.dim)
-                .add_modifier(Modifier::ITALIC),
+            Style::default().fg(palette.dim),
         );
     }
     lines

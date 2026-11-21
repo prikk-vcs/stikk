@@ -28,7 +28,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -271,12 +271,12 @@ fn block_lines<'a>(
     lines.push(Line::from(""));
     match detail.patches.unreported_reason() {
         Some(reason) => {
-            for wrapped in wrap_indented(&format!("patches: {reason}"), width, "  ") {
+            // **"Patches not shown: …", in the label colour** (RFC 060 decision 7). It was italic,
+            // and *"patches: <why there are none>"* read as a list's label with a strange value.
+            for wrapped in wrap_indented(&format!("Patches not shown: {reason}"), width, "  ") {
                 lines.push(Line::from(Span::styled(
                     wrapped,
-                    Style::default()
-                        .fg(palette.dim)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(palette.dim),
                 )));
             }
         }
@@ -295,9 +295,7 @@ fn block_lines<'a>(
                 let selected = at == cursor;
                 let marker = if selected { "▸ " } else { "  " };
                 let style = if selected {
-                    Style::default()
-                        .fg(palette.accent)
-                        .add_modifier(Modifier::BOLD)
+                    crate::theme::selected(palette)
                 } else {
                     Style::default().fg(palette.fg)
                 };

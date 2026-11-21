@@ -7,7 +7,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
@@ -37,9 +37,7 @@ pub fn render(
     let (support_text, support_style) = if !view.prikk_supported {
         (
             "outside stikk's validated range — read-only".to_string(),
-            Style::default()
-                .fg(palette.warn)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(palette.warn),
         )
     } else if !view.prikk_validated {
         (

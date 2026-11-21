@@ -7,7 +7,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -141,9 +141,7 @@ fn block_spans<'a>(
     let marker = if selected { "\u{25b6} " } else { "  " };
     let mark = if marked { "\u{25cf} " } else { "  " };
     let id_style = if selected {
-        Style::default()
-            .fg(palette.accent)
-            .add_modifier(Modifier::BOLD)
+        crate::theme::selected(palette)
     } else {
         Style::default().fg(palette.fg)
     };

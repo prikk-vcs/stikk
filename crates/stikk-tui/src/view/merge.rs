@@ -15,7 +15,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -91,9 +91,7 @@ fn merge_lines<'a>(view: &MergePlanView, palette: &Palette, width: usize) -> Vec
     for row in crate::view::wrap_hanging(&heading, width, TOP, HEADING_HANG) {
         lines.push(Line::from(Span::styled(
             row,
-            Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD),
+            crate::theme::heading(palette.accent),
         )));
     }
     // **stikk's sentence, naming stikk's own choice.** The baseline is not prikk's answer to a

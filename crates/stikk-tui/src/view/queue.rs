@@ -21,7 +21,7 @@ use std::cell::Cell;
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -149,7 +149,7 @@ fn queue_lines<'a>(
         width,
         &view.heading,
         TOP,
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     );
     for threshold in &view.thresholds {
         push(
@@ -178,9 +178,7 @@ fn queue_lines<'a>(
             &patch.id,
             marker,
             if selected {
-                Style::default()
-                    .fg(palette.accent)
-                    .add_modifier(Modifier::BOLD)
+                crate::theme::selected(palette)
             } else {
                 Style::default().fg(palette.accent)
             },

@@ -22,7 +22,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -202,9 +202,7 @@ fn entry_lines<'a>(
 ) {
     let marker = if selected { "\u{25b8} " } else { "  " };
     let title_style = if selected {
-        Style::default()
-            .fg(palette.accent)
-            .add_modifier(Modifier::BOLD)
+        crate::theme::selected(palette)
     } else {
         Style::default().fg(palette.fg)
     };

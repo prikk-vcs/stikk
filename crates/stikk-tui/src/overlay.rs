@@ -18,7 +18,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
@@ -1207,10 +1207,9 @@ fn render_stale(
         "    ",
         vec![
             Span::styled("  │ ", Style::default().fg(palette.warn)),
-            Span::styled(
-                inert(operation),
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
+            // **Not a heading** (RFC 060 decision 8): this row carries the operation *and* the
+            // headline, so it is a sentence, in the body's own colour.
+            Span::styled(inert(operation), Style::default().fg(palette.fg)),
             // RFC 030 amendment A3: the headline follows the cause and comes from `stikk-core`
             // (`stale_headline`), so a worktree change never reads as a repository change here.
             Span::styled(headline.to_string(), Style::default().fg(palette.fg)),
@@ -1343,7 +1342,7 @@ fn declaration_lines(
         for row in wrap_cells(&heading, text_width, "  ") {
             out.push(Line::from(Span::styled(
                 row,
-                Style::default().add_modifier(Modifier::BOLD),
+                Style::default().fg(palette.fg),
             )));
         }
         out.push(Line::from(Span::styled(
@@ -1424,8 +1423,10 @@ fn render_commit_would_refuse(
     prose.blank();
 
     for path in paths {
+        // **A path, not a heading** (RFC 060 decision 8): the row names a refused path, which is a
+        // value, so it takes the body's colour and no emphasis.
         prose.prose(
-            Style::default().add_modifier(Modifier::BOLD),
+            Style::default().fg(palette.fg),
             "  ",
             format!(
                 "{} {}",
@@ -1520,9 +1521,7 @@ fn render_palette(
         let disabled = reason.is_some();
         let name_style = match (selected, disabled) {
             (_, true) => Style::default().fg(palette.dim),
-            (true, false) => Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD),
+            (true, false) => crate::theme::selected(palette),
             (false, false) => Style::default().fg(palette.fg),
         };
         let marker = if selected { "▶ " } else { "  " };
@@ -1716,7 +1715,7 @@ fn render_confirmation(
     let text_width = panel_text_width(CONFIRM_WIDTH, area);
     let mut lines = Body::new();
     lines.prose(
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
         "  ",
         summary.operation.clone(),
     );
@@ -2395,7 +2394,7 @@ fn render_commit_message(
     // footer its place under `lines.len() + 2`. Wrapped here so the count is exact.
     let mut prose = Body::new();
     prose.prose(
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
         "  ",
         format!("Commit to {}", identifier(reff)),
     );
@@ -2445,7 +2444,7 @@ fn render_commit_result(
 ) {
     let mut lines = Body::new();
     lines.prose(
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
         "  ",
         "recorded worktree patch in active WAL",
     );
@@ -2525,10 +2524,7 @@ fn render_undo_message(
 ) {
     let mut prose = Body::new();
     prose.row(Line::from(vec![
-        Span::styled(
-            "  Undo block ",
-            Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
-        ),
+        Span::styled("  Undo block ", crate::theme::heading(palette.fg)),
         Span::styled(
             identifier(&stikk_core::block_short(block)),
             Style::default().fg(palette.accent),
@@ -2589,9 +2585,7 @@ fn render_undo_stopped(
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  The undo stopped part-way.",
-        Style::default()
-            .fg(palette.warn)
-            .add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.warn),
     )));
     prose.blank();
     if changed.is_empty() {
@@ -2653,7 +2647,7 @@ fn render_seal_consent(
     let mut lines = Body::new();
     lines.row(Line::from(Span::styled(
         format!("  Seal {}", identifier(reff)),
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     lines.blank();
     // RFC 024: `SEAL_CONSENT_COPY` is one logical line that wraps to several rows, which is why this
@@ -2715,7 +2709,7 @@ fn render_seal_result(
     let mut lines = Body::new();
     lines.row(Line::from(Span::styled(
         "  sealed active WAL into block",
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     lines.blank();
     lines.labelled(
@@ -2785,7 +2779,7 @@ fn render_ref_name(
     };
     let mut prose = Body::new();
     prose.labelled(
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
         Style::default().fg(palette.accent),
         format!("{heading} "),
         identifier(source),
@@ -2841,7 +2835,7 @@ fn render_bundle_path(
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "Open a bundle file",
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     prose.blank();
     prose.prose(
@@ -2892,7 +2886,7 @@ fn render_export_path(
 ) {
     let mut prose = Body::new();
     prose.labelled(
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
         Style::default().fg(palette.accent),
         "Export ",
         identifier(reff),
@@ -2965,7 +2959,7 @@ fn render_save_path(
     };
     let mut prose = Body::new();
     prose.labelled(
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
         Style::default().fg(palette.accent),
         label,
         identifier(heading),
@@ -3013,7 +3007,7 @@ fn render_trust_public_key(
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  The public key of the key to adopt",
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     prose.blank();
     for sentence in [
@@ -3067,7 +3061,7 @@ fn render_trust_key_id(
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  The id this key signs under",
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     prose.blank();
     // The key itself, so the reader can see which key the id is for.
@@ -3137,13 +3131,7 @@ fn render_trust_conflict(
     // **The heading wraps**, because decision 8's is longer than RFC 056's and a clipped
     // heading on this card would cut the one sentence that says what the event is.
     let mut prose = Body::new();
-    prose.prose(
-        Style::default()
-            .fg(palette.warn)
-            .add_modifier(Modifier::BOLD),
-        "  ",
-        warning.heading,
-    );
+    prose.prose(crate::theme::heading(palette.warn), "  ", warning.heading);
     prose.blank();
     // **The first row is the id, inline; the rest are keys, on their own lines.** A 64-character
     // public key does not fit beside a label at this width, and it is the one value a reader may
@@ -3299,7 +3287,7 @@ fn render_tag_message(
 ) {
     let mut prose = Body::new();
     prose.labelled(
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
         Style::default().fg(palette.accent),
         "Tag ",
         identifier(name),
@@ -3367,7 +3355,7 @@ fn render_ref_write_result(
             RefWriteKind::CreateTag => "  the tag exists",
             RefWriteKind::CloseBranch => "  the branch is closed",
         },
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     prose.blank();
     prose.row(Line::from(Span::styled(
@@ -3412,7 +3400,7 @@ fn render_switch_result(
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  the worktree is the new branch's files",
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     prose.blank();
     let quoted = |label: &str, lines: &[String], prose: &mut Body<'static>| {
@@ -3457,7 +3445,7 @@ fn render_merge_result(
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  the merge block is sealed",
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     prose.blank();
     if !printed.is_empty() {
@@ -3508,7 +3496,7 @@ fn render_import_result(
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  the bundle is stored as a received branch",
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     prose.blank();
     if !printed.is_empty() {
@@ -3556,7 +3544,7 @@ fn render_export_result(
     let mut prose = Body::new();
     prose.row(Line::from(Span::styled(
         "  the bundle is written",
-        Style::default().fg(palette.fg).add_modifier(Modifier::BOLD),
+        crate::theme::heading(palette.fg),
     )));
     prose.blank();
     if !printed.is_empty() {
@@ -3614,13 +3602,7 @@ fn dismiss<'a>(palette: &Palette) -> Body<'a> {
 }
 
 fn section<'a>(into: &mut Body<'a>, palette: &Palette, title: &'a str) {
-    into.prose(
-        Style::default()
-            .fg(palette.accent)
-            .add_modifier(Modifier::BOLD),
-        "  ",
-        title,
-    );
+    into.prose(crate::theme::heading(palette.accent), "  ", title);
 }
 
 fn key_line<'a>(into: &mut Body<'a>, palette: &Palette, key: &'a str, desc: &'a str) {
@@ -4031,9 +4013,7 @@ impl<'a> Body<'a> {
     ) -> &mut Self {
         let marker = if selected { "\u{25b6} " } else { "  " };
         let style = if selected {
-            Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD)
+            crate::theme::selected(palette)
         } else {
             Style::default().fg(palette.fg)
         };
@@ -4058,9 +4038,7 @@ impl<'a> Body<'a> {
         let cursor = if selected { "\u{25b6} " } else { "  " };
         let mark = if marked { "\u{25cf} " } else { "  " };
         let style = if selected {
-            Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD)
+            crate::theme::selected(palette)
         } else {
             Style::default().fg(palette.fg)
         };

@@ -4,7 +4,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, HorizontalAlignment, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
@@ -145,9 +145,7 @@ const BANNER_HINT: &str = "   (Esc dismisses)";
 /// prikk-sourced text is inert (`C-T2a`).
 fn banner_lines<'a>(palette: &Palette, text: &str, width: usize) -> Vec<Line<'a>> {
     let text = inert(text);
-    let mark = Style::default()
-        .fg(palette.warn)
-        .add_modifier(Modifier::BOLD);
+    let mark = Style::default().fg(palette.warn);
     let body = Style::default().fg(palette.warn);
     let hint = Span::styled(BANNER_HINT, Style::default().fg(palette.dim));
     if BANNER_MARK.len() + text.chars().count() + BANNER_HINT.len() <= width {
@@ -207,12 +205,7 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
         .map(|n| identifier(&n.to_string_lossy()))
         .unwrap_or_else(|| identifier(&app.repo().to_string_lossy()));
     let line = Line::from(vec![
-        Span::styled(
-            "stikk",
-            Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled("stikk", crate::theme::heading(palette.accent)),
         Span::styled("  —  ", Style::default().fg(palette.dim)),
         Span::styled(repo, Style::default().fg(palette.fg)),
     ]);

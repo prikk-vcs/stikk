@@ -18,7 +18,7 @@
 //! the xterm cube, never rounded to it (F3): a value stikk picks has a known ratio, and a value the
 //! terminal rounds does not.
 
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style};
 
 use stikk_state::config::Theme as ConfigTheme;
 
@@ -335,6 +335,31 @@ impl Default for Palette {
     fn default() -> Self {
         Scheme::dark().for_depth(Depth::TrueColour)
     }
+}
+
+/// **A heading** (RFC 060 decision 8): the title in a view's or an overlay's frame, or a line inside
+/// one that names the section below it and carries nothing else — *"What you can do:"*, *"Keys"*.
+///
+/// Bold, in the role's own colour, which the caller keeps: RFC 060 is about what bold *means*, not
+/// about which colour a heading takes.
+///
+/// **One of the two places bold comes from**, the other being [`selected`]. Before RFC 060 there were
+/// fifty-one, on headings, labels, keys, values and markers alike — and when most of a screen is bold,
+/// bold marks nothing (F5).
+#[must_use]
+pub fn heading(colour: Color) -> Style {
+    Style::default().fg(colour).add_modifier(Modifier::BOLD)
+}
+
+/// **The selection** (RFC 060 decision 8): the selected row's marker and id.
+///
+/// **This is today's look, routed through one place.** RFC 060 changes nothing about how the selection
+/// is drawn; RFC 061 decides the full-row highlight, so nothing changes twice.
+#[must_use]
+pub fn selected(palette: &Palette) -> Style {
+    Style::default()
+        .fg(palette.accent)
+        .add_modifier(Modifier::BOLD)
 }
 
 /// The relative luminance of an sRGB colour, as WCAG 2 defines it — the same formula, written once,

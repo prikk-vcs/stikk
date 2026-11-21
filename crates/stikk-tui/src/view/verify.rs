@@ -18,7 +18,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -113,9 +113,7 @@ fn verify_lines<'a>(
         &mut lines,
         &checked.verdict(),
         TOP,
-        Style::default()
-            .fg(if checked.ok { palette.ok } else { palette.warn })
-            .add_modifier(Modifier::BOLD),
+        Style::default().fg(if checked.ok { palette.ok } else { palette.warn }),
     );
 
     // Then each failing condition, in prikk's own words (`ER-02`). The id is a name and the

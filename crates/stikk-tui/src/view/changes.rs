@@ -27,7 +27,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -81,9 +81,7 @@ pub fn render(
         for row in wrap_indented(&headline, text_width, "  ") {
             lines.push(Line::from(Span::styled(
                 row,
-                Style::default()
-                    .fg(palette.warn)
-                    .add_modifier(Modifier::BOLD),
+                crate::theme::heading(palette.warn),
             )));
         }
     } else if view.clean {
@@ -94,9 +92,7 @@ pub fn render(
     } else {
         lines.push(Line::from(Span::styled(
             format!("  {} change(s) against baseline", view.entries.len()),
-            Style::default()
-                .fg(palette.warn)
-                .add_modifier(Modifier::BOLD),
+            crate::theme::heading(palette.warn),
         )));
     }
 
@@ -299,10 +295,7 @@ pub fn render(
         )
     };
     for row in crate::text::wrap_indented(&compare_hint, text_width, "  ") {
-        lines.push(Line::from(Span::styled(
-            row,
-            dim.add_modifier(Modifier::ITALIC),
-        )));
+        lines.push(Line::from(Span::styled(row, dim)));
     }
 
     let title = format!(" Changes · {} ", identifier(&view.reff));
@@ -417,9 +410,7 @@ fn entry_lines(entry: &ChangeEntry, palette: &Palette, text_width: usize) -> Vec
             let lead = if i == 0 {
                 Span::styled(
                     format!("{ENTRY_INDENT}{REFUSED_MARKER}"),
-                    Style::default()
-                        .fg(palette.warn)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(palette.warn),
                 )
             } else {
                 Span::raw(reason_indent.clone())

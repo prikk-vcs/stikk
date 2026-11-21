@@ -25,7 +25,6 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 061 | [Finding your place](./proposed/061-finding-your-place.md) | one catalog of every action; each letter one meaning in either case; Enter lists what can be done with the selected row; the whole row highlighted; a key line that stays |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
@@ -34,6 +33,7 @@ _Design settled; implementer may start; work has not yet shipped._
 |----|-------|-----------|---------|
 | 059 | [Readable colours](./accepted/059-readable-colours.md) | body text in the terminal's own colour, light or dark detected, 7 : 1 for every colour stikk chooses, a high-contrast theme, `plain`, and `NO_COLOR` | [A: readable colours](./handoffs/059-readable-colours/a-readable-colours-handoff-v1.md) |
 | 060 | [Bigger text](./accepted/060-bigger-text.md) | stikk down to 60 × 15, so text can be about twice as big; overlays wrap and scroll in the space they have, and confirm only once read; no italic; bold for headings and the selection | [A: bigger text](./handoffs/060-bigger-text/a-bigger-text-handoff-v1.md) |
+| 061 | [Finding your place](./accepted/061-finding-your-place.md) | one catalog of every action; each letter one meaning in either case; Enter lists what can be done with the selected row; the whole row highlighted; a key line that stays | [A: finding your place](./handoffs/061-finding-your-place/a-finding-your-place-handoff-v1.md) |
 
 ## Done (implemented)
 

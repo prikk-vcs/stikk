@@ -68,29 +68,24 @@ fn draw_at(overlay: &Overlay, w: u16, h: u16) -> String {
     buffer_text(terminal.backend().buffer())
 }
 
-/// Scroll a fresh Glossary down `presses` times the way the key handler does, rendering after each so
-/// the renderer's clamp applies exactly as it would in a real session, and return the final screen.
+/// Scroll a fresh Glossary down `presses` times the way `nav_down` does, rendering after each so the
+/// renderer's clamp applies exactly as it would in a real session, and return the final screen.
 ///
 /// Rendering *between* presses is the point: the clamp lives in the renderer and writes back through
-/// the `Cell`, so a test that set the offset directly and drew once would be testing a state a user
-/// cannot actually get into.
-fn glossary_scrolled(presses: usize, w: u16, h: u16) -> (Overlay, String) {
-    let overlay = Overlay::Glossary {
-        offset: std::cell::Cell::new(0),
-    };
-    let mut text = draw_at(&overlay, w, h);
+/// the shared [`Scroll`], so a test that set the offset directly and drew once would be testing a
+/// state a user cannot actually get into.
+///
+/// **The Glossary scrolls through the shared `Scroll` now** (RFC 060 Handoff B): it kept an offset of
+/// its own, which `nav_down` never reached, so `↓` moved nothing at all.
+fn glossary_scrolled(presses: usize, w: u16, h: u16) -> (Scroll, String) {
+    let overlay = Overlay::Glossary;
+    let scroll = Scroll::default();
+    let mut text = draw_scrolled(&overlay, &scroll, w, h);
     for _ in 0..presses {
-        press_down(&overlay);
-        text = draw_at(&overlay, w, h);
+        scroll.down();
+        text = draw_scrolled(&overlay, &scroll, w, h);
     }
-    (overlay, text)
-}
-
-/// One ↓, exactly as `App::nav_down` does it — unclamped, because the renderer owns the clamp.
-fn press_down(overlay: &Overlay) {
-    if let Overlay::Glossary { offset } = overlay {
-        offset.set(offset.get().saturating_add(1));
-    }
+    (scroll, text)
 }
 
 /// Scroll one Glossary from top to bottom, one press at a time, and return the first screen matching
@@ -99,31 +94,22 @@ fn press_down(overlay: &Overlay) {
 /// **Linear, deliberately.** Re-scrolling from the top for each candidate offset is the obvious way to
 /// write this and it is quadratic: the earlier draft took over a minute on the failing path, which is
 /// long enough that someone would eventually delete the test rather than wait for it. One overlay,
-/// stepped down once per render, is the same coverage in one pass. It stops at the clamp — when the
-/// offset stops moving, the panel is at its end and there is nothing further to see.
+/// stepped down once per render, is the same coverage in one pass. It stops at the clamp — the
+/// scroll's own `at_end`, which the renderer wrote.
 fn scan_glossary_down(w: u16, h: u16, found: impl Fn(&str) -> bool) -> (Option<String>, String) {
-    let overlay = Overlay::Glossary {
-        offset: std::cell::Cell::new(0),
-    };
-    let mut last = draw_at(&overlay, w, h);
+    let overlay = Overlay::Glossary;
+    let scroll = Scroll::default();
+    let mut last = draw_scrolled(&overlay, &scroll, w, h);
     loop {
         if found(&last) {
             return (Some(last.clone()), last);
         }
-        let before = match &overlay {
-            Overlay::Glossary { offset } => offset.get(),
-            _ => unreachable!(),
-        };
-        press_down(&overlay);
-        last = draw_at(&overlay, w, h);
-        let after = match &overlay {
-            Overlay::Glossary { offset } => offset.get(),
-            _ => unreachable!(),
-        };
-        if after == before {
+        if scroll.at_end() {
             // The clamp pinned it: this is the bottom.
             return (found(&last).then(|| last.clone()), last);
         }
+        scroll.down();
+        last = draw_scrolled(&overlay, &scroll, w, h);
     }
 }
 
@@ -168,13 +154,7 @@ fn glossary_shows_keys_and_the_terminology_mapping() {
     // instead of running into the border, which costs the panel a few rows and pushed the
     // terminology table past 60. The size is still here for the same reason — so a content test
     // fails only about content.
-    let text = draw_at(
-        &Overlay::Glossary {
-            offset: std::cell::Cell::new(0),
-        },
-        90,
-        130,
-    );
+    let text = draw_at(&Overlay::Glossary, 90, 130);
     assert!(text.contains("Glossary"));
     assert!(text.contains("Git")); // the Git → prikk section
     assert!(text.contains("HEAD")); // a load-bearing redirect
@@ -226,13 +206,7 @@ fn glossary_pads_the_longest_term_without_colliding_into_its_prikk_column() {
     // longest key descriptions), and at 90x50 the first term now sits past the bottom -- which
     // would fail this test for the one thing it is not testing. Reachability at the real floor is
     // pinned by the tests further down, as review v2's C2 says.
-    let text = draw_at(
-        &Overlay::Glossary {
-            offset: std::cell::Cell::new(0),
-        },
-        90,
-        70,
-    );
+    let text = draw_at(&Overlay::Glossary, 90, 70);
     assert!(text.contains("checkout / switch branch"));
     assert!(!text.contains("branchfocused"));
 }
@@ -245,9 +219,7 @@ fn glossary_pads_the_longest_term_without_colliding_into_its_prikk_column() {
 /// is the closest thing to pinning a claim this project has (RFC 018's "nothing pins a claim").
 #[test]
 fn glossary_never_writes_claim_cannot_stand_beside_mutating_keys() {
-    let text = draw(&Overlay::Glossary {
-        offset: std::cell::Cell::new(0),
-    });
+    let text = draw(&Overlay::Glossary);
     let shows_mutating_keys =
         text.contains("Commit worktree changes") && text.contains("Seal the active WAL");
     assert!(
@@ -938,7 +910,7 @@ fn seal_result_hostile_block_id_and_ref_render_inert() {
 /// fails because the content shrank, the scroll tests are passing for the wrong reason.
 #[test]
 fn the_glossary_does_not_fit_at_80x24_which_is_why_it_scrolls() {
-    let (overlay, text) = glossary_scrolled(0, 80, 24);
+    let (scroll, text) = glossary_scrolled(0, 80, 24);
     // **The title says where, and the foot line says which key** (RFC 060 decision 3, held by review
     // v1 C1). It used to say both in the title, which is the second idiom trap 4 removed — and the
     // key is still named *from this panel*, which is what `NFR-A03` asks.
@@ -956,10 +928,8 @@ fn the_glossary_does_not_fit_at_80x24_which_is_why_it_scrolls() {
     );
     // Unscrolled, the top is showing and the end is not.
     assert!(text.contains("Keys"), "{text}");
-    let Overlay::Glossary { offset } = &overlay else {
-        panic!("wrong overlay")
-    };
-    assert_eq!(offset.get(), 0);
+    assert!(!scroll.more_above(), "nothing is scrolled off the top yet");
+    assert!(!scroll.at_end(), "and the end is not on screen");
 }
 
 /// `NFR-A03`: the key that scrolls this panel is discoverable **from this panel**, which is where a
@@ -1014,26 +984,23 @@ fn a_code_explanations_closing_words_are_reachable_at_80x24() {
 /// rather than spending presses undoing invisible ones.
 #[test]
 fn scrolling_past_the_end_parks_rather_than_banking_presses() {
-    let (overlay, at_bottom) = glossary_scrolled(400, 80, 24);
-    let Overlay::Glossary { offset } = &overlay else {
-        panic!("wrong overlay")
-    };
-    let parked = offset.get();
-    assert!(parked > 0, "the panel must have scrolled at all");
+    let (scroll, at_bottom) = glossary_scrolled(400, 80, 24);
+    let overlay = Overlay::Glossary;
+    assert!(scroll.more_above(), "the panel must have scrolled at all");
+    assert!(scroll.at_end(), "and it must be parked at its end");
 
     // One more press, then a render: the clamp puts it straight back.
-    offset.set(offset.get().saturating_add(1));
-    let again = draw_at(&overlay, 80, 24);
-    assert_eq!(
-        offset.get(),
-        parked,
+    scroll.down();
+    let again = draw_scrolled(&overlay, &scroll, 80, 24);
+    assert!(
+        scroll.at_end(),
         "the clamp must write the parked value back"
     );
     assert_eq!(again, at_bottom, "and the screen must not have moved");
 
     // So a single ↑ visibly moves, instead of being swallowed.
-    offset.set(offset.get().saturating_sub(1));
-    let up_one = draw_at(&overlay, 80, 24);
+    scroll.up();
+    let up_one = draw_scrolled(&overlay, &scroll, 80, 24);
     assert_ne!(up_one, at_bottom, "one press up must move the screen");
 }
 
@@ -1044,22 +1011,20 @@ fn scrolling_past_the_end_parks_rather_than_banking_presses() {
 /// test was drawn at — so it is set well clear of the content rather than just above it.
 #[test]
 fn a_tall_terminal_does_not_scroll_and_does_not_advertise_scrolling() {
-    let overlay = Overlay::Glossary {
-        offset: std::cell::Cell::new(0),
-    };
-    let text = draw_at(&overlay, 90, 400);
+    let overlay = Overlay::Glossary;
+    let scroll = Scroll::default();
+    let text = draw_scrolled(&overlay, &scroll, 90, 400);
     assert!(!text.contains("to scroll"), "nothing to scroll to:\n{text}");
-    if let Overlay::Glossary { offset } = &overlay {
-        offset.set(5);
+    assert!(!text.contains("more below"), "nor a foot line:\n{text}");
+    // Five presses against a panel that fits: the clamp pins it at the top.
+    for _ in 0..5 {
+        scroll.down();
     }
-    let after = draw_at(&overlay, 90, 400);
-    if let Overlay::Glossary { offset } = &overlay {
-        assert_eq!(
-            offset.get(),
-            0,
-            "the clamp must pin a fitting panel at the top"
-        );
-    }
+    let after = draw_scrolled(&overlay, &scroll, 90, 400);
+    assert!(
+        !scroll.more_above(),
+        "the clamp must pin a fitting panel at the top"
+    );
     assert_eq!(text, after);
 }
 
@@ -1072,26 +1037,14 @@ fn a_tall_terminal_does_not_scroll_and_does_not_advertise_scrolling() {
 #[test]
 fn every_code_entry_is_reachable_at_80x24() {
     // One pass down the panel, keeping every screen.
-    let overlay = Overlay::Glossary {
-        offset: std::cell::Cell::new(0),
-    };
-    let mut seen = flattened(&draw_at(&overlay, 80, 24));
-    loop {
-        let before = match &overlay {
-            Overlay::Glossary { offset } => offset.get(),
-            _ => unreachable!(),
-        };
-        press_down(&overlay);
-        let screen = draw_at(&overlay, 80, 24);
-        let after = match &overlay {
-            Overlay::Glossary { offset } => offset.get(),
-            _ => unreachable!(),
-        };
+    let overlay = Overlay::Glossary;
+    let scroll = Scroll::default();
+    let mut seen = flattened(&draw_scrolled(&overlay, &scroll, 80, 24));
+    while !scroll.at_end() {
+        scroll.down();
+        let screen = draw_scrolled(&overlay, &scroll, 80, 24);
         seen.push(' ');
         seen.push_str(&flattened(&screen));
-        if after == before {
-            break;
-        }
     }
 
     let entries = stikk_core::glossary::code_entries();
@@ -1384,7 +1337,7 @@ fn coverage(overlay: &Overlay) -> Coverage {
     match overlay {
         // Scrolls with an offset and advertises its position in the title (RFC 023 F2). Not a
         // selection — the keys move a viewport, not a cursor — so assertion 2 does not apply.
-        Overlay::Glossary { .. } => Coverage::NoSelection,
+        Overlay::Glossary => Coverage::NoSelection,
         // One short line in a fixed 3-row box. It has no content that can grow.
         Overlay::Loading { .. } => Coverage::CannotOverflow,
         Overlay::Operations { operations } => {
@@ -1575,9 +1528,7 @@ fn cases() -> Vec<Case> {
         },
         Case {
             name: "Glossary",
-            build: Box::new(|_| Overlay::Glossary {
-                offset: std::cell::Cell::new(0),
-            }),
+            build: Box::new(|_| Overlay::Glossary),
             // The last code entry's title; the Glossary scrolls, so assertion 1 is met by its indicator.
             last_row: stikk_core::glossary::code_entries()
                 .last()
@@ -5476,9 +5427,7 @@ fn capture_rfc060_a_card_that_cannot_fit_its_actions() {
 /// says which key.
 #[test]
 fn the_glossary_has_the_same_foot_line() {
-    let overlay = Overlay::Glossary {
-        offset: std::cell::Cell::new(0),
-    };
+    let overlay = Overlay::Glossary;
     let text = draw_at(&overlay, 60, 15);
     assert!(text.contains("lines 1–"), "{text}");
     assert!(text.contains("↓ more below"), "{text}");

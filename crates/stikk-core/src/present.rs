@@ -460,13 +460,13 @@ const FULL_QUEUE_GLOSS: &str = "Nothing is locked and no other writer is involve
 /// stopped part-way — so the gloss claims neither cause, and sends a reader who keeps meeting it to
 /// the one surface that tells them apart.
 const INCOMPLETE_PUBLICATION_GLOSS: &str = "This can happen while another prikk command is publishing, and it is not damage. Try again. If \
-     it keeps happening, open Verify (V).";
+     it keeps happening, open Verify.";
 
 /// The gloss for prikk's **stopped-seal** refusal (RFC 063 decision 10, F8).
 ///
 /// Two sentences, because there is nothing else to say: the block is already in the history, and
 /// stikk's own Seal is the route prikk names.
-const STOPPED_SEAL_GLOSS: &str = "A seal was interrupted after it published. Seal (S) finishes it.";
+const STOPPED_SEAL_GLOSS: &str = "A seal was interrupted after it published. Seal finishes it.";
 
 /// The gloss for prikk's in-flight publication refusal (RFC 063 decision 10, F9).
 const ANOTHER_COMMAND_PUBLISHING_GLOSS: &str = "Another prikk command is publishing right now. Nothing was changed. Try again when it \

@@ -2222,3 +2222,276 @@ fn every_title_names_no_key() {
     }
     assert!(titles > 50, "only {titles} titles were checked");
 }
+
+// =============================================================================================
+// RFC 060 Handoff B — the help scrolls with ↓, through the keys a reader presses.
+// =============================================================================================
+
+/// A key press, as the run loop makes it.
+fn key(code: ratatui::crossterm::event::KeyCode) -> ratatui::crossterm::event::KeyEvent {
+    ratatui::crossterm::event::KeyEvent::new(code, ratatui::crossterm::event::KeyModifiers::NONE)
+}
+
+/// The `lines a–b of c` the title says, or `None` where the surface does not say one.
+fn position(text: &str) -> Option<(usize, usize, usize)> {
+    let row = text.lines().find(|line| line.contains("lines "))?;
+    let rest = row.split_once("lines ")?.1;
+    let (first, rest) = rest.split_once('\u{2013}')?;
+    let (last, rest) = rest.split_once(" of ")?;
+    let total: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    Some((
+        first.trim().parse().ok()?,
+        last.trim().parse().ok()?,
+        total.parse().ok()?,
+    ))
+}
+
+/// **↓ scrolls the help, and ↑ comes back** — through `handle_key`, which is the path a reader's
+/// finger takes (RFC 060 Handoff B).
+///
+/// The defect: the Glossary kept an offset of its own that `nav_down` never reached, so `↓` moved
+/// nothing while the foot line said *"↓ more below"*. The architect found it in a real Alacritty at
+/// 2.3× text; sixty presses moved nothing. Every scrolling test called a handler, so none could see it.
+#[test]
+fn the_help_scrolls_with_down_through_the_key_path() {
+    use ratatui::crossterm::event::KeyCode;
+
+    for (down, up, what) in [
+        (KeyCode::Down, KeyCode::Up, "the arrows"),
+        (KeyCode::Char('j'), KeyCode::Char('k'), "j and k"),
+    ] {
+        let backend = stocked();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open(
+            "/repo",
+            resolved_for(stikk_state::config::Theme::Dark, None),
+            None,
+            tx,
+        );
+        drain(&mut app, &rx, &backend);
+
+        // `?` opens the help, as a reader opens it.
+        app.handle_key(key(KeyCode::Char('?')));
+        let opened = draw(&app, 102, 24);
+        println!("--- the help, opened with ? ({what}), 102x24\n{opened}");
+        let (first, _, total) = position(&opened).unwrap_or_else(|| {
+            panic!("the help must say where the reader is:\n{opened}");
+        });
+        assert_eq!(first, 1, "it opens at the top:\n{opened}");
+        assert!(total > 24, "and it must not fit, or nothing is proven");
+        assert!(opened.contains("\u{2193} more below"), "{opened}");
+
+        // Ten presses of ↓, each moving the position by one — drawn between presses, because the
+        // renderer owns the clamp.
+        let mut previous = first;
+        for press in 1..=10 {
+            app.handle_key(key(down));
+            let text = draw(&app, 102, 24);
+            let (now, _, _) = position(&text)
+                .unwrap_or_else(|| panic!("press {press} lost the position:\n{text}"));
+            assert_eq!(
+                now,
+                previous + 1,
+                "press {press} with {what} must move the help by one row:\n{text}"
+            );
+            previous = now;
+        }
+
+        // ↑ comes back, one row at a time.
+        for press in 1..=10 {
+            app.handle_key(key(up));
+            let text = draw(&app, 102, 24);
+            let (now, _, _) = position(&text)
+                .unwrap_or_else(|| panic!("press {press} lost the position:\n{text}"));
+            assert_eq!(
+                now,
+                previous - 1,
+                "{what} must come back one row at a time:\n{text}"
+            );
+            previous = now;
+        }
+        assert_eq!(previous, 1, "and reach the top again");
+
+        // **Enter changes nothing** (Handoff B §1.3): the help has nothing to choose, and Enter used
+        // to be the only key that scrolled it.
+        let before = draw(&app, 102, 24);
+        for _ in 0..3 {
+            app.handle_key(key(KeyCode::Enter));
+        }
+        let after = draw(&app, 102, 24);
+        assert_eq!(after, before, "Enter must not scroll the help:\n{after}");
+    }
+}
+
+/// **The end of the help**, reached by `↓` alone: the foot line turns over and the last row shows.
+#[test]
+fn down_reaches_the_end_of_the_help_and_the_foot_line_turns_over() {
+    use ratatui::crossterm::event::KeyCode;
+
+    let backend = stocked();
+    let (tx, rx) = mpsc::channel();
+    let mut app = App::open(
+        "/repo",
+        resolved_for(stikk_state::config::Theme::Dark, None),
+        None,
+        tx,
+    );
+    drain(&mut app, &rx, &backend);
+    app.handle_key(key(KeyCode::Char('?')));
+
+    let mut text = draw(&app, 102, 24);
+    let (_, _, total) = position(&text).expect("a position");
+    let mut presses = 0;
+    while text.contains("\u{2193} more below") && presses < total + 10 {
+        app.handle_key(key(KeyCode::Down));
+        text = draw(&app, 102, 24);
+        presses += 1;
+    }
+    println!("--- the help, {presses} presses of down, 102x24\n{text}");
+    assert!(
+        presses > 0 && presses < total,
+        "{presses} presses of {total} rows"
+    );
+    assert!(
+        text.contains("\u{2191} more above"),
+        "at the end the foot line names the way back:\n{text}"
+    );
+    assert!(!text.contains("\u{2193} more below"), "{text}");
+    let (_, last, _) = position(&text).expect("a position");
+    assert_eq!(
+        last, total,
+        "the last row of the help is on screen:\n{text}"
+    );
+}
+
+/// **The sweep** (RFC 060 Handoff B §2.3): every surface that advertises `↓`, or says where the
+/// reader is, moves when `↓` is pressed — and every list moves its selection. Through `handle_key`,
+/// at 60 × 15.
+///
+/// This is the test the help's defect needed. A surface that names a key and does not answer it is
+/// the confusion RFC 060 decision 3 removed, and nothing was checking it: every scrolling test called
+/// a handler by name, so a key wired to nothing looked exactly like a key wired correctly.
+///
+/// **What "moves" means depends on the surface**, as the handoff says: a card or a view that scrolls
+/// advances its position, and a list moves its selection. The marker on screen tells the two apart.
+/// The third bucket is the honest one — a surface whose content fits at 60 × 15 and which has no
+/// second row to select says nothing about `↓`, and there is nothing to hold it to; the printed
+/// coverage names every one of them.
+#[test]
+fn capture_rfc060b_every_surface_that_advertises_down_moves_on_down() {
+    use ratatui::crossterm::event::KeyCode;
+
+    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
+    let mut scrolled: Vec<String> = Vec::new();
+    let mut selected: Vec<String> = Vec::new();
+    let mut quiet: Vec<String> = Vec::new();
+    for screen in screens() {
+        let backend = (screen.backend)();
+        let (tx, rx) = mpsc::channel();
+        let mut app = App::open("/repo", resolved, None, tx);
+        if screen.first_read {
+            drain(&mut app, &rx, &backend);
+        }
+        (screen.reach)(&mut app, &rx, &backend);
+
+        let before = draw(&app, 60, 15);
+        let advertises = before.contains("\u{2193} more below");
+        let position_before = position(&before);
+        let selectable = before.contains(crate::theme::SELECTED_MARKER.trim());
+        // **The key, not the handler** (trap 2).
+        app.handle_key(key(KeyCode::Down));
+        let after = draw(&app, 60, 15);
+
+        if advertises || position_before.is_some() {
+            assert_ne!(
+                after, before,
+                "{}: the screen says `\u{2193}` does something and it did nothing:\n{before}",
+                screen.name
+            );
+            if selectable {
+                selected.push(screen.name.to_string());
+                continue;
+            }
+            let Some((first, _, total)) = position_before else {
+                // It advertised `↓` without a position: the frame changed, which is all it promised.
+                scrolled.push(format!("{} (foot line only)", screen.name));
+                continue;
+            };
+            let (now, last, _) = position(&after).unwrap_or_else(|| {
+                panic!(
+                    "{}: the position vanished after one press:\n{after}",
+                    screen.name
+                )
+            });
+            if first == now && last == total {
+                // Already at its end: nothing left to scroll, and the frame still changed.
+                scrolled.push(format!("{} (at its end)", screen.name));
+                continue;
+            }
+            assert_eq!(
+                now,
+                first + 1,
+                "{}: one press of `\u{2193}` must advance the position by one row:\n{after}",
+                screen.name
+            );
+            scrolled.push(screen.name.to_string());
+            continue;
+        }
+
+        if selectable && rows_to_select(&app) > 1 {
+            // **A list always answers `↓`**, whether or not anything is hidden: the highlight moves.
+            assert_ne!(
+                after, before,
+                "{}: a list with more than one row must move its selection on `\u{2193}`:\n{before}",
+                screen.name
+            );
+            selected.push(screen.name.to_string());
+            continue;
+        }
+        quiet.push(screen.name.to_string());
+    }
+    println!(
+        "--- RFC 060 Handoff B, the sweep at 60x15\nscrolled ({}): {}\nselection moved ({}): \
+         {}\nnothing to move ({}): {}",
+        scrolled.len(),
+        scrolled.join(", "),
+        selected.len(),
+        selected.join(", "),
+        quiet.len(),
+        quiet.join(", ")
+    );
+    // **Every surface that advertised `↓` was held to it**, and the five that scroll are the five
+    // RFC 060 decision 3 gave a foot line to.
+    assert!(
+        scrolled.len() >= 5,
+        "only {} scrolling surfaces were held to `\u{2193}`: {scrolled:?}",
+        scrolled.len()
+    );
+    assert!(
+        selected.len() >= 5,
+        "only {} lists moved their selection: {selected:?}",
+        selected.len()
+    );
+}
+
+/// How many rows the surface under the cursor offers — `2` is enough to prove a selection moved, and
+/// the sweep only asks whether there is more than one.
+fn rows_to_select(app: &App) -> usize {
+    match app.top_overlay() {
+        Some(crate::overlay::Overlay::RefPicker { refs, .. }) => refs.len(),
+        Some(crate::overlay::Overlay::Refusals { records, .. }) => records.len(),
+        Some(crate::overlay::Overlay::Palette { filter, .. }) => {
+            stikk_core::actions::matching(filter).len()
+        }
+        Some(crate::overlay::Overlay::ActionList { entries, .. }) => entries.len(),
+        Some(_) => 0,
+        None => match app.focus() {
+            Focus::History(view, _) => view.blocks.len(),
+            Focus::Queue(view, _, _) => view.patches.len(),
+            Focus::BlockDetail(view, _) => stikk_core::block_cursor_len(view),
+            Focus::Trust(stikk_core::TrustView::Listed { rows, .. }, _, _) => rows.len(),
+            Focus::Compare(focus) => focus.view.listed().map_or(0, |c| c.entries.len()),
+            _ => 0,
+        },
+    }
+}

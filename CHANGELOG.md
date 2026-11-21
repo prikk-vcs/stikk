@@ -36,6 +36,15 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   and named one key — `g o` — that nothing bound. The palette, Enter's lists, the key line, the
   Glossary's *Keys* and the key map itself all read that one catalog, so a key exists only where it
   is bound and no two lists can disagree about what stikk can do.
+- **The help overlay scrolls with `↓`.** It said *"↓ more below"* and `↓` moved nothing: the help
+  kept a scroll of its own that the arrow keys never reached, and the only key that scrolled it was
+  `Enter`, which it never named. Found in a real terminal at 2.3 times the default font, where the
+  help is 19 rows of 204. Every card now scrolls through one mechanism, `↑` `↓` and `k` `j` move it,
+  and `Enter` — which has nothing to choose there — does nothing.
+- **Four more sentences that named a key stopped naming it**, and a test now refuses them: *"Seal
+  (S) finishes it"*, *"open Verify (V)"* twice over and *"F saves the selected file, A saves all"* —
+  each naming a letter that was withdrawn, so a reader who followed one pressed a letter that does
+  nothing.
 - **A banner that needs a focused ref says which view picks one**, by name — *"No ref focused. Pick
   one in Branches and tags."* It named the key, and a sentence that spells a key outlives it.
 - **The documents say what is built.** `TU-05`, `TU-06` and `TU-07` describe the catalog instead of

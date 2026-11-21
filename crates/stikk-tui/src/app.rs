@@ -3447,13 +3447,12 @@ impl App {
             }
             Some(Overlay::SealConsent { .. }) => self.submit_seal_consent(),
             // A commit/seal result is dismissed like any other content overlay — no drill-in.
-            // Deliberately unclamped here: only the renderer knows the viewport and the wrapped
-            // content height, so it clamps and writes the clamped value back through the `Cell`
-            // (see `Overlay::Glossary`). Holding ↓ past the bottom therefore parks at the bottom
-            // instead of banking presses that ↑ has to spend one at a time undoing.
-            Some(Overlay::Glossary { offset }) => offset.set(offset.get().saturating_add(1)),
             Some(
-                Overlay::Operations { .. }
+                // **The Glossary scrolls like every other card** (RFC 060 Handoff B): through the
+                // shared `Scroll`, which `nav_down`'s first branch moved before this match was
+                // reached. Its own offset is gone, and so is the one key that used to reach it.
+                Overlay::Glossary
+                | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::CommitWouldRefuse { .. }
                 | Overlay::CommitWouldRefuseDeclarations { .. }
@@ -3833,12 +3832,10 @@ impl App {
 
     /// Open the glossary / help browser (the `?` key).
     pub fn open_glossary(&mut self) {
-        if matches!(self.overlays.last(), Some(Overlay::Glossary { .. })) {
+        if matches!(self.overlays.last(), Some(Overlay::Glossary)) {
             self.pop_overlay();
         } else {
-            self.push_overlay(Overlay::Glossary {
-                offset: std::cell::Cell::new(0),
-            });
+            self.push_overlay(Overlay::Glossary);
         }
     }
 
@@ -3976,13 +3973,12 @@ impl App {
             | Some(Overlay::Palette { cursor, .. })
             | Some(Overlay::ActionList { cursor, .. })
             | Some(Overlay::Refusals { cursor, .. }) => *cursor = cursor.saturating_sub(1),
-            // The Glossary has no selection — it scrolls (RFC 023 F2). Same keys as every other
-            // overlay's cursor rather than a second scrolling idiom, which is why the Keys section of
-            // this very panel can describe them in one line (`NFR-A03`).
-            Some(Overlay::Glossary { offset }) => offset.set(offset.get().saturating_sub(1)),
             // A single prompt or content pane, not a list — no cursor to move (RFC 013 §6/RFC 014 §3).
+            // **The Glossary is here too** (RFC 060 Handoff B): it has nothing to select, and `↑`
+            // scrolled it through the shared `Scroll` before this match was reached.
             Some(
-                Overlay::Operations { .. }
+                Overlay::Glossary
+                | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::CommitWouldRefuse { .. }
                 | Overlay::CommitWouldRefuseDeclarations { .. }
@@ -4080,7 +4076,9 @@ impl App {
                 *cursor = next_index(*cursor, entries.len());
             }
             Some(
-                Overlay::Glossary { .. }
+                // Nothing to select: `↓` scrolled it through the shared `Scroll` above (RFC 060
+                // Handoff B).
+                Overlay::Glossary
                 | Overlay::Operations { .. }
                 | Overlay::Loading { .. }
                 | Overlay::CommitWouldRefuse { .. }
@@ -4146,6 +4144,33 @@ impl App {
                 }
                 _ => {}
             },
+        }
+    }
+
+    /// **What a key press does** (RFC 060 Handoff B §2) — the one function from a crossterm
+    /// `KeyEvent` to `App`'s own handlers.
+    ///
+    /// The run loop calls this and nothing else, and **tests press keys through it**. That is the
+    /// point: every scrolling test used to call a handler directly (`nav_down`, `select`), so no test
+    /// could see that `↓` reached nothing at all in the help overlay — the defect Handoff B exists
+    /// for. A test that calls a handler proves the handler works; only a test that presses a key
+    /// proves the key is wired to it.
+    pub fn handle_key(&mut self, key: ratatui::crossterm::event::KeyEvent) {
+        // **One arm per intent, not one per action** (RFC 061 decision 1): a catalog action goes to
+        // `run_action`, which is the one place that says what an action does.
+        match crate::keys::dispatch(key, self.wants_text_input()) {
+            crate::keys::Action::Quit => self.quit(),
+            crate::keys::Action::BackWithoutQuit => self.back_without_quit(),
+            crate::keys::Action::Up => self.nav_up(),
+            crate::keys::Action::Down => self.nav_down(),
+            crate::keys::Action::Run(action) => {
+                // Every catalog id has an arm (`every_catalog_action_runs`); the key press is spent
+                // either way.
+                let _ran = self.run_action(action.id);
+            }
+            crate::keys::Action::Input(c) => self.input_char(c),
+            crate::keys::Action::Backspace => self.backspace(),
+            crate::keys::Action::None => {}
         }
     }
 
@@ -5611,9 +5636,7 @@ impl App {
             Target::RefPicker => self.open_ref_picker(),
             Target::Changes => self.open_changes(),
             Target::Queue => self.open_queue(),
-            Target::Glossary => self.push_overlay(Overlay::Glossary {
-                offset: std::cell::Cell::new(0),
-            }),
+            Target::Glossary => self.push_overlay(Overlay::Glossary),
             // RFC 016: the full-queue refusal's own next-step lands here — the same entry point the
             // palette's `op.seal` command uses (`Self::begin_seal`'s own capability pre-check applies
             // either way, so a session that cannot seal sees why, not a silently-armed ceremony).

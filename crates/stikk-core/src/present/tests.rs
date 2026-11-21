@@ -888,9 +888,9 @@ fn gloss_for(message: &str) -> String {
 fn the_generic_publication_refusal_says_it_is_not_damage() {
     let gloss = gloss_for(GENERIC_PUBLICATION);
     assert!(gloss.contains("it is not damage"), "{gloss}");
-    assert!(gloss.contains("Verify (V)"), "{gloss}");
+    assert!(gloss.contains("open Verify"), "{gloss}");
     // It does not claim the seal case, which is the other sentence's.
-    assert!(!gloss.contains("Seal (S) finishes it"), "{gloss}");
+    assert!(!gloss.contains("Seal finishes it"), "{gloss}");
 }
 
 /// **The stopped-seal sentence gets its own gloss, not the generic one** — the semicolon is the
@@ -899,13 +899,13 @@ fn the_generic_publication_refusal_says_it_is_not_damage() {
 fn the_stopped_seal_refusal_gets_the_second_gloss_not_the_first() {
     let gloss = gloss_for(STOPPED_SEAL);
     assert_eq!(
-        gloss, "A seal was interrupted after it published. Seal (S) finishes it.",
+        gloss, "A seal was interrupted after it published. Seal finishes it.",
         "the second gloss, keyed on the colon form"
     );
     assert!(!gloss.contains("it is not damage"), "{gloss}");
     // And the generic sentence does **not** collect this one's gloss either way.
     assert!(
-        !gloss_for(GENERIC_PUBLICATION).contains("Seal (S)"),
+        !gloss_for(GENERIC_PUBLICATION).contains("Seal finishes"),
         "the two are keyed apart"
     );
 }

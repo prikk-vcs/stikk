@@ -219,7 +219,7 @@ fn block_lines<'a>(
             // **The keys get a row of their own** (RFC 053 Handoff B §2). On one row with the
             // state line they wrapped at 80 columns, splitting *"A saves / all"* across two
             // rows and reading as a broken sentence rather than a hint.
-            said(&mut lines, palette, width, SAVE_KEYS, "  ", "    ");
+            said(&mut lines, palette, width, SAVE_ACTIONS, "  ", "    ");
             if files.is_empty() {
                 lines.push(Line::from(Span::styled(
                     "    (empty state)",
@@ -422,8 +422,10 @@ fn field_rows<'a>(
 /// same reasoning had been written twice more elsewhere -- which is how it came to be a shared
 /// helper (RFC 040) after the third copy. What is left here is the part that really is this
 /// view's: the style the rows are drawn in.
-/// The two keys this view's state list answers to, on their own row beneath it.
-const SAVE_KEYS: &str = "F saves the selected file, A saves all.";
+/// **What the state list can do**, on its own row beneath it — named as actions, not as keys (RFC 061
+/// decision 2, and the sweep in its §8.1 that this line escaped: it said `F` and `A`, both of which
+/// were withdrawn, so a reader who followed it pressed two letters that do nothing).
+const SAVE_ACTIONS: &str = "Enter on a file saves it, or saves every file at this block.";
 
 fn said<'a>(
     lines: &mut Vec<Line<'a>>,

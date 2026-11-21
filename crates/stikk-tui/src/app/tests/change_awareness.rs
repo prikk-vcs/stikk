@@ -309,7 +309,7 @@ fn an_equal_token_shows_nothing_dispatches_nothing_and_changes_no_overlay() {
     answer_check(&mut app, seq, Ok(token(1)));
     assert_eq!(app.banner(), None);
     assert!(rx.try_recv().is_err());
-    assert!(matches!(app.top_overlay(), Some(Overlay::Glossary { .. })));
+    assert!(matches!(app.top_overlay(), Some(Overlay::Glossary)));
     assert!(app.orientation_pending.is_none());
     assert_eq!(app.check_pending, None);
 }
@@ -696,7 +696,7 @@ fn r_leaves_an_older_blocks_detail_as_it_is() {
 fn a_change_finds_a_commit_confirmation_beneath_the_glossary_and_clears_everything_above_it() {
     let (mut app, rx) = with_commit_confirmation(token(1));
     app.open_glossary();
-    assert!(matches!(app.top_overlay(), Some(Overlay::Glossary { .. })));
+    assert!(matches!(app.top_overlay(), Some(Overlay::Glossary)));
 
     app.focus_gained(Instant::now());
     let seq = sent_check(&rx);

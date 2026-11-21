@@ -30,7 +30,7 @@ const QUEUED_MESSAGE_FROM_MINOR: u32 = 42;
 pub fn already_sealed_line(block: &str) -> String {
     format!(
         "These changes are already sealed, in block {}. A seal was interrupted before it finished \
-         tidying up. Seal (S) finishes it, and adds no new block.",
+         tidying up. Seal finishes it, and adds no new block.",
         crate::files::block_short(block)
     )
 }

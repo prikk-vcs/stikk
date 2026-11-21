@@ -59,7 +59,6 @@ use stikk_model::{Result, StikkError};
 use stikk_prikk::Prikk;
 use stikk_state::Config;
 
-use crate::keys::Action;
 use crate::terminal::TerminalGuard;
 
 /// Poll interval for input; also the cap on how long a frame waits before it can redraw and pick up a
@@ -170,22 +169,10 @@ fn ui_loop(
             if let Event::Key(key) = ev
                 && key.kind == KeyEventKind::Press
             {
-                // **One arm per intent, not one per action** (RFC 061 decision 1): a catalog
-                // action goes to `run_action`, which is the one place that says what an action does.
-                match keys::dispatch(key, app.wants_text_input()) {
-                    Action::Quit => app.quit(),
-                    Action::BackWithoutQuit => app.back_without_quit(),
-                    Action::Up => app.nav_up(),
-                    Action::Down => app.nav_down(),
-                    Action::Run(action) => {
-                        // Every catalog id has an arm (`every_catalog_action_runs`); the key press
-                        // is spent either way.
-                        let _ran = app.run_action(action.id);
-                    }
-                    Action::Input(c) => app.input_char(c),
-                    Action::Backspace => app.backspace(),
-                    Action::None => {}
-                }
+                // **One function turns a key into what it does** (RFC 060 Handoff B §2): the run
+                // loop and the tests both go through it, so a key that reaches no handler — as `↓`
+                // did not reach the help's own scroll — is a thing a test can catch.
+                app.handle_key(key);
             }
         }
 

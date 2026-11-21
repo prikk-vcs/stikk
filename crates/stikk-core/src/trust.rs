@@ -195,7 +195,7 @@ fn is_yours(key: &TrustedKey, mine: Option<&(String, String)>) -> bool {
 /// `publication-trust`/`PRIKK-TRUST-PUBLICATION-INVALID-SIGNATURE`, *"carries a MAINTAINER
 /// signature by adopted key … that does not verify"*
 /// (`.git-exclude/reports/054-trust-read/spoof054-0.55.txt`, prikk 0.55.0).
-pub const NAMES_BUT_DOES_NOT_PROVE: &str = "A bundle names its sealer but does not prove it. Import it, then Verify (V) checks each \
+pub const NAMES_BUT_DOES_NOT_PROVE: &str = "A bundle names its sealer but does not prove it. Import it, then Verify checks each \
      signature against the key trusted here.";
 
 /// What a bundle card says beside one sealer (RFC 054 decision 3, as amended).

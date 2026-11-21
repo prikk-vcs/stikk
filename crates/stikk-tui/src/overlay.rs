@@ -29,7 +29,6 @@ use stikk_core::{
 use stikk_model::{Capability, Tier};
 
 use crate::app::{Operation, OperationStatus};
-use std::cell::Cell;
 
 use crate::text::{identifier, inert, wrap_indented};
 use crate::theme::Palette;
@@ -56,17 +55,11 @@ pub enum SavePathKind {
 pub enum Overlay {
     /// The glossary / help browser (terminology mapping, key reference, code index).
     ///
-    /// **The offset is a `Cell` on purpose** (RFC 023 F2). Only the renderer knows the viewport height
-    /// and the wrapped content height, so only the renderer can say what "the end" is; it clamps the
-    /// offset it was handed and **writes the clamped value back**, which is what makes ↓ held past the
-    /// bottom self-correct instead of banking invisible presses that ↑ then has to undo one at a time.
-    /// The alternative — teaching `App` the terminal geometry, or making `shell::render` take `&mut App`
-    /// — changes a public signature for a scrollbar. Nothing outside the render path writes through
-    /// this; `nav_up`/`nav_down` own it through `&mut self` like every other overlay's cursor.
-    Glossary {
-        /// First content line drawn, counting from zero after wrapping.
-        offset: std::cell::Cell<u16>,
-    },
+    /// **It scrolls through the shared [`Scroll`], like every other card** (RFC 060 decision 3, as
+    /// Handoff B corrects it). It used to keep an `offset: Cell<u16>` of its own, which `nav_down`
+    /// never reached — so `↓` moved nothing, and the only key that scrolled the help was `Enter`,
+    /// which the foot line never named (RFC 060 Handoff B's defect). One mechanism, one set of keys.
+    Glossary,
     /// An overlay-bound request asked for but not yet arrived (RFC 010 §5) — currently only the ref
     /// picker's read. Replaced or removed by `App::apply`; popped directly by `back()`.
     Loading {
@@ -483,7 +476,7 @@ impl Overlay {
     #[must_use]
     pub fn title(&self) -> &'static str {
         match self {
-            Self::Glossary { .. } => " Glossary & Help ",
+            Self::Glossary => " Glossary & Help ",
             Self::Loading { .. } => " Loading ",
             Self::CommitWouldRefuse { .. } | Self::CommitWouldRefuseDeclarations { .. } => {
                 " Commit unavailable "
@@ -551,7 +544,7 @@ pub fn render(
     area: Rect,
 ) {
     match overlay {
-        Overlay::Glossary { offset } => render_glossary(offset, palette, frame, area),
+        Overlay::Glossary => render_glossary(palette, scroll, frame, area),
         Overlay::Loading { what, .. } => render_loading(what, palette, frame, area),
         Overlay::Operations { operations } => render_operations(operations, palette, frame, area),
         Overlay::RefPicker {
@@ -753,7 +746,7 @@ pub fn render(
 /// it has no action region to anchor — every row is prose. It satisfies the gate's first assertion by
 /// the other branch, advertising `lines X–Y of Z` in its title, which is the idiom `Panel` and
 /// `ListPanel` then adopted from it.
-fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, area: Rect) {
+fn render_glossary(palette: &Palette, scroll: &Scroll, frame: &mut Frame, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .style(Style::default().fg(palette.fg));
@@ -785,11 +778,12 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
         inner_height
     };
 
-    // The clamp, and the write-back that makes it stick (see `Overlay::Glossary`). `saturating_sub`
-    // gives 0 when everything fits, so a tall terminal simply cannot scroll.
-    let max_offset = rows.saturating_sub(viewport);
-    let scroll = offset.get().min(max_offset);
-    offset.set(scroll);
+    // **The shared clamp** (RFC 060 decision 3, as Handoff B corrects it): the renderer is the only
+    // thing that knows the viewport and the wrapped height, so it tells the scroll its extent and
+    // takes back the clamped offset — exactly as `Panel` does. `fit` gives 0 when everything fits,
+    // so a tall terminal simply cannot scroll.
+    let offset = scroll.fit(lines.len(), usize::from(viewport));
+    let at_end = scroll.at_end();
 
     // `NFR-A03`: whatever scrolls this panel is discoverable *from* this panel — the Keys section below
     // names the keys, and the title says where you are, so "there is more" is never something a user has
@@ -797,7 +791,7 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
     // **The title no longer names the scroll key** (RFC 060 decision 3, held by review v1 C1): the
     // foot line below names it, and two idioms for one fact is what that decision removed.
     let title = crate::title::Title::of("Glossary & Help")
-        .position(crate::title::Position::of(scroll, viewport, lines.len()))
+        .position(crate::title::Position::of(offset, viewport, lines.len()))
         .render(region.width);
 
     frame.render_widget(Clear, region);
@@ -809,11 +803,11 @@ fn render_glossary(offset: &Cell<u16>, palette: &Palette, frame: &mut Frame, are
         Constraint::Length(u16::from(foot_needed)),
     ])
     .areas(inner);
-    frame.render_widget(Paragraph::new(lines).scroll((scroll, 0)), text_area);
+    frame.render_widget(Paragraph::new(lines).scroll((offset, 0)), text_area);
     if foot_needed {
         // **Which key**, said once, in the label colour — the Glossary says it the same way a card
         // does (RFC 060 decision 3).
-        let hint = if scroll >= max_offset {
+        let hint = if at_end {
             "  \u{2191} more above"
         } else {
             "  \u{2193} more below"

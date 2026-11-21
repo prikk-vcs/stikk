@@ -557,7 +557,7 @@ fn a_failed_file_read_keeps_the_block_on_screen() {
 /// defect rather than as help. The state line is now what it was before RFC 053, and the keys
 /// are a row beneath it.
 #[test]
-fn the_save_keys_are_one_whole_row_at_80_columns() {
+fn the_save_actions_are_one_whole_row_at_80_columns() {
     let detail = BlockDetailView {
         row: row(),
         is_tip: true,
@@ -572,7 +572,7 @@ fn the_save_keys_are_one_whole_row_at_80_columns() {
         patches: BlockPatches::Unreported(30),
     };
     let text = draw(&detail);
-    println!("--- the save keys on their own row (80 columns) ---\n{text}");
+    println!("--- what the state list can do, on its own row (80 columns) ---\n{text}");
     // The state line is the one RFC 037 shipped: no keys on it.
     let state_row = text
         .lines()
@@ -586,8 +586,9 @@ fn the_save_keys_are_one_whole_row_at_80_columns() {
     // And the hint is one row, whole, with nothing of it on any other row.
     let hint_rows: Vec<&str> = text.lines().filter(|line| line.contains("saves")).collect();
     assert_eq!(hint_rows.len(), 1, "one row: {hint_rows:?} in {text}");
+    // **The actions, not the keys** (RFC 061 decision 2): it said `F` and `A`, both withdrawn.
     assert!(
-        hint_rows[0].contains("F saves the selected file, A saves all."),
+        hint_rows[0].contains("Enter on a file saves it, or saves every file at this block."),
         "whole: {:?} in {text}",
         hint_rows[0]
     );

@@ -254,7 +254,7 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
                       command may be publishing at this moment — a tag, for instance — in which \
                       case trying again once it finishes is all that is needed; or a publication \
                       stopped part-way and left the repository waiting for someone to finish it. \
-                      Verify (V) tells the two apart: it names an interrupted publication where \
+                      Verify tells the two apart: it names an interrupted publication where \
                       there is one.",
         see_also: &[STOPPED_SEAL_CODE],
     },
@@ -263,7 +263,7 @@ static CODE_ENTRIES: &[GlossaryEntry] = &[
         title: "A seal was interrupted after it published",
         explanation: "The seal did its lasting work — the block is in the history already — and was \
                       stopped before it emptied the queue. Nothing is lost and nothing is damaged: \
-                      what is left is the tidying up. Seal (S) finishes it, and adds no new block; \
+                      what is left is the tidying up. Seal finishes it, and adds no new block; \
                       the Queue view says the same above the patches it lists (prikk ≥ 0.58).",
         see_also: &[INCOMPLETE_PUBLICATION_CODE],
     },

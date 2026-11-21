@@ -1,6 +1,6 @@
 # Handoff A — RFC 063: what prikk 0.56 changed (v1)
 
-**Companion to:** [RFC 063](../../accepted/063-prikk-0-58-rebaseline.md), **accepted 2026-11-18**. **Read the RFC
+**Companion to:** [RFC 063](../../done/063-prikk-0-58-rebaseline.md), **accepted 2026-11-18**. **Read the RFC
 first**, F1–F10 and decisions 1–11. **Covers:** decisions 1–5 and 9–11. Decisions 6–8 are
 [Handoff B](./b-what-prikk-now-checks-handoff-v1.md), which starts after this one is approved.
 **0.21.0's increment 1.** **Not a release.**

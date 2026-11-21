@@ -1,6 +1,6 @@
 # Handoff B — RFC 063: what prikk now checks for you (v1)
 
-**Companion to:** [RFC 063](../../accepted/063-prikk-0-58-rebaseline.md), **accepted 2026-11-18**. **Read the RFC
+**Companion to:** [RFC 063](../../done/063-prikk-0-58-rebaseline.md), **accepted 2026-11-18**. **Read the RFC
 first**, F5–F7 and decisions 6–8. **Covers:** decisions 6–8.
 **Starts after [Handoff A](./a-what-0-56-changed-handoff-v1.md) is approved**, on top of it: A's fixture ids and
 `rfc054` change are this handoff's base.

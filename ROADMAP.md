@@ -538,20 +538,29 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.21.0, not yet scoped
+## Next — 0.21.0: easy to read, and easy to find your way in
 
-**The scope is the owner's to authorize.** One candidate is already named and carried from 0.20.0:
+**Scoped and authorized by the owner** (2026-11-04, amended 2026-11-18). stikk is easy to read and easy to find your
+way in, for everyone, and especially for older users and anyone with weaker eyesight. In delivery order:
 
-1. **The prikk 0.56.0 re-baseline**, if prikk publishes 0.56.0 before the cut. prikk calls its worktree change a
-   compatibility event, so this re-measures `commit` and `bundle import`. It also brings two visible gains: the
-   bundle card says whether each seal checks out, and a different key under a removed id is shown as a security
-   event. The cut does not wait for it.
+1. **The prikk 0.58.0 re-baseline — landed on `main`** ([RFC 063](rfcs/done/063-prikk-0-58-rebaseline.md),
+   `6487aff`). It validates through prikk 0.58.0, and:
+   - a commit goes to prikk's current branch, and stikk names the switch for another;
+   - merging into the branch you are on is offered from prikk 0.56;
+   - the bundle card shows prikk's own check of each seal, and withholds an import prikk would refuse;
+   - a seal that fails against a trusted key, and a different key under a removed id, get the security warning;
+   - an interrupted seal is shown as one, and Seal finishes it.
+2. **Readable colours** (RFC 059): the terminal's own foreground; light or dark detected; 7 : 1 for every colour
+   stikk chooses; a high-contrast theme; `NO_COLOR`.
+3. **Bigger text** (RFC 060): no italic, a smaller minimum window, and *"Making the text bigger"* in the guide.
+4. **Finding your place** (RFC 061): a full-row highlight, a key line that stays, and Enter opening a list of actions.
+5. **The mouse, optionally** (RFC 062), with its default decided after measuring.
 
-**prikk's answers to letter 023 (its 029)** place the rest. prikk **0.56.0** fixes the worktree defect our letter
-found, and refuses an invalid seal at import. prikk **0.57.0** brings `branch create --from <block id>` (going back
-to an older block in one step), the block sealers in `verify-report-v1` (counting what a key removal breaks), and
-`parent_block_ids` in `log` — which an undo would read instead of taking the parent from the row below it. Each is
-taken at the re-baseline that brings it.
+**Also in 0.21.0** (RFC 064): stikk's JSON reader skips any valid value in a field it does not read, as promised to
+prikk in letter 024.
+
+The new prikk 0.57/0.58 features are **0.22.0 candidates**: going back to an older block in one step, counting what a
+key removal breaks, exact parents for undo and undoing a merge, `uncommit`, and `bundle preview --adopt`.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and

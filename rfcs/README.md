@@ -29,14 +29,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 063 | [The prikk 0.58 re-baseline](./accepted/063-prikk-0-58-rebaseline.md) | the ceiling to 0.58: a merge into the current branch from 0.56, commits only to the current branch, distinct key ids in the suite, and the seal checks and import refusals prikk now reports | [A: what 0.56 changed](./handoffs/063-prikk-0-58-rebaseline/a-what-0-56-changed-handoff-v1.md) · [B: what prikk now checks](./handoffs/063-prikk-0-58-rebaseline/b-what-prikk-now-checks-handoff-v1.md) |
+_None: RFC 063 delivered and closed 2026-11-21._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 063 | [The prikk 0.58 re-baseline](./done/063-prikk-0-58-rebaseline.md) | shipped in 0.21.0 | the 0.57/0.58 features (`branch create --from <block id>`, `block_seals`, `parent_block_ids`, `uncommit`, `bundle preview --adopt`, `behind_ref`): 0.22.0 candidates | [A: what 0.56 changed](./handoffs/063-prikk-0-58-rebaseline/a-what-0-56-changed-handoff-v1.md) · [B: what prikk now checks](./handoffs/063-prikk-0-58-rebaseline/b-what-prikk-now-checks-handoff-v1.md) |
 | 058 | [Undo one block: putting back what a block changed, as a new change](./done/058-undo-one-block.md) | shipped in 0.20.0 | reading the parent's `.prikkignore` (a content read); undoing a merge, once prikk names a block's parents | [A: undo one block](./handoffs/058-undo-one-block/a-undo-one-block-handoff-v1.md) |
 | 057 | [Orientation on `status --format json`](./done/057-orientation-on-status-json.md) | **0.19.0** | reading `provisional_worktree` (decision 4); the prose parser stays for the floor | [A: Orientation on JSON](./handoffs/057-orientation-on-status-json/a-orientation-json-handoff-v1.md) |
 | 056 | [Trust, adopt and remove: choosing whose keys this repository trusts](./done/056-trust-adopt-and-remove.md) | **0.18.0**; Handoff B (the typed card's layout) **0.19.0** | tag adoption, author keys, counting the blocks a removal affects; two prikk items held for a letter | [A: adopt and remove](./handoffs/056-trust-adopt-and-remove/a-adopt-and-remove-handoff-v1.md) · [B: the typed card's layout](./handoffs/056-trust-adopt-and-remove/b-typed-card-layout-handoff-v1.md) |

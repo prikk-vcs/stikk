@@ -1,6 +1,6 @@
 # RFC 063 — The prikk 0.58 re-baseline
 
-**Status.** **Accepted by the project owner 2026-11-18**; [Handoff A](../handoffs/063-prikk-0-58-rebaseline/a-what-0-56-changed-handoff-v1.md) (decisions 1–5, 9–11) · [Handoff B](../handoffs/063-prikk-0-58-rebaseline/b-what-prikk-now-checks-handoff-v1.md) (decisions 6–8, after A). **Proposed 2026-11-18** by the architect, as 0.21.0's increment 1 (`.git-exclude/release/0-21-0-scope.md`,
+**Status.** **Done 2026-11-21**: Handoff A delivered on `main` (`6f213da`..`a51f7cf`), Handoff B (`4185b1c`..`6487aff`); green on the full platform matrix at both heads; ships in **0.21.0**. **Clarified in review**, recorded in *Delivered*. **Accepted by the project owner 2026-11-18**; [Handoff A](../handoffs/063-prikk-0-58-rebaseline/a-what-0-56-changed-handoff-v1.md) (decisions 1–5, 9–11) · [Handoff B](../handoffs/063-prikk-0-58-rebaseline/b-what-prikk-now-checks-handoff-v1.md) (decisions 6–8, after A). **Proposed 2026-11-18** by the architect, as 0.21.0's increment 1 (`.git-exclude/release/0-21-0-scope.md`,
 amended and authorized by the project owner 2026-11-18). prikk **0.56.0** (2026-11-08), **0.57.0** (2026-11-14) and
 **0.58.0** (2026-11-18) are released, in prikk's letters 030 and 031. **No open question.**
 **Measured** against the pinned real prikk binaries **0.28.0**, **0.55.0**, **0.57.0** and **0.58.0**. All the evidence
@@ -196,8 +196,10 @@ Each of these was checked against stikk's code:
   (§G2–G3). stikk reads both verdicts (`parse_json.rs:917`). Display width is the carried i18n item.
 - **`unlock --yes` on an *unknown* holder** now refuses. stikk never runs `unlock`.
 - **`bundle import --adopt`** exits 0 when it does not adopt. stikk never passes `--adopt`.
-- **New fields stikk does not read yet:** `worktree-status`'s `behind_ref`, `verify`'s new in-flight finding, and
-  `doctor`'s debris findings moved to `info`. Each is a 0.22.0 candidate.
+- **New fields stikk does not read yet:** `worktree-status`'s `behind_ref`, and `doctor`'s debris findings moved to
+  `info`. Each is a 0.22.0 candidate. *(This RFC also listed `verify`'s new in-flight finding. prikk's letter 033
+  corrected its 031: that id is in `verify`'s and `doctor`'s **text only**, never in `verify --format json`, so there
+  is nothing for stikk to read.)*
 
 ## Decisions
 
@@ -330,5 +332,41 @@ Two handoffs, issued on acceptance:
 - `parent_block_ids` for undo, and undoing a merge;
 - `uncommit`;
 - `bundle preview --adopt`;
-- `worktree-status`'s `behind_ref`;
-- `verify`'s in-flight finding.
+- `worktree-status`'s `behind_ref`.
+
+## Delivered
+
+**Two handoffs, thirteen commits, green on `main`.** At both heads, every run passed: CI, Docs, supply chain, and the
+real-binary suite on the full platform matrix.
+- **Handoff A:** `6f213da`..`a51f7cf`, 99 cases on Linux, macOS and Windows at 0.28.0 + 0.58.0. Full-matrix run
+  `44428306851`.
+- **Handoff B:** `4185b1c`..`6487aff`, 100 cases. Full-matrix run `44839614689`.
+
+The eight failures of F1 were each fixed by the decision that explains them:
+- `rfc050` ×2, `rfc053`, `rfc054` and `rfc056`, by the per-fixture key ids;
+- `rfc045`, by queueing onto a branch whose files match;
+- `rfc047`, by decision 2. It is split in two, and the below-0.56 half announces that it is skipped with the pinned
+  pair;
+- `rfc029b`, by decision 4.
+
+New legs: the interrupted seal, read as one and finished by stikk's Seal; and the three ways a receiver stands
+towards a sender's key.
+
+**Clarified in review, as delivered:**
+- **Decision 2.** For a merge that writes this worktree, the card's *"Nothing is written to the worktree"* clause is
+  **replaced** by `MERGE_WRITES_THIS_WORKTREE`, not joined to it.
+- **Decision 4.** At 0.58 the no-`--ref` default can only be measured **before** anything is committed to another
+  branch, so `rfc029b` measures it first. Seal's notice is measured on a queue built by a raw commit to a branch
+  whose files match.
+- **Decision 6, order.** prikk's `import_refusals` are read **after** stikk's own guards. prikk's list is wider than
+  F5's case (an older bundle comes back as `rollback`), and stikk keeps its own sentence for what it already
+  declines. The bundle card itself still lists prikk's refusals.
+- **Decision 6, the trust list.** **prikk's seal outcomes do not depend on stikk reading the trust list** (Handoff B
+  review v1 D1). A list stikk cannot read costs only the key shown beside a warning. The warning then leaves out its
+  `trusted here` row, and says in its body that the key could not be read.
+- **Decision 7.** A **removed** id's conflict can only come from prikk, at execute (F7). It reaches the same card
+  through the write's result, not through the preview.
+- **Decision 8.** The warning is one type, `SecurityWarning`, rendered by the one card, with three callers.
+
+**Carried, small:** `parse_json.rs`'s Orientation reader's doc says a missing key is an error, but
+`heads_main_ref_state` is read as optional. Fix it at the next change of that reader.

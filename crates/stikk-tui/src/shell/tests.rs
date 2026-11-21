@@ -1682,7 +1682,7 @@ fn no_row_overflows_its_area_below_the_minimum() {
         found.len(),
         found.join("\n")
     );
-    println!("RFC 060: {screens_drawn} screens drawn at 60x18 and 72x20, zero overflows");
+    println!("RFC 060: {screens_drawn} screens drawn at 60x15 and 72x20, zero overflows");
 }
 
 /// **The three overlays RFC 060 F3 found cut, read whole at 60 × 18** — the sentences F3 quotes,

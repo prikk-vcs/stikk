@@ -454,6 +454,52 @@ at all), at which depth stikk is drawing, and — if any — how many of its col
 terminal's own because they could not reach 7 : 1 on the background your terminal reported. **If the
 colours look wrong, that row is the line to read out.**
 
+## Making the text bigger
+
+Most terminals make their own text bigger and smaller, and stikk follows: **it works in a window as
+small as 60 columns by 15 rows**, which on a laptop screen is room for text about twice the usual
+size, or more. If the window is smaller than that, stikk says so and says what to do.
+
+Each terminal's own documentation is linked, because the keys differ and this page should not be the
+place you find out that they changed.
+
+| Terminal | Bigger | Smaller | Where the font size is set |
+|---|---|---|---|
+| [Alacritty](https://alacritty.org/config-alacritty-bindings.html) | `Ctrl` and `=` (or `+`) — on macOS, `Command` and `=` | `Ctrl` and `-` — on macOS, `Command` and `-` | `size` in the `[font]` table of [`alacritty.toml`](https://alacritty.org/config-alacritty.html) |
+| [GNOME Terminal](https://help.gnome.org/users/gnome-terminal/stable/app-zoom.html.en) (and the other VTE terminals) | `Ctrl` and `+` | `Ctrl` and `-` | Preferences → Profiles → Text → [Custom font](https://help.gnome.org/users/gnome-terminal/stable/app-fonts.html.en) |
+| [Konsole](https://docs.kde.org/stable_kf6/en/konsole/konsole/commandreference.html) | View → Enlarge Font (`Ctrl` and `+`) | View → Shrink Font (`Ctrl` and `-`) | Settings → Manage Profiles → the profile's own appearance |
+| [kitty](https://sw.kovidgoyal.net/kitty/conf/) | `Ctrl`, `Shift` and `=` — on macOS, `Command` and `+` | `Ctrl`, `Shift` and `-` — on macOS, `Command` and `-` | `font_size` in `kitty.conf` |
+| [WezTerm](https://wezterm.org/config/default-keys.html) | `Ctrl` and `=` | `Ctrl` and `-` | [`font_size`](https://wezterm.org/config/lua/config/font_size.html) in its config |
+| [Windows Terminal](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/actions) | `Ctrl` and `+` | `Ctrl` and `-` | the profile's [`font` → `size`](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-appearance) |
+| [The older Windows console](https://learn.microsoft.com/en-us/windows/console/) (conhost) | see its settings — no key is documented | see its settings | see its settings |
+| [macOS Terminal](https://support.apple.com/guide/terminal/keyboard-shortcuts-trmlshtcts/mac) | `Command` and `+` (*"Make fonts bigger"*) | `Command` and `-` (*"Make fonts smaller"*) | Terminal → Settings → Profiles → [Text](https://support.apple.com/guide/terminal/change-profiles-text-settings-trmltxt/mac) → Font: Change |
+| [iTerm2](https://iterm2.com/documentation-menu-items.html) | View → Make Text Bigger — no key is documented | View → Make Text Smaller | Settings → Profiles → [Text](https://iterm2.com/documentation-preferences-profiles-text.html) |
+
+Most of these terminals also reset the size, usually with `Ctrl` (or `Command`) and `0`.
+
+**Where a key is not listed above, that terminal's documentation does not give one** — not that it
+cannot be done. Open its settings and set the font size there.
+
+### When the window is still too small
+
+Below 60 × 15, stikk shows this instead of a view:
+
+```
+This window is too small for stikk: it needs 60 columns and 15 rows, and has 48 × 12.
+Make the window bigger, or the text a little smaller (often Ctrl and −; on a Mac, ⌘ and −).
+Help: https://prikk-vcs.github.io/stikk/ → "Making the text bigger"
+```
+
+It names the size it needs and the size it has, so you know how much is missing. **Making the window
+bigger comes first**, because if you made the text bigger you did it for a reason. In a very small
+window the last sentences are dropped so the first still fits.
+
+At 60 × 15 some of stikk's cards are taller than the window. Those scroll with `↑` and `↓` — the keys
+every list in stikk uses — and say so: the title reads *"lines 3–14 of 22"*, and one line at the foot
+says *"↓ more below"*. **A card that asks you to confirm something only offers the confirmation once
+you have read to the end of it**, so nothing is ever agreed to while its consequences are out of
+sight. Until then the card says *"↓ read to the end to confirm"*.
+
 ## Launcher utilities
 
 ```sh

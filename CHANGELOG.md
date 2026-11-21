@@ -6,6 +6,25 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Changed
 
+- **stikk works in a window as small as 60 × 15 columns and rows**, down from 80 × 24 — so the text
+  can be made about twice as big, or more, on a laptop screen. Making the text bigger is the main
+  thing a person with weaker eyesight does, and in a terminal bigger text means a smaller grid: at
+  1.6 times the default font a 1366 × 768 laptop had 96 × 23 cells, and stikk showed nothing but
+  *"terminal too small"* — for the sake of one row.
+- **A window that is still too small says what to do**, and names the size it needs and the size it
+  has. It puts making the window bigger first, because text made bigger was made bigger on purpose.
+- **Every card wraps to the window it is drawn in.** Three of them — the refusal card, the *commit
+  prikk would refuse* card and the help overlay — used to cut words in the middle below 72 columns,
+  because each wrapped its text to a width the window then narrowed.
+- **A card taller than the window scrolls**, with `↑` and `↓`, the keys every list in stikk already
+  uses. Its title says where you are and one line at its foot names the key. Its actions never
+  scroll away, and **a confirmation is offered only once the whole card has been on screen** — so
+  nothing is agreed to while its consequences are out of sight. A window too short to show the card
+  at all offers no confirmation and says so.
+- **The status bar shortens the focused ref rather than cutting it**, marked with `…`, and never
+  drops the signing badges.
+- **No italic, and bold marks headings and the selection only.** Many terminal fonts draw italic
+  thin, or not at all; and when most of a screen is bold, bold marks nothing.
 - **On a light terminal, stikk is now readable.** Its default theme always picked the dark palette,
   so on a white background — macOS Terminal's default — body text was 1.4 : 1. Now *system* asks the
   terminal whether its background is light or dark, and uses no colour of its own when the terminal
@@ -38,6 +57,9 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Added
 
+- **The guide says how to make the text bigger**, for each common terminal: Alacritty, GNOME
+  Terminal and the other VTE terminals, Konsole, kitty, WezTerm, Windows Terminal, the older Windows
+  console, macOS Terminal and iTerm2 — each with a link to that terminal's own documentation.
 - **A `high-contrast` theme**, in which stikk paints its own pair over the whole frame: black on
   white, or white on black where the terminal said it is dark — 21 : 1 whatever the terminal's own
   scheme is.

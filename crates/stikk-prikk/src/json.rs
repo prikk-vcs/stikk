@@ -43,13 +43,26 @@ use stikk_model::StikkError;
 
 type Result<T> = std::result::Result<T, StikkError>;
 
-/// The only JSON shapes prikk's reports use. No floats: every number in the three schemas is a
-/// non-negative integer, and accepting a float would mean accepting a value stikk has nowhere to put.
+/// The JSON shapes prikk's reports use, plus one for every **other** valid number (RFC 064
+/// decision 1).
+///
+/// **No floats are read**: every number stikk reads from these schemas is a non-negative integer,
+/// and accepting a float where a `u64` is stored would be the reader inventing a value. But a
+/// number stikk does not read is prikk's business, not stikk's — so one is held as
+/// [`Json::OtherNumber`], which no accessor accepts.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Json {
     Null,
     Bool(bool),
     Number(u64),
+    /// A valid JSON number stikk has nowhere to put: negative, fractional, exponent-bearing, or a
+    /// non-negative integer above `u64::MAX`. Its **exact text**, as prikk wrote it.
+    ///
+    /// **Inert.** Every accessor refuses it, naming the field (RFC 064 decision 3), so a field
+    /// stikk reads keeps exactly the rule it had. It exists so that the same value in a field
+    /// stikk *skips* costs nothing — which, before RFC 064, made the whole report unreadable
+    /// (F1).
+    OtherNumber(String),
     String(String),
     Array(Vec<Json>),
     Object(Vec<(String, Json)>),
@@ -78,9 +91,17 @@ impl Json {
     }
 
     /// A required integer field.
+    ///
+    /// **A number stikk cannot hold gets its own sentence** (RFC 064 decision 3): *should be a
+    /// number, got a number* would tell a reader nothing, and what they need to know is that the
+    /// value is a number of a kind stikk has nowhere to put.
     pub(crate) fn u64_field(&self, key: &str) -> Result<u64> {
         match self.get(key) {
             Some(Json::Number(n)) => Ok(*n),
+            Some(Json::OtherNumber(_)) => Err(schema(&format!(
+                "field `{key}` is a number stikk does not hold (negative, fractional, or larger \
+                 than 2^64 - 1)"
+            ))),
             Some(other) => Err(schema(&format!(
                 "field `{key}` should be a number, got {}",
                 kind_of(other)
@@ -155,6 +176,10 @@ impl Json {
             Json::Bool(true) => out.push_str("true"),
             Json::Bool(false) => out.push_str("false"),
             Json::Number(n) => out.push_str(&n.to_string()),
+            // **Its own text, unescaped and unquoted** (RFC 064 decision 4): the number grammar
+            // admits only ASCII digits, `-`, `.`, `e`, `E` and `+`, so there is nothing here for
+            // an escape table to do and nothing a terminal could act on.
+            Json::OtherNumber(text) => out.push_str(text),
             Json::String(s) => write_string(out, s),
             Json::Array(items) if items.is_empty() => out.push_str("[]"),
             Json::Array(items) => {
@@ -207,6 +232,8 @@ fn kind_of(value: &Json) -> &'static str {
         Json::Null => "null",
         Json::Bool(_) => "a boolean",
         Json::Number(_) => "a number",
+        // **Named, so every accessor's wrong-type sentence names it too** (RFC 064 decision 3).
+        Json::OtherNumber(_) => "a number stikk does not hold",
         Json::String(_) => "a string",
         Json::Array(_) => "an array",
         Json::Object(_) => "an object",
@@ -289,7 +316,9 @@ impl Cursor<'_> {
             Some('"') => Ok(Json::String(self.string()?)),
             Some('t' | 'f') => self.boolean(),
             Some('n') => self.null(),
-            Some(ch) if ch.is_ascii_digit() => self.number(),
+            // **`-` is a number's first character** (RFC 064 decision 1), where it used to be
+            // *"unexpected `-`"* — the sentence F1 measured on a field nobody reads.
+            Some(ch) if ch.is_ascii_digit() || ch == '-' => self.number(),
             Some(ch) => Err(schema(&format!("unexpected `{ch}`"))),
             None => Err(schema("unexpected end of input")),
         }
@@ -435,18 +464,49 @@ impl Cursor<'_> {
         matches
     }
 
-    /// A non-negative integer. **No floats, no exponents, no leading `-`** — every number in prikk's
-    /// three schemas is a count or a sequence number, and silently accepting `1.5` where stikk stores a
-    /// `u64` would be the reader inventing a value.
+    /// **RFC 8259's whole number grammar**, `-? int frac? exp?`, with two outcomes (RFC 064
+    /// decision 1).
+    ///
+    /// - a value with no `-`, no fraction and no exponent that fits a `u64` is [`Json::Number`],
+    ///   exactly as before;
+    /// - **every other valid number** is [`Json::OtherNumber`], holding its text as prikk wrote
+    ///   it. No accessor accepts one, so a field stikk reads keeps today's rule and only the
+    ///   sentence improves;
+    /// - **text that is not a JSON number at all is still refused**: `-` alone, `-a`, `1.`, `1e`,
+    ///   `1e+`. (`.5` and `+1` never reach here — [`Cursor::value`] has no case for `.` or `+`.)
+    ///
+    /// **The documented leading-zero laxity stays exactly as it is** (`007` reads as `7`; see the
+    /// module doc). Strict JSON refuses it, and changing that is outside RFC 064.
     fn number(&mut self) -> Result<Json> {
         let start = self.at;
-        while self.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+        let negative = self.peek() == Some('-');
+        if negative {
             self.at += 1;
         }
-        if matches!(self.peek(), Some('.' | 'e' | 'E')) {
+        // The integer part. One digit at least -- `-` alone, or `-a`, is not a number.
+        if !self.take_digits() {
             return Err(schema(
-                "a fractional or exponent number, where stikk expects an integer",
+                "a number with no digits where JSON requires at least one",
             ));
+        }
+        let mut fractional = false;
+        if self.peek() == Some('.') {
+            self.at += 1;
+            fractional = true;
+            if !self.take_digits() {
+                return Err(schema("a number with no digits after `.`"));
+            }
+        }
+        let mut exponent = false;
+        if matches!(self.peek(), Some('e' | 'E')) {
+            self.at += 1;
+            exponent = true;
+            if matches!(self.peek(), Some('+' | '-')) {
+                self.at += 1;
+            }
+            if !self.take_digits() {
+                return Err(schema("a number with no digits after its exponent"));
+            }
         }
         let text: String = self
             .chars
@@ -454,9 +514,23 @@ impl Cursor<'_> {
             .unwrap_or_default()
             .iter()
             .collect();
-        text.parse::<u64>()
-            .map(Json::Number)
-            .map_err(|_| schema("an integer too large for stikk to hold"))
+        if !negative
+            && !fractional
+            && !exponent
+            && let Ok(value) = text.parse::<u64>()
+        {
+            return Ok(Json::Number(value));
+        }
+        Ok(Json::OtherNumber(text))
+    }
+
+    /// Advance over one or more ASCII digits, reporting whether there were any.
+    fn take_digits(&mut self) -> bool {
+        let start = self.at;
+        while self.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+            self.at += 1;
+        }
+        self.at > start
     }
 }
 

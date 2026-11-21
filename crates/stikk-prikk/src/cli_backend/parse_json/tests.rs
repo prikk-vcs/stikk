@@ -4545,6 +4545,54 @@ const PREVIEW_CLASH_0_58: &str = r#"{
 }
 "#;
 
+/// §D1's preview **with one effect**, so a numeric field `bundle_preview` actually reads exists
+/// to put a refused number in (RFC 064's column (b)). prikk's own report, with `effects` filled
+/// from `measure050`'s shape.
+const PREVIEW_WITH_AN_EFFECT_0_58: &str = r#"{
+  "schema_version": "bundle-preview-v1",
+  "bundle_ref": "heads/main",
+  "local_ref": "heads/main",
+  "connectivity": "does-not-connect",
+  "class": "does-not-connect",
+  "ref_state_chain": "unrelated",
+  "import_class": "no-local-history",
+  "import_ref_state_chain": null,
+  "import_refusals": [
+    {
+      "id": "forged-publication-signature",
+      "message": "precondition not met: ref-state <id> carries a MAINTAINER signature by adopted key shared that does not verify: invalid signature: signature verification failed: signature error -- a forgery, or another maintainer using the same key id; if it is the latter, that maintainer should sign under a distinct id next time -- a key made by `prikk key generate --out <path>` has one (point PRIKK_MAINTAINER_SEED_FILE at it), or set PRIKK_MAINTAINER_KEY_ID -- and you adopt it under that id with `prikk trust maintainer add --key-id <that id> --public-key <its public key>`; refusing before admitting it",
+      "object_type": "ref-state",
+      "object_id": "<id>"
+    }
+  ],
+  "import_adoption": null,
+  "conflict": null,
+  "conflict_detail": null,
+  "sealed_by": [
+    "shared"
+  ],
+  "sealed_by_note": "recorded signer identity, continuity only -- not a trust decision",
+  "sealed_by_signatures": [
+    {
+      "key_id": "shared",
+      "outcome": "invalid"
+    }
+  ],
+  "effects": [
+    {
+      "path": "a.txt",
+      "kind": "edited",
+      "current_bytes": 2,
+      "after_bytes": 3
+    }
+  ],
+  "rename_note": "a moved path is not yet distinguishable from a delete plus a create in this preview -- until rename authoring lands, do not infer that any delete+create pair shown here was a move",
+  "manifest": {
+    "repository_format": 8,
+    "tool_version": "0.58.0"
+  }
+}"#;
+
 /// §D2: distinct ids, the sender's key not adopted. `unverifiable`, and **no refusal**: this is
 /// the ordinary first exchange, and the import lands.
 const PREVIEW_NOT_ADOPTED_0_58: &str = r#"{
@@ -4792,4 +4840,269 @@ fn a_refused_adopt_is_read_as_its_id_and_message() {
         super::refusal_id_and_message("error: precondition not met: something prose").expect("ok"),
         None
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 064: a value stikk does not read costs nothing (decisions 1 and 3; F1's column (a)).
+//
+// **Every reader with a captured report is covered here.** The forms are F1's own four number
+// forms; the depth forms are the same table in `a_skipped_deep_value_costs_no_reader_anything`.
+// ---------------------------------------------------------------------------------------------
+
+/// One read-field case: what it is, the field's name for the message, the report with a refused
+/// number in that field, and the reader that must refuse it.
+type Rfc064ReadField = (
+    &'static str,
+    &'static str,
+    String,
+    Box<dyn Fn(&str) -> bool>,
+);
+
+/// The four number forms F1 measured, each refused by every released stikk **wherever** it
+/// appeared — including a field no reader looks at.
+const RFC064_NUMBER_FORMS: &[&str] = &["-1", "0.5", "1e3", "18446744073709551616"];
+
+/// `report` with one extra top-level field, `"x_added_field": <value>`, which **no reader looks
+/// at** — exactly what `measure064.sh`'s column (a) injects.
+///
+/// Inserted after the opening brace, so it is a sibling of `schema_version` and the reader meets
+/// it before anything it wants.
+fn with_an_unread_field(report: &str, value: &str) -> String {
+    let at = report
+        .find('{')
+        .unwrap_or_else(|| panic!("a captured report is an object: {report}"));
+    format!(
+        "{}{{\"x_added_field\": {value},{}",
+        &report[..at],
+        &report[at + 1..]
+    )
+}
+
+/// Run every reader that has a captured report, and compare its result with and without an extra
+/// unread field holding `value`.
+///
+/// **`assert_eq` on the reader's own result**, not on a field of it: *equal* is the claim —
+/// nothing a reader returns may move because prikk added a field beside it.
+fn every_reader_is_unchanged_by(value: &str) {
+    macro_rules! same {
+        ($what:literal, $call:expr, $report:ident) => {{
+            let plain = $report;
+            let injected = with_an_unread_field(plain, value);
+            let want = {
+                let text: &str = plain;
+                $call(text)
+            };
+            let got = {
+                let text: &str = &injected;
+                $call(text)
+            };
+            let want = want.unwrap_or_else(|e| panic!("{}: the plain report reads: {e}", $what));
+            let got = got.unwrap_or_else(|e| {
+                panic!(
+                    "{}: `{}` in an unread field must cost nothing: {e}",
+                    $what, value
+                )
+            });
+            assert_eq!(got, want, "{}: `{}` in an unread field", $what, value);
+        }};
+    }
+
+    same!("history", history, LOG_0_41);
+    same!("refs", |t| refs(t, 41), BRANCH_0_41);
+    same!("tags", tags, TAG_0_41);
+    same!("tree", |t| tree(t, TREE_TIP_ID), TREE_TIP_0_51);
+    same!("diff", |t| diff(t, &two_points()), DIFF_STATUSES_0_51);
+    // **`verify` is the one exception, and it is not an exception to the rule.** Its result
+    // carries `raw`, the whole report re-rendered for Verify's raw view (RFC 035 decision 5), so
+    // an added field *must* appear there — that view's job is to show the report's own shape.
+    // Everything stikk derives is compared, and `raw` is compared after the added field is taken
+    // back out, so nothing else may have moved either.
+    {
+        let plain = verify(VERIFY_SOUND_0_51).unwrap_or_else(|e| panic!("verify: plain: {e}"));
+        let injected_text = with_an_unread_field(VERIFY_SOUND_0_51, value);
+        let injected =
+            verify(&injected_text).unwrap_or_else(|e| panic!("verify: `{value}` unread: {e}"));
+        assert_eq!(injected.verdict, plain.verdict, "verify: `{value}`");
+        assert_eq!(
+            injected.active_sessions, plain.active_sessions,
+            "verify: `{value}`"
+        );
+        assert_eq!(injected.stages, plain.stages, "verify: `{value}`");
+        let added = format!("\"x_added_field\": {value},\n  ");
+        assert!(
+            injected
+                .raw
+                .contains(&format!("\"x_added_field\": {value}")),
+            "verify: the raw view shows the report's own shape: {}",
+            injected.raw
+        );
+        assert_eq!(
+            injected.raw.replacen(&added, "", 1),
+            plain.raw,
+            "verify: `{value}`: the raw view differs by the added field and nothing else"
+        );
+    }
+    same!("key_status", key_status, KS_MATCHES);
+    same!(
+        "worktree_status",
+        |t| worktree_status(t, 41),
+        WORKTREE_QUEUED_JSON_0_41
+    );
+    // `orientation` reads `interrupted_materialization`, which the 0.42-shaped fixture predates,
+    // so each reader gets a report of a shape it can read: the 0.42 one for `queue`, the 0.57 one
+    // for `orientation`.
+    same!("queue", |t| queue(t, 42), STATUS_QUEUE_TWO_PATCH_0_42);
+    same!("orientation", orientation, STATUS_057_B_ONE_SEALED_BLOCK);
+    // The 0.58 shape too, since it is the one the ceiling reports.
+    same!(
+        "orientation (0.58)",
+        orientation,
+        STATUS_ALREADY_SEALED_0_58
+    );
+    same!("queue (0.58)", |t| queue(t, 58), STATUS_ALREADY_SEALED_0_58);
+    same!("show", show, SHOW_BLOCK_ALL_KINDS_0_51);
+    same!(
+        "bundle_preview",
+        |t| bundle_preview(t, 58),
+        PREVIEW_CLASH_0_58
+    );
+    same!("path_content", path_content, PATH_CONTENT_0_54);
+    same!("extract_report", extract_report, EXTRACT_PLAN_0_54);
+    same!("trust_list", trust_list, TRUST_TWO_0_54);
+    same!("trust_added", trust_added, TRUST_ADD_OK_0_58);
+}
+
+/// **F1's column (a), flipped.** Each of the four number forms, in a field no reader looks at,
+/// leaves every reader's result **equal** to what the plain report gives.
+#[test]
+fn a_number_stikk_does_not_read_costs_no_reader_anything() {
+    for value in RFC064_NUMBER_FORMS {
+        every_reader_is_unchanged_by(value);
+    }
+}
+
+/// **F1's column (b), unchanged.** The same four forms in a field each numeric reader **does**
+/// read are still refused — and the sentence now names the field, which it could not before.
+///
+/// One field per reader, each the field that reader reads as a number.
+#[test]
+fn a_number_stikk_reads_is_still_refused_and_names_its_field() {
+    for value in RFC064_NUMBER_FORMS {
+        let cases: Vec<Rfc064ReadField> = vec![
+            (
+                // **F1's own column (b) field.**
+                "status / orientation",
+                "trailing_partial_wal_bytes",
+                STATUS_057_B_ONE_SEALED_BLOCK.replace(
+                    "\"trailing_partial_wal_bytes\": 0",
+                    &format!("\"trailing_partial_wal_bytes\": {value}"),
+                ),
+                Box::new(|t: &str| orientation(t).is_err()),
+            ),
+            (
+                // **`queue` reads `queue.count`, not `trailing_partial_wal_bytes`** — which is
+                // exactly RFC 064's point, and worth stating here: F1's column (b) refused for
+                // *both* readers only because the whole parse failed. Now each reader refuses
+                // the fields it reads, and `queue` reads this one.
+                "status / queue",
+                "queue.count",
+                STATUS_QUEUE_TWO_PATCH_0_42.replace("\"count\": 2", &format!("\"count\": {value}")),
+                Box::new(|t: &str| queue(t, 42).is_err()),
+            ),
+            (
+                "log",
+                "blocks[].patch_count",
+                LOG_0_41.replace("\"patch_count\": 1", &format!("\"patch_count\": {value}")),
+                Box::new(|t: &str| history(t).is_err()),
+            ),
+            (
+                "worktree-status",
+                "tracked_files",
+                WORKTREE_QUEUED_JSON_0_41.replace(
+                    "\"tracked_files\": 0",
+                    &format!("\"tracked_files\": {value}"),
+                ),
+                Box::new(|t: &str| worktree_status(t, 41).is_err()),
+            ),
+            (
+                "tree",
+                "entries[].size",
+                TREE_TIP_0_51.replace("\"size\": 4", &format!("\"size\": {value}")),
+                Box::new(|t: &str| tree(t, TREE_TIP_ID).is_err()),
+            ),
+            (
+                "diff",
+                "to.size",
+                DIFF_STATUSES_0_51.replace("\"size\": 4", &format!("\"size\": {value}")),
+                Box::new(|t: &str| diff(t, &two_points()).is_err()),
+            ),
+            (
+                "verify",
+                "active_sessions.count",
+                VERIFY_SOUND_0_51.replace(
+                    "{\"count\": 1, \"verified_count\": 1}",
+                    &format!("{{\"count\": {value}, \"verified_count\": 1}}"),
+                ),
+                Box::new(|t: &str| verify(t).is_err()),
+            ),
+            (
+                "show",
+                "content.mode",
+                SHOW_BLOCK_ALL_KINDS_0_51.replace("\"mode\": 33188", &format!("\"mode\": {value}")),
+                Box::new(|t: &str| show(t).is_err()),
+            ),
+            (
+                "bundle preview",
+                "effects[].after_bytes",
+                PREVIEW_WITH_AN_EFFECT_0_58
+                    .replace("\"after_bytes\": 3", &format!("\"after_bytes\": {value}")),
+                Box::new(|t: &str| bundle_preview(t, 58).is_err()),
+            ),
+            (
+                "cat",
+                "size",
+                PATH_CONTENT_0_54.replace("\"size\": 4", &format!("\"size\": {value}")),
+                Box::new(|t: &str| path_content(t).is_err()),
+            ),
+            (
+                "extract",
+                "file_count",
+                EXTRACT_PLAN_0_54.replace("\"file_count\": 4", &format!("\"file_count\": {value}")),
+                Box::new(|t: &str| extract_report(t).is_err()),
+            ),
+        ];
+        for (what, field, text, refuses) in cases {
+            assert!(
+                text.contains(value),
+                "{what}: the fixture's `{field}` was replaced, or this test proves nothing"
+            );
+            assert!(
+                refuses(&text),
+                "{what}: `{value}` in `{field}`, a field stikk reads, must be refused"
+            );
+        }
+    }
+}
+
+/// **And the refusal names the field** (RFC 064 decision 3), on the field F1 measured.
+#[test]
+fn the_refusal_for_a_read_field_names_it() {
+    for value in RFC064_NUMBER_FORMS {
+        let text = STATUS_057_B_ONE_SEALED_BLOCK.replace(
+            "\"trailing_partial_wal_bytes\": 0",
+            &format!("\"trailing_partial_wal_bytes\": {value}"),
+        );
+        let err = orientation(&text)
+            .err()
+            .unwrap_or_else(|| panic!("`{value}` in a read field is refused"));
+        let said = err.to_string();
+        assert!(
+            said.contains("field `trailing_partial_wal_bytes`"),
+            "`{value}`: the field is named: {said}"
+        );
+        assert!(
+            said.contains("a number stikk does not hold"),
+            "`{value}`: and what kind of value it is: {said}"
+        );
+    }
 }

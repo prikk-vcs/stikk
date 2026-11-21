@@ -67,17 +67,33 @@ fn a_surrogate_pair_becomes_one_character_and_a_lone_surrogate_becomes_a_replace
     assert_eq!(obj(r#""\ud83d""#), Json::String("\u{FFFD}".to_string()));
 }
 
-/// **No floats.** Every number in prikk's three schemas is a count or a sequence number, and quietly
-/// truncating `1.5` into a `u64` would be the reader inventing a value stikk then displays as fact.
+/// **No floats are read.** Every number stikk reads from prikk's schemas is a count or a sequence
+/// number, and quietly truncating `1.5` into a `u64` would be the reader inventing a value stikk
+/// then displays as fact.
+///
+/// **RFC 064 moved where that refusal happens, not whether it does**: the value is now held as
+/// [`Json::OtherNumber`] so that a field stikk skips costs nothing, and the refusal is the
+/// accessor's — naming the field, which it could not before.
 #[test]
 fn a_fractional_number_is_refused_rather_than_truncated() {
-    let err = parse(r#"{"n": 1.5}"#).expect_err("floats are not part of these schemas");
-    assert!(err.to_string().contains("integer"), "{err}");
+    let value = obj(r#"{"n": 1.5}"#);
+    let err = value
+        .u64_field("n")
+        .expect_err("floats are not part of these schemas");
+    assert!(err.to_string().contains("field `n`"), "{err}");
+    assert!(
+        err.to_string().contains("a number stikk does not hold"),
+        "{err}"
+    );
 }
 
 #[test]
 fn an_oversized_integer_is_refused_rather_than_wrapped() {
-    assert!(parse(r#"{"n": 99999999999999999999999}"#).is_err());
+    let value = obj(r#"{"n": 99999999999999999999999}"#);
+    let err = value.u64_field("n").expect_err("it does not fit a u64");
+    assert!(err.to_string().contains("field `n`"), "{err}");
+    // **Never wrapped, and never 0** (RFC 064 §5 trap 3).
+    assert!(value.u64_field("n").is_err());
 }
 
 /// Every one of these must return `Err`. **None may panic** — that is the whole assertion.
@@ -99,7 +115,13 @@ fn malformed_input_errors_and_never_panics() {
         r#""truncated \u12""#,
         "tru",
         "nul",
-        "-1",
+        // `-1` moved out of this list at RFC 064: it is valid JSON, and the reader now holds it
+        // (`every_valid_json_number_reads_into_its_variant`). What is still not a number is here.
+        "-",
+        "-a",
+        "1.",
+        "1e",
+        "1e+",
         "+1",
         ".5",
         r#"{"a": 1} trailing"#,
@@ -179,4 +201,126 @@ fn render_escapes_every_character_that_does_not_show_as_itself() {
     );
     // The astral escape comes back as the one character it spells, not as two unpaired surrogates.
     assert_eq!(parse(&value.render()).ok(), Some(value));
+}
+
+// ---------------------------------------------------------------------------------------------
+// RFC 064: every valid number is read; only the ones stikk reads are refused (decisions 1, 3, 4).
+// ---------------------------------------------------------------------------------------------
+
+/// **Each valid JSON number reads, and lands in the right variant.** A non-negative integer that
+/// fits a `u64` is the one stikk stores; everything else is held as its own text.
+#[test]
+fn every_valid_json_number_reads_into_its_variant() {
+    for (text, want) in [
+        ("0", Json::Number(0)),
+        ("12", Json::Number(12)),
+        ("18446744073709551615", Json::Number(u64::MAX)),
+        // The documented leading-zero laxity, unchanged by RFC 064.
+        ("007", Json::Number(7)),
+        ("-1", Json::OtherNumber("-1".to_string())),
+        ("-0", Json::OtherNumber("-0".to_string())),
+        ("0.5", Json::OtherNumber("0.5".to_string())),
+        ("-0.5", Json::OtherNumber("-0.5".to_string())),
+        ("1e3", Json::OtherNumber("1e3".to_string())),
+        ("1E3", Json::OtherNumber("1E3".to_string())),
+        ("1e+3", Json::OtherNumber("1e+3".to_string())),
+        ("1e-3", Json::OtherNumber("1e-3".to_string())),
+        ("1.5e-3", Json::OtherNumber("1.5e-3".to_string())),
+        (
+            "18446744073709551616",
+            Json::OtherNumber("18446744073709551616".to_string()),
+        ),
+        (
+            "999999999999999999999999999999",
+            Json::OtherNumber("999999999999999999999999999999".to_string()),
+        ),
+    ] {
+        assert_eq!(
+            parse(text).unwrap_or_else(|e| panic!("{text} should read: {e}")),
+            want,
+            "{text}"
+        );
+        // ...and the same inside a document, where the scanner is reached through `value`.
+        let inside = format!(r#"{{"x": {text}}}"#);
+        assert_eq!(
+            obj(&inside).get("x"),
+            Some(&want),
+            "{text}, inside an object"
+        );
+    }
+}
+
+/// **Text that is not a JSON number is still refused** — RFC 064 widens what is read, not what is
+/// accepted.
+#[test]
+fn text_that_is_not_a_json_number_is_still_refused() {
+    for text in [
+        "-", "-a", "1.", "-1.", ".5", "1e", "1e+", "1e-", "+1", "1.e3", "--1",
+    ] {
+        let err = parse(text).err().unwrap_or_else(|| {
+            panic!("{text} is not a JSON number and must be refused");
+        });
+        assert_eq!(err.class(), "environment", "{text}: {err}");
+    }
+}
+
+/// **`u64_field` on a number stikk cannot hold names the field**, and says what kind of number it
+/// is (RFC 064 decision 3) — *should be a number, got a number* would tell a reader nothing.
+#[test]
+fn u64_field_on_a_number_stikk_does_not_hold_names_the_field() {
+    for text in ["-1", "0.5", "1e3", "18446744073709551616"] {
+        let value = obj(&format!(r#"{{"count": {text}}}"#));
+        let err = value
+            .u64_field("count")
+            .err()
+            .unwrap_or_else(|| panic!("{text} must not be read as a count"));
+        let said = err.to_string();
+        assert!(said.contains("field `count`"), "{text}: {said}");
+        assert!(
+            said.contains("a number stikk does not hold"),
+            "{text}: {said}"
+        );
+        assert!(
+            said.contains("larger than 2^64 - 1"),
+            "{text}: the sentence says which kinds: {said}"
+        );
+    }
+}
+
+/// **Every other accessor names it too**, through `kind_of` — and none of them turns it into a
+/// value (RFC 064 §5 trap 3).
+#[test]
+fn every_accessor_refuses_a_number_stikk_does_not_hold_and_names_it() {
+    let value = obj(r#"{"x": -1}"#);
+    for said in [
+        value.str_field("x").err().map(|e| e.to_string()),
+        value.bool_field("x").err().map(|e| e.to_string()),
+        value.array_field("x").err().map(|e| e.to_string()),
+        value.opt_str_field("x").err().map(|e| e.to_string()),
+    ] {
+        let said = said.unwrap_or_else(|| panic!("every accessor must refuse it"));
+        assert!(said.contains("field `x`"), "{said}");
+        assert!(said.contains("a number stikk does not hold"), "{said}");
+    }
+    // `opt_str_field` does **not** read it as absent, which would be the reader inventing a value.
+    assert!(value.opt_str_field("x").is_err());
+}
+
+/// **The raw view writes it as its own text** (RFC 064 decision 4), and the text is ASCII digits
+/// and the number grammar's punctuation — nothing an escape table would have to touch.
+#[test]
+fn the_raw_view_writes_a_number_stikk_does_not_hold_as_its_text() {
+    let value = obj(r#"{"a": -1, "b": 0.5, "c": 1e+3, "d": 18446744073709551616}"#);
+    let rendered = value.render();
+    for text in ["-1", "0.5", "1e+3", "18446744073709551616"] {
+        assert!(rendered.contains(text), "{text}: {rendered}");
+    }
+    // Not quoted as a string, which would change what the raw view says the report holds.
+    assert!(!rendered.contains("\"-1\""), "{rendered}");
+    assert!(
+        rendered
+            .chars()
+            .all(|ch| !ch.is_control() || ch == '\n' || ch == '\t'),
+        "{rendered}"
+    );
 }

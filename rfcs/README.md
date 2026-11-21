@@ -25,6 +25,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 061 | [Finding your place](./proposed/061-finding-your-place.md) | one catalog of every action; each letter one meaning in either case; Enter lists what can be done with the selected row; the whole row highlighted; a key line that stays |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

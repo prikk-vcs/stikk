@@ -18,7 +18,17 @@ use crate::text::{identifier, inert};
 use crate::theme::Palette;
 
 /// Render the Orientation view into `area`.
-pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area: Rect) {
+///
+/// `colours` is the session's own colour row (RFC 059 decision 10), which the app resolved at
+/// startup — a fact about this terminal rather than about the repository, so it arrives beside the
+/// view-model rather than inside it.
+pub fn render(
+    view: &OrientationView,
+    colours: &str,
+    palette: &Palette,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let mut lines: Vec<Line> = Vec::new();
 
     // RFC 009 decisions 6–7: the range has two ends that behave differently. Below the floor stikk
@@ -173,6 +183,19 @@ pub fn render(view: &OrientationView, palette: &Palette, frame: &mut Frame, area
         palette,
         "heads/main",
         vec![Span::styled(main_ref, Style::default().fg(palette.fg))],
+    ));
+
+    // RFC 059 decision 10: **which colours are in use, and why.** Last, because it is the one row
+    // that says nothing about the repository -- and the support line when a user says the colours
+    // look wrong: it names whether the terminal was asked, whether it answered, what depth stikk is
+    // drawing at, and how many colours decision 6's guard sent back to the terminal's own.
+    lines.push(field(
+        palette,
+        "colours",
+        vec![Span::styled(
+            colours.to_string(),
+            Style::default().fg(palette.fg),
+        )],
     ));
 
     let block = Block::default()

@@ -545,3 +545,108 @@ fn the_guard_sends_a_role_back_to_the_terminals_own_colour_below_seven_to_one() 
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The Orientation row (RFC 059 decision 10; Handoff A §4)
+// ---------------------------------------------------------------------------------------------
+
+/// **One reason, one sentence** — every way the palette can have been decided, in the words decision
+/// 10 gives it.
+#[test]
+fn the_colours_row_says_why_this_palette_and_at_which_depth() {
+    let detected_light = Environment {
+        answer: answered(true, (0xff, 0xff, 0xff)),
+        ..system()
+    };
+    let detected_dark = Environment {
+        answer: answered(false, (0x1e, 0x1e, 0x1e)),
+        ..system()
+    };
+    let fgbg_light = Environment {
+        colorfgbg: Some("0;15".to_string()),
+        ..system()
+    };
+    let fgbg_dark = Environment {
+        colorfgbg: Some("15;0".to_string()),
+        ..system()
+    };
+    let no_color = Environment {
+        no_color: Some("1".to_string()),
+        ..system()
+    };
+    for (environment, expected) in [
+        (detected_light, "light background, detected · 256 colours"),
+        (detected_dark, "dark background, detected · 256 colours"),
+        (fgbg_light, "light background, from COLORFGBG · 256 colours"),
+        (fgbg_dark, "dark background, from COLORFGBG · 256 colours"),
+        (
+            system(),
+            "no answer from the terminal, so plain colours · 256 colours",
+        ),
+        (no_color, "plain, because NO_COLOR is set · 256 colours"),
+        (
+            Environment::configured(ConfigTheme::Dark),
+            "dark, from the config · 256 colours",
+        ),
+        (
+            Environment::configured(ConfigTheme::Light),
+            "light, from the config · 256 colours",
+        ),
+        (
+            Environment::configured(ConfigTheme::Plain),
+            "plain, from the config · 256 colours",
+        ),
+        (
+            Environment::configured(ConfigTheme::HighContrast),
+            "high contrast, from the config · 256 colours",
+        ),
+    ] {
+        assert_eq!(resolve(&environment).colours_row(), expected);
+    }
+
+    // **The depth is the terminal's, so it changes under every reason**: the same config on a
+    // terminal that promises 24-bit colour says so.
+    let on_truecolour = Environment {
+        colorterm: Some("truecolor".to_string()),
+        ..Environment::configured(ConfigTheme::Dark)
+    };
+    assert_eq!(
+        resolve(&on_truecolour).colours_row(),
+        "dark, from the config · 24-bit colour"
+    );
+}
+
+/// Decision 10's last clause: **how many roles fell back**, and only when some did.
+#[test]
+fn the_colours_row_counts_the_roles_that_fell_back() {
+    // A mid-grey background: every chosen colour falls (decision 6), and the row says so on top of
+    // the reason, which is still the terminal's answer.
+    let grey = Environment {
+        answer: answered(false, (0x80, 0x80, 0x80)),
+        ..system()
+    };
+    assert_eq!(
+        resolve(&grey).colours_row(),
+        "dark background, detected · 256 colours · 4 colours fell back to the terminal's own, \
+         below 7:1 on that background"
+    );
+    // One is singular, and none says nothing at all — the counts themselves are the guard's own
+    // test; this is about the sentence.
+    let one = Resolved {
+        fell_back: 1,
+        ..resolve(&grey)
+    };
+    assert_eq!(
+        one.colours_row(),
+        "dark background, detected · 256 colours · 1 colour fell back to the terminal's own, \
+         below 7:1 on that background"
+    );
+    let none = Resolved {
+        fell_back: 0,
+        ..resolve(&grey)
+    };
+    assert_eq!(
+        none.colours_row(),
+        "dark background, detected · 256 colours"
+    );
+}

@@ -65,6 +65,17 @@ pub enum Depth {
     Ansi256,
 }
 
+impl Depth {
+    /// The Orientation row's words for this depth (RFC 059 decision 10).
+    #[must_use]
+    pub const fn words(self) -> &'static str {
+        match self {
+            Self::TrueColour => "24-bit colour",
+            Self::Ansi256 => "256 colours",
+        }
+    }
+}
+
 /// Which palette a [`Palette`] came from. **There is no `System`**: the configured `system` resolves
 /// to one of these, and what is drawn is always a decided palette.
 ///
@@ -526,6 +537,30 @@ pub enum Reason {
     FromConfig(SchemeKind),
 }
 
+impl Reason {
+    /// This reason in words — **the support line** (RFC 059 decision 10): what a user reads out when
+    /// the colours look wrong, and the one place that says whether the terminal was asked, whether it
+    /// answered, and who decided.
+    #[must_use]
+    pub const fn words(self) -> &'static str {
+        match self {
+            Self::Detected { light: true } => "light background, detected",
+            Self::Detected { light: false } => "dark background, detected",
+            // **Named, not folded into "detected"**: `COLORFGBG` is the terminal's own claim about
+            // itself from before the query existed, and a reader whose terminal sets it wrongly needs
+            // to see which of the two stikk believed.
+            Self::FromColorFgBg { light: true } => "light background, from COLORFGBG",
+            Self::FromColorFgBg { light: false } => "dark background, from COLORFGBG",
+            Self::NoAnswer => "no answer from the terminal, so plain colours",
+            Self::NoColor => "plain, because NO_COLOR is set",
+            Self::FromConfig(SchemeKind::Dark) => "dark, from the config",
+            Self::FromConfig(SchemeKind::Light) => "light, from the config",
+            Self::FromConfig(SchemeKind::Plain) => "plain, from the config",
+            Self::FromConfig(SchemeKind::HighContrast) => "high contrast, from the config",
+        }
+    }
+}
+
 /// The outcome of [`resolve`]: what to draw with, at which depth, and why.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Resolved {
@@ -534,16 +569,8 @@ pub struct Resolved {
     /// Which depth they were resolved at.
     pub depth: Depth,
     /// Why this palette (decision 10).
-    #[allow(
-        dead_code,
-        reason = "the Orientation row that shows it is this handoff's commit 4"
-    )]
     pub reason: Reason,
     /// How many roles decision 6's guard sent back to the terminal's own colour.
-    #[allow(
-        dead_code,
-        reason = "the Orientation row that shows it is this handoff's commit 4"
-    )]
     pub fell_back: usize,
     /// Whether the resolver would have used an answer from the terminal.
     ///
@@ -551,6 +578,26 @@ pub struct Resolved {
     /// same function before asking again with the answer — so what the tests assert about querying is
     /// what production does, not a second rule beside it.
     pub wants_an_answer: bool,
+}
+
+impl Resolved {
+    /// **The Orientation view's `colours` row** (RFC 059 decision 10): why this palette, at which
+    /// depth, and how many roles the guard sent back to the terminal's own colour — the last clause
+    /// only when there were any, because *"0 colours fell back"* is a sentence about nothing.
+    #[must_use]
+    pub fn colours_row(&self) -> String {
+        let mut row = format!("{} · {}", self.reason.words(), self.depth.words());
+        match self.fell_back {
+            0 => {}
+            1 => row.push_str(
+                " · 1 colour fell back to the terminal's own, below 7:1 on that background",
+            ),
+            fell => row.push_str(&format!(
+                " · {fell} colours fell back to the terminal's own, below 7:1 on that background"
+            )),
+        }
+        row
+    }
 }
 
 #[cfg(test)]

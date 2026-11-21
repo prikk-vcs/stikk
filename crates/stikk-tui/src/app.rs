@@ -5639,6 +5639,13 @@ impl App {
         &self.resolved.palette
     }
 
+    /// The Orientation view's `colours` row (RFC 059 decision 10) — a fact about this session, not
+    /// about the repository, which is why it comes from here and not from the view-model.
+    #[must_use]
+    pub fn colours_row(&self) -> String {
+        self.resolved.colours_row()
+    }
+
     /// The top overlay, if any (the one that renders and receives navigation keys).
     #[must_use]
     pub fn top_overlay(&self) -> Option<&Overlay> {

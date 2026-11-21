@@ -205,7 +205,9 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         Focus::Orientation(state) => match state {
             OrientationState::Loading => centered_note(palette, frame, area, "loading…", false),
             OrientationState::Failed(message) => render_failure(palette, frame, area, message),
-            OrientationState::Loaded(v) => view::orientation::render(v, palette, frame, area),
+            OrientationState::Loaded(v) => {
+                view::orientation::render(v, &app.colours_row(), palette, frame, area);
+            }
         },
         Focus::Loading(what) => {
             centered_note(palette, frame, area, &format!("loading {what}…"), false)

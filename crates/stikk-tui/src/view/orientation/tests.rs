@@ -29,11 +29,17 @@ fn view(readiness: Readiness, supported: bool, queued: u64, partial: u64) -> Ori
     }
 }
 
+/// The colour row these tests draw with unless they are about it: the dark palette, named by the
+/// config, at 24-bit (RFC 059).
+fn colours() -> String {
+    crate::theme::Resolved::drawing_with(Palette::default()).colours_row()
+}
+
 fn render_to_text(v: &OrientationView) -> String {
     let backend = TestBackend::new(90, 20);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|f| render(v, &Palette::default(), f, f.area()))
+        .draw(|f| render(v, &colours(), &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -245,7 +251,7 @@ fn capture_rfc057_orientation_at_80_columns() {
         let backend = TestBackend::new(80, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|f| render(v, &Palette::default(), f, f.area()))
+            .draw(|f| render(v, &colours(), &Palette::default(), f, f.area()))
             .unwrap();
         crate::test_util::buffer_text(terminal.backend().buffer())
     };
@@ -273,4 +279,64 @@ fn capture_rfc057_orientation_at_80_columns() {
     let text = at_80(&unresolved);
     println!("--- RFC 057: a current branch prikk cannot resolve, 80 columns\n{text}");
     assert!(text.contains("`prikk doctor` can say why"), "{text}");
+}
+
+/// **RFC 059 decision 10's row, at 80 columns.** Printed for the review request, and asserted whole
+/// after flattening the border and the wrap — the longest form there is (a detected background, a
+/// depth, and four roles sent back by the guard) is 115 characters, so at 80 columns it must wrap
+/// rather than lose its tail (RFC 024).
+///
+/// ```sh
+/// cargo test -p stikk-tui --lib capture_rfc059 -- --nocapture
+/// ```
+#[test]
+fn capture_rfc059_the_colours_row_at_80_columns() {
+    let v = view(Readiness::none(), true, 0, 0);
+    let worst = crate::theme::resolve(&crate::theme::Environment {
+        answer: Some(crate::theme::Answer {
+            light: false,
+            background: (0x80, 0x80, 0x80),
+        }),
+        ..crate::theme::Environment::default()
+    });
+    for (what, row) in [
+        (
+            "the terminal answered, and every colour fell back",
+            worst.colours_row(),
+        ),
+        (
+            "no answer at all",
+            crate::theme::resolve(&crate::theme::Environment::default()).colours_row(),
+        ),
+        (
+            "high contrast, from the config",
+            crate::theme::resolve(&crate::theme::Environment::configured(
+                stikk_state::config::Theme::HighContrast,
+            ))
+            .colours_row(),
+        ),
+    ] {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render(&v, &row, &Palette::default(), f, f.area()))
+            .unwrap();
+        let text = buffer_text(terminal.backend().buffer());
+        println!("--- RFC 059: the colours row — {what}, 80 columns\n{text}");
+        // Flattened the way the earlier captures do it: strip the border and join the rows, so a
+        // sentence that wrapped is one line again and `contains` means "whole on screen".
+        let flat = text
+            .lines()
+            .map(|line| line.trim_matches(|c: char| c == '│' || c.is_whitespace()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            flat.contains("colours"),
+            "the row's label is on screen:\n{text}"
+        );
+        assert!(
+            flat.contains(&row),
+            "the row is whole on screen:\n  wanted: {row}\n{text}"
+        );
+    }
 }

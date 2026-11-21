@@ -25,12 +25,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 | 002 | [Action-id catalog and keybindings](./proposed/002-action-id-catalog-and-keybindings.md) | the stable action ids the config binds and the palette lists |
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 064 | [stikk's JSON reader skips any valid value it does not read](./proposed/064-json-reader-skips-what-it-does-not-read.md) | a negative or fractional number, or deep nesting, in a field stikk never reads no longer makes a whole prikk report unreadable (promised in letter 024) |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 063 delivered and closed 2026-11-21._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 064 | [stikk's JSON reader skips any valid value it does not read](./accepted/064-json-reader-skips-what-it-does-not-read.md) | a negative or fractional number, or deep nesting, in a field stikk never reads no longer makes a whole prikk report unreadable (promised in letter 024) | [A: skip what is not read](./handoffs/064-json-reader-skips-what-it-does-not-read/a-skip-what-is-not-read-handoff-v1.md) |
 
 ## Done (implemented)
 

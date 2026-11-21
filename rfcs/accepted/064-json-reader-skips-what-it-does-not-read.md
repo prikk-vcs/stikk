@@ -1,6 +1,6 @@
 # RFC 064 — stikk's JSON reader skips any valid value it does not read
 
-**Status.** **Proposed 2026-11-21** by the architect, as an addition to 0.21.0
+**Status.** **Accepted by the project owner 2026-11-21**; [Handoff A](../handoffs/064-json-reader-skips-what-it-does-not-read/a-skip-what-is-not-read-handoff-v1.md). **Proposed 2026-11-21** by the architect, as an addition to 0.21.0
 (`.git-exclude/release/0-21-0-scope.md`, "Addition, 2026-11-19"). **Promised to prikk** in our letter 024 §2, as sent
 by the project owner. prikk acknowledged it in their 033, and holds to the old constraints until their owner rules.
 **No open question.**

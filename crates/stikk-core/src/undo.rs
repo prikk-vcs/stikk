@@ -123,12 +123,15 @@ pub const UNDO_CONSEQUENCE: &str =
     "After this, seal as usual to make the undo part of the history.";
 
 /// **What the result says after a recorded undo** (decision 5): the undo is a commit, and a commit
-/// is not history until it is sealed. Names the key, as every other next step in stikk does.
-pub const SEAL_THE_UNDO: &str = "Seal as usual (`S`) to make the undo part of the history.";
+/// is not history until it is sealed.
+///
+/// **It names no key** (RFC 061 decision 5): the key line names them, and a sentence that carried
+/// `S` outlived the key — `s` seals now.
+pub const SEAL_THE_UNDO: &str = "Seal as usual to make the undo part of the history.";
 
 /// **What the result says after a stop** (decision 6): the worktree holds the changes and nothing
 /// was recorded, so the next thing to look at is Changes.
-pub const NOTHING_WAS_COMMITTED: &str = "Nothing was committed. Changes (`w`) shows them.";
+pub const NOTHING_WAS_COMMITTED: &str = "Nothing was committed. The Changes view shows them.";
 
 /// The message an undo is prefilled with (decision 5): `Undo: ` and the block's **first** patch
 /// message, which is prikk's text and is rendered inert like any other.

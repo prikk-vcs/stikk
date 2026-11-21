@@ -51,11 +51,14 @@ pub use stikk_prikk::CURRENT_BRANCH_FROM_MINOR as REF_WRITES_FROM_MINOR;
 /// create` refuses because `.prikk/current-branch` names a closed branch. That is a repository a
 /// reader has to dig out of, from a key press that looked ordinary.
 ///
-/// **The way out is stikk's own, since RFC 045** (decision 9). It named `prikk branch switch`
-/// while stikk could not switch; it names the key now, because sending a reader to the command
-/// line for something two keys away would be stikk under-selling what it does.
+/// **The way out is stikk's own, since RFC 045** (decision 9). It named `prikk branch switch` while
+/// stikk could not switch; it names stikk's own action now, because sending a reader to the command
+/// line for something stikk does would be under-selling it.
+///
+/// **It names the action, not a key** (RFC 061 decision 2): switching lost its letter and is found
+/// by name, in the picker's own list for the row.
 pub const CLOSING_THE_CURRENT_BRANCH: &str = "this is the branch you are on; closing it would leave the repository on a closed branch. \
-     Switch to another branch first (`s` in the ref picker).";
+     Switch to another branch first, from its own actions in the ref picker.";
 
 /// **stikk's own reason, below the band** (decision 3; `C-T4d`), given the minor prikk reported.
 ///

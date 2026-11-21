@@ -464,7 +464,10 @@ pub const REMOVE_YOUR_OWN: &str =
     "This is your own key. After removing it, you cannot seal here until it is adopted again.";
 
 /// Added after a removal: stikk points at Verify rather than running it (decision 7).
-pub const REMOVED_SEE_VERIFY: &str = "Press `V` to see what Verify says now.";
+///
+/// **It names the view, not a key** (RFC 061 decision 5): it said `V`, which is `v` now, and the
+/// key line is the one place a key is named.
+pub const REMOVED_SEE_VERIFY: &str = "Open Verify to see what it says now.";
 
 /// **The security event** (decision 4), shown where an id is adopted under a *different* key.
 ///

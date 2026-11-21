@@ -115,7 +115,9 @@ fn at_the_band_the_foot_offers_the_comparison_instead() {
         })
         .unwrap();
     let text = buffer_text(terminal.backend().buffer());
-    assert!(text.contains("d: compare the worktree"), "{text}");
+    // **The key is on the key line** (RFC 061 decision 5), so the row is a sentence about what
+    // Compare shows rather than a second place naming `d`.
+    assert!(text.contains("Compare shows the worktree"), "{text}");
     assert!(!text.contains("awaits prikk support"), "{text}");
     assert!(!text.contains("stikk compares from prikk"), "{text}");
 }

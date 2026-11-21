@@ -42,17 +42,17 @@ impl HistoryView {
         match self.queued_target.as_deref() {
             _ if n == 0 => None,
             Some(target) if target == self.reff => Some(vec![Piece::said(format!(
-                "{n} patch(es) in the active WAL \u{2014} not yet sealed \u{b7} Q: Queue"
+                "{n} patch(es) in the active WAL \u{2014} not yet sealed \u{b7} see the Queue"
             ))]),
             // **The target is a name the repository chose** (RFC 036 review v1 §2.3), so it comes
             // back as its own piece and the frontend renders it under the identifier rule.
             Some(target) => Some(vec![
                 Piece::said(format!("the active WAL holds {n} patch(es) for ")),
                 Piece::name(target.to_string()),
-                Piece::said(" \u{2014} not this ref's history \u{b7} Q: Queue"),
+                Piece::said(" \u{2014} not this ref's history \u{b7} see the Queue"),
             ]),
             None => Some(vec![Piece::said(format!(
-                "the active WAL holds {n} patch(es); prikk reports no target ref \u{b7} Q: Queue"
+                "the active WAL holds {n} patch(es); prikk reports no target ref \u{b7} see the Queue"
             ))]),
         }
     }

@@ -5131,7 +5131,7 @@ fn the_stopped_card_names_the_paths_then_prikks_words() {
     assert!(row("new.txt") < row("Nothing was committed"));
     assert!(row("Nothing was committed") < row("refusing:"));
     assert!(
-        flattened(&text).contains(&flattened("Changes (`w`) shows them.")),
+        flattened(&text).contains(&flattened("The Changes view shows them.")),
         "{text}"
     );
     assert!(text.contains("Esc to dismiss"), "{text}");

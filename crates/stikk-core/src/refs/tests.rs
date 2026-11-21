@@ -162,9 +162,12 @@ fn closing_a_branch_restates_prikks_promise_that_nothing_is_reclaimed() {
 fn closing_the_current_branch_is_blocked_with_stikks_own_reason() {
     let reason = blocked(close_branch_preview(&ready(), repo(), "heads/main").expect("reads"));
     assert!(reason.contains("this is the branch you are on"), "{reason}");
-    // **It names stikk's own way out** (RFC 045 decision 9), not prikk's command: `s` in the ref
-    // picker does the switch now.
-    assert!(reason.contains("`s` in the ref picker"), "{reason}");
+    // **It names stikk's own way out** (RFC 045 decision 9), not prikk's command — and names the
+    // action rather than a key (RFC 061 decision 2: switching lost its letter).
+    assert!(
+        reason.contains("Switch to another branch first, from its own actions in the ref picker"),
+        "{reason}"
+    );
     assert!(!reason.contains("prikk branch switch"), "{reason}");
     // Never prikk's words: prikk does not refuse this at all with an empty WAL.
     assert!(!reason.contains("non-empty active WAL"), "{reason}");

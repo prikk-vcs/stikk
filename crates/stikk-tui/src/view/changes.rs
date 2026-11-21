@@ -277,7 +277,7 @@ pub fn render(
     // **Wrapped to the view's own width** (RFC 060 decision 2): at 60 and at 72 columns these two
     // rows were cut at the border, which the structural check now catches.
     for row in crate::text::wrap_indented(
-        "commits are whole-worktree — there is no staging (u: toggle untracked)",
+        "commits are whole-worktree — there is no staging, and untracked files can be hidden",
         text_width,
         "  ",
     ) {
@@ -288,7 +288,8 @@ pub fn render(
     // worktree against what `commit` would author against. Below the band the sentence is stikk's
     // own, about stikk's own limit (`C-T4d`), and never prikk's.
     let compare_hint = if bands.compares {
-        "d: compare the worktree with what `commit` would author against, line by line".to_string()
+        "Compare shows the worktree against what `commit` would author against, line by line"
+            .to_string()
     } else {
         format!(
             "stikk compares from prikk 0.{} on",

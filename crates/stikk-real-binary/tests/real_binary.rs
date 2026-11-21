@@ -2770,7 +2770,7 @@ fn rfc028_history_for_another_ref_does_not_claim_the_queue() {
                 .map(stikk_core::flatten)
                 .as_deref(),
             Some(
-                "the active WAL holds 1 patch(es) for heads/main — not this ref's history · Q: Queue"
+                "the active WAL holds 1 patch(es) for heads/main — not this ref's history · see the Queue"
             ),
             "0.{}: another ref's tier",
             bin.minor
@@ -2780,7 +2780,7 @@ fn rfc028_history_for_another_ref_does_not_claim_the_queue() {
                 .as_deref()
                 .map(stikk_core::flatten)
                 .as_deref(),
-            Some("1 patch(es) in the active WAL — not yet sealed · Q: Queue"),
+            Some("1 patch(es) in the active WAL — not yet sealed · see the Queue"),
             "0.{}: this ref's tier",
             bin.minor
         );

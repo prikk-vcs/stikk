@@ -12,7 +12,7 @@
 <rect x="636" y="25" width="1" height="9" fill="#d8dee4"/>
 <rect x="4" y="34" width="1" height="17" fill="#d8dee4"/>
 <text x="8" y="47" textLength="88" lengthAdjust="spacing" fill="#c1c5ca">  queued   </text>
-<text x="96" y="47" textLength="456" lengthAdjust="spacing" fill="#f7ba64">2 patch(es) in the active WAL — not yet sealed · Q: Queue</text>
+<text x="96" y="47" textLength="496" lengthAdjust="spacing" fill="#f7ba64">2 patch(es) in the active WAL — not yet sealed · see the Queue</text>
 <rect x="636" y="34" width="1" height="17" fill="#d8dee4"/>
 <rect x="4" y="51" width="1" height="17" fill="#d8dee4"/>
 <rect x="24" y="59" width="72" height="1" fill="#c1c5ca"/>

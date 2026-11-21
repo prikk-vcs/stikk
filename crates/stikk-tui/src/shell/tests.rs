@@ -423,8 +423,9 @@ fn capture_rfc044_closing_the_current_branch_at_80_columns() {
     let text = draw(&app, 80, 24);
     println!("--- closing the current branch, refused (80 columns) ---\n{text}");
     assert!(text.contains("the branch you are on"), "{text}");
-    // RFC 045 decision 9: the way out is stikk's own key now, not prikk's command.
-    assert!(text.contains("`s` in the ref picker"), "{text}");
+    // RFC 045 decision 9: the way out is stikk's own, not prikk's command — and named as an action
+    // rather than a key (RFC 061 decision 2).
+    assert!(text.contains("from its own actions"), "{text}");
     assert!(!text.contains("prikk branch switch"), "{text}");
     assert!(
         !text.contains("closed branch heads/main"),
@@ -461,7 +462,7 @@ fn a_long_banner_wraps_and_a_short_one_does_not_move() {
         stikk_core::OperationContext::Orient,
     );
     let long = draw(&app, 80, 24);
-    assert!(long.contains("`s` in the ref picker"), "{long}");
+    assert!(long.contains("from its own actions"), "{long}");
     assert!(
         long.lines().any(|l| l.trim() == "(Esc dismisses)"),
         "the hint takes its own row once the text has taken more than one:\n{long}"

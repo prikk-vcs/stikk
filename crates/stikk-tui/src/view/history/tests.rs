@@ -172,7 +172,7 @@ fn the_queued_tier_wraps_and_a_long_ref_name_survives_whole() {
 
     // Nothing is cut at the border: the sentence's own last words are present.
     assert!(
-        text.contains("Q: Queue"),
+        text.contains("see the Queue"),
         "the tier's tail is on screen: {text}"
     );
 
@@ -227,7 +227,7 @@ fn capture_rfc037_queued_tier_at_80_columns() {
     };
     let text = draw(&view, 0);
     println!("--- History's queued tier, wrapped (80 columns) ---\n{text}");
-    assert!(text.contains("Q: Queue"));
+    assert!(text.contains("see the Queue"));
 }
 
 /// A row carrying every marker at once: the widest a block row gets.

@@ -5768,7 +5768,8 @@ fn a_removal_is_confirmed_by_typing_the_id_and_points_at_verify() {
         text.contains("revoked maintainer key"),
         "prikk's line: {text}"
     );
-    assert!(text.contains("Press `V`"), "{text}");
+    // The view, not a key (RFC 061 decision 5).
+    assert!(text.contains("Open Verify"), "{text}");
     // **The list beneath is the one that was re-read**, so the screen is not stale.
     match app.screens.last() {
         Some(Screen::Trust { view, cursor, .. }) => {

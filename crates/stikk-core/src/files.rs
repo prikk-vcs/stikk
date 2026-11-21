@@ -71,7 +71,7 @@ pub const LOSES_THE_EXECUTE_BIT: &str = "prikk saves the file's bytes, not its e
 /// itself* — neither its integrity nor whether its sealer is trusted here.
 pub const PROVISIONAL_REPLAY: &str = "No trusted checkpoint is in reach, so prikk replays every file from the start of history. \
      The copy will match that history, but nothing has checked the history itself, and it may be \
-     signed by a key this repository does not trust. Verify (`V`) checks it.";
+     signed by a key this repository does not trust. Verify checks it.";
 
 /// **stikk's own reason, below the band**, for both keys.
 #[must_use]
@@ -178,10 +178,13 @@ pub fn no_files_to_save(reason: &str) -> String {
     format!("There are no files to save at this block: {reason}")
 }
 
-/// **What `F` says when the cursor is on a patch** (decision 3): `F` saves a *file*, and the
-/// files are listed below the patches.
-pub const F_SAVES_A_FILE: &str = "`F` saves one of this block's files — move down to the files below the patches and press it \
-     there. `A` saves all of them into a new folder.";
+/// **What saving says when the cursor is on a patch** (decision 3): what it saves is a *file*, and
+/// the files are listed below the patches.
+///
+/// **It names no letter** (RFC 061 decision 2): `F` and `A` are gone, and the two actions are found
+/// by name in Enter's list for the row.
+pub const F_SAVES_A_FILE: &str = "Saving one file saves one of this block's files — move down to the files below the patches and \
+     press Enter there. Save every file at this block saves all of them into a new folder.";
 
 /// What a preview decided, before it becomes a token or a sentence.
 enum ReadView {

@@ -1,6 +1,6 @@
 # Handoff A — RFC 060: bigger text (v1)
 
-**Companion to:** [RFC 060](../../accepted/060-bigger-text.md), **accepted 2026-11-21**. **Read the RFC first**: F1–F5,
+**Companion to:** [RFC 060](../../done/060-bigger-text.md), **accepted 2026-11-21**. **Read the RFC first**: F1–F5,
 decisions 1–10, and its *Review* section. The review is the owner's philosophy applied, and it is why decision 3
 reads as it does. **Covers:** all of it. **0.21.0's increment 3.** **Not a release.**
 

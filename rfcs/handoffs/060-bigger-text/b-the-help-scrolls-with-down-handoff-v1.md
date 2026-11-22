@@ -1,6 +1,6 @@
 # Handoff B — RFC 060: the help scrolls with ↓ (v1)
 
-**Companion to:** [RFC 060](../../accepted/060-bigger-text.md), decision 3. **A defect the architect's real-terminal
+**Companion to:** [RFC 060](../../done/060-bigger-text.md), decision 3. **A defect the architect's real-terminal
 check found** after Handoff A, and the test gap that hid it. **0.21.0.** **Not a release.** Small.
 
 > **What is wrong.** In a real Alacritty at 2.3× text (102 × 24, Wayland, fullscreened locally with the owner's

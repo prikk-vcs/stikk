@@ -1,6 +1,6 @@
 # Handoff C — RFC 060: Block detail scrolls, and no view stops without saying so (v1)
 
-**Companion to:** [RFC 060](../../accepted/060-bigger-text.md), decisions 2 and 3. **A defect the dev team found** while
+**Companion to:** [RFC 060](../../done/060-bigger-text.md), decisions 2 and 3. **A defect the dev team found** while
 justifying Handoff B's sweep (its review request §6). **0.21.0.** **Not a release.** Small. **Starts after Handoff B
 is pushed.**
 

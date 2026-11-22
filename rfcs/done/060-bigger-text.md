@@ -1,6 +1,6 @@
 # RFC 060 — Bigger text
 
-**Status.** **Accepted by the project owner 2026-11-21**, after a review against the owner's philosophy (§ *Review*); [Handoff A](../handoffs/060-bigger-text/a-bigger-text-handoff-v1.md), delivered on `main` (`ca15867`..`472e6e0`); [Handoff B](../handoffs/060-bigger-text/b-the-help-scrolls-with-down-handoff-v1.md), a defect the real-terminal check found: **↓ does not scroll the help**, and Enter does (older than RFC 060). Delivered (`74fa0ef`). [Handoff C](../handoffs/060-bigger-text/c-block-detail-scrolls-handoff-v1.md): Block detail cannot scroll at 60 × 15, and the height check that would have caught it. **Proposed 2026-11-21** by the architect, as 0.21.0's increment 3 (`.git-exclude/release/0-21-0-scope.md`,
+**Status.** **Done 2026-11-22**: three handoffs delivered on `main` (A `ca15867`..`472e6e0`; B `74fa0ef`; C `b648b40`), green on the full platform matrix; ships in **0.21.0**. **Accepted by the project owner 2026-11-21**, after a review against the owner's philosophy (§ *Review*); [Handoff A](../handoffs/060-bigger-text/a-bigger-text-handoff-v1.md), delivered on `main` (`ca15867`..`472e6e0`); [Handoff B](../handoffs/060-bigger-text/b-the-help-scrolls-with-down-handoff-v1.md), a defect the real-terminal check found: **↓ does not scroll the help**, and Enter does (older than RFC 060). Delivered (`74fa0ef`). [Handoff C](../handoffs/060-bigger-text/c-block-detail-scrolls-handoff-v1.md): Block detail cannot scroll at 60 × 15, and the height check that would have caught it. **Proposed 2026-11-21** by the architect, as 0.21.0's increment 3 (`.git-exclude/release/0-21-0-scope.md`,
 authorized 2026-11-04, last amended 2026-11-21). **No open question.**
 **Measured** (`.git-exclude/reports/060-bigger-text/`):
 - `grid060.sh` → `grid060.txt`: Alacritty 0.17.0's cell size at six font sizes, read from the window's own size
@@ -252,3 +252,39 @@ these faults, all now corrected above:
     already say it in their titles (RFC 024 §4: follow it). Decision 3 now keeps that idiom for *where*, and adds one
     foot line for *which key*, on every scrolling surface. Found while writing the handoff, from `overlay.rs`'s
     `Panel` doc, which also showed F3's cause: the caller wraps, and the panel narrows afterwards.
+
+## Delivered
+
+**Three handoffs, green on `main` on the full platform matrix**: 100 real-binary cases on Linux, macOS and Windows at
+0.28.0 + 0.58.0 each time.
+- **Handoff A** (`ca15867`..`472e6e0`):
+  - panels wrap their own text to the width they are drawn at;
+  - cards scroll with `↑` `↓` and confirm only once read (a gate in core);
+  - ids split evenly;
+  - the status bar shortens the focused ref last, with `…`;
+  - the 60 × 15 minimum, and the too-small screen;
+  - no italic, and bold from `heading()` and `selected()` only;
+  - the guide's *"Making the text bigger"*, cited per terminal.
+
+  In review, **C1:** one title builder, and a position that is never cut.
+- **Handoff B** (`74fa0ef`): **↓ did not scroll the help, and Enter did**, a defect older than this RFC, found by the
+  architect's real-terminal check.
+  - The Glossary moved onto the shared `Scroll`.
+  - `App::handle_key` made the key path testable, and the new tests press keys.
+  - `key_literals` guards against a sentence naming a withdrawn key.
+- **Handoff C** (`b648b40`): **Block detail could not scroll at 60 × 15**, found by the dev team.
+  - It scrolls, with the window following its cursor.
+  - `record_cut` holds every surface to its height: rows may be hidden only with a position in the title.
+  - Its first run found Changes and History, which are fixed too.
+
+**Real terminal, Linux** (the architect; Alacritty 0.17.0, Wayland, isolated `HOME` and XDG directories; scripts and
+output in `.git-exclude/reports/060-bigger-text/linux/`):
+- **at 2.3× text** in niri's half-width tile, **50 × 23:** the too-small screen, as owed below 60 × 15
+  (`real-terminal-060-3bf5dfc.txt`);
+- **at 2.3× text, fullscreened locally with the owner's permission, 102 × 24**, on `af9da85`: the help opened as
+  designed, *"lines 1–19 of 204"* and *"↓ more below"*, but ↓ did not move it. That is Handoff B's defect
+  (`real-terminal-060-af9da85.txt`, `recording-060-af9da85.log`, `screen060.py`);
+- **the same, on `b648b40`:** opened at *"lines 1–19 of 204"*, and **after 60 presses of ↓, "lines 61–79 of 204"**,
+  still *"↓ more below"* (`real-terminal-060-b648b40.txt`, `screen060-b648b40-*.txt`).
+
+**Not measured:** Windows and macOS terminals at large text. The guide's entries cite each terminal's documentation.

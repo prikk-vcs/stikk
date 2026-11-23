@@ -1,6 +1,6 @@
 # RFC 066 — Every release build is tried before a tag
 
-**Status.** **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/066-every-release-build-is-tried-first/a-release-trial-handoff-v1.md). **Proposed 2026-11-24** by the architect, as 0.22.0's increment 1 (`.git-exclude/release/0-22-0-scope.md`,
+**Status.** **Done (implemented) 2026-11-24** at `fc2fd95`, shipping in 0.22.0; see *Delivered* below. **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/066-every-release-build-is-tried-first/a-release-trial-handoff-v1.md). **Proposed 2026-11-24** by the architect, as 0.22.0's increment 1 (`.git-exclude/release/0-22-0-scope.md`,
 authorized by the project owner 2026-11-24). **No open question.**
 **Measured** from `release.yml` at `e214d53` (the 0.21.1 tag) and from runs `45103941837` (0.21.0, cancelled) and
 `45177444241` (0.21.1, green).
@@ -106,3 +106,44 @@ next prep handoff.
 
 `### Changed` (for contributors): every release build is tried before a tag, and weekly. This is the lesson of 0.21.0,
 whose release run could not build for macOS.
+
+## Delivered
+
+**On `main` at `fc2fd95`, 2026-11-24**, in four commits: `3ec1ac3`, `f8ff32d`, `e4ead73` and `fc2fd95`. Handoff A was
+reviewed by the architect and approved with two text fixes.
+
+**What was delivered:**
+- **The build is defined once, in `build-release.yml`.** `release.yml`'s `binaries` and `installers` jobs moved there
+  verbatim. Its seven edits: `needs` and `permissions` moved to the caller; the version and the tag come from
+  `inputs.version`; three publish steps are gated on `inputs.publish`; two artifact steps run when publishing is off.
+  `release.yml` calls the file through one `build` job that holds the three write permissions, and `aur` now needs
+  `build`.
+- **`release-trial.yml`** runs on a dispatch, every Monday at 04:17 UTC, and on a push that touches the release
+  workflows or `scripts/**`. It has `contents: read` only, and no secrets.
+- **The text:**
+  - `CHANGELOG.md`'s `### Changed` line;
+  - `releasing.md`: every prep runs the trial, a red leg stops the cut, and from 0.22.0 the attestations are signed by
+    `build-release.yml`;
+  - `installers.yml`'s seven references now point at `build-release.yml`.
+
+**Evidence, checked by the architect against GitHub:**
+- **Release trial `45285201965`**, started by the push on `fc2fd95`, is green in all nine jobs: the version, seven
+  targets on their real runners (`ubuntu-24.04-arm` included, for the first time outside a tag) and the installers.
+  It left eight artifacts.
+- **Nothing was published:**
+  - 0.21.1 still holds 22 assets, the newest updated 12:50:25Z, before the run, although the trial built archives
+    with the same names;
+  - no new Release and no new tag;
+  - the trial's archive has no attestation (the dev team's `gh attestation verify` returned 404).
+- **The dev team's comparison with 0.21.1's published archives:**
+  - the names and the files inside, in order, match;
+  - `CHANGELOG.md` differs only by this increment's own lines;
+  - the `.sha256` lines match in every byte of shape: length, two-space separator, LF, lowercase.
+- CI, Docs and Installers were green on `fc2fd95`.
+
+**Not yet seen:** a tag through the new `build` job. **0.22.0's release run is its proof**, and the architect checks
+it after the tag, together with `gh attestation verify --repo` on archives signed by `build-release.yml`.
+
+**Carried** (`project_stikk_carried_followups`):
+- the trial repeats `guard`'s version command;
+- `installers.yml` keeps its own copies of the fill and the packaging.

@@ -30,7 +30,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 066 | [Every release build is tried before a tag](./accepted/066-every-release-build-is-tried-first.md) | the release build defined once, and a trial run of it with publishing off, at every prep and weekly | [A: the release trial](./handoffs/066-every-release-build-is-tried-first/a-release-trial-handoff-v1.md) |
+_None: RFC 066, 0.22.0's first increment, delivered and closed 2026-11-24._
 
 ## Done (implemented)
 
@@ -38,6 +38,7 @@ _Design settled; implementer may start; work has not yet shipped._
 |----|-------|------------|---------------------------|---------|
 | 059 | [Readable colours](./done/059-readable-colours.md) | shipped in 0.21.0 | conhost not checked (falls back safely); macOS documented only | [A: readable colours](./handoffs/059-readable-colours/a-readable-colours-handoff-v1.md) |
 | 060 | [Bigger text](./done/060-bigger-text.md) | shipped in 0.21.0 | Windows and macOS at large text, documented only | [A: bigger text](./handoffs/060-bigger-text/a-bigger-text-handoff-v1.md) · [B: the help scrolls with ↓](./handoffs/060-bigger-text/b-the-help-scrolls-with-down-handoff-v1.md) · [C: Block detail scrolls](./handoffs/060-bigger-text/c-block-detail-scrolls-handoff-v1.md) |
+| 066 | [Every release build is tried before a tag](./done/066-every-release-build-is-tried-first.md) | ships in 0.22.0 | the trial repeats `guard`'s version command; `installers.yml` keeps its own copies of the fill and the packaging | [A: the release trial](./handoffs/066-every-release-build-is-tried-first/a-release-trial-handoff-v1.md) |
 | 061 | [Finding your place](./done/061-finding-your-place.md) | shipped in 0.21.0 | `/` find, `y` copy, `Tab` pane cycling, rebindable keys: recorded as not built | [A: finding your place](./handoffs/061-finding-your-place/a-finding-your-place-handoff-v1.md) |
 | 064 | [stikk's JSON reader skips any valid value it does not read](./done/064-json-reader-skips-what-it-does-not-read.md) | shipped in 0.21.0 | none | [A: skip what is not read](./handoffs/064-json-reader-skips-what-it-does-not-read/a-skip-what-is-not-read-handoff-v1.md) |
 | 063 | [The prikk 0.58 re-baseline](./done/063-prikk-0-58-rebaseline.md) | shipped in 0.21.0 | the 0.57/0.58 features (`branch create --from <block id>`, `block_seals`, `parent_block_ids`, `uncommit`, `bundle preview --adopt`, `behind_ref`): 0.22.0 candidates | [A: what 0.56 changed](./handoffs/063-prikk-0-58-rebaseline/a-what-0-56-changed-handoff-v1.md) · [B: what prikk now checks](./handoffs/063-prikk-0-58-rebaseline/b-what-prikk-now-checks-handoff-v1.md) |

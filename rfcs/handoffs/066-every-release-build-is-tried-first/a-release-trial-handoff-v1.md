@@ -1,6 +1,6 @@
 # Handoff A — RFC 066: every release build is tried before a tag (v1)
 
-**Companion to:** [RFC 066](../../accepted/066-every-release-build-is-tried-first.md), **accepted 2026-11-24**. **Read
+**Companion to:** [RFC 066](../../done/066-every-release-build-is-tried-first.md), **accepted 2026-11-24**. **Read
 the RFC first**: F1–F3 and decisions 1–5. **Covers:** all of it. **0.22.0's increment 1.** **Not a release.**
 
 > **What this increment is.** 0.21.0's release run died on a retired macOS image that nothing but a tag ever used.

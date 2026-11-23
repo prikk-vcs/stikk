@@ -1,6 +1,6 @@
 # Handoff A — RFC 059: readable colours (v1)
 
-**Companion to:** [RFC 059](../../accepted/059-readable-colours.md), **accepted 2026-11-21**. **Read the RFC first**:
+**Companion to:** [RFC 059](../../done/059-readable-colours.md), **accepted 2026-11-21**. **Read the RFC first**:
 F1–F4 and decisions 1–12. **Covers:** all of it. **0.21.0's increment 2**, the first readability increment.
 **Not a release.**
 

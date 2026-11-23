@@ -1,6 +1,6 @@
 # RFC 059 — Readable colours
 
-**Status.** **Accepted by the project owner 2026-11-21**; [Handoff A](../handoffs/059-readable-colours/a-readable-colours-handoff-v1.md). **Proposed 2026-11-21** by the architect, as 0.21.0's increment 2 (`.git-exclude/release/0-21-0-scope.md`,
+**Status.** **Done 2026-11-23**: Handoff A delivered on `main` (`e298aa1`..`3e284a8`), green on the full platform matrix; checked on Linux by the architect and on Windows by the owner; ships in **0.21.0**. **Accepted by the project owner 2026-11-21**; [Handoff A](../handoffs/059-readable-colours/a-readable-colours-handoff-v1.md). **Proposed 2026-11-21** by the architect, as 0.21.0's increment 2 (`.git-exclude/release/0-21-0-scope.md`,
 authorized 2026-11-04, amended 2026-11-18). **Written before the Windows probe runs, at the owner's direction
 (2026-11-21): "Windows results confirm later."** Every decision below holds whichever way Windows answers (§
 "What the Windows runs confirm"). **No open question.**
@@ -226,3 +226,39 @@ Then the architect's Linux real-terminal check, and the owner's Windows Terminal
   light or dark. Body text is the terminal's own colour, and every colour stikk adds reaches 7 : 1.
 - `### Added`: a high-contrast theme; `plain`; `NO_COLOR` is honoured; the Orientation view says which colours are in
   use, and why.
+
+## Delivered
+
+**One handoff, six commits, `e298aa1`..`3e284a8`, green on `main`:** CI, Docs, supply chain (its first run with
+`terminal-colorsaurus`: no new licence line, no new duplicate), and the real-binary suite on the full platform matrix,
+100 cases on Linux, macOS and Windows.
+- **The palette:** decision 3's table, held by a test that computes every ratio (72 assertions), and a second test
+  that pins it to `palette059.txt`.
+- **The resolver:** pure, with `detect()` the one impure call, made before the alternate screen.
+- **Themes:** `high-contrast` paints its pair last, over every cell nobody coloured. `plain`.
+- **Orientation's `colours` row.**
+- **The headless matrix:** every screen in four themes, at both depths and four sizes. With RFC 060 and 061 on top,
+  1,469,298 contrast checks, none below 7 : 1.
+
+**In review, C1:** the query test was renamed and completed (`system` and `high-contrast` ask, nothing else does).
+
+**Real terminal, Linux** (the architect; Alacritty 0.17.0, Wayland, isolated `HOME` and XDG directories;
+`.git-exclude/reports/059-readable-colours/linux/real-terminal-059-7afcdb4.txt`):
+- on Alacritty's default background, *"dark background, detected · 24-bit colour"*;
+- on white, *"light background, detected · 24-bit colour"*;
+- no role fell back on either background.
+
+**Real terminal, Windows** (the owner, 2026-11-23; Windows 10.0.26300, Windows Terminal 1.24.12741.0;
+`.git-exclude/reports/059-readable-colours/windows/prikk-0.58-color-scheme/`):
+- **the probe, One Half Light:** answered in 22 ms, background `#fafafa`, *light*. The terminal's own pair is
+  10.9 : 1;
+- **the probe, Campbell:** answered in 2 ms, `#0c0c0c`, *dark*, at 12.2 : 1;
+- **both runs report `COLORTERM` unset and `WT_SESSION` set**, which is decision 4's rule for 24-bit;
+- **stikk itself** (a test build of `main` at `7592866`), in Windows Terminal with One Half Light: Orientation's row
+  reads *"light background, detected · 24-bit colour"*, and the screen is dark text on light, with the key line
+  (`prikk-58.png`).
+
+**Not checked:**
+- **conhost** (the older Windows console). Both probe runs were in Windows Terminal. No decision depends on it: if it
+  does not answer, *system* falls back to `plain`, which is safe on any background (decision 5).
+- **macOS Terminal:** documented only, as the scope rules.

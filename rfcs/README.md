@@ -28,14 +28,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-| ID | Title | Addresses | Handoff |
-|----|-------|-----------|---------|
-| 059 | [Readable colours](./accepted/059-readable-colours.md) | body text in the terminal's own colour, light or dark detected, 7 : 1 for every colour stikk chooses, a high-contrast theme, `plain`, and `NO_COLOR` | [A: readable colours](./handoffs/059-readable-colours/a-readable-colours-handoff-v1.md) |
+_None: RFC 059, the last of 0.21.0, delivered and closed 2026-11-23._
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 059 | [Readable colours](./done/059-readable-colours.md) | shipped in 0.21.0 | conhost not checked (falls back safely); macOS documented only | [A: readable colours](./handoffs/059-readable-colours/a-readable-colours-handoff-v1.md) |
 | 060 | [Bigger text](./done/060-bigger-text.md) | shipped in 0.21.0 | Windows and macOS at large text, documented only | [A: bigger text](./handoffs/060-bigger-text/a-bigger-text-handoff-v1.md) · [B: the help scrolls with ↓](./handoffs/060-bigger-text/b-the-help-scrolls-with-down-handoff-v1.md) · [C: Block detail scrolls](./handoffs/060-bigger-text/c-block-detail-scrolls-handoff-v1.md) |
 | 061 | [Finding your place](./done/061-finding-your-place.md) | shipped in 0.21.0 | `/` find, `y` copy, `Tab` pane cycling, rebindable keys: recorded as not built | [A: finding your place](./handoffs/061-finding-your-place/a-finding-your-place-handoff-v1.md) |
 | 064 | [stikk's JSON reader skips any valid value it does not read](./done/064-json-reader-skips-what-it-does-not-read.md) | shipped in 0.21.0 | none | [A: skip what is not read](./handoffs/064-json-reader-skips-what-it-does-not-read/a-skip-what-is-not-read-handoff-v1.md) |

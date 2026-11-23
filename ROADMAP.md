@@ -550,9 +550,9 @@ way in, for everyone, and especially for older users and anyone with weaker eyes
    - the bundle card shows prikk's own check of each seal, and withholds an import prikk would refuse;
    - a seal that fails against a trusted key, and a different key under a removed id, get the security warning;
    - an interrupted seal is shown as one, and Seal finishes it.
-2. **Readable colours — landed on `main`** ([RFC 059](rfcs/accepted/059-readable-colours.md), `3e284a8`): body text
+2. **Readable colours — landed on `main`** ([RFC 059](rfcs/done/059-readable-colours.md), `3e284a8`): body text
    in the terminal's own colour; light or dark detected; 7 : 1 for every colour stikk chooses; high-contrast and
-   plain; `NO_COLOR`. The owner's Windows checks close it.
+   plain; `NO_COLOR`.
 3. **Bigger text — landed on `main`** ([RFC 060](rfcs/done/060-bigger-text.md), `b648b40`):
    - stikk works down to 60 × 15, so text can be about twice as big;
    - overlays wrap and scroll in the space they have, and offer a confirmation only once it has been read;

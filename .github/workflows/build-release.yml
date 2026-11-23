@@ -1,0 +1,266 @@
+name: Build the release artifacts
+
+# **The release build, defined once** (RFC 066 decision 1). Until 0.21.1 these two jobs lived in
+# `release.yml`, where only a tag ever ran them: 0.21.0's release died on a macOS image GitHub had
+# retired, both macOS jobs ending before their first step, and the installers and the AUR push
+# never ran (run `45103941837`). The build lives here now, and **both callers call this one file**:
+# `release.yml` to publish a tag, and `release-trial.yml` to try the same build with publishing
+# off, at every release prep, weekly, and whenever these workflows or the installer templates
+# change. A target, a packaging step and a runner label therefore exist in exactly one place, so a
+# trial can never pass against a copy of the build that has drifted from it (RFC 066 F3).
+#
+# **`publish` is the only difference, and nothing else is:**
+#   true  -- attest the provenance and upload every asset to the GitHub Release of `version`,
+#            which is what the release has always done;
+#   false -- build, package, fill and checksum identically, attest nothing, upload nothing to any
+#            release, and keep the results as workflow artifacts for seven days.
+#
+# **Permissions come from the calling job** (RFC 066 decision 5), and this file asks for none:
+# a called workflow may not request more than its caller granted, so asking here would break the
+# trial rather than protect it. `release.yml`'s calling job grants `contents: write`,
+# `id-token: write` and `attestations: write`; the trial's grants `contents: read` alone, which is
+# why a trial run cannot publish even if a gate below were wrong.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'The version the archives and the filled installers carry (e.g. 0.22.0)'
+        required: true
+        type: string
+      publish:
+        description: 'Attest, and upload to the GitHub Release of that version. False keeps everything as artifacts.'
+        required: true
+        type: boolean
+
+# `release.yml` sets this at workflow level, and a called workflow inherits none of its caller's
+# `env`, so it is restated here to keep the moved steps' output identical.
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  binaries:
+    name: Binary (${{ matrix.target }})
+    # No `needs:` and no `permissions:` here. **The caller holds both** (RFC 066 decision 5): the
+    # calling job declares what this build may do -- `contents: write`, `id-token: write` and
+    # `attestations: write` from `release.yml`, `contents: read` and nothing else from
+    # `release-trial.yml` -- and a called workflow can never ask for more than its caller granted,
+    # so a job-level request here would make the trial fail validation instead of running. The
+    # release's ordering (after `guard` and `release`) is on the calling job too.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          # **The static build 64-bit ARM Linux actually needs** (RFC 048 F4, corrected). The gnu
+          # archive above carries the glibc of the runner it was built on, and on aarch64 its
+          # `GLIBC_2.39` version requirement is *not* flagged optional -- so it does not start on
+          # Debian 12, Raspberry Pi OS bookworm or Ubuntu 22.04, measured on real hardware. The
+          # gnu archive stays published; the installer takes this one, as it already does on
+          # x86_64 for the same reason.
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          # Both macOS slices build on an Apple-Silicon runner: aarch64 natively, and x86_64 by
+          # cross-compiling (the macOS toolchain ships both arches). The Intel `macos-13` runners are
+          # retired, so a native x86_64 job would queue forever.
+          #
+          # **The label is `macos-latest`, not a pinned image.** These two entries said `macos-14`,
+          # and GitHub retired that image **mid-release**: 0.21.0's tag run (`45103941837`) had both
+          # macOS jobs end one second in, with no steps run and the annotation *"The configuration
+          # 'macos-14-arm64-us-default' is not supported"*, which cancelled the run and skipped the
+          # installer and AUR jobs that wait on the binaries. A runner label here is only ever
+          # exercised by a tag, so a pinned image can retire unnoticed; `macos-latest` is the label
+          # the real-binary suite runs on green every cycle, so the release builds on what was
+          # tested (0.21.1's prep handoff).
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ inputs.version }}
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Install musl tools
+        # **Both musl targets**, matched by suffix rather than listed: a third one added to the
+        # matrix above would otherwise build against the wrong linker and nothing here would say
+        # so. (RFC 048 Handoff B.)
+        if: endsWith(matrix.target, '-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build the launcher
+        run: cargo build --release --locked -p stikk --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="stikk-${VERSION}-${TARGET}"
+          mkdir "$dist"
+          cp "target/${TARGET}/release/stikk" "$dist/"
+          cp README.md LICENSE CHANGELOG.md "$dist/"
+          tar -czf "${dist}.tar.gz" "$dist"
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${dist}.tar.gz" > "${dist}.tar.gz.sha256"
+          else
+            shasum -a 256 "${dist}.tar.gz" > "${dist}.tar.gz.sha256"
+          fi
+          echo "ASSET=${dist}.tar.gz" >> "$GITHUB_ENV"
+          echo "ASSET_SHA=${dist}.tar.gz.sha256" >> "$GITHUB_ENV"
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dist = "stikk-$env:VERSION-$env:TARGET"
+          New-Item -ItemType Directory -Path $dist | Out-Null
+          Copy-Item "target/$env:TARGET/release/stikk.exe" $dist/
+          Copy-Item README.md, LICENSE, CHANGELOG.md $dist/
+          Compress-Archive -Path $dist -DestinationPath "$dist.zip"
+          # The same shape the five Unix targets publish: "<lowercase hash><two spaces><file name>",
+          # LF-terminated. It used to be the bare uppercase hash with a CRLF and no file name, which
+          # meant `sha256sum -c` could not be used on Windows and every consumer needed two parsers
+          # (RFC 039 Handoff A's review found it).
+          $hash = (Get-FileHash "$dist.zip" -Algorithm SHA256).Hash.ToLower()
+          $line = "$hash  $dist.zip`n"
+          [System.IO.File]::WriteAllText("$dist.zip.sha256", $line, (New-Object System.Text.UTF8Encoding $false))
+          "ASSET=$dist.zip"          | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
+          "ASSET_SHA=$dist.zip.sha256" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
+
+      # v3 moved to node24 (and requires runner >= v2.327.1, far below what GitHub-hosted runners
+      # run); v4 made this action a thin wrapper over `actions/attest`. `subject-path` and the
+      # three permissions this job already grants are unchanged, and so is the attestation itself:
+      # SLSA build provenance, verified the same way.
+      - name: Attest build provenance
+        if: inputs.publish
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ env.ASSET }}
+
+      # **The tag comes from the `version` input, not `github.ref_name`** (RFC 066 §1). A called
+      # workflow sees the *caller's* event, so `github.ref_name` would be the tag under
+      # `release.yml` and the branch under the trial -- a file whose meaning depends on how it was
+      # called. `guard` has already refused any tag that is not the workspace version, so the
+      # input and the tag are the same string by the time this runs.
+      - name: Upload to the release
+        if: inputs.publish
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.version }}
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET_SHA }}
+
+      # The trial's whole output: the archive and its checksum line, exactly as built, for someone
+      # to open and compare with a published release's.
+      - name: Keep the archive as an artifact
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-trial-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET_SHA }}
+
+  # The one-command installers (RFC 039 decision 2 and 3). They are versioned with the release they
+  # install: `scripts/*` in the repository are templates with two placeholders, filled here, so
+  # `…/releases/latest/download/install.sh` always means "the latest stikk, with the prikk it was
+  # validated against".
+  installers:
+    name: Installers
+    needs: binaries
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust (derived MSRV)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Read the validated prikk range from stikk-prikk::version, never hardcode it here
+        id: prikk
+        # The same derivation the real-binary suite uses (RFC 019 §6): the numbers live in
+        # `version.rs` and nowhere else, so changing the range there re-words the installers
+        # automatically. **Both ends, since RFC 048**: the floor used to be written `28` in two
+        # scripts, which is a number in three places and a quiet lie the day it moves.
+        # **Neither is a pin**: the installers install no prikk, and use these only for wording.
+        #
+        # **The ceiling is a minor, and is printed as one** (RFC 052 decision 4). This used to
+        # fill `0.<n>.0`, a patch version stikk never tested -- `VALIDATED_MAX_MINOR` bands on
+        # minors, so the report can only honestly say *through 0.54*. `validated_ceiling_display`
+        # inside stikk has always said the minor; this makes the installers agree with it.
+        run: |
+          set -euo pipefail
+          read -r floor ceiling < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
+          echo "floor=${floor}"       >> "$GITHUB_OUTPUT"
+          echo "version=0.${ceiling}" >> "$GITHUB_OUTPUT"
+      - name: Fill the placeholders and checksum each script
+        env:
+          PRIKK_FLOOR: ${{ steps.prikk.outputs.floor }}
+          PRIKK_VERSION: ${{ steps.prikk.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for f in install.sh uninstall.sh install.ps1 uninstall.ps1; do
+            sed -e "s/@STIKK_VERSION@/${VERSION}/g" \
+                -e "s/@PRIKK_FLOOR@/${PRIKK_FLOOR}/g" \
+                -e "s/@PRIKK_VERSION@/${PRIKK_VERSION}/g" \
+                "scripts/$f" > "dist/$f"
+            # No placeholder may survive into a published script.
+            if grep -q '@STIKK_VERSION@\|@PRIKK_FLOOR@\|@PRIKK_VERSION@' "dist/$f"; then
+              echo "::error::$f still holds a placeholder after substitution"
+              exit 1
+            fi
+            # The same checksum shape every other asset uses.
+            ( cd dist && sha256sum "$f" > "$f.sha256" )
+          done
+          echo "== filled for stikk ${VERSION}, prikk 0.${PRIKK_FLOOR} through ${PRIKK_VERSION}"
+          grep -h 'STIKK_VERSION=\|PRIKK_FLOOR_MINOR=\|PRIKK_TESTED_CEILING=\|StikkVersion \|PrikkFloorMinor \|PrikkTestedCeiling ' dist/* || true
+      - name: Upload the installers to the release
+        if: inputs.publish
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.version }}
+          files: |
+            dist/install.sh
+            dist/install.sh.sha256
+            dist/uninstall.sh
+            dist/uninstall.sh.sha256
+            dist/install.ps1
+            dist/install.ps1.sha256
+            dist/uninstall.ps1
+            dist/uninstall.ps1.sha256
+
+      - name: Keep the filled installers as an artifact
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-trial-installers
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            dist/install.sh
+            dist/install.sh.sha256
+            dist/uninstall.sh
+            dist/uninstall.sh.sha256
+            dist/install.ps1
+            dist/install.ps1.sha256
+            dist/uninstall.ps1
+            dist/uninstall.ps1.sha256

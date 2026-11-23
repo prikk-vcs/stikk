@@ -1,6 +1,6 @@
 # RFC 067 — `stikk-app`: the program, shared by every front end
 
-**Status.** **Proposed 2026-11-24** by the architect, as 0.22.0's increment 2 (`.git-exclude/release/0-22-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/067-stikk-app-the-shared-program/a-the-seams-handoff-v1.md), the seams; Handoff B, the move, follows A. **Proposed 2026-11-24** by the architect, as 0.22.0's increment 2 (`.git-exclude/release/0-22-0-scope.md`,
 authorized by the project owner 2026-11-24). **No open question.** The owner takes **one action at the 0.22.0 cut**
 (decision 7).
 **Measured** on `main` at `0421f7f`, from `crates/stikk-tui/src`.

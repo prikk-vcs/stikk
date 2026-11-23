@@ -1,0 +1,82 @@
+name: Release trial
+
+# **The release build, tried before a tag** (RFC 066 decision 2). This workflow publishes nothing.
+# It calls `build-release.yml` -- the very file `release.yml` calls -- with `publish: false`, so
+# every target is built on its real runner, every archive is packaged and checksummed and the four
+# installers are filled, and the results are kept as artifacts for seven days instead of being
+# uploaded anywhere.
+#
+# **Why it exists.** A release's build machines used to be exercised only by its tag. 0.21.0 found
+# that out at the worst possible time: GitHub had retired the `macos-14` image, both macOS jobs
+# died before their first step, and the installers and the AUR push never ran (run `45103941837`).
+# 0.21.1's prep added a checklist item -- name a recent green run for every runner label -- and a
+# check that runs is better than one that is remembered.
+#
+# **It runs three ways:**
+#   workflow_dispatch -- every release prep dispatches it on `main` and reports every leg at the
+#                        SHA to be tagged. A red leg stops the cut, as a red suite leg does
+#                        (RFC 066 decision 4);
+#   schedule          -- weekly, so a retired image or a toolchain change is found within a week
+#                        whether or not a release is near. Actions minutes are free here;
+#   push              -- when the release workflows or the installer templates themselves change,
+#                        because those are the changes a trial exists to catch.
+#
+# **It cannot publish.** `contents: read` at the top and `contents: read` on the calling job is all
+# it has: no `id-token`, no `attestations`, no `secrets: inherit`, and no environment. A called
+# workflow may not request more than its caller granted, so even a publish step whose gate was
+# wrong would fail on permissions rather than reach a release.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays at 04:17 UTC. Early in the week, so a machine that retired over the weekend is
+    # found before anyone proposes a cut; and off the hour, because every other scheduled
+    # workflow on GitHub fires at :00 and a queue is not a result.
+    - cron: '17 4 * * 1'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-release.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/release-trial.yml'
+      - 'scripts/**'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  workspace-version:
+    name: Read the workspace version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Read the workspace version from Cargo.toml
+        id: read
+        # **The same command `release.yml`'s `guard` uses**, so the trial builds the version a tag
+        # would build. `guard` additionally refuses a tag that disagrees with it; there is no tag
+        # here, so there is nothing to compare it against -- the workspace version is the answer.
+        #
+        # The command is written out in both files. It belongs in one place, and the one place
+        # would be a script both call; that is a change to `guard`, which RFC 066's handoff puts
+        # out of scope for this increment. Carried.
+        run: |
+          set -euo pipefail
+          ws="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="stikk") | .version')"
+          echo "workspace version: ${ws}"
+          echo "version=${ws}" >> "$GITHUB_OUTPUT"
+
+  trial:
+    name: Try the release build
+    needs: workspace-version
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-release.yml
+    with:
+      version: ${{ needs.workspace-version.outputs.version }}
+      publish: false

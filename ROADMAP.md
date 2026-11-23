@@ -308,6 +308,8 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.58.0`** (was `0.55.0`); the real-binary suite drives 100
   cases at 0.28.0 and 0.58.0 on Linux, macOS and Windows — the same count on each, with one leg Unix-only and one
   Windows-only by construction.
+- **Released as 0.21.1**: 0.21.0's release run could not build for macOS (a retired runner image), so 0.21.1 is the
+  same stikk, released in full.
 
 ## Shipped — stikk undoes a block, as a new change that keeps both (0.20.0, breaking)
 

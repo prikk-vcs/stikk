@@ -2,6 +2,22 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## 0.21.1 — 2026-11-23
+
+**The same stikk as 0.21.0, released in full.** 0.21.0's release run could not build for macOS, so its GitHub
+Release has no macOS archives and no installers; use 0.21.1. Nothing in the program changed: the six crates on
+crates.io at 0.21.0 are what 0.21.1 is, and `cargo public-api -p <crate> diff 0.21.0` reports no removed, no changed
+and no added item in any of the five library crates (the `stikk` launcher has no library API to diff).
+
+### Fixed
+
+- **The release workflow builds macOS on a supported runner.** It named a pinned image, `macos-14`, which GitHub
+  retired while 0.21.0 was being released: both macOS jobs ended a second after they started, with no steps run,
+  which cancelled the run and skipped the installer and AUR jobs that wait on the binaries. It now names
+  `macos-latest` — the label the real-binary suite runs on every cycle, so the release builds on what was tested.
+- **A release's title is its version alone**, as prikk's are, rather than *"stikk 0.21.0"*. Nothing reads a
+  release's title; the installers read the tag.
+
 ## 0.21.0 — 2026-11-23
 
 **stikk is now readable on light and dark terminals alike, works with text made much bigger, and

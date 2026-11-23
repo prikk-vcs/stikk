@@ -1,7 +1,16 @@
 //! prikk version parsing and the validated-range gate (design SEAM-05, NFR-R03; RFC 009 decisions 6–7;
 //! RFC 012 F-e).
 //!
-//! stikk targets prikk `>= 0.28`, validated through `0.55.0` — **RFC 055**, the 0.55 re-baseline:
+//! stikk targets prikk `>= 0.28`, validated through `0.58.0` — **RFC 063**, the 0.58 re-baseline,
+//! raised from 0.55 across three releases: 0.56 made the worktree follow the current branch, which
+//! is what stikk's own letter asked for, so a commit now goes to prikk's current branch and a merge
+//! into the branch you are on is offered; 0.56 also reports prikk's own check of each recorded seal,
+//! and 0.58 reports the refusals an import would hit and names a seal that was interrupted after it
+//! published. It is the **first raise whose cost was not zero**: with only this constant moved, 8 of
+//! the suite's cases failed. Each change is banded by its own constant below, and the suite is green
+//! at 0.28.0 and 0.58.0.
+//!
+//! Before it **RFC 055**, the 0.55 re-baseline:
 //! the two things 0.55 changed that come near stikk cost nothing — `extract` refuses a
 //! destination inside the repository, which stikk refuses itself first (RFC 053), and a damaged
 //! bundle's refusal is worded differently, which stikk shows verbatim and parses none of; the

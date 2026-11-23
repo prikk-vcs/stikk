@@ -273,6 +273,42 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — stikk is easy to read and easy to find your way in (0.21.0, breaking)
+
+- **The prikk 0.58.0 re-baseline** ([RFC 063](rfcs/done/063-prikk-0-58-rebaseline.md), prikk ≥ 0.56 and ≥ 0.58 for
+  what each part needs): a commit goes to prikk's current branch, and stikk names the switch that gets you to
+  another; merging into the branch you are on is offered from prikk 0.56, where prikk writes the merged files into
+  the worktree; the bundle card carries prikk's own check of each recorded seal and **withholds an import prikk
+  would refuse**; a seal that fails against a trusted key, and a different key offered under a removed id, are shown
+  as the security events they are; and an interrupted seal is shown as one, with Seal finishing it rather than adding
+  another block.
+- **Readable colours** ([RFC 059](rfcs/done/059-readable-colours.md)): body text in the terminal's own colour;
+  *system* asks the terminal whether its background is light or dark; **every colour stikk chooses reaches 7 : 1**
+  (WCAG AAA) on the common backgrounds and on the one the terminal reports; `high-contrast` and `plain` themes, and
+  `NO_COLOR`; the Orientation view says which colours are in use and why. Checked on Linux (Alacritty) and on
+  Windows Terminal by the owner.
+- **Bigger text** ([RFC 060](rfcs/done/060-bigger-text.md)): stikk works down to **60 × 15**, so the text can be
+  about **2.3 times** bigger on a laptop; every card wraps and scrolls in the space it has, and **offers a
+  confirmation only once it has been read**; no view cuts a word or hides rows without saying so, held by a
+  structural check over every view and overlay at 60 × 15 and 72 × 20 in every theme; no italic, and bold for
+  headings and the selection only; *"Making the text bigger"* in the guide. Two defects found in checking were
+  fixed: the help did not scroll with `↓`, and Block detail could not scroll at all.
+- **Finding your place** ([RFC 061](rfcs/done/061-finding-your-place.md)): **one catalog of every action**, which
+  the palette, Enter's lists, the key line, the Glossary's *Keys* and the key map all read, so a key exists only
+  where it is bound; **each letter means one action, in either case**, so Caps Lock changes nothing, and fourteen
+  actions gave up their letter and are found by name; `Enter` lists what can be done with the selected row and `→`
+  opens it; the whole selected row is highlighted in reverse video; and a key line stays on screen, one row above
+  the status bar.
+- **The JSON reader skips what it does not read**
+  ([RFC 064](rfcs/done/064-json-reader-skips-what-it-does-not-read.md)): a prikk report carrying a value stikk does
+  not use — a negative or fractional number, deep nesting — no longer makes the whole report unreadable, as promised
+  to prikk in letter 024.
+- **The mouse is withdrawn from the TUI to the GUI** (owner, 2026-11-21): in a terminal it costs drag-to-copy of
+  ids, and in the GUI it comes for free, so it is part of the GUI's own design and nothing of it shipped here.
+- **The validated prikk range is `>= 0.28`, through `0.58.0`** (was `0.55.0`); the real-binary suite drives 100
+  cases at 0.28.0 and 0.58.0 on Linux, macOS and Windows — the same count on each, with one leg Unix-only and one
+  Windows-only by construction.
+
 ## Shipped — stikk undoes a block, as a new change that keeps both (0.20.0, breaking)
 
 - **Undo one block** ([RFC 058](rfcs/done/058-undo-one-block.md), prikk ≥ 0.54): `U` in History or in Block detail.
@@ -538,43 +574,15 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.21.0: easy to read, and easy to find your way in
-
-**Scoped and authorized by the owner** (2026-11-04, amended 2026-11-18 and 2026-11-21). stikk is easy to read and easy to find your
-way in, for everyone, and especially for older users and anyone with weaker eyesight. In delivery order:
-
-1. **The prikk 0.58.0 re-baseline — landed on `main`** ([RFC 063](rfcs/done/063-prikk-0-58-rebaseline.md),
-   `6487aff`). It validates through prikk 0.58.0, and:
-   - a commit goes to prikk's current branch, and stikk names the switch for another;
-   - merging into the branch you are on is offered from prikk 0.56;
-   - the bundle card shows prikk's own check of each seal, and withholds an import prikk would refuse;
-   - a seal that fails against a trusted key, and a different key under a removed id, get the security warning;
-   - an interrupted seal is shown as one, and Seal finishes it.
-2. **Readable colours — landed on `main`** ([RFC 059](rfcs/done/059-readable-colours.md), `3e284a8`): body text
-   in the terminal's own colour; light or dark detected; 7 : 1 for every colour stikk chooses; high-contrast and
-   plain; `NO_COLOR`.
-3. **Bigger text — landed on `main`** ([RFC 060](rfcs/done/060-bigger-text.md), `b648b40`):
-   - stikk works down to 60 × 15, so text can be about twice as big;
-   - overlays wrap and scroll in the space they have, and offer a confirmation only once it has been read;
-   - no italic; bold for headings and the selection only;
-   - *"Making the text bigger"* in the guide.
-4. **Finding your place — landed on `main`** ([RFC 061](rfcs/done/061-finding-your-place.md), `af9da85`):
-   - one catalog of every action, and a palette that lists it;
-   - each letter one meaning, in either case;
-   - Enter lists what can be done with the selected row, and `→` opens it;
-   - the whole row highlighted;
-   - a key line that stays.
-
-**The mouse is withdrawn from the TUI** (owner, 2026-11-21). In a terminal it costs drag-to-copy of ids. In the GUI it
-comes for free, so it is part of the GUI's design.
-
-**Also in 0.21.0 — landed on `main`** ([RFC 064](rfcs/done/064-json-reader-skips-what-it-does-not-read.md),
-`d0ebe55`): stikk's JSON reader skips any valid value in a field it does not read, as promised to prikk in letter 024.
+## Next — 0.22.0: choosing the GUI toolkit
 
 **0.22.0's theme is choosing the GUI toolkit** (owner, 2026-11-21). A TUI cannot give screen readers, real
 typography, or the OS's own text size and zoom. The toolkit RFC prototypes egui (with AccessKit), iced and GTK, and
-chooses by RFC 001's filter, accessibility first. The new prikk 0.57/0.58 features are **0.22.0 candidates** too: going back to an older block in one step, counting what a
-key removal breaks, exact parents for undo and undoing a merge, `uncommit`, and `bundle preview --adopt`.
+chooses by RFC 001's filter, accessibility first. The new prikk 0.57/0.58 features are **0.22.0 candidates** too:
+going back to an older block in one step, counting what a key removal breaks, exact parents for undo and undoing a
+merge, `uncommit`, and `bundle preview --adopt`.
+
+**The scope is proposed once 0.21.0 is cut.**
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and
@@ -611,9 +619,14 @@ release's own run now pushes them.
   key-id display shipped in 0.6.0 — RFC 023 B — and signing readiness asks prikk's `key status` at
   ≥ 0.41 since RFC 026 B; still no seed is ever stored.)*
 - **The GUI** (`GU-01…09`): the same operations rendered natively, reaching TUI parity through the
-  shared operation layer, with drag-and-drop constrained to prikk-legal targets.
+  shared operation layer, with drag-and-drop constrained to prikk-legal targets. **Choosing its
+  toolkit is next** — 0.22.0's theme — and the mouse was withdrawn from the TUI to here
+  (owner, 2026-11-21).
 - **Internationalization** (en / ja / nb) and accessibility hardening across both frontends
-  (`NFR-I01`, `NFR-A01…04`).
+  (`NFR-I01`, `NFR-A01…04`). *(The TUI's own hardening shipped in 0.21.0: 7 : 1 for every colour
+  stikk chooses, a 60 × 15 floor so the text can be made much bigger, no italic, and one catalog
+  of actions with a key line that names the keys — RFCs 059, 060 and 061. What is left here is a
+  screen reader, which needs the GUI.)*
 - **Report export** (`CT-02`) and the versioned `stikk-export` schema.
 
 ## Deferred design decisions (the near-term RFC queue)

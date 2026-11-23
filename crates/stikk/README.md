@@ -61,24 +61,27 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.20.x undoes a block, as a new change that puts back what it changed, lets you choose whose
-keys this repository trusts, gets an earlier version of your files back — or a whole earlier block,
-the guide shows how — and installs in two plain steps on every platform — prikk's, then stikk's —
-against prikk 0.58.0.** A confirmation that asks you to type a
-key id back **never cuts that id off**, however long it is. `T` lists the adopted maintainer keys with your own marked, **`a` adopts one and `x`
-removes one** — each confirmed by typing the key id, and the removal says first that it can make
-your own sealed history fail Verify until the key is adopted again. In Block detail, `F` saves one
-file as it was at that block and `A` saves every file at it into a new folder, always outside the
+**v0.21.x is readable on light and dark terminals, works with text made much bigger, and lists
+what you can do where you are.** It undoes a block, as a new change that puts back what it changed,
+lets you choose whose keys this repository trusts, gets an earlier version of your files back — or
+a whole earlier block, the guide shows how — and installs in two plain steps on every platform,
+prikk's then stikk's, against prikk 0.58.0. A confirmation that asks you to type a
+key id back **never cuts that id off**, however long it is. `t` lists the adopted maintainer keys
+with your own marked, and `Enter` there **adopts a key** or **removes this key** — each confirmed
+by typing the key id, and the removal says first that it can make your own sealed history fail
+Verify until the key is adopted again. In Block detail, `Enter` on a file **saves this file, as it
+was here**, or **saves every file at this block** into a new folder, always outside the
 repository and never over anything already there; a bundle card says which adopted key each
-recorded sealer's id names (prikk ≥ 0.54). `i` opens a bundle and shows prikk's
-verification and what importing would change, `I` imports it as a received branch, and `E` writes
-a branch out to a file outside the repository. **It is on the AUR** as `stikk` and `stikk-bin`:
+recorded sealer's id names (prikk ≥ 0.54). `o` opens a bundle and shows prikk's
+verification and what importing would change, `Enter` on its card **imports this bundle** as a
+received branch, and `Enter` on a branch in the ref picker **exports it to a bundle file** outside
+the repository. **It is on the AUR** as `stikk` and `stikk-bin`:
 the [install page](https://prikk-vcs.github.io/stikk/guide/install.html#arch-linux) says which to
 pick. **Each program installs itself**: one line installs stikk —
 `curl … install.sh | sh`, or `irm … install.ps1 | iex` on Windows — checking the download against
 the checksum published beside it, installing where you own it, and printing **prikk's own install
 command** when prikk is missing or too old, rather than installing prikk itself; `cargo binstall
-stikk` fetches the same prebuilt binary. 64-bit ARM Linux gets a statically-linked build. **Verify** (`V`, prikk ≥ 0.39) shows prikk's verdict on
+stikk` fetches the same prebuilt binary. 64-bit ARM Linux gets a statically-linked build. **Verify** (`v`, prikk ≥ 0.39) shows prikk's verdict on
 whether the repository is sound, every condition it fails and every stage it ran — and a damaged
 repository reads as a verdict, never as a refusal. **Compare** (prikk ≥ 0.46) shows what changed
 between two points in **prikk's own `diff` hunks** — two marked blocks or a block and the one
@@ -92,33 +95,35 @@ message is written as its escape, and two different names never look alike. **Pa
 created file's content and mode, a deleted file's preimage, a binary replacement's blob ids and
 sizes, a permission change's two modes, and a rename with the key that asserted it — opened from
 Block detail, which lists every block's patches **and the files present at that block, with their
-modes** (prikk ≥ 0.46), or from the Queue. `v` shows prikk's own fields instead. Around that it
+modes** (prikk ≥ 0.46), or from the Queue. `f` shows prikk's own fields instead. Around that it
 reads orientation, ref history, worktree changes and the **Queue view**, with refusal explanations
 and a glossary; the **ref picker offers the branch you are on before its first seal** (prikk ≥
-0.47). It performs fourteen mutations: **commit** (author a worktree capture into the active queue),
-**seal** (freeze that queue into permanent, MAINTAINER-signed history, naming the patches it
-freezes), and — from the ref picker — **create a branch** (`n`), **create a tag** (`t`, or at any
-block from History), **close a branch** (`x`), **switch to a branch** (`s`, previewed as the
-exact files it will write and delete) and **merge one branch into another** (`m` to mark the
-branch to merge from, `M` for prikk's own plan, `Enter` to run it), at prikk ≥ 0.42 and ≥ 0.46 for
-a switch — plus **import a bundle** as a received branch (`I`) and **export a branch** to a bundle
-file (`E`), at prikk ≥ 0.53, **save one file** (`F`) or **save a block's files** (`A`) as they
-were at a block, **undo one block** (`U` in History or Block detail, which puts back what that
-block changed and records it as a new commit), and — from the Trust view — **adopt a maintainer
-key** (`a`) or **remove one** (`x`), at prikk ≥ 0.54 — every one of them always preview-first, with
+0.47). It performs fourteen mutations: **commit** (`c`, author a worktree capture into the active
+queue), **seal** (`s`, freeze that queue into permanent, MAINTAINER-signed history, naming the
+patches it freezes), and — from `Enter` on a row in the ref picker — **new branch at its tip**,
+**new tag at its tip** (or at any block from History), **close this branch**, **switch to this
+branch** (previewed as the exact files it will write and delete) and **merge one branch into
+another** (`m` to mark the branch to merge from, then **merge plan** on the one it goes into, and
+`Enter` on the plan to run it), at prikk ≥ 0.42 and ≥ 0.46 for a switch — plus **import this
+bundle** as a received branch and **export it to a bundle file**, at prikk ≥ 0.53, **save this
+file** or **save every file at this block** as they were there, **undo this block** (from `Enter`
+in History or Block detail, which puts back what that block changed and records it as a new
+commit), and — from the Trust view — **adopt a key** or **remove this key**, at prikk ≥ 0.54 —
+every one of them always preview-first, with
 tiered confirmation a compile error can't let you skip, and the two trust writes confirmed by
 typing the key id.
-**stikk shares work as a bundle file**: `i` opens one and shows prikk's own verification and what
+**stikk shares work as a bundle file**: `o` opens one and shows prikk's own verification and what
 prikk says importing it would change, an import creates and moves no branch of yours, and an
 export writes outside the repository and never over a file that is there.
-**stikk gets an earlier version of your files back** (prikk ≥ 0.54): `F` and `A` in Block detail
-save one file, or every file at that block, outside the repository and never over an existing
-path — both refused in stikk's own words before prikk is asked — and nothing in the repository or
-your worktree changes. **stikk chooses which keys this repository trusts** (prikk ≥ 0.54): `T` lists
+**stikk gets an earlier version of your files back** (prikk ≥ 0.54): `Enter` on a file in Block
+detail saves one file, or every file at that block, outside the repository and never over an
+existing path — both refused in stikk's own words before prikk is asked — and nothing in the repository or
+your worktree changes. **stikk chooses which keys this repository trusts** (prikk ≥ 0.54): `t` lists
 the adopted maintainer keys, with your own marked, and a bundle card says which of them, if any,
 each recorded sealer's id names — a name, not a signature, which Verify checks after the import.
-**`a` adopts a key and `x` removes one**, each confirmed by typing the key id; a removal says
-first that it can make blocks this key sealed fail Verify until the key is adopted again, and an
+**`Enter` adopts a key, or removes the selected one**, each confirmed by typing the key id; a
+removal says first that it can make blocks this key sealed fail Verify until the key is adopted
+again, and an
 id already trusted under a different key is shown as the security event it is. Adopting a
 received **tag**, and author keys, are not built yet.
 **A confirmed commit authors only the worktree its preview showed.** **stikk notices a commit, seal

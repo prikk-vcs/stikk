@@ -84,16 +84,18 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
-## What a v0.20.x release is (and is not)
+## What a v0.21.x release is (and is not)
 
-v0.20.x reads orientation, history, block detail — including the files at **any** block, with their
+v0.21.x is **readable on light and dark terminals**, works with **text made much bigger**, and
+**lists what you can do where you are** rather than asking you to remember a letter. It reads
+orientation, history, block detail — including the files at **any** block, with their
 modes, at prikk ≥ 0.46 — worktree changes, the Queue view, **Patch detail** (what one patch changed,
 from prikk's own `show` report, with content shown byte for byte), **Compare** (what changed between
 two points, from prikk's own `diff` hunks, at prikk ≥ 0.46 — two blocks, a block and the one before
 it, any two refs, or the worktree), **Verify** (prikk's verdict on whether the repository is sound,
 with its failing conditions and every stage it ran, at prikk ≥ 0.39), **a bundle file** (prikk's
 own verification of it and what prikk says importing it would change, at prikk ≥ 0.53), **the
-maintainer keys this repository trusts** (`T`, at prikk ≥ 0.54, with your own marked and each
+maintainer keys this repository trusts** (`t`, at prikk ≥ 0.54, with your own marked and each
 recorded sealer judged against the list) and the
 refusal/glossary surfaces, and performs fourteen mutations — **commit** (author a worktree capture),
 **seal** (freeze the queue into signed history), **create a branch**, **create a tag**, **close

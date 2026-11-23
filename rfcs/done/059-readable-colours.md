@@ -1,6 +1,6 @@
 # RFC 059 — Readable colours
 
-**Status.** **Done 2026-11-23**: Handoff A delivered on `main` (`e298aa1`..`3e284a8`), green on the full platform matrix; checked on Linux by the architect and on Windows by the owner; ships in **0.21.0**. **Accepted by the project owner 2026-11-21**; [Handoff A](../handoffs/059-readable-colours/a-readable-colours-handoff-v1.md). **Proposed 2026-11-21** by the architect, as 0.21.0's increment 2 (`.git-exclude/release/0-21-0-scope.md`,
+**Status.** **Done 2026-11-23**: Handoff A delivered on `main` (`e298aa1`..`3e284a8`), green on the full platform matrix; checked on Linux by the architect and on Windows by the owner; shipped in **0.21.0**. **Accepted by the project owner 2026-11-21**; [Handoff A](../handoffs/059-readable-colours/a-readable-colours-handoff-v1.md). **Proposed 2026-11-21** by the architect, as 0.21.0's increment 2 (`.git-exclude/release/0-21-0-scope.md`,
 authorized 2026-11-04, amended 2026-11-18). **Written before the Windows probe runs, at the owner's direction
 (2026-11-21): "Windows results confirm later."** Every decision below holds whichever way Windows answers (§
 "What the Windows runs confirm"). **No open question.**

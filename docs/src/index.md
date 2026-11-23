@@ -20,21 +20,24 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.20.x undoes a block, as a new change that puts back what it changed, chooses whose keys a
-repository trusts, gets an earlier version of your files back — or a whole earlier block, the guide
-shows how — and installs in two plain steps on every platform — prikk's, then stikk's — against
-prikk 0.58.0.** A confirmation that asks you to type a key id back
+**0.21.x is readable on light and dark terminals, works with text made much bigger, and lists what
+you can do where you are.** It undoes a block, as a new change that puts back what it changed,
+chooses whose keys a repository trusts, gets an earlier version of your files back — or a whole
+earlier block, the guide shows how — and installs in two plain steps on every platform, prikk's
+then stikk's, against prikk 0.58.0. A confirmation that asks you to type a key id back
 **never cuts that id off**, however long it is. It is
 on the AUR as `stikk` and `stikk-bin`: [Install](./guide/install.md#arch-linux) says which to pick.
 Each program installs itself: one line installs stikk, and it prints prikk's own install command
-rather than installing prikk; **`T`** lists the maintainer keys this repository trusts, where
-**`a`** adopts one and **`x`** removes one — each confirmed by typing the key id, and a removal
-says first what it can cost your own history at Verify; **`F`** and **`A`** in Block detail save
-one file, or every file at that block, outside the repository and never over anything already
-there; a bundle card says which adopted key each recorded sealer names; **Exchange** opens a bundle file and shows prikk's verification and what importing would
-change (`i`), imports it as a received branch (`I`) and writes a branch out to a file (`E`);
+rather than installing prikk; **`t`** lists the maintainer keys this repository trusts, where
+`Enter` **adopts a key** or **removes this key** — each confirmed by typing the key id, and a
+removal says first what it can cost your own history at Verify; `Enter` on a file in Block detail
+**saves this file**, or **saves every file at this block**, outside the repository and never over
+anything already there; a bundle card says which adopted key each recorded sealer names;
+**Exchange** opens a bundle file (`o`) and shows prikk's verification and what importing would
+change, **imports this bundle** as a received branch and **exports a branch to a bundle file**,
+both from `Enter`;
 **Merge** brings one branch into another where prikk's own plan proves the two sides confluent;
-**Verify** (`V`) shows prikk's verdict on whether the repository is sound; and **Compare** reaches
+**Verify** (`v`) shows prikk's verdict on whether the repository is sound; and **Compare** reaches
 any two points, including any two refs. Every repository string is still shown as it is.
 The security-critical
 layers (shared model, prikk seam, state layer), the interactive **TUI** (shell + Orientation, built on
@@ -62,7 +65,7 @@ opens on prikk's current branch (RFC 029). **Patch detail** (`FR-030`) is built 
 (RFC 035): Block detail lists a block's patches and the Queue lists the queued ones, and either opens
 one patch's operations — a text edit's spans, a create's content and mode, a delete's preimage, a
 binary replacement's blob ids and sizes, a permission change's two modes, and a rename with the key
-that asserted it — with `v` showing prikk's own fields, and content shown byte for byte: quoted, with
+that asserted it — with `f` showing prikk's own fields, and content shown byte for byte: quoted, with
 everything that does not show as itself escaped. **Every string stikk did not write is now rendered
 so that what you read is what prikk reported** (RFC 036): a bidirectional override, a zero-width
 character or a look-alike space in a path, message, ref name or key id is written as its escape, in
@@ -72,34 +75,36 @@ before its first seal (RFC 037, prikk ≥ 0.46 and ≥ 0.47). **Compare** (`FR-0
 ≥ 0.46 (RFCs 038 and 041): `m` and `d` in History, `d` in Block detail and in Changes, and `m`
 and `d` in the **ref picker** for any two branches, tags or received refs — showing what changed
 between two points in prikk's own `diff` hunks, quoted line by line, with stikk computing no
-difference of its own. **Verify** (`V`, `FR-100` in part) shows prikk's verdict on whether the
+difference of its own. **Verify** (`v`, `FR-100` in part) shows prikk's verdict on whether the
 repository is sound, its failing conditions and its stages, at prikk ≥ 0.39 (RFC 040), and names
 what prikk's JSON leaves out. **stikk manages branches and tags, not only browses them**: from the
-ref picker, `n` creates a branch at the selected ref's tip, `t` tags it (or any block, from
-History), `x` closes it and `s` switches to it — each previewed before it runs, a switch as the
-exact files it will write and delete, with the branch you are standing on never offered for
+ref picker, `Enter` offers **new branch at its tip**, **new tag at its tip** (or at any block, from
+History), **close this branch** and **switch to this branch** — each previewed before it runs, a
+switch as the exact files it will write and delete, with the branch you are standing on never offered for
 closing and a branch the queue holds work for never offered for switching (RFCs 044 and 045,
 prikk ≥ 0.42 and ≥ 0.46). **stikk reopens each repository where you left it** (`FR-122`,
 RFC 046): the focused ref, the top-level view and the untracked filter, **re-checked against
 prikk before any of it is shown** and stored outside every repository — `STIKK_PRIVATE=1` for a
 launch that remembers nothing, and deleting the records is always safe. **stikk merges one branch
 into another** (RFC 047, prikk ≥ 0.42): mark the branch to merge from in the ref picker, select
-the one it goes into, `M` shows prikk's own plan for the pair against a baseline stikk names only
-where it can prove it, and `Enter` runs the merge where that plan proves the two sides confluent
+the one it goes into, **merge plan** shows prikk's own plan for the pair against a baseline stikk
+names only where it can prove it, and `Enter` on the plan runs the merge where it proves the two
+sides confluent
 — previewed with every guard re-read at the moment you confirm, never into the branch you are on,
 and writing nothing to your worktree. **stikk shares work as a bundle file** (RFC 050,
-prikk ≥ 0.53): `i` opens one and shows prikk's own verification and what prikk says importing it
-would change against your branch of that name, `I` imports it as `remotes/<name>` — read-only
-history beside your own, declined where it would change nothing or move that branch back — and
-`E` writes a branch out to a file outside the repository, never over one that is already there.
-**stikk gets an earlier version of your files back** (RFC 053, prikk ≥ 0.54): in Block detail, `F`
-saves one file as it was at that block and `A` saves every file at it into a new folder — always
+prikk ≥ 0.53): `o` opens one and shows prikk's own verification and what prikk says importing it
+would change against your branch of that name, **import this bundle** brings it in as
+`remotes/<name>` — read-only history beside your own, declined where it would change nothing or
+move that branch back — and **export it to a bundle file** writes a branch out outside the
+repository, never over one that is already there.
+**stikk gets an earlier version of your files back** (RFC 053, prikk ≥ 0.54): in Block detail,
+`Enter` on a file saves it as it was at that block, or saves every file at it into a new folder — always
 outside the repository and never over an existing path, both refused in stikk's own words before
 prikk is asked, with nothing in the repository or the worktree changed. **stikk shows which keys a
-repository trusts** (RFC 054, prikk ≥ 0.54): `T` lists the adopted maintainer keys with your own
+repository trusts** (RFC 054, prikk ≥ 0.54): `t` lists the adopted maintainer keys with your own
 marked, and a bundle card says which of them, if any, each recorded sealer's id names — a name, not
 a signature, which Verify checks after the import. **stikk chooses them, too** (RFC 056, prikk ≥
-0.54): `a` adopts a key and `x` removes the selected one, each previewed and confirmed by **typing
+0.54): `Enter` adopts a key, or removes the selected one, each previewed and confirmed by **typing
 the key id** — stikk's first typed confirmations, and neither needs a key of your own. The remove
 card says that removing a key which sealed this history makes Verify fail it until the same key is
 adopted again under the same id, and says so again for your own key; an id already trusted under a

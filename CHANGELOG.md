@@ -2,7 +2,112 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.21.0 — 2026-11-23
+
+**stikk is now readable on light and dark terminals alike, works with text made much bigger, and
+shows you what you can do where you are, with no letters to memorise.**
+
+**The keys changed, and that is the first thing you will meet.** A letter now means one action, in
+either case, so Caps Lock changes nothing, and no letter has two meanings (RFC 061). Seven keys you
+know moved:
+
+| 0.20.x | 0.21.0 | What it does |
+|---|---|---|
+| `Q` | `p` | the **p**atches waiting to be sealed — the Queue |
+| `V` | `v` | **v**erify the repository |
+| `T` | `t` | the keys this repository **t**rusts |
+| `i` | `o` | **o**pen a bundle file |
+| `C` | `c` | **c**ommit worktree changes |
+| `S` | `s` | **s**eal the active WAL |
+| `v` | `f` | prikk's own **f**ields, the raw view |
+
+Switch, merge, branch, tag, close, import, export, adopt, remove, undo and save are now in Enter's
+list and the palette, and so are the recent refusals and background operations: `R` and `o` no
+longer open those two, and `o` is the key that opens a bundle file.
+
+**`Enter` on a row says what can be done with it**, and `→` opens it. Enter lists the row's own
+actions, then the screen's, each with its key where it has one, and each one you cannot run now
+still listed, dimmed, with the reason — so nothing has to be remembered. Where Enter opened
+something in 0.20.x, that is still its first entry — so Enter, Enter is yesterday's Enter, and
+`→` is it in one key. Where Enter did nothing, as on a Changes row, it now says what the row can
+do.
+
+**On a light terminal, stikk is readable** (RFC 059). Body text is the terminal's own colour, every
+colour stikk adds reaches 7 : 1, *system* asks the terminal whether its background is light or
+dark, and `high-contrast` and `plain` themes and `NO_COLOR` are there for when you would rather
+decide yourself.
+
+**The text can be made about twice as big** (RFC 060). stikk works down to 60 × 15, cards wrap and
+scroll in the space they have, a confirmation is offered only once its card has been read, and no
+view cuts a word or hides rows without saying so.
+
+**It works with prikk 0.58** (RFC 063), where a commit goes to the branch your folder is on, a
+merge into that branch is offered, and a bundle card carries prikk's own check of each seal. A
+prikk report that carries a value stikk does not read no longer makes the whole report unreadable
+(RFC 064).
+
+The real-binary suite drives **100 cases** against real prikk binaries at 0.28.0 and 0.58.0, on
+Linux, macOS and Windows.
+
+### Breaking
+
+Per RFC 011, for a `0.x` crate the minor version is the breaking position. **`stikk-model` is
+unchanged, and the `stikk` launcher has no library target to change.**
+
+| Crate | Change |
+|---|---|
+| `stikk-core` | **The `palette` module and `Command` are removed**, replaced by `actions` — `Action`, `Key`, `Where`, `ScreenKind`, `RowKind` and the lookups over one catalog. Outside code that read `palette::commands()` or named a `Command` stops compiling |
+| `stikk-core` | **`NO_FOCUSED_REF_REASON` is now the function `actions::no_focused_ref_reason()`**, because the sentence is composed from the catalog rather than written twice |
+| `stikk-core` | **`Evidence::ExplicitYes` and `Evidence::TypedName` carry `confirm::Seen`.** Both are variants of a public enum that is not `#[non_exhaustive]`, so outside code that constructs or matches one must name it: a confirmation is now evidence of having read the card as well as of having answered |
+| `stikk-core` | **`trust::AdoptPreview::TwoKeys` carries `trust::SecurityWarning`** in place of `TwoKeysOneId`, since two keys under one id is one of three security events the card now shows |
+| `stikk-core` | **`trust::sealers` takes a fourth argument**, `Option<&[SealOutcome]>` — prikk's own check of each seal, which only prikk ≥ 0.56 reports |
+| `stikk-core` | **`bundle::ImportPreview` gains `InvalidSeal` and `WouldRefuse`**, and **`trust::SealerTrust` gains `Checked`.** Neither enum is `#[non_exhaustive]`, so outside code that matches one exhaustively must account for them |
+| `stikk-core` | **Four structs gained a public field**, none of them `#[non_exhaustive]`, so outside code that constructs one must name it: `bundle::BundleView::warning`, `queue::QueueView::head`, `trust::Sealer::trusted_here` and `trust::TrustWriteResult::warning` |
+| `stikk-tui` | **`Palette::dark()`, `light()` and `from_theme()` are removed**, and `Palette` gained the public fields `bg` and `kind`. A palette is resolved from the theme, the terminal's answer and the environment, which no constructor taking a `Theme` alone can do |
+| `stikk-tui` | **`Overlay::Glossary` lost its `offset`** and **`Overlay::TrustConflict`'s `conflict: Box<TwoKeysOneId>` became `warning: Box<SecurityWarning>`.** Every card scrolls through one shared `Scroll` now, so a card no longer carries a scroll of its own |
+| `stikk-tui` | **`Overlay` gained `ActionList`**, the list Enter opens. The enum is not `#[non_exhaustive]`, so outside code that matches it exhaustively must account for it |
+| `stikk-tui` | **`overlay::render` takes a fifth argument**, `&Scroll`, for the same reason |
+| `stikk-tui` | **`Focus::BlockDetail` and `Focus::Changes` gained a field**, and so did `Screen::BlockDetail` and `Screen::Changes` — the scroll offset each of those two views now keeps |
+| `stikk-prikk` | **`TrustWritten` gained `Adopted` and `KeyIdConflict`**, which is how prikk ≥ 0.56 answers a trust write in JSON. The enum is not `#[non_exhaustive]`, so outside code that matches it exhaustively must account for them |
+| `stikk-prikk` | **`Queue` gained `already_sealed_in`, and `BundlePreviewRead` gained `import_refusals` and `seal_outcomes`.** Neither struct is `#[non_exhaustive]`, so outside code that constructs one must name them |
+| `stikk-state` | **`config::Theme` gained `HighContrast` and `Plain`.** The enum is not `#[non_exhaustive]`, so outside code that matches it exhaustively must account for them |
+
+**`cargo public-api -p <crate> diff 0.20.0` reports no removed and no changed item in
+`stikk-model`**, and nothing at all for the `stikk` launcher, which has no library target. Every
+other row above is either a removal, a change the tool reports as one, or an addition that breaks a
+dependent all the same — a new variant of an enum that is matched exhaustively, or a new public
+field of a struct that is constructed by name.
+
+### Added
+
+- **The guide says how to make the text bigger**, for each common terminal: Alacritty, GNOME
+  Terminal and the other VTE terminals, Konsole, kitty, WezTerm, Windows Terminal, the older Windows
+  console, macOS Terminal and iTerm2 — each with a link to that terminal's own documentation.
+- **A `high-contrast` theme**, in which stikk paints its own pair over the whole frame: black on
+  white, or white on black where the terminal said it is dark — 21 : 1 whatever the terminal's own
+  scheme is.
+- **A `plain` theme**, which adds no colour of stikk's own. It is also where *system* lands when the
+  terminal does not answer. Nothing is lost: every status carries words or a shape as well.
+- **`NO_COLOR` is honoured.** Set to anything but an empty string, it makes *system* behave as
+  `plain`, and no question is asked of the terminal. A `theme` in your config wins over it.
+- **The Orientation view says which colours are in use, and why**: a `colours` row with the reason
+  (detected, from `COLORFGBG`, from the config, from `NO_COLOR`, or no answer at all), the colour
+  depth, and how many colours fell back to the terminal's own because they could not reach 7 : 1 on
+  the background the terminal reported. If the colours look wrong, that is the row to read out.
+- **The bundle card says whether each seal checks out** (prikk ≥ 0.56). Before, stikk could only
+  say that a bundle *named* a sealer, because that is all a bundle records; prikk now checks each
+  signature against the keys your repository trusts and says what it found, so the card says it
+  too.
+- **An import prikk would refuse is not offered** (prikk ≥ 0.58, and from 0.56 for a seal that
+  does not check out). The card lists prikk's own reasons and does not offer `I`, instead of
+  letting you confirm an import that cannot land.
+- **A seal that does not match the key you trust under its id is shown as the security event it
+  is**, in the same card as two keys sharing an id — and so is a **removed** id offered a
+  different key, which stikk could not see before, because a removed id is not in the list.
+- **An interrupted seal is shown as one** (prikk ≥ 0.58). When a seal published its block and was
+  stopped before it tidied up, the Queue view says so above the list — these changes are already
+  sealed, in that block — and Seal finishes it rather than adding another block. The seal card says
+  the same.
 
 ### Changed
 
@@ -17,8 +122,7 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   never does. **Fourteen actions gave up their letter** and are
   found by name instead: switch, merge plan, close a branch, new branch, new tag, import, export,
   adopt and remove a key, undo a block, save a file, save all, the refusals list and background
-  operations. stikk has no users yet, so the keys are set right once, before anyone learns the old
-  ones.
+  operations.
 - **`Enter` on a row says what can be done with it.** It used to mean *open*, or nothing at all: on
   a Changes row, on Verify, on an opened bundle and on a trusted key it did nothing, and the only
   way to find out what a row could do was to remember a letter. Enter now opens a small list — the
@@ -36,18 +140,6 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   and named one key — `g o` — that nothing bound. The palette, Enter's lists, the key line, the
   Glossary's *Keys* and the key map itself all read that one catalog, so a key exists only where it
   is bound and no two lists can disagree about what stikk can do.
-- **No view stops without saying so.** Block detail showed eleven of its twenty-two rows at 60 × 15
-  and said nothing: no position in its title, no scroll, and no way to reach `prev-ref-state`, the
-  file list or the patches line. It scrolls now — following the selected row where there is one, and
-  the content where there is not — and its title says *"lines a–b of c"*, as every other view's
-  does. **Changes** gained the same, and **History** now says where you are in a long lineage. A new
-  structural check holds every view and overlay to it: a surface with more rows than its area must
-  say so, at 60 × 15 and 72 × 20, in every theme.
-- **The help overlay scrolls with `↓`.** It said *"↓ more below"* and `↓` moved nothing: the help
-  kept a scroll of its own that the arrow keys never reached, and the only key that scrolled it was
-  `Enter`, which it never named. Found in a real terminal at 2.3 times the default font, where the
-  help is 19 rows of 204. Every card now scrolls through one mechanism, `↑` `↓` and `k` `j` move it,
-  and `Enter` — which has nothing to choose there — does nothing.
 - **Four more sentences that named a key stopped naming it**, and a test now refuses them: *"Seal
   (S) finishes it"*, *"open Verify (V)"* twice over and *"F saves the selected file, A saves all"* —
   each naming a letter that was withdrawn, so a reader who followed one pressed a letter that does
@@ -108,36 +200,20 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   not damage and says to try again; an interrupted one says so; and a seal that stopped after it
   published says that Seal finishes it.
 
-### Added
+### Fixed
 
-- **The guide says how to make the text bigger**, for each common terminal: Alacritty, GNOME
-  Terminal and the other VTE terminals, Konsole, kitty, WezTerm, Windows Terminal, the older Windows
-  console, macOS Terminal and iTerm2 — each with a link to that terminal's own documentation.
-- **A `high-contrast` theme**, in which stikk paints its own pair over the whole frame: black on
-  white, or white on black where the terminal said it is dark — 21 : 1 whatever the terminal's own
-  scheme is.
-- **A `plain` theme**, which adds no colour of stikk's own. It is also where *system* lands when the
-  terminal does not answer. Nothing is lost: every status carries words or a shape as well.
-- **`NO_COLOR` is honoured.** Set to anything but an empty string, it makes *system* behave as
-  `plain`, and no question is asked of the terminal. A `theme` in your config wins over it.
-- **The Orientation view says which colours are in use, and why**: a `colours` row with the reason
-  (detected, from `COLORFGBG`, from the config, from `NO_COLOR`, or no answer at all), the colour
-  depth, and how many colours fell back to the terminal's own because they could not reach 7 : 1 on
-  the background the terminal reported. If the colours look wrong, that is the row to read out.
-- **The bundle card says whether each seal checks out** (prikk ≥ 0.56). Before, stikk could only
-  say that a bundle *named* a sealer, because that is all a bundle records; prikk now checks each
-  signature against the keys your repository trusts and says what it found, so the card says it
-  too.
-- **An import prikk would refuse is not offered** (prikk ≥ 0.58, and from 0.56 for a seal that
-  does not check out). The card lists prikk's own reasons and does not offer `I`, instead of
-  letting you confirm an import that cannot land.
-- **A seal that does not match the key you trust under its id is shown as the security event it
-  is**, in the same card as two keys sharing an id — and so is a **removed** id offered a
-  different key, which stikk could not see before, because a removed id is not in the list.
-- **An interrupted seal is shown as one** (prikk ≥ 0.58). When a seal published its block and was
-  stopped before it tidied up, the Queue view says so above the list — these changes are already
-  sealed, in that block — and Seal finishes it rather than adding another block. The seal card says
-  the same.
+- **The help overlay scrolls with `↓`.** It said *"↓ more below"* and `↓` moved nothing: the help
+  kept a scroll of its own that the arrow keys never reached, and the only key that scrolled it was
+  `Enter`, which it never named. Found in a real terminal at 2.3 times the default font, where the
+  help is 19 rows of 204. Every card now scrolls through one mechanism, `↑` `↓` and `k` `j` move it,
+  and `Enter` — which has nothing to choose there — does nothing.
+- **No view stops without saying so.** Block detail showed only the rows that fit at 60 × 15, and
+  said nothing: no position in its title, no scroll, and no way to reach `prev-ref-state`, the
+  file list or the patches line. It scrolls now — following the selected row where there is one, and
+  the content where there is not — and its title says *"lines a–b of c"*, as every other view's
+  does. **Changes** gained the same, and **History** now says where you are in a long lineage. A new
+  structural check holds every view and overlay to it: a surface with more rows than its area must
+  say so, at 60 × 15 and 72 × 20, in every theme.
 
 ## 0.20.0 — 2026-10-31
 

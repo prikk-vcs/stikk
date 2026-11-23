@@ -1,6 +1,6 @@
 # RFC 066 — Every release build is tried before a tag
 
-**Status.** **Proposed 2026-11-24** by the architect, as 0.22.0's increment 1 (`.git-exclude/release/0-22-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/066-every-release-build-is-tried-first/a-release-trial-handoff-v1.md). **Proposed 2026-11-24** by the architect, as 0.22.0's increment 1 (`.git-exclude/release/0-22-0-scope.md`,
 authorized by the project owner 2026-11-24). **No open question.**
 **Measured** from `release.yml` at `e214d53` (the 0.21.1 tag) and from runs `45103941837` (0.21.0, cancelled) and
 `45177444241` (0.21.1, green).

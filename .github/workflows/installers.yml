@@ -39,7 +39,7 @@ jobs:
         # out-of-range legs put on PATH.
         #
         # **`prikk` and `inrange` are two values now** (RFC 052 decision 4). `prikk` is what the
-        # scripts print -- a **minor**, `0.<ceiling>`, filled exactly as `release.yml` fills it,
+        # scripts print -- a **minor**, `0.<ceiling>`, filled exactly as `build-release.yml` fills it,
         # because `VALIDATED_MAX_MINOR` bands on minors and `0.<n>.0` named a patch stikk never
         # tested. `inrange` is what the in-range leg puts on PATH, and that has to stay a full
         # `0.<n>.0`: the scripts read a version with `(\d+)\.(\d+)\.(\d+)`, so a fake prikk
@@ -77,7 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Fill the placeholders the way release.yml does
+      - name: Fill the placeholders the way build-release.yml does
         run: |
           set -euo pipefail
           mkdir -p filled
@@ -303,7 +303,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Fill the placeholders the way release.yml does
+      - name: Fill the placeholders the way build-release.yml does
         shell: bash
         run: |
           set -euo pipefail
@@ -551,7 +551,7 @@ jobs:
   #
   # **It builds what it installs**, at the commit under test, so the installer and the build are
   # tested together on glibc 2.35 at every commit rather than only at release. The archive is
-  # packaged exactly as `release.yml` packages it.
+  # packaged exactly as `build-release.yml` packages it.
   linux-aarch64:
     name: install.sh (ubuntu-22.04-arm, glibc 2.35)
     needs: derive
@@ -578,7 +578,7 @@ jobs:
           uname -m
           ldd --version | head -1
 
-      - name: Fill the placeholders the way release.yml does
+      - name: Fill the placeholders the way build-release.yml does
         run: |
           set -euo pipefail
           mkdir -p filled
@@ -590,7 +590,7 @@ jobs:
           ! grep -q '@STIKK_VERSION@\|@PRIKK_FLOOR@\|@PRIKK_VERSION@' filled/install.sh \
             || { echo "::error::placeholder survived"; exit 1; }
 
-      - name: Build and package the archive exactly as release.yml does
+      - name: Build and package the archive exactly as build-release.yml does
         run: |
           set -euo pipefail
           cargo build --release --locked -p stikk --target "$TARGET"
@@ -607,7 +607,7 @@ jobs:
                     | jq -r '.packages[] | select(.name=="stikk") | .version')"
           echo "BUILT_VER=${built}" >> "$GITHUB_ENV"
           echo "archive named for the published ${STIKK_VER}; the binary in it is ${built}"
-          # **The same four lines `release.yml`'s "Package (unix)" step runs**, with the
+          # **The same four lines `build-release.yml`'s "Package (unix)" step runs**, with the
           # published version's name so the installer asks for this file and not another.
           dist="stikk-${STIKK_VER}-${TARGET}"
           mkdir "$dist"

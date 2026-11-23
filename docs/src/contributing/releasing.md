@@ -96,6 +96,12 @@ sha256sum -c stikk-<version>-<target>.tar.gz.sha256
 gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 ```
 
+**Which workflow signed it changed at 0.22.0.** From 0.22.0 the attestations are signed by
+`build-release.yml`, called from `release.yml`; up to and including 0.21.1 they were signed by
+`release.yml` itself (RFC 066 moved the build into the reusable workflow). The command above
+accepts both, because `--repo` does not name a workflow. If you pin `--signer-workflow`, that is
+why it has to change — and it is worth pinning the new one rather than dropping the flag.
+
 ## What a v0.21.x release is (and is not)
 
 v0.21.x is **readable on light and dark terminals**, works with **text made much bigger**, and

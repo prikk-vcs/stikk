@@ -72,8 +72,20 @@ repo. crates.io requires a crate to exist before a trusted publisher can be atta
    ```
 
 3. The **Release** workflow runs: guard → verify → create the GitHub Release → (approve the `release`
-   environment, if gated) publish to crates.io → build and attest the binaries. The **Docs** workflow
-   refreshes the site from `main`.
+   environment, if gated) publish to crates.io → build and attest the binaries and fill the
+   installers, through `build-release.yml`. The **Docs** workflow refreshes the site from `main`.
+
+**Before the tag, every prep runs the release trial.** `release-trial.yml` calls
+`build-release.yml` — the same file step 3 calls — with publishing off: every target is built on
+its real runner, every archive is packaged and checksummed, the four installers are filled, and
+the results are kept as artifacts for seven days. Dispatch it on `main` at the SHA to be tagged
+and report every leg. **A red leg stops the cut**, as a red real-binary suite leg does. It also
+runs weekly, and on any change to the release workflows or to `scripts/**`.
+
+This is what 0.21.0 cost: its build machines were named only in `release.yml`, which nothing but a
+tag ran, so a runner image GitHub had retired was met mid-publish — both macOS jobs died before
+their first step and the release went out without its macOS archives or its installers (RFC 066).
+The trial is the check that would have caught it, and it runs rather than being remembered.
 
 ## Verifying a binary
 

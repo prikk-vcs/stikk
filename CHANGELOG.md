@@ -2,6 +2,18 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Changed
+
+- **Every release build is tried before a tag, and weekly.** For contributors: the release's build
+  — every target on its own runner, the archives, the checksums and the four filled installers —
+  is defined once, in `build-release.yml`, and a **release trial** calls that same build with
+  publishing off. Each release prep dispatches it and reports every leg; it also runs by itself
+  once a week, and on any change to the release workflows or the installer templates. This is the
+  lesson of 0.21.0, whose release run could not build for macOS: the build machines were exercised
+  only by a tag, so a retired runner image was found mid-publish rather than days before.
+
 ## 0.21.1 — 2026-11-23
 
 **The same stikk as 0.21.0, released in full.** 0.21.0's release run could not build for macOS, so its GitHub

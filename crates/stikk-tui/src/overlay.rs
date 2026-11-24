@@ -3671,7 +3671,7 @@ fn claim_sentence(claim: KeyClaim) -> Option<&'static str> {
 /// **Where one surface is scrolled to** (RFC 060 decision 3; RFC 067 decision 4).
 ///
 /// One of these belongs to each surface the reader has looked at, and
-/// [`crate::viewports::Viewports`] — in the drawing, never in the program — holds them by
+/// `crate::viewports::Viewports` — in the drawing, never in the program — holds them by
 /// [`crate::app::Surface`]. A new surface has no entry, so a new card always starts at the top.
 ///
 /// **Whether the card has been read is not here.** That is a fact about the reader, which the

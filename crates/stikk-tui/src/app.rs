@@ -6218,7 +6218,7 @@ impl App {
     /// `None` on a screen with nothing to scroll (Orientation, History), where there is no surface
     /// for a front end to report about.
     ///
-    /// (Named for the reading, because [`Self::surface`] already means *"show this error"*.)
+    /// (Named for the reading, because `App::surface` already means *"show this error"*.)
     #[must_use]
     pub fn reading_surface(&self) -> Option<Surface> {
         if self.overlays.is_empty() {

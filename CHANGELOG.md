@@ -6,6 +6,14 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ### Changed
 
+- **The program every front end drives is its own crate.** For contributors: `stikk-app` now holds
+  the application state, its transitions and the worker protocol, and `stikk-tui` holds what draws
+  it and what turns key events into intents. The program takes an `Intent` and never a key event,
+  holds no colours, and is told where the reader is in a text rather than holding scroll offsets
+  itself — so a second front end supplies its own input and its own measurements without the
+  program knowing what a terminal is. `deny.toml` bans ratatui and crossterm outside `stikk-tui`,
+  checked on every push, and a golden-frame test proves every screen and card still draws byte for
+  byte as before (RFC 067).
 - **Every release build is tried before a tag, and weekly.** For contributors: the release's build
   — every target on its own runner, the archives, the checksums and the four filled installers —
   is defined once, in `build-release.yml`, and a **release trial** calls that same build with

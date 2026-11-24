@@ -42,6 +42,7 @@ repo. crates.io requires a crate to exist before a trusted publisher can be atta
    cargo publish -p stikk-prikk --locked
    cargo publish -p stikk-state --locked
    cargo publish -p stikk-core  --locked
+   cargo publish -p stikk-app   --locked
    cargo publish -p stikk-tui   --locked
    cargo publish -p stikk       --locked
    ```
@@ -49,7 +50,11 @@ repo. crates.io requires a crate to exist before a trusted publisher can be atta
    (crates.io rate-limits brand-new crate names; if it pauses you mid-list, wait and re-run — the CI
    job and these commands both skip what is already published.)
 
-2. **Attach a trusted publisher** to *each* of the six crates: crate **Settings → Trusted Publishing →
+   **`stikk-app` is published by hand once, at 0.22.0**, like any brand-new crate name: the tag's
+   `crates` job can only publish a crate that already exists on crates.io. The release-prep handoff
+   for 0.22.0 carries the exact steps.
+
+2. **Attach a trusted publisher** to *each* of the seven crates: crate **Settings → Trusted Publishing →
    Add**, GitHub, with
 
    - Owner / repository: `prikk-vcs/stikk`

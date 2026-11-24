@@ -41,7 +41,8 @@ stikk is one workspace of five layers; dependencies point strictly downward (no 
 
 - **AR-02 — The seam is the only door to prikk.** Nothing above `stikk-prikk` knows *how* prikk is reached (subprocess vs. linked library — SEAM-01). This is the load-bearing decision of the whole design: it localizes CON-1, UD-02, UD-04, and the version-skew handling (NFR-R03) to one crate, and makes the two candidate transports swappable without touching the operation layer or frontends.
 - **AR-03 — The operation layer owns no I/O and no widgets.** `stikk-core` is a pure orchestration layer: it turns a user intent into a sequence of seam requests + state reads/writes + view-model productions, applying the confirmation tiers (FR-121), preview-first rule (FR-120), and capability gating (AC-01…04). Both frontends drive the *same* `stikk-core` API — this is the mechanical guarantee behind TUI/GUI parity (FR-123); an operation present in one frontend only is impossible because neither frontend defines operations.
-- **AR-04 — Frontends are thin.** `stikk-tui` and `stikk-gui` translate input events into `stikk-core` calls and render the view-models `stikk-core` returns. They hold no repository logic; they may hold widget state (scroll position, focus) that is never authority (INV-8).
+- **AR-04 — Frontends are thin, and the program they drive is shared.** `stikk-tui` and `stikk-gui` translate input events into **intents** and render what the program hands them. They hold no repository logic; they hold exactly the state that is about their own window — the palette the terminal resolved to, and how far each text is scrolled — which is never authority (INV-8).
+  - **Since RFC 067 (accepted 2026-11-24) that boundary is a crate, not a convention.** `stikk-app` owns the program: the view-model stack, the overlay stack, the focused ref, the refusal history and the worker protocol. A front end owns the drawing, the input events it turns into `stikk_app::Intent`s, and the scroll positions — and it **reports** what it drew (`App::report_reading`) so the program can decide what a key means, because only the front end knows how a text came out at a given size. `Seen::WholeCard`, the evidence a confirmation waits for, is therefore made inside `stikk-app` and nowhere else; a front end that never reports leaves every confirmation closed, which is the safe failure.
 
 ### AR-05 — Why this shape (rule: balance, not over-abstraction)
 
@@ -82,8 +83,9 @@ Workspace members (Rust 2024, 2018+ module style throughout):
 > **Design change, recorded 2026-09-04 (was made implicitly during implementation and is documented
 > here retroactively — see the note at the end of this section).** `stikk-view` was specified as a
 > separate crate; it does not exist. Its responsibilities live in `stikk-core` beside the operations
-> that produce them, and the shipped workspace is **six crates** (`stikk-model`, `stikk-prikk`,
-> `stikk-state`, `stikk-core`, `stikk-tui`, `stikk`), not seven. The module names below are therefore
+> that produce them. The shipped workspace is **seven crates** (`stikk-model`, `stikk-prikk`,
+> `stikk-state`, `stikk-core`, `stikk-app`, `stikk-tui`, `stikk`) — six until RFC 067 split the
+> program out of `stikk-tui` into `stikk-app`, and none of them `stikk-view`. The module names below are therefore
 > `stikk-core` modules; those marked *(not yet built)* are still ahead.
 >
 > **Why this is the right shape:** the derivation layer is a set of pure functions over seam responses

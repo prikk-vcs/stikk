@@ -35,6 +35,8 @@
 
 use std::path::{Path, PathBuf};
 
+mod support;
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -67,11 +69,15 @@ fn is_test_path(relative: &str) -> bool {
         || relative.contains("/examples/")
 }
 
-/// Every shipped `.rs` file of `stikk-tui`, as `(relative path, source)`.
+/// Every shipped `.rs` file of **every published crate**, as `(relative path, source)`.
+///
+/// Was `stikk-tui` alone, which the move of the program would have quietly narrowed (Handoff B §4).
 fn sources() -> Vec<(String, String)> {
     let root = repo_root();
     let mut out = Vec::new();
-    walk(&root, &root.join("crates/stikk-tui/src"), &mut out);
+    for crate_dir in support::published_src_dirs() {
+        walk(&root, &crate_dir, &mut out);
+    }
     out.sort();
     assert!(out.len() > 10, "the scan found only {} files", out.len());
     out

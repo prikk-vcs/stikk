@@ -127,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=""
-          for crate in stikk-model stikk-prikk stikk-state stikk-core stikk-tui stikk; do
+          for crate in stikk-model stikk-prikk stikk-state stikk-core stikk-app stikk-tui stikk; do
             code="$(curl -s -o /dev/null -w '%{http_code}' \
               -H 'User-Agent: stikk-release (github actions; https://github.com/prikk-vcs/stikk)' \
               "https://crates.io/api/v1/crates/${crate}/${VERSION}")"
@@ -157,7 +157,7 @@ jobs:
           set -euo pipefail
           # Canonical dependency order (model → prikk/state → core → tui → launcher), restricted to
           # the crates that are actually missing.
-          for crate in stikk-model stikk-prikk stikk-state stikk-core stikk-tui stikk; do
+          for crate in stikk-model stikk-prikk stikk-state stikk-core stikk-app stikk-tui stikk; do
             case " ${MISSING} " in
               *" ${crate} "*) echo "== publishing ${crate}"; cargo publish -p "${crate}" --locked ;;
               *) echo "== ${crate} already on crates.io — skipping" ;;

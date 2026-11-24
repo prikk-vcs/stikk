@@ -28,16 +28,16 @@
 
 use std::path::{Path, PathBuf};
 
-/// The six published crates. `stikk-real-binary` is deliberately absent: it is `publish = false`,
-/// and it sets fake seeds on purpose to drive the real binary.
-const PUBLISHED: &[&str] = &[
-    "stikk",
-    "stikk-model",
-    "stikk-prikk",
-    "stikk-state",
-    "stikk-core",
-    "stikk-tui",
-];
+mod support;
+
+/// **The published crates, read from the workspace** (RFC 067 Handoff B §4).
+///
+/// `stikk-real-binary` is excluded by its own `publish = false`: it sets fake seeds on purpose to
+/// drive the real binary. Nothing is written down here, so a crate added later is scanned the day
+/// it exists.
+fn published() -> Vec<String> {
+    support::published_crates()
+}
 
 /// Every file whose **code** may name a seed variable, with the reason it may.
 ///
@@ -124,7 +124,7 @@ fn strip_comments(source: &str) -> String {
 fn scanned() -> Vec<(String, String)> {
     let root = repo_root();
     let mut out = Vec::new();
-    for crate_name in PUBLISHED {
+    for crate_name in published() {
         let src = root.join("crates").join(crate_name).join("src");
         assert!(src.is_dir(), "{} has no src/", src.display());
         walk(&root, &src, &mut out);
@@ -198,7 +198,7 @@ fn the_scan_reaches_every_crate() {
         "only {} files scanned across six crates — the walk is not reaching them",
         files.len()
     );
-    for crate_name in PUBLISHED {
+    for crate_name in published() {
         let prefix = format!("crates/{crate_name}/src/");
         let count = files
             .iter()

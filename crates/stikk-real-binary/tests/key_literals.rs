@@ -34,6 +34,8 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+mod support;
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -100,12 +102,15 @@ fn is_test_path(relative: &str) -> bool {
         || relative.contains("/examples/")
 }
 
-/// Every shipped `.rs` file of the two crates that hold user-facing strings.
+/// Every shipped `.rs` file of **every published crate** (RFC 067 Handoff B §4).
+///
+/// Not a written list: the program moved out of `stikk-tui` into `stikk-app`, and a hand-written
+/// list would have let its strings leave the scan without a word.
 fn sources() -> Vec<(String, String)> {
     let root = repo_root();
     let mut out = Vec::new();
-    for crate_dir in ["crates/stikk-core/src", "crates/stikk-tui/src"] {
-        walk(&root, &root.join(crate_dir), &mut out);
+    for crate_dir in support::published_src_dirs() {
+        walk(&root, &crate_dir, &mut out);
     }
     out.sort();
     assert!(out.len() > 20, "the scan found only {} files", out.len());

@@ -48,7 +48,7 @@ use stikk_model::{Capability, Readiness, Tier};
 
 use crate::app::{App, Focus, Operation, OperationStatus, OrientationState};
 use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
-use crate::theme::{Depth, Palette, Scheme};
+use crate::theme::{Depth, Palette, Resolved, Scheme};
 use crate::worker::{Request, Response, ResponseKind};
 
 /// Where the committed manifest lives, relative to this crate.
@@ -107,10 +107,10 @@ fn serialize(buffer: &Buffer) -> String {
 }
 
 /// Draw one `App` through the same `shell::render` the run loop calls, at `width` x `height`.
-fn draw(app: &App, width: u16, height: u16) -> Buffer {
+fn draw(app: &App, look: &Resolved, width: u16, height: u16) -> Buffer {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("a test terminal");
     terminal
-        .draw(|frame| crate::shell::render(app, frame))
+        .draw(|frame| crate::shell::render(app, look, frame))
         .expect("a draw");
     terminal.backend().buffer().clone()
 }
@@ -126,11 +126,11 @@ fn press_down(app: &mut App) {
 /// **The stop condition is the frame itself**, not any internal field: a card scrolls to its end and
 /// then `↓` moves into its actions, a view scrolls to its end and then `↓` clamps, and either way the
 /// frame settles. The bound is a safety net, not the expected exit.
-fn scrolled_to_rest(app: &mut App, width: u16, height: u16) -> Buffer {
-    let mut frame = draw(app, width, height);
+fn scrolled_to_rest(app: &mut App, look: &Resolved, width: u16, height: u16) -> Buffer {
+    let mut frame = draw(app, look, width, height);
     for _ in 0..64 {
         press_down(app);
-        let next = draw(app, width, height);
+        let next = draw(app, look, width, height);
         if next == frame {
             return frame;
         }
@@ -425,8 +425,12 @@ fn bundle() -> stikk_core::BundleOpened {
 // The scenes.
 
 /// A staged `App`, with the request channel kept alive so nothing it sends is lost.
+///
+/// **The scene holds the colours**, not the app (RFC 067 decision 3): a frame is a drawing, and a
+/// drawing is made of a state *and* a look, so a scene has to carry both to be redrawable.
 struct Staged {
     app: App,
+    look: Resolved,
     _rx: mpsc::Receiver<Request>,
 }
 
@@ -434,13 +438,13 @@ struct Staged {
 /// does not exist (§1.3).
 type Build = fn(Palette) -> Staged;
 
-/// An `App` focused on the invented repository, with nothing loaded yet.
-fn staged(palette: Palette) -> (App, mpsc::Receiver<Request>) {
+/// An `App` focused on the invented repository, with nothing loaded yet. **It holds no colours**
+/// (RFC 067 decision 3); the look belongs to the scene, which carries it for the drawing.
+fn staged() -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
     let app = App::from_state(
         PathBuf::from(REPO),
         OrientationState::Loaded(orientation()),
-        palette,
         tx,
     );
     (app, rx)
@@ -461,9 +465,15 @@ fn answer(app: &mut App, rx: &mpsc::Receiver<Request>, kind: impl FnOnce(u64) ->
 }
 
 fn with(palette: Palette, build: impl FnOnce(&mut App, &mpsc::Receiver<Request>)) -> Staged {
-    let (mut app, rx) = staged(palette);
+    let (mut app, rx) = staged();
     build(&mut app, &rx);
-    Staged { app, _rx: rx }
+    Staged {
+        app,
+        // `drawing_with` is what `App::from_state` used to call on the way in, so the frames are
+        // the same frames.
+        look: Resolved::drawing_with(palette),
+        _rx: rx,
+    }
 }
 
 // The twelve `Focus` variants.
@@ -1158,7 +1168,7 @@ fn every_frame() -> BTreeMap<String, (u64, String)> {
     for (scene, build) in SCENES {
         for (width, height) in SIZES {
             let staged = build(dark());
-            let text = serialize(&draw(&staged.app, width, height));
+            let text = serialize(&draw(&staged.app, &staged.look, width, height));
             frames.insert(
                 key(scene, width, height, "dark", "base"),
                 (fnv1a(text.as_bytes()), text),
@@ -1166,7 +1176,7 @@ fn every_frame() -> BTreeMap<String, (u64, String)> {
         }
         for (name, palette) in palettes().into_iter().skip(1) {
             let staged = build(palette);
-            let text = serialize(&draw(&staged.app, 80, 24));
+            let text = serialize(&draw(&staged.app, &staged.look, 80, 24));
             frames.insert(
                 key(scene, 80, 24, name, "base"),
                 (fnv1a(text.as_bytes()), text),
@@ -1174,7 +1184,12 @@ fn every_frame() -> BTreeMap<String, (u64, String)> {
         }
         for (width, height) in [(60, 15), (80, 24)] {
             let mut staged = build(dark());
-            let text = serialize(&scrolled_to_rest(&mut staged.app, width, height));
+            let text = serialize(&scrolled_to_rest(
+                &mut staged.app,
+                &staged.look,
+                width,
+                height,
+            ));
             frames.insert(
                 key(scene, width, height, "dark", "scrolled"),
                 (fnv1a(text.as_bytes()), text),

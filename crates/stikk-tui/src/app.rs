@@ -34,7 +34,6 @@ use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 
 use crate::keys::Intent;
 use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
-use crate::theme::{Palette, Resolved};
 use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
 /// **What the program asks the front end to do** after an intent (RFC 067 decision 4).
@@ -457,7 +456,6 @@ pub struct App {
     banner: Option<String>,
     /// A stikk-internal fault: the repository was untouched; the user may continue read-only (ER-04).
     fault: Option<String>,
-    resolved: Resolved,
     should_quit: bool,
     next_seq: u64,
     /// The channel to the worker thread (RFC 010). Sending is best-effort: if the worker has already
@@ -863,18 +861,16 @@ enum PendingRefWrite {
 }
 
 impl App {
-    /// Open `repo` and send the initial orientation request, drawing with the colours `resolved`
-    /// settled (RFC 059 decision 5 — resolved by [`crate::run`], which is where the terminal is asked
-    /// and the environment is read). The caller (normally [`crate::run`]) owns the paired worker and
-    /// receiver.
+    /// Open `repo` and send the initial orientation request. The caller (normally [`crate::run`])
+    /// owns the paired worker and receiver — **and the colours**: what the terminal settled on is
+    /// the front end's to know (RFC 067 decision 3), so it is no longer handed in here.
     #[must_use]
     pub(crate) fn open(
         repo: impl Into<PathBuf>,
-        resolved: Resolved,
         session: Option<crate::Session>,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
-        let mut app = Self::new(repo, OrientationState::Loading, resolved, req_tx);
+        let mut app = Self::new(repo, OrientationState::Loading, req_tx);
         // Read before the first dispatch, and **shown nowhere** until prikk has confirmed it
         // (RFC 046 decision 5). `load` answers `None` for every failure, so a corrupt or foreign
         // record is simply a launch that starts fresh.
@@ -905,10 +901,9 @@ impl App {
     pub(crate) fn from_state(
         repo: impl Into<PathBuf>,
         state: OrientationState,
-        palette: Palette,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
-        let mut app = Self::new(repo, state, Resolved::drawing_with(palette), req_tx);
+        let mut app = Self::new(repo, state, req_tx);
         if matches!(app.state, OrientationState::Loaded(_)) {
             app.ref_focus = RefFocus::Ref(DEFAULT_REF.to_string());
         }
@@ -918,7 +913,6 @@ impl App {
     fn new(
         repo: impl Into<PathBuf>,
         state: OrientationState,
-        resolved: Resolved,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
         Self {
@@ -933,7 +927,6 @@ impl App {
             refusals: RefusalHistory::new(),
             banner: None,
             fault: None,
-            resolved,
             should_quit: false,
             next_seq: 0,
             req_tx,
@@ -6091,19 +6084,6 @@ impl App {
             }),
             None => Focus::Orientation(&self.state),
         }
-    }
-
-    /// The active colour palette.
-    #[must_use]
-    pub fn palette(&self) -> &Palette {
-        &self.resolved.palette
-    }
-
-    /// The Orientation view's `colours` row (RFC 059 decision 10) — a fact about this session, not
-    /// about the repository, which is why it comes from here and not from the view-model.
-    #[must_use]
-    pub fn colours_row(&self) -> String {
-        self.resolved.colours_row()
     }
 
     /// **The top overlay's scroll state** (RFC 060 decision 3), reset if the overlay on top is not

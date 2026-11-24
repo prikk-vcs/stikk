@@ -10,7 +10,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{App, Focus, OrientationState};
 use crate::text::{identifier, inert};
-use crate::theme::Palette;
+use crate::theme::{Palette, Resolved};
 use crate::{overlay, status_bar, view};
 
 /// Minimum usable terminal size (design TU-10, as RFC 060 decision 1 amends it).
@@ -30,13 +30,17 @@ fn too_small(area: Rect) -> bool {
     area.width < MIN_WIDTH || area.height < MIN_HEIGHT
 }
 
-/// Render the whole shell for `app` into the frame.
-pub fn render(app: &App, frame: &mut Frame) {
+/// Render the whole shell for `app`, in the colours `look` settled on, into the frame.
+///
+/// **The colours arrive as a parameter** (RFC 067 decision 3). `App` used to hold them, which made
+/// the program's state depend on what one terminal could display; what a screen can show is the
+/// front end's business, and the run loop owns the [`Resolved`] it detected at startup.
+pub fn render(app: &App, look: &Resolved, frame: &mut Frame) {
     let area = frame.area();
-    render_frame(app, frame, area);
+    render_frame(app, look, frame, area);
     // **Last, so it is under everything** — see [`paint_the_themes_own_pair`].
-    if let Some(bg) = app.palette().bg {
-        paint_the_themes_own_pair(frame, area, app.palette().fg, bg);
+    if let Some(bg) = look.palette.bg {
+        paint_the_themes_own_pair(frame, area, look.palette.fg, bg);
     }
 }
 
@@ -70,8 +74,8 @@ fn paint_the_themes_own_pair(frame: &mut Frame, area: Rect, fg: Color, bg: Color
 }
 
 /// The frame itself: header, body, banner, key line, status bar, and the overlay layer above them.
-fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
-    let palette = app.palette();
+fn render_frame(app: &App, look: &Resolved, frame: &mut Frame, area: Rect) {
+    let palette = &look.palette;
 
     if too_small(area) {
         render_too_small(palette, frame, area);
@@ -104,11 +108,11 @@ fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
     ])
     .areas(area);
 
-    render_header(app, frame, header);
+    render_header(app, palette, frame, header);
     if let Some(detail) = app.fault() {
         render_fault(palette, frame, body, detail);
     } else {
-        render_body(app, frame, body);
+        render_body(app, look, frame, body);
     }
     if !banner_lines.is_empty() {
         frame.render_widget(Paragraph::new(banner_lines), banner);
@@ -121,7 +125,7 @@ fn render_frame(app: &App, frame: &mut Frame, area: Rect) {
         )),
         keys,
     );
-    status_bar::render(app, frame, status);
+    status_bar::render(app, palette, frame, status);
 
     if let Some(top) = app.top_overlay() {
         overlay::render(
@@ -213,8 +217,7 @@ fn render_fault(palette: &Palette, frame: &mut Frame, area: Rect, detail: &str) 
     );
 }
 
-fn render_header(app: &App, frame: &mut Frame, area: Rect) {
-    let palette = app.palette();
+fn render_header(app: &App, palette: &Palette, frame: &mut Frame, area: Rect) {
     let repo = app
         .repo()
         .file_name()
@@ -228,14 +231,16 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
-fn render_body(app: &App, frame: &mut Frame, area: Rect) {
-    let palette = app.palette();
+fn render_body(app: &App, look: &Resolved, frame: &mut Frame, area: Rect) {
+    let palette = &look.palette;
     match app.focus() {
         Focus::Orientation(state) => match state {
             OrientationState::Loading => centered_note(palette, frame, area, "loading…", false),
             OrientationState::Failed(message) => render_failure(palette, frame, area, message),
             OrientationState::Loaded(v) => {
-                view::orientation::render(v, &app.colours_row(), palette, frame, area);
+                // **Composed here, from the same `Resolved`** (RFC 067 decision 3 / §3.2): the
+                // `colours` row is a fact about this session's terminal, so the drawing says it.
+                view::orientation::render(v, &look.colours_row(), palette, frame, area);
             }
         },
         Focus::Loading(what) => {

@@ -16,7 +16,11 @@ use crate::test_util::buffer_text;
 fn render_app(app: &App) -> String {
     let backend = TestBackend::new(100, 1);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render(app, f, f.area())).unwrap();
+    // **The colours are the drawing's** (RFC 067 decision 3): `App` holds none, so the status bar
+    // is told which to use, exactly as the shell tells it.
+    terminal
+        .draw(|f| render(app, &resolved().palette, f, f.area()))
+        .unwrap();
     buffer_text(terminal.backend().buffer())
 }
 
@@ -25,9 +29,9 @@ fn resolved() -> crate::theme::Resolved {
     crate::theme::resolve(&crate::theme::Environment::default())
 }
 
-fn from_state(repo: &str, state: OrientationState, palette: Palette) -> App {
+fn from_state(repo: &str, state: OrientationState) -> App {
     let (tx, _rx) = mpsc::channel();
-    App::from_state(repo, state, palette, tx)
+    App::from_state(repo, state, tx)
 }
 
 #[test]
@@ -35,7 +39,7 @@ fn shows_the_repository_and_no_focus_before_the_first_read() {
     // RFC 029 Handoff B §3: pending focus renders nothing for focus — no `heads/main` guessed before
     // prikk has said anything — and the existing `(loading)` marker stays.
     let (tx, _rx) = mpsc::channel();
-    let app = App::open("/home/dev/project", resolved(), None, tx);
+    let app = App::open("/home/dev/project", None, tx);
     let text = render_app(&app);
     assert!(text.contains("project"));
     assert!(!text.contains("heads/main"), "{text:?}");
@@ -70,11 +74,7 @@ fn shows_queue_and_maintainer_badge() {
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
         current_branch: stikk_model::CurrentBranch::NotReported,
     };
-    let app = from_state(
-        "/x/repo",
-        OrientationState::Loaded(view),
-        Palette::default(),
-    );
+    let app = from_state("/x/repo", OrientationState::Loaded(view));
     let text = render_app(&app);
     assert!(text.contains("queued"));
     assert!(text.contains("MNT"));
@@ -115,19 +115,16 @@ fn maintainer_unknown_never_renders_as_a_pass() {
     let unknown_text = render_app(&from_state(
         "/x/repo",
         OrientationState::Loaded(view_with(RoleReadiness::Unknown)),
-        Palette::default(),
     ));
     let not_ready_text = render_app(&from_state(
         "/x/repo",
         OrientationState::Loaded(view_with(RoleReadiness::NotReady)),
-        Palette::default(),
     ));
     // `Ready` cannot be produced by `stikk-prikk::env` today (RFC 016 F3), but the render path must
     // still be exercised for it now, so the day it becomes reachable this test already covers it.
     let ready_text = render_app(&from_state(
         "/x/repo",
         OrientationState::Loaded(view_with(RoleReadiness::Known(Binding::Matches))),
-        Palette::default(),
     ));
 
     assert!(
@@ -167,11 +164,7 @@ fn read_only_badge_appears_and_no_queue_when_zero() {
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
         current_branch: stikk_model::CurrentBranch::NotReported,
     };
-    let app = from_state(
-        "/x/repo",
-        OrientationState::Loaded(view),
-        Palette::default(),
-    );
+    let app = from_state("/x/repo", OrientationState::Loaded(view));
     let text = render_app(&app);
     assert!(text.contains("[RO]"));
     assert!(!text.contains("queued"));
@@ -201,11 +194,7 @@ fn the_in_flight_indicator_appears_while_a_request_is_pending_and_clears_once_an
         stale_seed_variables: stikk_prikk::env::StaleSeedVariables::default(),
         current_branch: stikk_model::CurrentBranch::NotReported,
     };
-    let mut app = from_state(
-        "/x/repo",
-        OrientationState::Loaded(view),
-        Palette::default(),
-    );
+    let mut app = from_state("/x/repo", OrientationState::Loaded(view));
     assert!(!render_app(&app).contains('⟳'));
 
     app.open_history(); // sends a request; the worker never answers it here
@@ -222,7 +211,9 @@ const UNRESOLVED: &str = "<unresolved; run `prikk doctor`>";
 
 fn render_at(app: &App, width: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
-    terminal.draw(|f| render(app, f, f.area())).unwrap();
+    terminal
+        .draw(|f| render(app, &resolved().palette, f, f.area()))
+        .unwrap();
     buffer_text(terminal.backend().buffer())
 }
 
@@ -265,7 +256,6 @@ fn focused_app(repo: &str, current: stikk_model::CurrentBranch, queued: u64) -> 
     from_state(
         &format!("/x/{repo}"),
         OrientationState::Loaded(view_on(current, queued)),
-        Palette::default(),
     )
 }
 
@@ -273,7 +263,7 @@ fn focused_app(repo: &str, current: stikk_model::CurrentBranch, queued: u64) -> 
 /// still unanswered, so `⟳ 1` shows.
 fn unfocused_app(repo: &str, queued: u64) -> App {
     let (tx, rx) = mpsc::channel();
-    let mut app = App::open(format!("/x/{repo}"), resolved(), None, tx);
+    let mut app = App::open(format!("/x/{repo}"), None, tx);
     let first = rx.try_recv().expect("the first Orientation read");
     app.apply(crate::worker::Response {
         seq: first.seq,
@@ -287,7 +277,7 @@ fn unfocused_app(repo: &str, queued: u64) -> App {
 
 fn pending_app(repo: &str) -> App {
     let (tx, _rx) = mpsc::channel();
-    App::open(format!("/x/{repo}"), resolved(), None, tx)
+    App::open(format!("/x/{repo}"), None, tx)
 }
 
 fn show(label: &str, width: u16, text: &str) {

@@ -26,8 +26,7 @@ use crate::theme::Palette;
 const ELLIPSIS: &str = "…";
 
 /// Render the status bar for `app` into the one-line `area`.
-pub fn render(app: &App, frame: &mut Frame, area: Rect) {
-    let palette = app.palette();
+pub fn render(app: &App, palette: &Palette, frame: &mut Frame, area: Rect) {
     let parts = Parts {
         repo: app
             .repo()

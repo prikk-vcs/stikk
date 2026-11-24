@@ -109,7 +109,6 @@ fn app() -> (App, mpsc::Receiver<crate::worker::Request>) {
     let app = App::from_state(
         PathBuf::from(REPO),
         OrientationState::Loaded(orientation()),
-        Palette::default(),
         tx,
     );
     (app, rx)
@@ -340,8 +339,11 @@ fn verification() -> stikk_prikk::Verification {
 /// Draw one `App` through the same `shell::render` the run loop calls.
 fn draw(app: &App) -> Buffer {
     let mut terminal = Terminal::new(TestBackend::new(WIDTH, HEIGHT)).expect("a test terminal");
+    // **The same colours as before the palette left `App`** (RFC 067 decision 3): these images are
+    // compared byte for byte, so the look is `Palette::default()`, exactly what the app held.
+    let look = crate::theme::Resolved::drawing_with(Palette::default());
     terminal
-        .draw(|frame| crate::shell::render(app, frame))
+        .draw(|frame| crate::shell::render(app, &look, frame))
         .expect("a draw");
     terminal.backend().buffer().clone()
 }

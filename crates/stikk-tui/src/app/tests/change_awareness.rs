@@ -22,7 +22,7 @@ fn stamped(
     view: stikk_core::OrientationView,
     stamp: ChangeToken,
 ) -> (App, mpsc::Receiver<Request>) {
-    let (mut app, rx) = from_state("/repo", loaded(view.clone()), Palette::default());
+    let (mut app, rx) = from_state("/repo", loaded(view.clone()));
     app.reload();
     let req = next_request(&rx);
     assert!(matches!(req.kind, RequestKind::Orient));
@@ -96,11 +96,7 @@ fn assert_refreshed_with_notice(app: &App, requests: &[Request]) {
 // 1
 #[test]
 fn no_check_is_sent_before_the_first_stamp_and_the_first_stamp_says_nothing() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     let t0 = Instant::now();
     app.tick(t0);
     app.tick(t0 + Duration::from_secs(60));

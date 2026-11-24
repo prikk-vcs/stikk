@@ -21,9 +21,22 @@ use crate::test_util::buffer_text;
 use crate::worker::Request;
 
 fn draw(app: &App, w: u16, h: u16) -> String {
+    draw_in(app, &look(), w, h)
+}
+
+/// The colours a test draws in when it is not about colours: what a default `Config` resolves to
+/// with no terminal to ask, which is exactly what these tests' apps used to hold before the colours
+/// left `App` (RFC 067 decision 3; RFC 059: `system` with no answer is `plain`).
+fn look() -> crate::theme::Resolved {
+    crate::theme::resolve(&crate::theme::Environment::configured(
+        Config::default().theme,
+    ))
+}
+
+fn draw_in(app: &App, look: &crate::theme::Resolved, w: u16, h: u16) -> String {
     let backend = TestBackend::new(w, h);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render(app, f)).unwrap();
+    terminal.draw(|f| render(app, look, f)).unwrap();
     buffer_text(terminal.backend().buffer())
 }
 
@@ -44,13 +57,9 @@ fn orientation_naming_heads_main() -> Orientation {
     }
 }
 
-fn open(repo: &str, config: &Config) -> (App, mpsc::Receiver<Request>) {
+fn open(repo: &str) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
-    // The colours this `Config` resolves to with no terminal to ask (RFC 059): an explicit theme
-    // gives its own palette, and `system` -- the default here -- gives `plain`, which is what a
-    // session that cannot ask really does get.
-    let resolved = crate::theme::resolve(&crate::theme::Environment::configured(config.theme));
-    (App::open(repo, resolved, None, tx), rx)
+    (App::open(repo, None, tx), rx)
 }
 
 /// Answer every request currently queued against `backend`, applying each response in turn.
@@ -78,7 +87,7 @@ fn renders_header_orientation_and_status_together() {
         active_patch_warning: None,
         current_branch: stikk_model::CurrentBranch::NotReported,
     });
-    let (mut app, rx) = open("/home/dev/sample-repo", &Config::default());
+    let (mut app, rx) = open("/home/dev/sample-repo");
     drain(&mut app, &rx, &backend);
     let text = draw(&app, 90, 24);
     assert!(text.contains("stikk")); // header
@@ -95,7 +104,7 @@ fn renders_header_orientation_and_status_together() {
 fn a_refusal_renders_the_failure_body_verbatim() {
     let backend =
         NullBackend::supported().with_orientation_refusal("repository is retired format 3");
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     let text = draw(&app, 90, 24);
     assert!(text.contains("Cannot open repository"));
@@ -105,7 +114,7 @@ fn a_refusal_renders_the_failure_body_verbatim() {
 #[test]
 fn overlay_draws_over_the_view() {
     let backend = NullBackend::supported();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     app.open_glossary();
     let text = draw(&app, 90, 24);
@@ -121,7 +130,7 @@ fn overlay_draws_over_the_view() {
 #[test]
 fn a_banner_renders_above_the_status_bar() {
     let backend = NullBackend::supported();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     let err = stikk_model::StikkError::LockConflict {
         message: "lock held by another writer".into(),
@@ -135,7 +144,7 @@ fn a_banner_renders_above_the_status_bar() {
 #[test]
 fn a_fault_renders_the_untouched_repository_screen() {
     let backend = NullBackend::supported();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     let err = stikk_model::StikkError::Internal {
         detail: "invariant X violated".into(),
@@ -149,7 +158,7 @@ fn a_fault_renders_the_untouched_repository_screen() {
 #[test]
 fn a_tiny_terminal_shows_the_too_small_notice() {
     let backend = NullBackend::supported();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     let text = draw(&app, 40, 10);
     // RFC 060 decision 6: it says what to do, and names the size it needs.
@@ -162,7 +171,7 @@ fn a_pending_history_load_renders_as_loading() {
     // RFC 010 §5: a load that used to be instantaneous (and so unobservable) is now a real gap the
     // shell must render something for — proof that the `Screen::Loading` path actually reaches pixels.
     let backend = NullBackend::supported().with_orientation(orientation_naming_heads_main());
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     app.open_history();
     // Deliberately not drained: the response has not arrived yet.
@@ -173,7 +182,7 @@ fn a_pending_history_load_renders_as_loading() {
 #[test]
 fn a_pending_ref_picker_renders_as_loading() {
     let backend = NullBackend::supported();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     app.open_ref_picker();
     let text = draw(&app, 90, 24);
@@ -224,7 +233,7 @@ fn history_screen_renders_the_lineage_and_queue_tier() {
                 },
             ],
         });
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     app.open_history();
     drain(&mut app, &rx, &backend);
@@ -266,7 +275,7 @@ fn block_detail_screen_shows_tip_state_and_where_patch_content_comes_from() {
             ],
             total_bytes: 128,
         });
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     app.open_history();
     drain(&mut app, &rx, &backend);
@@ -294,7 +303,7 @@ fn block_detail_screen_shows_tip_state_and_where_patch_content_comes_from() {
 #[test]
 fn the_backslash_refusal_shows_gloss_and_prikks_words_at_80x24() {
     let backend = NullBackend::supported();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     // Surfaced through the **commit** path, which is the only path that produces this message: prikk
     // refuses it while authoring worktree nodes. (An orientation-time refusal takes the "Cannot open
@@ -345,7 +354,7 @@ fn picking_the_unpublished_heads_main_opens_its_empty_history_at_80x24() {
             reff: "heads/main".into(),
             blocks: Vec::new(),
         });
-    let (mut app, rx) = open("/home/dev/new-repo", &Config::default());
+    let (mut app, rx) = open("/home/dev/new-repo");
     // The first read resolves to no focus and opens the picker; its `Refs` read answers empty.
     drain(&mut app, &rx, &backend);
     assert!(
@@ -414,7 +423,7 @@ fn capture_rfc044_closing_the_current_branch_at_80_columns() {
         // **The guard that matters**: if the preview ever let this through, the write would
         // succeed here and the assertion below would fail on a screen showing prikk's lines.
         .with_ref_write(vec!["closed branch heads/main".to_string()]);
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     app.open_ref_picker();
     drain(&mut app, &rx, &backend);
@@ -438,7 +447,7 @@ fn capture_rfc044_closing_the_current_branch_at_80_columns() {
 #[test]
 fn a_long_banner_wraps_and_a_short_one_does_not_move() {
     let backend = NullBackend::supported();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
 
     app.surface_error(
@@ -519,7 +528,7 @@ fn capture_rfc045_work_queued_for_the_target_at_80_columns() {
             vec!["switched from heads/main to heads/feature".to_string()],
             Vec::new(),
         );
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     app.open_ref_picker();
     drain(&mut app, &rx, &backend);
@@ -548,7 +557,7 @@ fn capture_rfc045_work_queued_for_the_target_at_80_columns() {
 #[test]
 fn capture_the_two_bundle_refusals_at_80x24() {
     let backend = NullBackend::supported();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
 
     for (name, sentence) in [
@@ -636,7 +645,7 @@ fn capture_rfc063_a_commit_off_the_current_branch_at_both_sizes_and_themes() {
             ..Config::default()
         };
         for (w, h) in [(80, 24), (120, 40)] {
-            let (mut app, rx) = open("/repo", &config);
+            let (mut app, rx) = open("/repo");
             drain(&mut app, &rx, &backend);
             // Focus `heads/main` through the picker, which is the one keypress F4 describes: the
             // cursor opens on the branch the repository is on (`heads/dev`), so `↑` is what moves
@@ -662,7 +671,12 @@ fn capture_rfc063_a_commit_off_the_current_branch_at_both_sizes_and_themes() {
             }
             app.select();
             drain(&mut app, &rx, &backend);
-            let text = draw(&app, w, h);
+            let text = draw_in(
+                &app,
+                &crate::theme::resolve(&crate::theme::Environment::configured(config.theme)),
+                w,
+                h,
+            );
             println!("--- a commit off the current branch, {w}×{h}, {name}\n{text}");
             let flat = text
                 .lines()
@@ -692,23 +706,20 @@ fn capture_rfc063_a_commit_off_the_current_branch_at_both_sizes_and_themes() {
 // ---------------------------------------------------------------------------------------------
 
 /// The whole rendered buffer, not its text: these tests are about colour, cell by cell.
-fn drawn(app: &App, w: u16, h: u16) -> ratatui::buffer::Buffer {
+fn drawn(app: &App, look: &crate::theme::Resolved, w: u16, h: u16) -> ratatui::buffer::Buffer {
     let backend = TestBackend::new(w, h);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render(app, f)).unwrap();
+    terminal.draw(|f| render(app, look, f)).unwrap();
     terminal.backend().buffer().clone()
 }
 
 /// An app on a loaded Orientation, drawing with `resolved` — and, when `overlay` is set, with the
 /// Glossary open over it, which is the case that matters: an overlay clears its region before it
 /// draws, so a painted frame has to survive the clear.
-fn app_drawing_with(
-    resolved: crate::theme::Resolved,
-    overlay: bool,
-) -> (App, mpsc::Receiver<Request>) {
+fn app_drawing_with(overlay: bool) -> (App, mpsc::Receiver<Request>) {
     let backend = NullBackend::supported().with_orientation(orientation_naming_heads_main());
     let (tx, rx) = mpsc::channel();
-    let mut app = App::open("/repo", resolved, None, tx);
+    let mut app = App::open("/repo", None, tx);
     drain(&mut app, &rx, &backend);
     if overlay {
         app.open_glossary();
@@ -762,9 +773,9 @@ fn high_contrast_paints_every_cell_in_both_directions() {
             let resolved =
                 resolved_at(stikk_state::config::Theme::HighContrast, answer, truecolour);
             for overlay in [false, true] {
-                let (app, _rx) = app_drawing_with(resolved, overlay);
+                let (app, _rx) = app_drawing_with(overlay);
                 for (w, h) in [(80, 24), (120, 40)] {
-                    let buffer = drawn(&app, w, h);
+                    let buffer = drawn(&app, &resolved, w, h);
                     for y in 0..h {
                         for x in 0..w {
                             let cell = buffer.cell((x, y)).expect("a cell inside the buffer");
@@ -792,9 +803,9 @@ fn plain_leaves_every_cell_to_the_terminal() {
     let resolved = resolved_for(stikk_state::config::Theme::Plain, None);
     assert_eq!(resolved.palette.bg, None, "plain paints no background");
     for overlay in [false, true] {
-        let (app, _rx) = app_drawing_with(resolved, overlay);
+        let (app, _rx) = app_drawing_with(overlay);
         for (w, h) in [(80, 24), (120, 40)] {
-            let buffer = drawn(&app, w, h);
+            let buffer = drawn(&app, &resolved, w, h);
             for y in 0..h {
                 for x in 0..w {
                     let cell = buffer.cell((x, y)).expect("a cell inside the buffer");
@@ -830,8 +841,8 @@ fn capture_rfc059_the_two_new_themes_at_80x24() {
             .join("\n")
     };
     let in_dark = {
-        let (app, _rx) = app_drawing_with(resolved_for(Theme::Dark, None), false);
-        apart_from_the_colours_row(&draw(&app, 80, 24))
+        let (app, _rx) = app_drawing_with(false);
+        apart_from_the_colours_row(&draw_in(&app, &resolved_for(Theme::Dark, None), 80, 24))
     };
     for (theme, answer) in [
         (
@@ -844,8 +855,10 @@ fn capture_rfc059_the_two_new_themes_at_80x24() {
         (Theme::HighContrast, None),
         (Theme::Plain, None),
     ] {
-        let (app, _rx) = app_drawing_with(resolved_for(theme, answer), false);
-        let text = draw(&app, 80, 24);
+        let (app, _rx) = app_drawing_with(false);
+        // **Each theme's own colours**, which is what this test compares: the app holds none
+        // (RFC 067 decision 3), so the draw is told which to use.
+        let text = draw_in(&app, &resolved_for(theme, answer), 80, 24);
         println!(
             "--- RFC 059: Orientation in {theme:?} (terminal answered light: {}), 80x24\n{text}",
             answer.is_some_and(|a| a.light)
@@ -1461,12 +1474,7 @@ fn list_the_matrix_screens() {
     for screen in screens() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open(
-            "/repo",
-            resolved_for(stikk_state::config::Theme::Dark, None),
-            None,
-            tx,
-        );
+        let mut app = App::open("/repo", None, tx);
         drain(&mut app, &rx, &backend);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
@@ -1598,7 +1606,7 @@ fn every_screen_keeps_seven_to_one() {
         for screen in screens() {
             let backend = (screen.backend)();
             let (tx, rx) = mpsc::channel();
-            let mut app = App::open("/repo", resolved, None, tx);
+            let mut app = App::open("/repo", None, tx);
             if screen.first_read {
                 drain(&mut app, &rx, &backend);
             }
@@ -1617,7 +1625,7 @@ fn every_screen_keeps_seven_to_one() {
             // **60 × 15 and 72 × 20 as well** (RFC 060 §5.3): the minimum, and a size between it
             // and yesterday's.
             for (w, h) in [(60, 15), (72, 20), (80, 24), (120, 40)] {
-                let buffer = drawn(&app, w, h);
+                let buffer = drawn(&app, &resolved, w, h);
                 let what = format!("{} at {w}x{h}", screen.name);
                 let (c, k, r) =
                     keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
@@ -1653,7 +1661,7 @@ fn the_too_small_notice_keeps_seven_to_one() {
     let mut cells = 0_usize;
     for resolved in every_theme_and_depth() {
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         drain(&mut app, &rx, &backend);
         // One column short, one row short, and far too small for either.
         for (w, h) in [(59, 15), (60, 14), (40, 10)] {
@@ -1662,7 +1670,7 @@ fn the_too_small_notice_keeps_seven_to_one() {
                 text.contains("too small for stikk") || text.contains("too small"),
                 "{w}x{h} is below the minimum:\n{text}"
             );
-            let buffer = drawn(&app, w, h);
+            let buffer = drawn(&app, &resolved, w, h);
             let what = format!("the too-small notice at {w}x{h}");
             let (c, _, _) = keeps_seven_to_one(&buffer, &what, &resolved.palette, resolved.depth);
             cells += c;
@@ -1693,7 +1701,7 @@ fn no_row_overflows_its_area_below_the_minimum() {
     for screen in screens() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
@@ -1705,11 +1713,11 @@ fn no_row_overflows_its_area_below_the_minimum() {
             // C1): a title's position is the part that may never be cut, and an unscrolled screen
             // of a scrollable surface does not draw one.
             for _ in 0..3 {
-                let _ = drawn(&app, w, h);
+                let _ = drawn(&app, &resolved, w, h);
                 app.nav_down();
             }
             let _ = crate::text::drain_overflows();
-            let text = draw(&app, w, h);
+            let text = draw_in(&app, &resolved, w, h);
             screens_drawn += 1;
             for overflow in crate::text::drain_overflows() {
                 found.push(format!(
@@ -1793,12 +1801,12 @@ fn capture_rfc060_the_three_overlays_f3_found_cut() {
             .expect("a screen of the matrix");
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
         (screen.reach)(&mut app, &rx, &backend);
-        let text = draw(&app, 60, 18);
+        let text = draw_in(&app, &resolved, 60, 18);
         println!("--- RFC 060 F3: {name}, 60x18\n{text}");
         // Flattened the way every capture here is: the border off, the rows joined, so a sentence
         // that wrapped is one line again and `contains` means "whole on screen".
@@ -1827,7 +1835,7 @@ fn capture_rfc060_the_three_overlays_f3_found_cut() {
 #[test]
 fn capture_rfc060_the_too_small_screen() {
     let backend = stocked();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     for (w, h) in [(59, 15), (60, 14), (40, 10), (20, 5), (10, 3)] {
         let text = draw(&app, w, h);
@@ -1849,7 +1857,7 @@ fn capture_rfc060_the_too_small_screen() {
             );
         }
         // **The terminal's own colours** — no colour of stikk's at all (decision 6).
-        let buffer = drawn(&app, w, h);
+        let buffer = drawn(&app, &look(), w, h);
         for y in 0..h {
             for x in 0..w {
                 let cell = buffer.cell((x, y)).expect("a cell inside the buffer");
@@ -1900,7 +1908,7 @@ fn capture_rfc060_the_too_small_screen() {
 #[test]
 fn capture_rfc060_c1_titles_at_60_columns() {
     let backend = stocked();
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     drain(&mut app, &rx, &backend);
     app.open_verify();
     drain(&mut app, &rx, &backend);
@@ -1961,7 +1969,7 @@ fn capture_rfc061_what_can_be_done_here_on_every_screen() {
     for screen in screens() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
@@ -1986,7 +1994,7 @@ fn capture_rfc061_what_can_be_done_here_on_every_screen() {
         opened += 1;
         let _ = crate::text::drain_overflows();
         for (w, h) in [(60, 15), (80, 24)] {
-            let text = draw(&app, w, h);
+            let text = draw_in(&app, &resolved, w, h);
             println!(
                 "--- what can be done here: {} ({subject}), {w}x{h}\n{text}",
                 screen.name
@@ -2033,7 +2041,7 @@ fn capture_rfc061_what_can_be_done_here_on_every_screen() {
         }
         // 60 x 15 is the floor, and the list must still be readable there: its title names what it
         // is about, however short the panel gets.
-        let narrow = draw(&app, 60, 15);
+        let narrow = draw_in(&app, &resolved, 60, 15);
         assert!(
             narrow.contains("What can be done")
                 || narrow.contains(subject.split(' ').next().unwrap_or("")),
@@ -2059,7 +2067,7 @@ fn the_selected_row_is_reversed_across_its_width() {
     for screen in screens() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
@@ -2070,7 +2078,7 @@ fn the_selected_row_is_reversed_across_its_width() {
                 app.select();
             }
             for (w, h) in [(80, 24), (120, 40)] {
-                let buffer = drawn(&app, w, h);
+                let buffer = drawn(&app, &resolved, w, h);
                 for y in buffer.area.top()..buffer.area.bottom() {
                     let symbol = |x: u16| {
                         buffer
@@ -2124,14 +2132,14 @@ fn capture_rfc061_the_key_line_at_every_size() {
     for screen in screens() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
         (screen.reach)(&mut app, &rx, &backend);
         let _ = crate::text::drain_overflows();
         for (w, h) in [(60, 15), (80, 24), (120, 40)] {
-            let text = draw(&app, w, h);
+            let text = draw_in(&app, &resolved, w, h);
             let rows: Vec<&str> = text.lines().collect();
             // The key line is the row above the status bar, which is the last.
             let line = rows
@@ -2193,13 +2201,13 @@ fn every_title_names_no_key() {
     for screen in screens() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
         (screen.reach)(&mut app, &rx, &backend);
         for (w, h) in [(60, 15), (80, 24), (120, 40)] {
-            let text = draw(&app, w, h);
+            let text = draw_in(&app, &resolved, w, h);
             for row in text.lines().filter(|row| row.contains('\u{250c}')) {
                 titles += 1;
                 // The shapes titles used: `v: raw`, `a adopts`, `d compares it with…`, `↑/↓`.
@@ -2279,12 +2287,7 @@ fn the_help_scrolls_with_down_through_the_key_path() {
     ] {
         let backend = stocked();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open(
-            "/repo",
-            resolved_for(stikk_state::config::Theme::Dark, None),
-            None,
-            tx,
-        );
+        let mut app = App::open("/repo", None, tx);
         drain(&mut app, &rx, &backend);
 
         // `?` opens the help, as a reader opens it.
@@ -2347,12 +2350,7 @@ fn down_reaches_the_end_of_the_help_and_the_foot_line_turns_over() {
 
     let backend = stocked();
     let (tx, rx) = mpsc::channel();
-    let mut app = App::open(
-        "/repo",
-        resolved_for(stikk_state::config::Theme::Dark, None),
-        None,
-        tx,
-    );
+    let mut app = App::open("/repo", None, tx);
     drain(&mut app, &rx, &backend);
     crate::keys::handle_key(&mut app, key(KeyCode::Char('?')));
 
@@ -2405,19 +2403,19 @@ fn capture_rfc060b_every_surface_that_advertises_down_moves_on_down() {
     for screen in screens() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
         (screen.reach)(&mut app, &rx, &backend);
 
-        let before = draw(&app, 60, 15);
+        let before = draw_in(&app, &resolved, 60, 15);
         let advertises = before.contains("\u{2193} more below");
         let position_before = position(&before);
         let selectable = before.contains(crate::theme::SELECTED_MARKER.trim());
         // **The key, not the handler** (trap 2).
         crate::keys::handle_key(&mut app, key(KeyCode::Down));
-        let after = draw(&app, 60, 15);
+        let after = draw_in(&app, &resolved, 60, 15);
 
         if advertises || position_before.is_some() {
             assert_ne!(
@@ -2534,7 +2532,7 @@ fn capture_rfc060c_no_view_stops_without_saying_so() {
     for screen in screens() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
-        let mut app = App::open("/repo", resolved, None, tx);
+        let mut app = App::open("/repo", None, tx);
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
@@ -2542,7 +2540,7 @@ fn capture_rfc060c_no_view_stops_without_saying_so() {
         // What reaching the screen recorded was drawn at another size.
         let _ = crate::text::drain_overflows();
         for (w, h) in [(60, 15), (72, 20)] {
-            let text = draw(&app, w, h);
+            let text = draw_in(&app, &resolved, w, h);
             for overflow in crate::text::drain_overflows() {
                 // The height check's own record, which names itself.
                 if overflow.text.contains("the title says nothing") {
@@ -2588,12 +2586,7 @@ fn capture_rfc060c_block_detail_reaches_every_row_at_60x15() {
 
     let backend = stocked();
     let (tx, rx) = mpsc::channel();
-    let mut app = App::open(
-        "/repo",
-        resolved_for(stikk_state::config::Theme::Dark, None),
-        None,
-        tx,
-    );
+    let mut app = App::open("/repo", None, tx);
     drain(&mut app, &rx, &backend);
     // History, then its tip block — with the right arrow, which opens a row (RFC 061 decision 2).
     crate::keys::handle_key(&mut app, key(KeyCode::Right));

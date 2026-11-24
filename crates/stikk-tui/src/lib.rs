@@ -152,14 +152,17 @@ fn ui_loop(
     req_tx: mpsc::Sender<worker::Request>,
     res_rx: &mpsc::Receiver<worker::Response>,
 ) -> Result<()> {
-    let mut app = App::open(repo, resolved, session, req_tx);
+    // **The run loop owns the colours** (RFC 067 decision 3): `resolved` stays here, a local of
+    // the loop that draws, instead of being handed to the program. Nothing about detection changes
+    // (RFC 059 decision 5) -- it is settled before this function is called.
+    let mut app = App::open(repo, session, req_tx);
     // Tracked locally, not on `App`: once the worker is gone there is nothing left to poll, and this
     // must flip at most once so the fault it records stays dismissible (§ `App::worker_stopped`).
     let mut worker_alive = true;
 
     while !app.should_quit() {
         terminal
-            .draw(|frame| shell::render(&app, frame))
+            .draw(|frame| shell::render(&app, &resolved, frame))
             .map_err(|e| StikkError::environment("failed to draw the terminal", e))?;
 
         if event::poll(POLL).map_err(|e| StikkError::environment("input poll failed", e))? {

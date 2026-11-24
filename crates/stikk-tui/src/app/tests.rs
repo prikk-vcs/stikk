@@ -19,30 +19,32 @@ use stikk_model::{Capability, Readiness, RoleReadiness, StikkError, Tier};
 use stikk_prikk::{
     BlockRow, CommitResult, NullBackend, Orientation, SealResult, StateFiles, WorktreeStatus,
 };
-use stikk_state::Config;
 
 use super::*;
 use crate::overlay::Overlay;
 use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
-fn open(repo: &str, config: &Config) -> (App, mpsc::Receiver<Request>) {
+fn open(repo: &str) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
-    (App::open(repo, resolved(config.theme), None, tx), rx)
+    (App::open(repo, None, tx), rx)
 }
 
-/// The colours a test's `Config` resolves to, with no terminal to ask and nothing in the environment
-/// (RFC 059: `system` with no answer is `plain`).
-fn resolved(theme: stikk_state::config::Theme) -> crate::theme::Resolved {
-    crate::theme::resolve(&crate::theme::Environment::configured(theme))
+/// The colours a drawing test draws in.
+///
+/// **`App` holds none** (RFC 067 decision 3), so a test that draws says which colours it wants,
+/// exactly as the run loop does.
+fn palette() -> crate::theme::Palette {
+    crate::theme::Palette::default()
 }
 
-fn from_state(
-    repo: &str,
-    state: OrientationState,
-    palette: Palette,
-) -> (App, mpsc::Receiver<Request>) {
+/// The colours a whole-shell drawing test draws in, from the same [`palette`].
+fn look() -> crate::theme::Resolved {
+    crate::theme::Resolved::drawing_with(palette())
+}
+
+fn from_state(repo: &str, state: OrientationState) -> (App, mpsc::Receiver<Request>) {
     let (tx, rx) = mpsc::channel();
-    (App::from_state(repo, state, palette, tx), rx)
+    (App::from_state(repo, state, tx), rx)
 }
 
 /// Pull the one request expected to have been sent so far. Panics (with a clear message) if none was
@@ -200,7 +202,7 @@ fn dirty_changes() -> ChangesView {
 
 #[test]
 fn open_sends_an_orientation_request_and_apply_loads_it() {
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     let req = next_request(&rx);
     assert!(matches!(req.kind, RequestKind::Orient));
     let view = orientation_view(2, Some("heads/main"), Some("abc"));
@@ -219,7 +221,7 @@ fn open_sends_an_orientation_request_and_apply_loads_it() {
 
 #[test]
 fn an_orientation_refusal_becomes_a_failed_state_with_verbatim_message() {
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     let req = next_request(&rx);
     let err = StikkError::Refusal {
         message: "repository is retired format 3".into(),
@@ -236,7 +238,7 @@ fn an_orientation_refusal_becomes_a_failed_state_with_verbatim_message() {
 
 #[test]
 fn a_stale_orientation_response_is_discarded_when_superseded_by_reload() {
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     let first = next_request(&rx);
     // A refresh is requested before the first response arrives (e.g. `r` pressed immediately).
     app.reload();
@@ -263,7 +265,7 @@ fn a_stale_orientation_response_is_discarded_when_superseded_by_reload() {
 
 #[test]
 fn glossary_overlay_toggles() {
-    let (mut app, _rx) = from_state("/repo", OrientationState::Loading, Palette::default());
+    let (mut app, _rx) = from_state("/repo", OrientationState::Loading);
     assert!(!app.has_overlay());
     app.open_glossary();
     assert_eq!(app.top_overlay(), Some(&Overlay::Glossary));
@@ -273,7 +275,7 @@ fn glossary_overlay_toggles() {
 
 #[test]
 fn back_closes_overlay_then_pops_screen_then_quits() {
-    let (mut app, _rx) = from_state("/repo", OrientationState::Loading, Palette::default());
+    let (mut app, _rx) = from_state("/repo", OrientationState::Loading);
     app.push_screen(Screen::History {
         view: HistoryView {
             reff: "heads/main".into(),
@@ -303,11 +305,7 @@ fn back_pops_a_pending_loading_screen_the_stop_waiting_semantics() {
     // RFC 010 decision 4: leaving a view whose read is in flight is "stop waiting", not "cancel" — it
     // costs nothing but popping the placeholder; the eventual stale response is discarded (proven
     // separately below).
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     assert!(matches!(app.focus(), Focus::Loading("history")));
     app.back();
@@ -316,11 +314,7 @@ fn back_pops_a_pending_loading_screen_the_stop_waiting_semantics() {
 
 #[test]
 fn a_stale_history_response_is_discarded_after_navigating_away() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     assert!(matches!(app.focus(), Focus::Loading("history")));
@@ -341,11 +335,7 @@ fn a_stale_history_response_is_discarded_after_navigating_away() {
 
 #[test]
 fn a_stale_history_refusal_response_is_also_discarded() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.back();
@@ -363,11 +353,7 @@ fn a_stale_history_refusal_response_is_also_discarded() {
 
 #[test]
 fn a_pending_screen_shows_as_loading_until_it_resolves() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_changes();
     assert!(matches!(app.focus(), Focus::Loading("changes")));
     let req = next_request(&rx);
@@ -389,11 +375,7 @@ fn a_pending_screen_shows_as_loading_until_it_resolves() {
 
 #[test]
 fn select_from_orientation_opens_history_then_a_block() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     // Orientation root → Select opens History for the focused ref.
     app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
@@ -448,11 +430,7 @@ fn select_from_orientation_opens_history_then_a_block() {
 
 #[test]
 fn nav_down_then_select_opens_a_non_tip_block_without_state() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -492,11 +470,7 @@ fn nav_down_then_select_opens_a_non_tip_block_without_state() {
 
 #[test]
 fn nav_down_is_clamped_to_the_last_block() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -514,11 +488,7 @@ fn nav_down_is_clamped_to_the_last_block() {
 
 #[test]
 fn ref_picker_selects_a_ref_and_reopens_history() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_ref_picker();
     assert!(matches!(app.top_overlay(), Some(Overlay::Loading { .. })));
     let refs_req = next_request(&rx);
@@ -557,11 +527,7 @@ fn ref_picker_selects_a_ref_and_reopens_history() {
 
 #[test]
 fn a_history_refusal_surfaces_as_a_refusal_overlay_and_is_remembered() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -586,11 +552,7 @@ fn a_history_refusal_surfaces_as_a_refusal_overlay_and_is_remembered() {
 
 #[test]
 fn activating_the_refresh_next_step_closes_the_overlay_and_requests_a_reload() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -611,11 +573,7 @@ fn activating_the_refresh_next_step_closes_the_overlay_and_requests_a_reload() {
 
 #[test]
 fn a_lock_conflict_surfaces_as_a_banner_not_an_overlay() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     let err = StikkError::LockConflict {
         message: "lock held by another writer".into(),
     };
@@ -629,11 +587,7 @@ fn a_lock_conflict_surfaces_as_a_banner_not_an_overlay() {
 
 #[test]
 fn palette_opens_and_filters() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_palette();
     assert!(app.wants_text_input());
     app.input_char('h');
@@ -652,11 +606,7 @@ fn palette_opens_and_filters() {
 
 #[test]
 fn recent_refusals_overlay_reopens_a_card() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history(); // will record a refusal
     let req = next_request(&rx);
     app.apply(Response {
@@ -677,11 +627,7 @@ fn recent_refusals_overlay_reopens_a_card() {
 
 #[test]
 fn open_changes_pushes_the_view_and_toggle_hides_untracked() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_changes();
     let req = next_request(&rx);
     app.apply(Response {
@@ -708,11 +654,7 @@ fn open_changes_pushes_the_view_and_toggle_hides_untracked() {
 
 #[test]
 fn open_changes_error_response_surfaces_as_a_banner_not_a_screen() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_changes();
     let req = next_request(&rx);
     app.apply(Response {
@@ -735,11 +677,7 @@ fn a_signing_readiness_not_ready_does_not_point_at_a_nonexistent_glossary_sectio
     // RFC 018 F2: this used to append "— see Glossary → Trust & Keys", a section that does not exist
     // (`Keys` is the keybinding table). Until `FR-104`'s Trust & Keys view exists to point at, the
     // banner states `detail` plainly and directs nobody anywhere.
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.surface_error(
         &StikkError::NotReady {
             detail: "no signing key configured".into(),
@@ -754,7 +692,7 @@ fn a_signing_readiness_not_ready_does_not_point_at_a_nonexistent_glossary_sectio
 
 #[test]
 fn reload_requests_a_fresh_orientation_and_apply_updates_it() {
-    let (mut app, rx) = from_state("/repo", OrientationState::Loading, Palette::default());
+    let (mut app, rx) = from_state("/repo", OrientationState::Loading);
     app.reload();
     let req = next_request(&rx);
     assert!(matches!(req.kind, RequestKind::Orient));
@@ -770,11 +708,7 @@ fn reload_requests_a_fresh_orientation_and_apply_updates_it() {
 
 #[test]
 fn reload_keeps_the_stale_history_view_visible_while_refreshing() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -815,11 +749,7 @@ fn reload_keeps_the_stale_history_view_visible_while_refreshing() {
 
 #[test]
 fn a_stale_history_refresh_response_leaves_the_view_untouched() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -869,11 +799,7 @@ fn a_stale_history_refresh_response_leaves_the_view_untouched() {
 
 #[test]
 fn in_flight_count_and_operations_track_running_and_finished_requests() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     assert_eq!(app.in_flight_count(), 0);
     assert!(app.operations().is_empty());
 
@@ -895,11 +821,7 @@ fn in_flight_count_and_operations_track_running_and_finished_requests() {
 
 #[test]
 fn a_failed_operation_is_recorded_as_finished_not_ok() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -916,11 +838,7 @@ fn a_failed_operation_is_recorded_as_finished_not_ok() {
 
 #[test]
 fn open_operations_snapshots_the_list_and_toggles() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history(); // one running operation
     app.open_operations();
     match app.top_overlay() {
@@ -933,11 +851,7 @@ fn open_operations_snapshots_the_list_and_toggles() {
 
 #[test]
 fn worker_stopped_records_a_dismissible_fault() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.worker_stopped();
     assert!(app.fault().is_some());
     app.back();
@@ -972,11 +886,7 @@ fn confirmation_summary(target_name: Option<&str>) -> ConfirmationSummary {
 
 #[test]
 fn a_tier_three_typed_confirmation_wants_text_input_but_tier_two_does_not() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.push_overlay(Overlay::Confirmation {
         summary: Box::new(confirmation_summary(Some("heads/main"))),
         tier: Tier::ThreeTyped,
@@ -997,11 +907,7 @@ fn a_tier_three_typed_confirmation_wants_text_input_but_tier_two_does_not() {
 
 #[test]
 fn typing_into_a_tier_three_typed_confirmation_builds_and_erases_the_typed_name() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.push_overlay(Overlay::Confirmation {
         summary: Box::new(confirmation_summary(Some("heads/main"))),
         tier: Tier::ThreeTyped,
@@ -1024,11 +930,7 @@ fn typing_into_a_tier_three_typed_confirmation_builds_and_erases_the_typed_name(
 #[test]
 fn typing_into_a_tier_two_confirmation_does_nothing() {
     // Only tier-3-typed collects typed input (RFC 013 §6); tiers 2/3 take a plain yes/no.
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.push_overlay(Overlay::Confirmation {
         summary: Box::new(confirmation_summary(None)),
         tier: Tier::Three,
@@ -1045,11 +947,7 @@ fn typing_into_a_tier_two_confirmation_does_nothing() {
 #[test]
 fn nav_up_and_down_do_not_panic_or_move_anything_on_a_confirmation_overlay() {
     // A confirmation is a single prompt, not a list — nav keys must be safely absorbed as no-ops.
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.push_overlay(Overlay::Confirmation {
         summary: Box::new(confirmation_summary(Some("heads/main"))),
         tier: Tier::ThreeTyped,
@@ -1069,11 +967,7 @@ fn select_on_a_confirmation_overlay_with_no_pending_commit_is_a_defensive_no_op(
     // RFC 014 §3 wires `select()` to `App`'s own `pending_commit` state; a `Confirmation` overlay
     // pushed directly (as every other test in this file does, bypassing the real preview flow) has no
     // such state, so `select()` must not panic or silently dismiss it — there is nothing to confirm.
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.push_overlay(Overlay::Confirmation {
         summary: Box::new(confirmation_summary(None)),
         tier: Tier::Two,
@@ -1120,11 +1014,7 @@ fn commit_backend() -> NullBackend {
 
 #[test]
 fn begin_commit_opens_the_message_prompt_when_author_ready() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     match app.top_overlay() {
         Some(Overlay::CommitMessage { reff, typed, .. }) => {
@@ -1140,7 +1030,6 @@ fn begin_commit_refuses_with_a_banner_when_not_author_ready() {
     let (mut app, _rx) = from_state(
         "/repo",
         loaded(orientation_view(0, None, None)), // Viewer: no signing readiness
-        Palette::default(),
     );
     app.begin_commit();
     assert!(!app.has_overlay(), "no message prompt should open");
@@ -1152,11 +1041,7 @@ fn begin_commit_refuses_with_a_banner_when_not_author_ready() {
 
 #[test]
 fn submitting_an_empty_commit_message_does_nothing() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.select(); // Enter with an empty typed field
     assert!(
@@ -1171,11 +1056,7 @@ fn submitting_an_empty_commit_message_does_nothing() {
 
 #[test]
 fn submitting_a_commit_message_dispatches_a_preview_request_and_shows_loading() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('h');
     app.input_char('i');
@@ -1193,11 +1074,7 @@ fn submitting_a_commit_message_dispatches_a_preview_request_and_shows_loading() 
 
 #[test]
 fn a_blocked_commit_preview_shows_a_banner_and_closes_the_overlay() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
     app.select();
@@ -1218,11 +1095,7 @@ fn a_blocked_commit_preview_shows_a_banner_and_closes_the_overlay() {
 
 #[test]
 fn a_ready_commit_preview_opens_the_confirmation_overlay_with_the_restated_summary() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
     app.select();
@@ -1245,11 +1118,7 @@ fn a_ready_commit_preview_opens_the_confirmation_overlay_with_the_restated_summa
 
 #[test]
 fn confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result_verbatim() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
     read_the_card(&app);
@@ -1304,11 +1173,7 @@ fn confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result
 
 #[test]
 fn a_failed_commit_confirm_execute_surfaces_through_present_not_silently() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
     read_the_card(&app);
@@ -1341,11 +1206,7 @@ fn a_failed_commit_confirm_execute_surfaces_through_present_not_silently() {
 
 #[test]
 fn back_on_the_message_prompt_clears_the_pending_commit() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
     app.back();
@@ -1382,7 +1243,6 @@ fn begin_seal_dispatches_a_preview_request_when_maintainer_ready() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
-        Palette::default(),
     );
     app.begin_seal();
     let req = next_request(&rx);
@@ -1401,7 +1261,6 @@ fn begin_seal_refuses_with_a_banner_when_not_maintainer_ready() {
     let (mut app, _rx) = from_state(
         "/repo",
         loaded(author_orientation_view()), // AUTHOR only — not enough for seal's tier 3
-        Palette::default(),
     );
     app.begin_seal();
     assert!(!app.has_overlay(), "no preview should be requested");
@@ -1416,7 +1275,6 @@ fn a_blocked_seal_preview_shows_a_banner_and_closes_the_overlay() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(0, None)), // empty queue
-        Palette::default(),
     );
     app.begin_seal();
     let req = next_request(&rx);
@@ -1435,7 +1293,6 @@ fn a_ready_seal_preview_opens_the_confirmation_overlay_at_tier_three() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
-        Palette::default(),
     );
     app.begin_seal();
     let req = next_request(&rx);
@@ -1463,7 +1320,6 @@ fn confirming_a_seal_opens_consent_not_confirm_execute() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
-        Palette::default(),
     );
     app.begin_seal();
     let preview_req = next_request(&rx);
@@ -1499,7 +1355,6 @@ fn an_unacknowledged_enter_on_consent_does_nothing() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
-        Palette::default(),
     );
     app.begin_seal();
     let preview_req = next_request(&rx);
@@ -1529,7 +1384,6 @@ fn toggling_then_confirming_consent_dispatches_confirm_execute() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
-        Palette::default(),
     );
     app.begin_seal();
     let preview_req = next_request(&rx);
@@ -1565,7 +1419,6 @@ fn a_successful_seal_shows_the_result_verbatim_and_refreshes_orientation() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
-        Palette::default(),
     );
     app.begin_seal();
     let preview_req = next_request(&rx);
@@ -1613,7 +1466,6 @@ fn a_trust_refusal_mid_ceremony_surfaces_with_adoption_guidance() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
-        Palette::default(),
     );
     app.begin_seal();
     let preview_req = next_request(&rx);
@@ -1652,7 +1504,6 @@ fn back_on_the_consent_step_clears_the_pending_seal() {
     let (mut app, rx) = from_state(
         "/repo",
         loaded(maintainer_orientation_view(1, Some("heads/main"))),
-        Palette::default(),
     );
     app.begin_seal();
     let preview_req = next_request(&rx);
@@ -1676,11 +1527,7 @@ fn back_on_the_consent_step_clears_the_pending_seal() {
 fn a_would_refuse_commit_preview_opens_an_overlay_not_a_banner() {
     // RFC 027 decision 5: the refused entries need a path and a reason each — not the one-line banner,
     // and not `present()`, since nothing was attempted.
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
     app.select();
@@ -1733,7 +1580,7 @@ fn view_on(current: CurrentBranch, main_published: bool) -> stikk_core::Orientat
 fn open_with_first_read(
     result: stikk_model::Result<stikk_core::OrientationView>,
 ) -> (App, mpsc::Receiver<Request>) {
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     assert_eq!(app.ref_focus(), &RefFocus::Pending);
     let req = next_request(&rx);
     assert!(matches!(req.kind, RequestKind::Orient));
@@ -1759,7 +1606,7 @@ fn answer_reload(app: &mut App, rx: &mpsc::Receiver<Request>, view: stikk_core::
 fn status_line(app: &App) -> String {
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 1)).unwrap();
     terminal
-        .draw(|f| crate::status_bar::render(app, f, f.area()))
+        .draw(|f| crate::status_bar::render(app, &palette(), f, f.area()))
         .unwrap();
     crate::test_util::buffer_text(terminal.backend().buffer())
 }
@@ -1792,7 +1639,7 @@ fn top_overlay_text(app: &App) -> String {
             crate::overlay::render(
                 app.top_overlay().unwrap(),
                 app.marked_ref(),
-                app.palette(),
+                &palette(),
                 app.overlay_scroll(),
                 f,
                 f.area(),
@@ -1892,7 +1739,7 @@ fn unresolved_takes_the_same_fallback_and_shows_prikks_text_verbatim() {
 
 #[test]
 fn a_pick_made_while_pending_survives_the_first_read() {
-    let (mut app, rx) = open("/repo", &Config::default());
+    let (mut app, rx) = open("/repo");
     let orient_req = next_request(&rx);
     app.open_ref_picker();
     let refs_req = next_request(&rx);
@@ -2031,11 +1878,7 @@ fn an_empty_ref_list_offers_an_unpublished_heads_main_and_picking_it_focuses_it(
 
 #[test]
 fn a_non_empty_ref_list_offers_no_unpublished_row() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_ref_picker();
     let refs_req = next_request(&rx);
     app.apply(Response {
@@ -2111,11 +1954,7 @@ fn the_queue_opens_without_a_focused_ref() {
 
 #[test]
 fn refreshing_the_queue_keeps_its_view_visible_until_the_new_one_arrives() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_queue();
     let first = next_request(&rx);
     app.apply(Response {
@@ -2144,11 +1983,7 @@ fn refreshing_the_queue_keeps_its_view_visible_until_the_new_one_arrives() {
 
 #[test]
 fn up_and_down_move_the_queues_selection_and_a_refresh_keeps_it() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_queue();
     let first = next_request(&rx);
     app.apply(Response {
@@ -2236,11 +2071,7 @@ fn rfc035_block_detail() -> BlockDetailView {
 }
 
 fn rfc035_on_block_detail() -> (App, mpsc::Receiver<Request>) {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -2338,11 +2169,7 @@ fn r_on_a_block_opened_patch_re_reads_only_orientation() {
 /// (§4.3, A1 F7 row 2).
 #[test]
 fn opening_a_patch_from_the_queue_reads_once_and_r_re_reads_the_same_id() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_queue();
     let req = next_request(&rx);
     app.apply(Response {
@@ -2414,11 +2241,7 @@ mod change_awareness;
 /// branch does not exist.
 #[test]
 fn the_picker_offers_the_unpublished_current_branch_and_selecting_it_focuses_that_ref() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_ref_picker();
     let refs_req = next_request(&rx);
     app.apply(Response {
@@ -2453,11 +2276,7 @@ fn the_picker_offers_the_unpublished_current_branch_and_selecting_it_focuses_tha
 /// for the branch you are standing on is the one at the top.
 #[test]
 fn the_unpublished_branch_is_the_first_row() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_ref_picker();
     let refs_req = next_request(&rx);
     app.apply(Response {
@@ -2480,11 +2299,7 @@ fn the_unpublished_branch_is_the_first_row() {
 /// it (Handoff B §3).
 #[test]
 fn a_reported_none_offers_no_row_and_silences_the_older_guess() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_ref_picker();
     let refs_req = next_request(&rx);
     app.apply(Response {
@@ -2516,11 +2331,7 @@ fn a_reported_none_offers_no_row_and_silences_the_older_guess() {
 /// row exists because prikk would not answer, and below 0.47 it still will not.
 #[test]
 fn below_the_band_the_picker_is_unchanged() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_ref_picker();
     let refs_req = next_request(&rx);
     app.apply(Response {
@@ -2542,11 +2353,7 @@ fn below_the_band_the_picker_is_unchanged() {
 
 /// Open History with the two-block lineage loaded, for the Compare entry-point tests.
 fn history_loaded() -> (App, std::sync::mpsc::Receiver<Request>) {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -2710,11 +2517,7 @@ fn a_mark_from_another_ref_is_not_used_as_a_pair() {
 /// against.
 #[test]
 fn d_from_changes_compares_the_worktree_with_its_baseline() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_changes();
     let req = next_request(&rx);
     app.apply(Response {
@@ -2742,11 +2545,7 @@ fn d_from_changes_compares_the_worktree_with_its_baseline() {
 
 /// A picker holding three refs, with the cursor on the first.
 fn picker_with_refs(names: &[&str]) -> (App, mpsc::Receiver<Request>) {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_ref_picker();
     let refs_req = next_request(&rx);
     app.apply(Response {
@@ -2839,11 +2638,7 @@ fn d_with_no_mark_says_to_mark_one_and_sends_nothing() {
 
 #[test]
 fn the_unpublished_current_branch_refuses_both_keys_and_points_at_changes() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_ref_picker();
     let refs_req = next_request(&rx);
     // The branch prikk named is **prepended** by `apply_refs`, so it is not in `refs` here.
@@ -2948,11 +2743,7 @@ fn re_picking_the_ref_already_focused_is_not_a_ref_change() {
 fn a_ref_mark_and_a_block_mark_are_never_read_for_each_other() {
     // **Two marks, kept apart** (handoff §2). `d` in History must never use a ref mark, and the
     // picker's `d` must never use a block mark.
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_history();
     let hist = next_request(&rx);
     app.apply(Response {
@@ -3029,7 +2820,7 @@ fn picker(
     unpublished: stikk_prikk::UnpublishedBranch,
     cursor: usize,
 ) -> (App, mpsc::Receiver<Request>) {
-    let (mut app, rx) = from_state("/repo", loaded(view), Palette::default());
+    let (mut app, rx) = from_state("/repo", loaded(view));
     app.open_ref_picker();
     let req = next_request(&rx);
     app.apply(Response {
@@ -3160,7 +2951,7 @@ fn a_tag_is_named_then_messaged_and_an_empty_message_is_allowed() {
 /// In History, `t` tags **the selected block, by block id** (decision 4) — not the ref.
 #[test]
 fn t_in_history_tags_the_selected_block_by_id() {
-    let (mut app, rx) = from_state("/repo", loaded(ref_write_view(52)), Palette::default());
+    let (mut app, rx) = from_state("/repo", loaded(ref_write_view(52)));
     app.open_history();
     let req = next_request(&rx);
     app.apply(Response {
@@ -3695,10 +3486,7 @@ fn with_session(
         state_dir: state_dir.to_path_buf(),
         canonical_root: root.to_path_buf(),
     };
-    (
-        App::open(root, resolved(Config::default().theme), Some(session), tx),
-        rx,
-    )
+    (App::open(root, Some(session), tx), rx)
 }
 
 fn session_orientation(current: &str) -> stikk_core::OrientationView {
@@ -3942,7 +3730,6 @@ fn a_private_session_never_touches_the_store() {
     let (mut app, rx) = from_state(
         root.to_str().expect("utf-8"),
         loaded(session_orientation("heads/main")),
-        Palette::default(),
     );
     app.open_queue();
     let queue = next_request(&rx);
@@ -4356,7 +4143,7 @@ fn capture_the_into_current_refusal_at_80x24() {
     let mut terminal =
         ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("a terminal");
     terminal
-        .draw(|frame| crate::shell::render(&app, frame))
+        .draw(|frame| crate::shell::render(&app, &look(), frame))
         .expect("a draw");
     let text = crate::test_util::buffer_text(terminal.backend().buffer());
     println!("{text}");
@@ -4386,11 +4173,7 @@ fn capture_the_into_current_refusal_at_80x24() {
 /// the screen does not would pass a test on the number alone.
 #[test]
 fn verifys_report_scrolls_when_it_is_taller_than_the_panel() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_verify();
     let seq = next_request(&rx).seq;
     // Twenty failing conditions: far taller than 24 rows, and the last one is the proof.
@@ -4419,7 +4202,7 @@ fn verifys_report_scrolls_when_it_is_taller_than_the_panel() {
         let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))
             .expect("a terminal");
         terminal
-            .draw(|frame| crate::shell::render(app, frame))
+            .draw(|frame| crate::shell::render(app, &look(), frame))
             .expect("a draw");
         crate::test_util::buffer_text(terminal.backend().buffer())
     };
@@ -4718,7 +4501,7 @@ fn a_landed_merge_shows_prikks_lines_and_re_reads() {
 fn bundle_app(minor: u32) -> (App, mpsc::Receiver<Request>) {
     let mut view = orientation_view(0, None, Some("abc123"));
     view.prikk_minor = minor;
-    from_state("/repo", loaded(view), Palette::default())
+    from_state("/repo", loaded(view))
 }
 
 fn type_in(app: &mut App, text: &str) {
@@ -5216,11 +4999,7 @@ fn block_with_files(app: &mut App, rx: &mpsc::Receiver<Request>, minor: u32) {
 /// the patches are unreported, so every row is a file — the crossing is the same arithmetic.
 #[test]
 fn the_block_cursor_reaches_the_files_and_comes_back() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
     block_with_files(&mut app, &rx, 55);
 
     let Focus::BlockDetail(view, cursor, _) = app.focus() else {
@@ -5259,11 +5038,7 @@ fn the_block_cursor_reaches_the_files_and_comes_back() {
 /// until the reader answers.
 #[test]
 fn f_on_a_file_prompts_with_a_destination_beside_the_repository() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
     block_with_files(&mut app, &rx, 55);
     app.begin_save_file();
 
@@ -5292,11 +5067,7 @@ fn f_on_a_file_prompts_with_a_destination_beside_the_repository() {
 /// selection at all.
 #[test]
 fn a_prompts_for_a_folder_from_any_row() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
     block_with_files(&mut app, &rx, 55);
     app.nav_down();
     app.begin_save_all();
@@ -5318,11 +5089,7 @@ fn a_prompts_for_a_folder_from_any_row() {
 /// **`F` on a patch row answers without a prompt** (RFC 053 §5): it saves a *file*, and says so.
 #[test]
 fn f_on_a_patch_row_says_which_key_saves_what() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
     app.select_screen_or_row(); // the right arrow, which opens the selected row
     let req = next_request(&rx);
     app.apply(Response {
@@ -5371,7 +5138,7 @@ fn below_the_band_both_keys_answer_without_spawning() {
         ..orientation_view(0, None, None)
     };
     for key in ["F", "A"] {
-        let (mut app, rx) = from_state("/repo", loaded(view.clone()), Palette::default());
+        let (mut app, rx) = from_state("/repo", loaded(view.clone()));
         block_with_files(&mut app, &rx, 53);
         if key == "F" {
             app.begin_save_file();
@@ -5398,11 +5165,7 @@ fn unreported_or_failed_files_answer_without_spawning() {
         stikk_core::BlockState::Unreported(45),
         stikk_core::BlockState::Failed("prikk could not list them".to_string()),
     ] {
-        let (mut app, rx) = from_state(
-            "/repo",
-            loaded(files_orientation_view()),
-            Palette::default(),
-        );
+        let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
         app.select_screen_or_row(); // the right arrow, which opens the selected row
         let req = next_request(&rx);
         app.apply(Response {
@@ -5491,11 +5254,7 @@ fn trust_row(id: &str, public: &str, yours: bool) -> stikk_core::TrustRow {
 
 /// An app on the Trust view, with two adopted keys.
 fn on_trust() -> (App, mpsc::Receiver<Request>) {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(trust_band_orientation()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(trust_band_orientation()));
     app.open_trust();
     let Request { seq, kind, .. } = next_request(&rx);
     assert!(matches!(kind, RequestKind::TrustRead), "{kind:?}");
@@ -5785,7 +5544,6 @@ fn below_the_band_neither_key_spawns_anything() {
             prikk_minor: 53,
             ..trust_band_orientation()
         }),
-        Palette::default(),
     );
     app.open_trust();
     let seq = next_request(&rx).seq;
@@ -5863,7 +5621,7 @@ fn undo_history() -> HistoryView {
 
 /// An app on History, on prikk's current branch, able to undo.
 fn undoing() -> (App, mpsc::Receiver<Request>) {
-    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()), Palette::default());
+    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()));
     app.push_screen(Screen::History {
         view: undo_history(),
         cursor: 0,
@@ -6133,7 +5891,7 @@ fn a_stopped_undo_names_what_it_changed_and_carries_prikks_words() {
 /// other ref says so, and spawns nothing.
 #[test]
 fn a_block_on_another_branch_says_to_switch_first() {
-    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()), Palette::default());
+    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()));
     app.push_screen(Screen::History {
         view: HistoryView {
             reff: "heads/feature".into(),
@@ -6158,7 +5916,6 @@ fn below_the_band_u_says_which_prikk_is_needed() {
             prikk_minor: 28,
             ..undo_orientation()
         }),
-        Palette::default(),
     );
     app.push_screen(Screen::History {
         view: undo_history(),
@@ -6187,7 +5944,6 @@ fn without_author_readiness_u_says_so_before_the_prompt() {
             ),
             ..orientation_view(0, None, None)
         }),
-        Palette::default(),
     );
     app.push_screen(Screen::History {
         view: undo_history(),
@@ -6206,7 +5962,7 @@ fn without_author_readiness_u_says_so_before_the_prompt() {
 /// `U` from Block detail undoes the block that screen is showing.
 #[test]
 fn u_works_in_block_detail_too() {
-    let (mut app, _rx) = from_state("/repo", loaded(undo_orientation()), Palette::default());
+    let (mut app, _rx) = from_state("/repo", loaded(undo_orientation()));
     let mut row = block_row(UNDO_BLOCK, 2, "Normal", 1);
     row.messages = vec![stikk_prikk::PatchMessage {
         patch_id: "p".repeat(64),
@@ -6263,7 +6019,7 @@ fn escaping_the_prompt_or_the_card_abandons_the_undo() {
 /// nothing.
 #[test]
 fn u_with_no_block_under_the_cursor_says_what_it_needs() {
-    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()), Palette::default());
+    let (mut app, rx) = from_state("/repo", loaded(undo_orientation()));
     app.begin_undo_block();
     assert_eq!(app.banner(), Some(App::UNDO_NEEDS_A_BLOCK));
     assert!(rx.try_recv().is_err());
@@ -6351,7 +6107,9 @@ fn rfc063_an_invalid_seal_opens_the_warning_over_the_bundle_card() {
     assert!(!app.has_overlay(), "Esc leaves the card beneath");
     // The card beneath, drawn tall enough to hold all of it.
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 60)).unwrap();
-    terminal.draw(|f| crate::shell::render(&app, f)).unwrap();
+    terminal
+        .draw(|f| crate::shell::render(&app, &look(), f))
+        .unwrap();
     let text = crate::test_util::buffer_text(terminal.backend().buffer());
     assert!(
         flattened(&text).contains("prikk would refuse this import"),
@@ -6474,7 +6232,7 @@ fn draw_top_overlay_at(app: &App, w: u16, h: u16) -> String {
             crate::overlay::render(
                 app.top_overlay().unwrap(),
                 app.marked_ref(),
-                app.palette(),
+                &palette(),
                 app.overlay_scroll(),
                 f,
                 f.area(),
@@ -6488,11 +6246,7 @@ fn draw_top_overlay_at(app: &App, w: u16, h: u16) -> String {
 /// `confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result_verbatim` drives,
 /// stopped one key earlier.
 fn commit_awaiting_confirmation() -> (App, std::sync::mpsc::Receiver<Request>) {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(author_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
     read_the_card(&app);
@@ -6559,11 +6313,7 @@ fn enter_on_an_unread_confirmation_dispatches_nothing() {
 /// decision 3's one reading path), on a card that has both text and an action list.
 #[test]
 fn down_scrolls_the_text_before_it_moves_the_highlight() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.push_overlay(Overlay::Refusal {
         card: stikk_core::RefusalCard {
             verbatim: (1..=20)
@@ -6629,11 +6379,7 @@ fn down_scrolls_the_text_before_it_moves_the_highlight() {
 /// it, and does not pass to the next one.
 #[test]
 fn the_reading_latch_does_not_outlive_its_card() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(orientation_view(0, None, None)),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_glossary();
     let _ = draw_top_overlay_at(&app, 90, 240); // the whole Glossary on screen
     assert!(app.overlay_scroll().seen_whole_card() || app.top_overlay().is_some());
@@ -6681,11 +6427,7 @@ fn focus_label(app: &App) -> String {
 fn enter_twice_and_the_right_arrow_agree_with_yesterdays_enter() {
     // On History, the tip selected: both paths ask prikk for the same block's state.
     let on_history = |act: fn(&mut App)| -> String {
-        let (mut app, rx) = from_state(
-            "/repo",
-            loaded(files_orientation_view()),
-            Palette::default(),
-        );
+        let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
         app.select_screen_or_row();
         let req = next_request(&rx);
         app.apply(Response {
@@ -6705,11 +6447,7 @@ fn enter_twice_and_the_right_arrow_agree_with_yesterdays_enter() {
 
     // And on the Queue: the selected patch, read once either way.
     let on_queue = |act: fn(&mut App)| -> String {
-        let (mut app, rx) = from_state(
-            "/repo",
-            loaded(files_orientation_view()),
-            Palette::default(),
-        );
+        let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
         app.open_queue();
         let req = next_request(&rx);
         app.apply(Response {
@@ -6763,11 +6501,7 @@ fn a_ref_row_focuses_either_way() {
 /// does to the list.
 #[test]
 fn the_action_list_closes_on_back() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(files_orientation_view()));
     app.select();
     assert!(
         matches!(app.top_overlay(), Some(Overlay::ActionList { .. })),
@@ -6783,11 +6517,7 @@ fn the_action_list_closes_on_back() {
 /// **Enter inside a card is unchanged** (RFC 061 trap 4): only a row list answers it with actions.
 #[test]
 fn enter_inside_a_card_opens_no_action_list() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(files_orientation_view()));
     app.open_glossary();
     app.select();
     assert!(
@@ -6814,11 +6544,7 @@ fn enter_inside_a_card_opens_no_action_list() {
 #[test]
 fn each_row_kinds_list_is_titled_by_its_row() {
     // A block, in History.
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
     app.select_screen_or_row();
     let req = next_request(&rx);
     app.apply(Response {
@@ -6834,11 +6560,7 @@ fn each_row_kinds_list_is_titled_by_its_row() {
     assert!(text.contains('m'), "{text}");
 
     // A file, in Block detail: its own two actions, then the block's.
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
     block_with_files(&mut app, &rx, 55);
     app.nav_down();
     app.select();
@@ -6859,11 +6581,7 @@ fn each_row_kinds_list_is_titled_by_its_row() {
 /// `Esc` and `q` quit there, as they always have.
 #[test]
 fn the_left_arrow_never_quits_and_esc_and_q_still_do() {
-    let (mut app, _rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, _rx) = from_state("/repo", loaded(files_orientation_view()));
     let before = format!("{:?}", app.focus());
     // Three presses at the root, which is three more than it takes to end a session by accident.
     for _ in 0..3 {
@@ -6875,11 +6593,7 @@ fn the_left_arrow_never_quits_and_esc_and_q_still_do() {
 
     // `Esc` and `q` are unchanged: both arrive at `back`, which quits at the root.
     let quits = |label: &str| {
-        let (mut app, _rx) = from_state(
-            "/repo",
-            loaded(files_orientation_view()),
-            Palette::default(),
-        );
+        let (mut app, _rx) = from_state("/repo", loaded(files_orientation_view()));
         app.back();
         assert!(app.should_quit(), "{label} did not quit at the root");
     };
@@ -6891,11 +6605,7 @@ fn the_left_arrow_never_quits_and_esc_and_q_still_do() {
 /// takes, in the same order.
 #[test]
 fn the_left_arrow_goes_back_through_every_step_but_the_last() {
-    let (mut app, rx) = from_state(
-        "/repo",
-        loaded(files_orientation_view()),
-        Palette::default(),
-    );
+    let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
     // A card on top of a screen: the card goes first, then the screen, then nothing.
     app.select_screen_or_row();
     let req = next_request(&rx);

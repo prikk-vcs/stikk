@@ -1,6 +1,6 @@
 # RFC 065 — Choosing the GUI toolkit: Snora first, measured
 
-**Status.** **Proposed 2026-11-24** by the architect, as 0.22.0's increment 3 (`.git-exclude/release/0-22-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-11-24, with decision 6 answered: path B** (*"egui will be necessary only if a serious issue on iced and snora is found"*). See decision 6's ruling. **Proposed 2026-11-24** by the architect, as 0.22.0's increment 3 (`.git-exclude/release/0-22-0-scope.md`,
 authorized by the project owner 2026-11-24, amended the same day: *"Snora prototype first."*). **No open question
 before acceptance.** After the measurement, **the owner makes one decision** (decision 6).
 **Measured** on `main` at `6e2a5f2`, where `stikk-app` exists (RFC 067), and from Snora's own repository at 0.65.0.
@@ -103,7 +103,28 @@ blind user can work with**.
      says plainly that **neither front end serves a screen-reader user until iced does.** RFC 067 keeps the switch
      to another toolkit possible later, at the cost of one front end.
 
-   RFC 065 is amended at that decision, and closed.
+   **The owner's ruling, 2026-11-24: path B.** *"B. egui will be necessary only if a serious issue on iced and snora
+   is found."* So the measurement no longer chooses between A and B. **It tests B for a serious issue.** "Serious"
+   means one of the five triggers below, each tied to a measurement, so that the report cannot be read either way:
+
+   | # | Trigger | Measured by |
+   |---|---|---|
+   | T1 | **A task cannot be done from the keyboard** | M2, and the owner's run |
+   | T2 | **The reading gate cannot be held:** a confirmation can be executed unread, or can never be executed | M3 |
+   | T3 | **Japanese input does not work on Windows or on Linux:** no preedit, or the committed text does not reach the program | M6, and the owner's run |
+   | T4 | **A release target cannot be built or packaged:** the Windows, Linux x86_64 or aarch64 archives, the installers, or the AUR | M1, M8 |
+   | T5 | **Focus or text cannot meet stikk's contrast** (7 : 1 text, 3 : 1 marks) with Snora's presets | M4 |
+
+   - **Not a trigger:** the absence of screen-reader support, which path B accepts.
+   - **A gap that Snora can close is a Snora issue, not a reason to leave.** Snora is the owner's project. For each
+     gap, the report says whether it is Snora's to fix, iced's, or neither's, and the owner rules on whether it is
+     serious.
+   - **If no trigger fires,** 0.23.0's RFC creates `stikk-gui` on Snora, and amends `NFR-A02`, `GU-08`, `FE-03` and
+     RFC 001's acceptance to *"screen readers when the toolkit exposes them"*. stikk's documentation then says plainly
+     that neither front end serves a screen-reader user until iced does.
+   - **If a trigger fires,** the owner decides between a fix in Snora and the egui prototype (path A's measurement).
+
+   RFC 065 closes with the report and that outcome.
 
 ## What this RFC does not do
 

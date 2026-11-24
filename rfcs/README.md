@@ -24,12 +24,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 |----|-------|-----------|
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 065 | [Choosing the GUI toolkit: Snora first, measured](./proposed/065-choosing-the-gui-toolkit.md) | one Snora prototype drawn from the real `stikk-app`, measured for keyboard, reading gate, contrast, text size, Japanese input, screen readers and packaging; then the owner decides RFC 001's screen-reader gate |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
-_None: RFC 067, 0.22.0's second increment, delivered and closed 2026-11-24._
+| ID | Title | Addresses | Handoff |
+|----|-------|-----------|---------|
+| 065 | [Choosing the GUI toolkit: Snora first, measured](./accepted/065-choosing-the-gui-toolkit.md) | path B ruled (Snora), tested for five reversal triggers by one prototype drawn from the real `stikk-app` | none: the architect measures |
 
 ## Done (implemented)
 

@@ -2,18 +2,28 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.22.0 — 2026-11-25
 
-### Security
+**The same stikk for a user. Its program is now its own crate, ready to be shared with a second
+front end. Every release build is tried before it is tagged, and the supply-chain check sees every
+advisory in the dependency tree.**
 
-- **The supply-chain check now reports unsound and unmaintained advisories at any depth of the
-  dependency tree.** It reported them only for crates stikk depends on directly, so a defect two or
-  three crates down passed the gate in silence while still being in the binary stikk ships. Two were
-  found that way: **`rustix` is updated to 1.1.6** (RUSTSEC-2026-0486, zero-length `xattr` buffers),
-  and **RUSTSEC-2026-0253** (`lru`, reached through ratatui) is **recorded as not reachable from
-  stikk** — the defect needs a cache eviction ratatui never asks for, with a key whose drop could
-  panic, and ratatui's keys are plain data. That record names what retires it: a ratatui release on
-  a fixed `lru`.
+### Breaking
+
+- **`stikk-tui`'s program moved to a new crate, `stikk-app`** (RFC 067). `App`, `Focus`, `Screen`,
+  `Operation`, `OperationStatus`, `OrientationState`, `RefFocus`, `CompareFocus`, `CompareSource`,
+  `PatchSource`, `MarkedBlock`, `Overlay`, `RefNameKind`, `RefWriteKind`, `SavePathKind` and the
+  `app` module are gone from `stikk_tui`. **Every one of them still exists, under `stikk_app::`**,
+  named at that crate's root. `stikk_tui::run` and `stikk_tui::overlay::render` now take
+  `stikk_app`'s `Session` and `Overlay`, and `stikk_tui::handle_key` is added as a free function —
+  it was `App::handle_key`, and the program takes an `Intent` now, never a key event.
+  **A front end's imports change, and nothing it can do changes.**
+- **`stikk_app::Focus` is `Send` and `Sync`,** where `stikk_tui`'s was neither: it held a
+  `&Cell<u16>` for the scroll offset, and it holds an opaque `Surface` instead.
+- **`stikk-app` is a new crate**, published at 0.22.0.
+- **No change** to `stikk-model`, `stikk-prikk`, `stikk-state`, `stikk-core` or the `stikk`
+  launcher. `cargo public-api -p <crate> diff 0.21.1` reports no removed, no changed and no added
+  item in the four libraries; the launcher is binary-only and has no library API to diff.
 
 ### Changed
 
@@ -32,6 +42,17 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
   once a week, and on any change to the release workflows or the installer templates. This is the
   lesson of 0.21.0, whose release run could not build for macOS: the build machines were exercised
   only by a tag, so a retired runner image was found mid-publish rather than days before.
+
+### Security
+
+- **The supply-chain check now reports unsound and unmaintained advisories at any depth of the
+  dependency tree.** It reported them only for crates stikk depends on directly, so a defect two or
+  three crates down passed the gate in silence while still being in the binary stikk ships. Two were
+  found that way: **`rustix` is updated to 1.1.6** (RUSTSEC-2026-0486, zero-length `xattr` buffers),
+  and **RUSTSEC-2026-0253** (`lru`, reached through ratatui) is **recorded as not reachable from
+  stikk** — the defect needs a cache eviction ratatui never asks for, with a key whose drop could
+  panic, and ratatui's keys are plain data. That record names what retires it: a ratatui release on
+  a fixed `lru`.
 
 ## 0.21.1 — 2026-11-23
 

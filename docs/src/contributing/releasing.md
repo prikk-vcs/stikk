@@ -50,9 +50,9 @@ repo. crates.io requires a crate to exist before a trusted publisher can be atta
    (crates.io rate-limits brand-new crate names; if it pauses you mid-list, wait and re-run — the CI
    job and these commands both skip what is already published.)
 
-   **`stikk-app` is published by hand once, at 0.22.0**, like any brand-new crate name: the tag's
-   `crates` job can only publish a crate that already exists on crates.io. The release-prep handoff
-   for 0.22.0 carries the exact steps.
+   **A crate name added after 0.1.0 is published by hand too**, once, at the release that introduces
+   it: the tag's `crates` job can only publish a name that already exists on crates.io. The section
+   below is that procedure, written from `stikk-app`'s turn at 0.22.0.
 
 2. **Attach a trusted publisher** to *each* of the seven crates: crate **Settings → Trusted Publishing →
    Add**, GitHub, with
@@ -63,6 +63,36 @@ repo. crates.io requires a crate to exist before a trusted publisher can be atta
 
 3. (Recommended) Add a **manual approval gate**: repository **Settings → Environments → `release` →
    Required reviewers**. The `crates` job then waits for a click before any publish.
+
+## A new crate name at a tag (`stikk-app`, 0.22.0)
+
+A release that introduces a crate name cannot publish it from CI: Trusted Publishing authorizes a
+workflow to publish a crate that **already exists**, and there is nothing to authorize against for a
+name crates.io has never seen. So the tag runs, stops at the new crate, and is finished by hand.
+
+1. **Tag as usual, and let the run go.** The `crates` job publishes the crates below the new one in
+   dependency order, then **fails on it**. That failure is expected and it is the only one:
+   - the binaries, the installers and the GitHub Release are **not affected** — they do not depend on
+     the `crates` job;
+   - the **AUR** job waits, because it depends on `crates`.
+2. **Publish the new crate by hand, from a clean checkout of the tag:**
+
+   ```sh
+   cargo publish -p stikk-app --locked
+   ```
+
+   Use a **scoped** crates.io token: scope **`publish-new`**, crate **`stikk-app`**, the shortest
+   expiry offered. A scoped token gives the least privilege — it can publish this one crate and
+   nothing else. crates.io's publish endpoint still accepts a token with full rights, which is no
+   reason to use one here.
+3. **Attach the trusted publisher** to the new crate, with the same values as the others (owner /
+   repository `prikk-vcs/stikk`, workflow `release.yml`, environment `release`) — and then **revoke
+   the token.** It has done its one job.
+4. **Re-run the failed jobs** of the release run. The `crates` job skips every crate already
+   published and publishes the rest; the AUR job follows it.
+
+**Only the first release of a name needs any of this.** From the next release that crate is CI's like
+every other.
 
 ## Cutting a release
 
@@ -107,9 +137,13 @@ gh attestation verify stikk-<version>-<target>.tar.gz --repo prikk-vcs/stikk
 accepts both, because `--repo` does not name a workflow. If you pin `--signer-workflow`, that is
 why it has to change — and it is worth pinning the new one rather than dropping the flag.
 
-## What a v0.21.x release is (and is not)
+## What a v0.22.x release is (and is not)
 
-v0.21.x is **readable on light and dark terminals**, works with **text made much bigger**, and
+**0.22.0 changes nothing you see; underneath, stikk's program is its own crate** (`stikk-app`, RFC
+067), the release build is tried before every tag (RFC 066), and the supply-chain check reports
+every advisory in the dependency tree (RFC 068).
+
+v0.22.x is **readable on light and dark terminals**, works with **text made much bigger**, and
 **lists what you can do where you are** rather than asking you to remember a letter. It reads
 orientation, history, block detail — including the files at **any** block, with their
 modes, at prikk ≥ 0.46 — worktree changes, the Queue view, **Patch detail** (what one patch changed,

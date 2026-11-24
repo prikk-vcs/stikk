@@ -20,8 +20,9 @@ key material. Its stance mirrors prikk's own: *where prikk refuses, stikk explai
 
 ## Status
 
-**0.21.x is readable on light and dark terminals, works with text made much bigger, and lists what
-you can do where you are.** It undoes a block, as a new change that puts back what it changed,
+**0.22.x is readable on light and dark terminals, works with text made much bigger, and lists what
+you can do where you are.** **0.22.0 changes nothing you see; underneath, stikk's program is its own
+crate.** It undoes a block, as a new change that puts back what it changed,
 chooses whose keys a repository trusts, gets an earlier version of your files back — or a whole
 earlier block, the guide shows how — and installs in two plain steps on every platform, prikk's
 then stikk's, against prikk 0.58.0. A confirmation that asks you to type a key id back

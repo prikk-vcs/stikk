@@ -61,8 +61,9 @@ Piped or non-TTY invocation prints a one-shot orientation instead of opening the
 
 ## Status
 
-**v0.21.x is readable on light and dark terminals, works with text made much bigger, and lists
-what you can do where you are.** It undoes a block, as a new change that puts back what it changed,
+**v0.22.x is readable on light and dark terminals, works with text made much bigger, and lists
+what you can do where you are.** **0.22.0 changes nothing you see; underneath, stikk's program is
+its own crate.** It undoes a block, as a new change that puts back what it changed,
 lets you choose whose keys this repository trusts, gets an earlier version of your files back — or
 a whole earlier block, the guide shows how — and installs in two plain steps on every platform,
 prikk's then stikk's, against prikk 0.58.0. A confirmation that asks you to type a

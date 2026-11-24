@@ -273,6 +273,35 @@ a fabricated worktree entry was fixed.
 - **The validated prikk range is `>= 0.28`, through `0.51.0`** (was `0.46.0` on `main`, `0.42.0` published), raised
   first and alone each time; the real-binary suite drives 42 cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
+## Shipped — the program every front end drives (0.22.0, breaking)
+
+**For a user this is 0.21.1.** Nothing about what stikk shows or what a key does changed; the three
+increments are underneath it.
+
+- **The program is its own crate** ([RFC 067](rfcs/done/067-stikk-app-the-shared-program.md)):
+  `stikk-app` holds the application state, its transitions and the worker protocol, and `stikk-tui`
+  holds what draws them and what turns key events into intents. The program takes an `Intent` and
+  never a key event, holds no colours, and is **told** where the reader is in a text instead of
+  holding scroll offsets itself — so a second front end supplies its own input and its own
+  measurements without the program knowing what a terminal is. `deny.toml` bans ratatui and
+  crossterm outside `stikk-tui`, and a **golden-frame test** records every screen and card at four
+  sizes in five palettes and held them byte for byte through the whole move.
+- **Every release build is tried before a tag, and weekly**
+  ([RFC 066](rfcs/done/066-every-release-build-is-tried-first.md)): the release's build — every
+  target on its own runner, the archives, the checksums and the four filled installers — is defined
+  once, in `build-release.yml`, and a **release trial** calls that same build with publishing off.
+  Each prep dispatches it; it also runs weekly and on any change to the release workflows. This is
+  0.21.0's lesson, whose release run could not build for macOS because the build machines were
+  exercised only by a tag.
+- **Every advisory in the tree is seen** ([RFC 068](rfcs/done/068-every-advisory-is-seen.md)): the
+  supply-chain check reports unsound and unmaintained advisories at **any depth**, not only for
+  direct dependencies. Two were found that way: `rustix` is updated, and the one that cannot be
+  fixed is recorded with why it does not reach stikk — and an ignore that stops matching now **fails
+  the gate**, so the record goes the day it is no longer needed.
+
+**In progress, not shipped:** [RFC 065](rfcs/accepted/065-choosing-the-gui-toolkit.md), the GUI toolkit. It ships
+nothing in 0.22.0, and 0.22.0 promises no GUI.
+
 ## Shipped — stikk is easy to read and easy to find your way in (0.21.0, breaking)
 
 - **The prikk 0.58.0 re-baseline** ([RFC 063](rfcs/done/063-prikk-0-58-rebaseline.md), prikk ≥ 0.56 and ≥ 0.58 for

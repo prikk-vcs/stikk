@@ -44,6 +44,25 @@ impl Viewports {
         });
     }
 
+    /// **Forget every surface the reader can no longer return to** (review v1 F1).
+    ///
+    /// The map gains an entry for every surface drawn, and surfaces are minted afresh by every card
+    /// opened, every view replaced and every reload — 69 places. Without this a long session's map
+    /// would grow without bound, holding offsets for text nobody can ever see again.
+    ///
+    /// **It must not forget what is still live**, which is why the program is asked rather than
+    /// guessed at: a view deeper in the screen stack keeps its offset, so a reader who opens a card
+    /// over it, or walks into a deeper screen and comes back, finds it where they left it.
+    pub(crate) fn retain(&mut self, live: &[Surface]) {
+        self.by_surface.retain(|surface, _| live.contains(surface));
+    }
+
+    /// How many surfaces are held. **For the test that this map does not grow without bound.**
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.by_surface.len()
+    }
+
     /// **What the last draw of `surface` found**, to report to the program.
     ///
     /// A surface with no entry has not been drawn, and reads as *"nothing above, and the end is on

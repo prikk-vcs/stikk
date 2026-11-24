@@ -3699,6 +3699,13 @@ pub struct Scroll {
     /// The two agree because the run loop reports immediately after it draws and before it reads the
     /// next key — so by the time a reader can press `Enter` on a line this said was ready, the
     /// program has been told the same thing.
+    ///
+    /// **That is a claim, so it is tested** (review v1 F2):
+    /// `app::tests::the_two_latches_agree_after_every_report_on_a_card_taller_than_the_window`
+    /// drives a card that does not fit through the run loop's own cycle and holds the two to each
+    /// other after every report, and
+    /// `app::tests::the_two_latches_agree_on_the_first_draw_of_a_card_that_fits` does the same for
+    /// the first frame of a card that does.
     seen: std::cell::Cell<bool>,
 }
 

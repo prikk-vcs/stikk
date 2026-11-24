@@ -43,6 +43,9 @@ pub fn render(app: &App, look: &Resolved, viewports: &mut Viewports, frame: &mut
     if let Some(bg) = look.palette.bg {
         paint_the_themes_own_pair(frame, area, look.palette.fg, bg);
     }
+    // **Then forget the surfaces nobody can return to** (review v1 F1). Here, at the end of the one
+    // function every drawing path goes through, so the tests prune exactly as the run loop does.
+    viewports.retain(&app.live_surfaces());
 }
 
 /// **The theme's own pair, over the whole frame** (RFC 059 decision 8). `high-contrast` is the only

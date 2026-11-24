@@ -40,8 +40,18 @@ fn palette() -> crate::theme::Palette {
 /// Draw the whole shell at 80 x `height` through `viewports`, then report what was seen — the run
 /// loop's order (RFC 067 decision 4), for a test whose presses and draws are about the same text.
 fn shell_text(app: &mut App, viewports: &mut crate::viewports::Viewports, height: u16) -> String {
-    let mut terminal =
-        ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height)).expect("a terminal");
+    shell_text_at(app, viewports, 80, height)
+}
+
+/// As [`shell_text`], at an explicit width — for a card that only overflows once it has to wrap.
+fn shell_text_at(
+    app: &mut App,
+    viewports: &mut crate::viewports::Viewports,
+    width: u16,
+    height: u16,
+) -> String {
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))
+        .expect("a terminal");
     terminal
         .draw(|frame| crate::shell::render(app, &look(), viewports, frame))
         .expect("a draw");
@@ -6444,7 +6454,7 @@ fn the_reading_latch_does_not_outlive_its_card() {
     app.open_glossary();
     let mut viewports = crate::viewports::Viewports::default();
     let _ = draw_top_overlay_at(&mut app, &mut viewports, 90, 240); // the whole Glossary on screen
-    assert!(app.seen_whole_card() || app.top_overlay().is_some());
+    assert!(app.seen_whole_card(), "the whole Glossary was on screen");
     app.back();
     app.open_refusals();
     assert!(
@@ -6826,4 +6836,263 @@ fn an_at_end_report_opens_the_card_and_scrolling_back_does_not_close_it() {
     );
     assert!(!app.at_end(), "but the position is this report's");
     assert!(!app.more_above(), "and so is what is above");
+}
+
+// ---------------------------------------------------------------------------------------------
+// The offsets are forgotten when, and only when, nobody can return to them (review v1 F1)
+// ---------------------------------------------------------------------------------------------
+
+/// A key event, for a test that drives the program the way the run loop does.
+fn key(code: ratatui::crossterm::event::KeyCode) -> ratatui::crossterm::event::KeyEvent {
+    ratatui::crossterm::event::KeyEvent::from(code)
+}
+
+/// **The offsets do not pile up** (review v1 F1).
+///
+/// A surface is minted by every card opened, so a reader who opens and closes a card a hundred
+/// times mints a hundred surfaces. Ninety-nine of them are unreachable for ever, and the drawing
+/// must not still be holding offsets for them: `shell::render` prunes to what the program says is
+/// live.
+#[test]
+fn a_card_opened_and_closed_a_hundred_times_leaves_no_offsets_behind() {
+    use ratatui::crossterm::event::KeyCode;
+
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
+    let mut viewports = crate::viewports::Viewports::default();
+
+    for _ in 0..100 {
+        crate::keys::handle_key(&mut app, key(KeyCode::Char('?')));
+        let _ = shell_text(&mut app, &mut viewports, 24);
+        assert!(app.top_overlay().is_some(), "the card opened");
+        crate::keys::handle_key(&mut app, key(KeyCode::Char('q')));
+        let _ = shell_text(&mut app, &mut viewports, 24);
+        assert!(app.top_overlay().is_none(), "and closed again");
+    }
+
+    let live = app.live_surfaces();
+    assert!(
+        viewports.len() <= live.len(),
+        "the drawing holds {} offsets for {} live surfaces",
+        viewports.len(),
+        live.len()
+    );
+    // On the Orientation root with no card on top there is nothing to scroll at all, so the sharp
+    // form of the same statement: a hundred cards left nothing behind.
+    assert!(live.is_empty(), "nothing is live here");
+    assert_eq!(viewports.len(), 0, "so nothing is held");
+}
+
+/// **Pruning does not forget what is still live** (review v1 F1): a scrolled view keeps its place
+/// while a card is open over it, and while the reader walks into a deeper screen and back.
+///
+/// **Verify, not Block detail** (which review v1 F1 suggested). A Block detail with rows takes its
+/// offset from its cursor -- the renderer scrolls to follow the selection -- and the cursor is on
+/// the screen, which is program state that survives anything the drawing forgets. So its offset is
+/// recomputed from the cursor even when the entry *is* dropped, and the test would pass against a
+/// `retain` that keeps only the current surface. I checked: it does. Verify scrolls by effect
+/// alone, so its offset exists nowhere but here, and dropping the entry loses the reader's place.
+///
+/// The offset is asserted, not a frame: the frames are what the golden manifest is for, and what
+/// this is about is the number the drawing holds.
+#[test]
+fn a_scrolled_view_keeps_its_offset_under_a_card_and_a_deeper_screen() {
+    use ratatui::crossterm::event::KeyCode;
+
+    let (mut app, rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
+    app.open_verify();
+    let seq = next_request(&rx).seq;
+    // Twenty failing conditions: far taller than the window, so there is somewhere to scroll to.
+    let conditions: Vec<stikk_prikk::FailedCondition> = (0..20)
+        .map(|n| stikk_prikk::FailedCondition {
+            id: format!("condition-{n:02}"),
+            message: format!("the {n:02}th thing prikk found wrong"),
+        })
+        .collect();
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::Verify(Ok(stikk_core::VerifyView::Checked(stikk_core::checked(
+            stikk_prikk::Verification {
+                verdict: stikk_prikk::Verdict {
+                    ok: false,
+                    failed_conditions: conditions,
+                },
+                active_sessions: None,
+                stages: Vec::new(),
+                raw: String::new(),
+            },
+        )))),
+    });
+
+    let mut viewports = crate::viewports::Viewports::default();
+    let surface = match app.focus() {
+        Focus::Verify(_, _, _, surface) => surface,
+        other => panic!("expected Verify, got {other:?}"),
+    };
+
+    // Five presses of the key path, each carried out as the run loop carries it out.
+    let _ = shell_text(&mut app, &mut viewports, 24);
+    for _ in 0..5 {
+        viewports.apply(crate::keys::handle_key(&mut app, key(KeyCode::Down)));
+        let _ = shell_text(&mut app, &mut viewports, 24);
+    }
+    let scrolled = viewports.of(surface).offset();
+    assert!(scrolled > 0, "the report scrolled, or this proves nothing");
+
+    // A card opened over it, and closed again.
+    crate::keys::handle_key(&mut app, key(KeyCode::Char('?')));
+    let _ = shell_text(&mut app, &mut viewports, 24);
+    assert!(app.top_overlay().is_some(), "a card is on top");
+    crate::keys::handle_key(&mut app, key(KeyCode::Char('q')));
+    let _ = shell_text(&mut app, &mut viewports, 24);
+    assert_eq!(
+        viewports.of(surface).offset(),
+        scrolled,
+        "a card opened over a view does not lose the reader's place"
+    );
+
+    // A deeper screen entered, and left.
+    app.open_trust();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::TrustRead(Ok(stikk_core::TrustView::Listed {
+            rows: vec![trust_row(RFC056_MINE, RFC056_MINE_KEY, true)],
+            own_key_unknown: None,
+        })),
+    });
+    let _ = shell_text(&mut app, &mut viewports, 24);
+    assert!(
+        matches!(app.focus(), Focus::Trust(..)),
+        "a deeper screen is on top"
+    );
+    app.back();
+    let _ = shell_text(&mut app, &mut viewports, 24);
+    assert!(
+        matches!(app.focus(), Focus::Verify(..)),
+        "and the reader is back on the report"
+    );
+    assert_eq!(
+        viewports.of(surface).offset(),
+        scrolled,
+        "a deeper screen entered and left does not lose the reader's place"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The two latches agree (review v1 F2)
+// ---------------------------------------------------------------------------------------------
+
+/// A confirmation whose consequence is too long to fit any window these tests use — the shape the
+/// golden module's `scene_confirmation` draws, which is why it exists there too.
+fn long_confirmation() -> stikk_core::ConfirmationSummary {
+    stikk_core::ConfirmationSummary {
+        operation: "Commit worktree changes".to_string(),
+        preamble: Some("What a commit will author:".to_string()),
+        target_ids: Vec::new(),
+        counts: vec![("files", 9)],
+        capability: Some(Capability::Author),
+        consequence: (1..=14)
+            .map(|n| format!("Consequence line {n}: what this will do, said once and in full."))
+            .collect::<Vec<_>>()
+            .join(" "),
+        target_name: Some("heads/main".to_string()),
+        signing_key_id: Some("author-1".to_string()),
+        signing_key_claim: stikk_core::KeyClaim::None,
+        signing_key_is_published_example: false,
+        branch_notice: None,
+        freezes: None,
+        history_notice: None,
+        rename_note: None,
+        declaration_notices: Vec::new(),
+        notices: Vec::new(),
+        message_note: None,
+        materializes: None,
+        undo_plan: None,
+        merge_plan: None,
+        asides: Vec::new(),
+    }
+}
+
+/// **The drawing's latch and the program's say the same thing, after every report.**
+///
+/// RFC 067 gives the evidence one source: `Seen::WholeCard` is made in the program, from a report.
+/// The drawing keeps a latch of its own for a different question -- may the confirm line *say* it is
+/// ready, about the frame it has just laid out -- and the argument that the two cannot disagree is
+/// that the run loop reports immediately after each draw and before the next key. **An argument is
+/// not a test**, so this is the test: drive a card taller than the window through that cycle, and
+/// after every report hold the two to each other.
+#[test]
+fn the_two_latches_agree_after_every_report_on_a_card_taller_than_the_window() {
+    use ratatui::crossterm::event::KeyCode;
+
+    let (mut app, _rx) = from_state("/repo", loaded(author_orientation_view()));
+    app.push_overlay(Overlay::Confirmation {
+        summary: Box::new(long_confirmation()),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    });
+    let mut viewports = crate::viewports::Viewports::default();
+
+    let mut scrolls = 0;
+    loop {
+        // Draw, then report: the run loop's order.
+        let _ = shell_text_at(&mut app, &mut viewports, 60, 15);
+        let surface = app.reading_surface().expect("a card is on top");
+        assert_eq!(
+            app.seen_whole_card(),
+            viewports.of(surface).seen_whole_card(),
+            "after {scrolls} scrolls the program and the drawing disagree about whether the card \
+             has been read"
+        );
+        if app.at_end() {
+            break;
+        }
+        viewports.apply(crate::keys::handle_key(&mut app, key(KeyCode::Down)));
+        scrolls += 1;
+        assert!(scrolls < 200, "the card never reached its end");
+    }
+    assert!(
+        scrolls > 0,
+        "the card must not fit at 60x15, or this proves nothing about scrolling"
+    );
+    assert!(app.seen_whole_card(), "and reaching the end reads it");
+
+    // **Past the end**, where `↓` moves the highlight instead of the text: still agreeing.
+    for _ in 0..3 {
+        viewports.apply(crate::keys::handle_key(&mut app, key(KeyCode::Down)));
+        let _ = shell_text_at(&mut app, &mut viewports, 60, 15);
+        let surface = app.reading_surface().expect("a card is on top");
+        assert_eq!(
+            app.seen_whole_card(),
+            viewports.of(surface).seen_whole_card(),
+            "past the end the two must still agree"
+        );
+    }
+}
+
+/// The same, for a card that fits on its first draw: **both latches are true in that first frame**.
+///
+/// This is the case that made the two latches necessary. The report arrives after the draw, so a
+/// program-only latch would have the confirm line say *"read to the end to confirm"* on a card
+/// whose every row is on screen, and correct itself one frame later -- a flicker, and two golden
+/// frames that would have changed.
+#[test]
+fn the_two_latches_agree_on_the_first_draw_of_a_card_that_fits() {
+    let (mut app, _rx) = commit_awaiting_confirmation();
+    let mut viewports = crate::viewports::Viewports::default();
+
+    // The commit card is thirteen rows at 60 columns, so at 80 x 60 every row is on screen in the
+    // frame it is first drawn in.
+    let _ = shell_text(&mut app, &mut viewports, 60);
+    let surface = app.reading_surface().expect("a card is on top");
+    assert!(
+        viewports.of(surface).seen_whole_card(),
+        "the card fits at 80x60, so the drawing latched it in the frame it drew"
+    );
+    assert_eq!(
+        app.seen_whole_card(),
+        viewports.of(surface).seen_whole_card(),
+        "and the report that followed told the program the same"
+    );
 }

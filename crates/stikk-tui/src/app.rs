@@ -6238,6 +6238,24 @@ impl App {
         self.overlays.last().map(|top| (top, self.overlay_surface))
     }
 
+    /// **Every surface a reader can still return to** (review v1 F1).
+    ///
+    /// Each screen on the stack that scrolls, and the card on top. A surface not in this list is
+    /// unreachable for ever: its screen has been popped, or its card closed, and the surfaces are
+    /// never reused — so the front end may forget whatever it was holding for it.
+    ///
+    /// **A screen deeper in the stack is live**, which is why this is the whole stack and not just
+    /// the top: a reader who opens a card over a scrolled view, or walks into a deeper screen and
+    /// comes back, returns to the view where they left it.
+    #[must_use]
+    pub fn live_surfaces(&self) -> Vec<Surface> {
+        let mut live: Vec<Surface> = self.screens.iter().filter_map(Screen::surface).collect();
+        if !self.overlays.is_empty() {
+            live.push(self.overlay_surface);
+        }
+        live
+    }
+
     /// **The front end reports what it saw** (RFC 067 decision 4), after it has laid a surface out.
     ///
     /// **A report for any surface but the current one is ignored**, which is the whole reason the

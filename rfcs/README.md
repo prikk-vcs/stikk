@@ -24,6 +24,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 |----|-------|-----------|
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 068 | [Every advisory in the tree is seen](./proposed/068-every-advisory-is-seen.md) | the supply-chain gate reports unsound and unmaintained advisories at any depth; `rustix` to 1.1.6; the unreachable `lru` advisory recorded with its retirement condition |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

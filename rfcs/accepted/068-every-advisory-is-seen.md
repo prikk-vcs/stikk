@@ -1,6 +1,6 @@
 # RFC 068 — Every advisory in the tree is seen
 
-**Status.** **Proposed 2026-11-24** by the architect. **Added to 0.22.0's scope by the project owner, 2026-11-24**
+**Status.** **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/068-every-advisory-is-seen/a-every-advisory-is-seen-handoff-v1.md). **Proposed 2026-11-24** by the architect. **Added to 0.22.0's scope by the project owner, 2026-11-24**
 (*"Yes. Authorized."*). **No open question.**
 **Measured** on `main` at `55329db` with cargo-deny 0.20.2 and the advisory database of 2026-11-24, in a scratch
 worktree. Found while measuring RFC 065 against knotra's `deny.toml`.

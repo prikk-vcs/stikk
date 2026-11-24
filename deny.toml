@@ -24,6 +24,9 @@ no-default-features = false
 # staying quiet.
 unsound = "all"
 unmaintained = "all"
+# An ignore that no longer matches fails the gate, so a record of a tolerated advisory is removed the
+# day it stops being needed (RFC 068 decision 3, amended).
+unused-ignored-advisory = "deny"
 
 ignore = [
     # **RUSTSEC-2026-0253 (2026-05-12), `lru` 0.16.4: a use-after-free if `LruCache::pop()` is
@@ -36,9 +39,11 @@ ignore = [
     # else in the crate. The keys cannot panic on drop either: `Rect` is four `u16`s, `Layout` is
     # plain enums and a `Vec<Constraint>`, and ratatui-core writes no `Drop` impl at all.
     #
-    # **What retires this entry:** a ratatui release that depends on `lru >= 0.18.2`. The next
-    # ratatui upgrade must check for one and delete this (RFC 068 decision 3).
-    { id = "RUSTSEC-2026-0253", reason = "lru 0.16.4 through ratatui-core 0.1.0 -> ratatui -> stikk-tui. The defect needs LruCache::pop() to run while a key's Drop panics; ratatui calls only resize (layout/layout.rs:303) and get_or_insert (:720) on its layout cache and never pop, and the cache's (Rect, Layout) keys are plain data with no Drop impl in the crate, so the path is unreachable from stikk. Retire this entry when a ratatui release depends on lru >= 0.18.2 -- the next ratatui upgrade must check (RFC 068)." },
+    # **What retires this entry:** a ratatui release that depends on `lru >= 0.18.2`. Nobody has to
+    # remember to look: `unused-ignored-advisory = "deny"` above fails the gate the moment this id
+    # stops matching the tree, so the record is deleted the day it stops being needed (RFC 068
+    # decision 3, amended).
+    { id = "RUSTSEC-2026-0253", reason = "lru 0.16.4 through ratatui-core 0.1.0 -> ratatui -> stikk-tui. The defect needs LruCache::pop() to run while a key's Drop panics; ratatui calls only resize (layout/layout.rs:303) and get_or_insert (:720) on its layout cache and never pop, and the cache's (Rect, Layout) keys are plain data with no Drop impl in the crate, so the path is unreachable from stikk. Retire this entry when a ratatui release depends on lru >= 0.18.2; unused-ignored-advisory = \"deny\" fails the gate as soon as this id stops matching the tree, so nothing has to remember to check (RFC 068)." },
 ]
 
 [licenses]

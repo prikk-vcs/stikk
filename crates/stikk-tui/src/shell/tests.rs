@@ -2288,7 +2288,7 @@ fn the_help_scrolls_with_down_through_the_key_path() {
         drain(&mut app, &rx, &backend);
 
         // `?` opens the help, as a reader opens it.
-        app.handle_key(key(KeyCode::Char('?')));
+        crate::keys::handle_key(&mut app, key(KeyCode::Char('?')));
         let opened = draw(&app, 102, 24);
         println!("--- the help, opened with ? ({what}), 102x24\n{opened}");
         let (first, _, total) = position(&opened).unwrap_or_else(|| {
@@ -2302,7 +2302,7 @@ fn the_help_scrolls_with_down_through_the_key_path() {
         // renderer owns the clamp.
         let mut previous = first;
         for press in 1..=10 {
-            app.handle_key(key(down));
+            crate::keys::handle_key(&mut app, key(down));
             let text = draw(&app, 102, 24);
             let (now, _, _) = position(&text)
                 .unwrap_or_else(|| panic!("press {press} lost the position:\n{text}"));
@@ -2316,7 +2316,7 @@ fn the_help_scrolls_with_down_through_the_key_path() {
 
         // ↑ comes back, one row at a time.
         for press in 1..=10 {
-            app.handle_key(key(up));
+            crate::keys::handle_key(&mut app, key(up));
             let text = draw(&app, 102, 24);
             let (now, _, _) = position(&text)
                 .unwrap_or_else(|| panic!("press {press} lost the position:\n{text}"));
@@ -2333,7 +2333,7 @@ fn the_help_scrolls_with_down_through_the_key_path() {
         // to be the only key that scrolled it.
         let before = draw(&app, 102, 24);
         for _ in 0..3 {
-            app.handle_key(key(KeyCode::Enter));
+            crate::keys::handle_key(&mut app, key(KeyCode::Enter));
         }
         let after = draw(&app, 102, 24);
         assert_eq!(after, before, "Enter must not scroll the help:\n{after}");
@@ -2354,13 +2354,13 @@ fn down_reaches_the_end_of_the_help_and_the_foot_line_turns_over() {
         tx,
     );
     drain(&mut app, &rx, &backend);
-    app.handle_key(key(KeyCode::Char('?')));
+    crate::keys::handle_key(&mut app, key(KeyCode::Char('?')));
 
     let mut text = draw(&app, 102, 24);
     let (_, _, total) = position(&text).expect("a position");
     let mut presses = 0;
     while text.contains("\u{2193} more below") && presses < total + 10 {
-        app.handle_key(key(KeyCode::Down));
+        crate::keys::handle_key(&mut app, key(KeyCode::Down));
         text = draw(&app, 102, 24);
         presses += 1;
     }
@@ -2416,7 +2416,7 @@ fn capture_rfc060b_every_surface_that_advertises_down_moves_on_down() {
         let position_before = position(&before);
         let selectable = before.contains(crate::theme::SELECTED_MARKER.trim());
         // **The key, not the handler** (trap 2).
-        app.handle_key(key(KeyCode::Down));
+        crate::keys::handle_key(&mut app, key(KeyCode::Down));
         let after = draw(&app, 60, 15);
 
         if advertises || position_before.is_some() {
@@ -2596,9 +2596,9 @@ fn capture_rfc060c_block_detail_reaches_every_row_at_60x15() {
     );
     drain(&mut app, &rx, &backend);
     // History, then its tip block — with the right arrow, which opens a row (RFC 061 decision 2).
-    app.handle_key(key(KeyCode::Right));
+    crate::keys::handle_key(&mut app, key(KeyCode::Right));
     drain(&mut app, &rx, &backend);
-    app.handle_key(key(KeyCode::Right));
+    crate::keys::handle_key(&mut app, key(KeyCode::Right));
     drain(&mut app, &rx, &backend);
 
     let top = draw(&app, 60, 15);
@@ -2614,7 +2614,7 @@ fn capture_rfc060c_block_detail_reaches_every_row_at_60x15() {
     let mut presses = 0;
     let mut text = top.clone();
     while position(&text).is_some_and(|(_, last, total)| last < total) && presses < total + 10 {
-        app.handle_key(key(KeyCode::Down));
+        crate::keys::handle_key(&mut app, key(KeyCode::Down));
         text = draw(&app, 60, 15);
         seen.push(' ');
         seen.push_str(&flattened(&text));
@@ -2640,7 +2640,7 @@ fn capture_rfc060c_block_detail_reaches_every_row_at_60x15() {
     }
     // And ↑ comes back to the top.
     for _ in 0..presses {
-        app.handle_key(key(KeyCode::Up));
+        crate::keys::handle_key(&mut app, key(KeyCode::Up));
     }
     let back = draw(&app, 60, 15);
     assert_eq!(

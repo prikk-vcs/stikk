@@ -42,7 +42,8 @@ mod readme_visuals;
 #[cfg(test)]
 pub(crate) mod test_util;
 
-pub use app::{App, Focus, Operation, OperationStatus, OrientationState, RefFocus, Screen};
+pub use app::{App, Effect, Focus, Operation, OperationStatus, OrientationState, RefFocus, Screen};
+pub use keys::{Intent, handle_key};
 pub use overlay::Overlay;
 pub use terminal::stdout_is_tty;
 // `SchemeKind` is re-exported because [`Palette::kind`] is a public field: a field whose type a
@@ -171,10 +172,12 @@ fn ui_loop(
             if let Event::Key(key) = ev
                 && key.kind == KeyEventKind::Press
             {
-                // **One function turns a key into what it does** (RFC 060 Handoff B §2): the run
-                // loop and the tests both go through it, so a key that reaches no handler — as `↓`
-                // did not reach the help's own scroll — is a thing a test can catch.
-                app.handle_key(key);
+                // **One function turns a key into what it does** (RFC 060 Handoff B §2, RFC 067
+                // decision 1): the run loop and the tests both go through it, so a key that reaches
+                // no handler — as `↓` did not reach the help's own scroll — is a thing a test can
+                // catch. The effect is what the program asks for in return; there is nothing to ask
+                // for until RFC 067's fourth commit.
+                let Effect::None = keys::handle_key(&mut app, key);
             }
         }
 

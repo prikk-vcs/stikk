@@ -118,7 +118,7 @@ fn draw(app: &App, width: u16, height: u16) -> Buffer {
 /// **One `↓`, through the key path** — never a handler call (RFC 067 decision 3's rule, and RFC 060
 /// Handoff B's lesson: only a test that presses a key proves the wiring).
 fn press_down(app: &mut App) {
-    app.handle_key(KeyEvent::from(KeyCode::Down));
+    crate::keys::handle_key(app, KeyEvent::from(KeyCode::Down));
 }
 
 /// Draw, then press `↓`, until the frame stops changing — the path `Seen` depends on (§1.2).

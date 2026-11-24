@@ -14,7 +14,7 @@ fn key(code: KeyCode) -> KeyEvent {
 /// What a key runs, by catalog id — the only way these tests name an action (RFC 061 trap 1).
 fn id(code: KeyCode) -> Option<&'static str> {
     match dispatch(key(code), false) {
-        Action::Run(action) => Some(action.id),
+        Intent::Run(action) => Some(action.id),
         _ => None,
     }
 }
@@ -30,7 +30,7 @@ fn back_is_esc_and_q() {
 /// one of its three keys that stops at the root.
 #[test]
 fn the_left_arrow_is_backs_gentler_half() {
-    assert_eq!(dispatch(key(KeyCode::Left), false), Action::BackWithoutQuit);
+    assert_eq!(dispatch(key(KeyCode::Left), false), Intent::BackWithoutQuit);
     // And the catalog still binds all three to one action, which is what the Glossary teaches.
     let back = actions::by_key(Key::Back).expect("back is bound");
     assert_eq!(back.id, "app.back");
@@ -46,16 +46,16 @@ fn enter_asks_what_can_be_done_and_the_right_arrow_opens_the_row() {
 #[test]
 fn ctrl_c_always_quits_even_in_text_entry() {
     let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-    assert_eq!(dispatch(ctrl_c, false), Action::Quit);
-    assert_eq!(dispatch(ctrl_c, true), Action::Quit);
+    assert_eq!(dispatch(ctrl_c, false), Intent::Quit);
+    assert_eq!(dispatch(ctrl_c, true), Intent::Quit);
 }
 
 #[test]
 fn the_arrows_and_their_letters_move() {
-    assert_eq!(dispatch(key(KeyCode::Up), false), Action::Up);
-    assert_eq!(dispatch(key(KeyCode::Char('k')), false), Action::Up);
-    assert_eq!(dispatch(key(KeyCode::Down), false), Action::Down);
-    assert_eq!(dispatch(key(KeyCode::Char('j')), false), Action::Down);
+    assert_eq!(dispatch(key(KeyCode::Up), false), Intent::Up);
+    assert_eq!(dispatch(key(KeyCode::Char('k')), false), Intent::Up);
+    assert_eq!(dispatch(key(KeyCode::Down), false), Intent::Down);
+    assert_eq!(dispatch(key(KeyCode::Char('j')), false), Intent::Down);
     // The catalog lists them as one key, which is what the key line shows.
     assert!(actions::by_id("app.move").is_some_and(|m| m.key == Some(Key::Move)));
 }
@@ -77,10 +77,10 @@ fn every_key_the_catalog_binds_is_dispatched() {
             // are two intents under one key.
             Key::Move => {
                 for code in [KeyCode::Up, KeyCode::Char('k')] {
-                    assert_eq!(dispatch(key2(code), false), Action::Up);
+                    assert_eq!(dispatch(key2(code), false), Intent::Up);
                 }
                 for code in [KeyCode::Down, KeyCode::Char('j')] {
-                    assert_eq!(dispatch(key2(code), false), Action::Down);
+                    assert_eq!(dispatch(key2(code), false), Intent::Down);
                 }
                 continue;
             }
@@ -185,17 +185,17 @@ fn the_fourteen_moved_actions_are_in_the_palette() {
 #[test]
 fn text_entry_routes_printables_to_input() {
     // With a text-entry overlay open, letters that are keys elsewhere type into the filter.
-    assert_eq!(dispatch(key(KeyCode::Char('b')), true), Action::Input('b'));
-    assert_eq!(dispatch(key(KeyCode::Char('r')), true), Action::Input('r'));
-    assert_eq!(dispatch(key(KeyCode::Char('?')), true), Action::Input('?'));
-    assert_eq!(dispatch(key(KeyCode::Backspace), true), Action::Backspace);
+    assert_eq!(dispatch(key(KeyCode::Char('b')), true), Intent::Input('b'));
+    assert_eq!(dispatch(key(KeyCode::Char('r')), true), Intent::Input('r'));
+    assert_eq!(dispatch(key(KeyCode::Char('?')), true), Intent::Input('?'));
+    assert_eq!(dispatch(key(KeyCode::Backspace), true), Intent::Backspace);
     // Esc/Enter/arrows still steer the overlay.
-    assert!(matches!(dispatch(key(KeyCode::Esc), true), Action::Run(a) if a.id == "app.back"));
-    assert!(matches!(dispatch(key(KeyCode::Enter), true), Action::Run(a) if a.id == "row.actions"));
-    assert_eq!(dispatch(key(KeyCode::Up), true), Action::Up);
+    assert!(matches!(dispatch(key(KeyCode::Esc), true), Intent::Run(a) if a.id == "app.back"));
+    assert!(matches!(dispatch(key(KeyCode::Enter), true), Intent::Run(a) if a.id == "row.actions"));
+    assert_eq!(dispatch(key(KeyCode::Up), true), Intent::Up);
     // `←` and `→` do nothing in a prompt, as before RFC 061.
-    assert_eq!(dispatch(key(KeyCode::Left), true), Action::None);
-    assert_eq!(dispatch(key(KeyCode::Right), true), Action::None);
+    assert_eq!(dispatch(key(KeyCode::Left), true), Intent::None);
+    assert_eq!(dispatch(key(KeyCode::Right), true), Intent::None);
 }
 
 /// **A typed key id still tells `A` from `a`** (RFC 061 trap 2): the fold is for keys only, and a
@@ -205,7 +205,7 @@ fn a_prompt_takes_every_character_as_typed() {
     for c in ['Q', 'S', 'x', 'A', 'a', 'U', ' '] {
         assert_eq!(
             dispatch(key(KeyCode::Char(c)), true),
-            Action::Input(c),
+            Intent::Input(c),
             "{c:?}"
         );
     }
@@ -213,7 +213,7 @@ fn a_prompt_takes_every_character_as_typed() {
     let typed: String = "SSH-ED25519-AbC"
         .chars()
         .map(|c| match dispatch(key(KeyCode::Char(c)), true) {
-            Action::Input(c) => c,
+            Intent::Input(c) => c,
             other => panic!("{c:?} became {other:?}"),
         })
         .collect();
@@ -222,6 +222,6 @@ fn a_prompt_takes_every_character_as_typed() {
 
 #[test]
 fn unbound_key_is_none() {
-    assert_eq!(dispatch(key(KeyCode::Char('z')), false), Action::None);
-    assert_eq!(dispatch(key(KeyCode::F(5)), false), Action::None);
+    assert_eq!(dispatch(key(KeyCode::Char('z')), false), Intent::None);
+    assert_eq!(dispatch(key(KeyCode::F(5)), false), Intent::None);
 }

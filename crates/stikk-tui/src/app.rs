@@ -32,9 +32,23 @@ use stikk_core::{
 use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 
+use crate::keys::Intent;
 use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
 use crate::theme::{Palette, Resolved};
 use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
+
+/// **What the program asks the front end to do** after an intent (RFC 067 decision 4).
+///
+/// The program decides everything it can decide on its own; an effect is for the one thing it
+/// cannot, because only the front end knows how a text came out on a screen of a given size.
+///
+/// It has one variant today. The type exists now so that the commit which adds scrolling is about
+/// scrolling, and not about changing every caller's signature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    /// Nothing for the front end to do.
+    None,
+}
 
 /// The fallback ref (RFC 029 Handoff B §2, §4): focused on open **only** when prikk names no current
 /// branch (below 0.42, or an unresolved pointer) and `heads/main` is published, and the one row an empty
@@ -4193,31 +4207,33 @@ impl App {
         }
     }
 
-    /// **What a key press does** (RFC 060 Handoff B §2) — the one function from a crossterm
-    /// `KeyEvent` to `App`'s own handlers.
+    /// **What one intent does** (RFC 067 decision 1) — the program's own entry point, which takes an
+    /// [`Intent`] and never a key event.
     ///
-    /// The run loop calls this and nothing else, and **tests press keys through it**. That is the
-    /// point: every scrolling test used to call a handler directly (`nav_down`, `select`), so no test
-    /// could see that `↓` reached nothing at all in the help overlay — the defect Handoff B exists
-    /// for. A test that calls a handler proves the handler works; only a test that presses a key
-    /// proves the key is wired to it.
-    pub fn handle_key(&mut self, key: ratatui::crossterm::event::KeyEvent) {
+    /// Nothing about a keyboard reaches here: [`crate::keys::handle_key`] does the translating, so
+    /// the next front end drives the program with intents of its own making.
+    ///
+    /// The returned [`Effect`] is what the program asks the front end to do afterwards, for the one
+    /// thing the program cannot do itself — move a text the front end laid out. Today there is
+    /// nothing to ask for.
+    pub fn handle(&mut self, intent: Intent) -> Effect {
         // **One arm per intent, not one per action** (RFC 061 decision 1): a catalog action goes to
         // `run_action`, which is the one place that says what an action does.
-        match crate::keys::dispatch(key, self.wants_text_input()) {
-            crate::keys::Action::Quit => self.quit(),
-            crate::keys::Action::BackWithoutQuit => self.back_without_quit(),
-            crate::keys::Action::Up => self.nav_up(),
-            crate::keys::Action::Down => self.nav_down(),
-            crate::keys::Action::Run(action) => {
+        match intent {
+            Intent::Quit => self.quit(),
+            Intent::BackWithoutQuit => self.back_without_quit(),
+            Intent::Up => self.nav_up(),
+            Intent::Down => self.nav_down(),
+            Intent::Run(action) => {
                 // Every catalog id has an arm (`every_catalog_action_runs`); the key press is spent
                 // either way.
                 let _ran = self.run_action(action.id);
             }
-            crate::keys::Action::Input(c) => self.input_char(c),
-            crate::keys::Action::Backspace => self.backspace(),
-            crate::keys::Action::None => {}
+            Intent::Input(c) => self.input_char(c),
+            Intent::Backspace => self.backspace(),
+            Intent::None => {}
         }
+        Effect::None
     }
 
     /// Go back one step: dismiss a fault or banner, close the top overlay, pop a screen (a pending

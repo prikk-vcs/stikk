@@ -1,6 +1,6 @@
 # RFC 067 — `stikk-app`: the program, shared by every front end
 
-**Status.** **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/067-stikk-app-the-shared-program/a-the-seams-handoff-v1.md), the seams, **delivered 2026-11-24 at `43e2408`** (golden manifest unchanged, 1622 tests, full matrix green); [Handoff B](../handoffs/067-stikk-app-the-shared-program/b-the-move-handoff-v1.md), the move, issued 2026-11-24. **Proposed 2026-11-24** by the architect, as 0.22.0's increment 2 (`.git-exclude/release/0-22-0-scope.md`,
+**Status.** **Done (implemented) 2026-11-24** at `3c6238b`, shipping in 0.22.0; see *Delivered* below. **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/067-stikk-app-the-shared-program/a-the-seams-handoff-v1.md), the seams, **delivered 2026-11-24 at `43e2408`** (golden manifest unchanged, 1622 tests, full matrix green); [Handoff B](../handoffs/067-stikk-app-the-shared-program/b-the-move-handoff-v1.md), the move, issued 2026-11-24. **Proposed 2026-11-24** by the architect, as 0.22.0's increment 2 (`.git-exclude/release/0-22-0-scope.md`,
 authorized by the project owner 2026-11-24). **No open question.** The owner takes **one action at the 0.22.0 cut**
 (decision 7).
 **Measured** on `main` at `0421f7f`, from `crates/stikk-tui/src`.
@@ -207,3 +207,38 @@ Neither is acceptable.
 `stikk-app`, so that the terminal front end and a future GUI share one program. Nothing a user sees changes.* The
 `### Breaking` rows are taken from `cargo public-api diff` at the prep: `stikk-tui` loses `App`, `Focus`, `Overlay`
 and `keys::Action`.
+
+## Delivered
+
+**On `main` at `3c6238b`, 2026-11-24.** Two handoffs, each reviewed by the architect and approved with fixes.
+
+**Handoff A, the seams, at `43e2408`:**
+- the golden frames: 460 frames, 46 scenes, with coverage checked by the compiler. Committed first, and unchanged
+  ever since;
+- `Intent` and `App::handle`;
+- the colours out of `App`;
+- `Surface`, `Reading` and `Effect`, with the offsets in the drawing's `Viewports`. `Viewports` keeps only live
+  surfaces;
+- a test that the drawing's latch and the program's agree.
+
+**Handoff B, the move, at `3c6238b`:**
+- the new crate `stikk-app` holds `App`, the worker, `Overlay`, `Session`, `Intent`, `Effect`, `Surface` and
+  `Reading`, at its root, with private modules;
+- `stikk-tui` keeps the drawing, `keys::dispatch` and `handle_key`, and re-exports nothing from `stikk-app`;
+- `deny.toml` bans ratatui, terminal-colorsaurus and crossterm outside the terminal front end;
+- three guards scan the published crates, derived from the workspace;
+- `release_crates` holds `release.yml`'s two lists to the workspace, in dependency order;
+- **`push_overlay` is crate-private.** Its test twin is behind `test-fixtures`, and `test_fixtures_feature` keeps that
+  feature out of every `[dependencies]` entry and `default` list.
+
+**Evidence, checked by the architect:**
+- the golden manifest is unchanged from `281be9a` to `3c6238b`;
+- tests 1611 → 1626, never falling, and `stikk-tui`'s 639 became 198 + 441;
+- at `3c6238b`, all green: CI, Docs, supply chain (with the new bans), the full-matrix real-binary suite, and the
+  release trial in all nine jobs;
+- `cargo tree -p stikk -e features` shows `test-fixtures` off in the launcher's build.
+
+**For the 0.22.0 prep:**
+- the `cargo public-api` tables from both handoffs go into `### Breaking`. Every item removed from `stikk-tui` still
+  exists under `stikk_app::`, and `Focus` is now `Send` and `Sync`;
+- **the owner publishes `stikk-app` by hand, once** (decision 7), with the steps in the prep handoff.

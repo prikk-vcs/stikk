@@ -1,6 +1,6 @@
 # Handoff B — RFC 067: the move into `stikk-app` (v1)
 
-**Companion to:** [RFC 067](../../accepted/067-stikk-app-the-shared-program.md), **accepted 2026-11-24**. **Read the
+**Companion to:** [RFC 067](../../done/067-stikk-app-the-shared-program.md), **accepted 2026-11-24**. **Read the
 RFC first**: decisions 1, 2, 6, 7 and 8. **Follows** [Handoff A](./a-the-seams-handoff-v1.md), delivered at
 `43e2408`. **Covers:** decisions 1, 2, 6 and 7. Decision 8 carries on: the golden frames stay unchanged. **0.22.0's
 increment 2, second half.** **Not a release.**

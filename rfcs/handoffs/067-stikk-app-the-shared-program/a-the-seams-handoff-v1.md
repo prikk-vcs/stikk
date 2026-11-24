@@ -1,6 +1,6 @@
 # Handoff A — RFC 067: the seams, inside `stikk-tui` (v1)
 
-**Companion to:** [RFC 067](../../accepted/067-stikk-app-the-shared-program.md), **accepted 2026-11-24**. **Read the
+**Companion to:** [RFC 067](../../done/067-stikk-app-the-shared-program.md), **accepted 2026-11-24**. **Read the
 RFC first**: F1–F3 and decisions 3, 4, 5 and 8. **Covers:** decisions 3, 4, 5 and 8. Decisions 1, 2, 6 and 7 are
 Handoff B. **0.22.0's increment 2, first half.** **Not a release.**
 

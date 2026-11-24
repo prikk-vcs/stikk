@@ -628,7 +628,7 @@ fn over(palette: Palette, overlay: Overlay) -> Staged {
     with(palette, |app, rx| {
         app.open_history();
         answer(app, rx, |_| ResponseKind::History(Ok(history())));
-        app.push_overlay(overlay);
+        app.push_overlay_for_test(overlay);
     })
 }
 

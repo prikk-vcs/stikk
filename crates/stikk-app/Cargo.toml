@@ -16,12 +16,20 @@ stikk-state = { workspace = true }
 stikk-core  = { workspace = true }
 
 [features]
-# **Test fixtures, for a front end's own tests** (RFC 067 Handoff B §1.5/§2).
+# **Test fixtures, for stikk's own tests. Not part of this crate's API.**
 #
-# `App::from_state` builds an app in an explicit state without sending a request. It is how the
-# program's own tests are written, and `stikk-tui`'s tests that drive the program *and* the drawing
-# together need the same constructor across the crate boundary -- where `#[cfg(test)]` cannot reach.
-# Off in every normal build, and enabled only as a dev-dependency.
+# What is behind it: `App::from_state`, `App::push_overlay_for_test`, `OrientRead::stamped`,
+# `Surface::for_test`, `App::focus_ref_for_tests` and `App::surface_error`. They exist because
+# stikk-tui's tests drive the program *and* the drawing together, and need the program's own
+# constructors across a crate boundary -- which is where `#[cfg(test)]` stops.
+#
+# **It is not a supported surface, and anything behind it may change or go in any release**, with
+# no major version and no changelog entry. Nothing outside this workspace should enable it.
+#
+# **Off in every shipped build.** stikk-tui names it only in `[dev-dependencies]`, so the resolver
+# keeps it out of a normal build; `stikk-real-binary`'s `test_fixtures_feature` test holds the
+# workspace to that, and `push_overlay_for_test` is why it matters -- a front end able to put a
+# card on the overlay stack directly could show a confirmation the program never decided to show.
 test-fixtures = []
 
 [lints]

@@ -707,7 +707,7 @@ fn down_scrolls_the_text_before_it_moves_the_highlight() {
     // One set of offsets, drawn through and reported from: the run loop's own arrangement.
     let mut viewports = crate::viewports::Viewports::default();
     let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
-    app.push_overlay(Overlay::Refusal {
+    app.push_overlay_for_test(Overlay::Refusal {
         card: stikk_core::RefusalCard {
             verbatim: (1..=20)
                 .map(|n| format!("prikk said line {n} of something long"))
@@ -963,7 +963,7 @@ fn the_two_latches_agree_after_every_report_on_a_card_taller_than_the_window() {
     use ratatui::crossterm::event::KeyCode;
 
     let (mut app, _rx) = from_state("/repo", loaded(author_orientation_view()));
-    app.push_overlay(Overlay::Confirmation {
+    app.push_overlay_for_test(Overlay::Confirmation {
         summary: Box::new(long_confirmation()),
         tier: Tier::Two,
         typed: String::new(),

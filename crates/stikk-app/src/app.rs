@@ -6395,8 +6395,14 @@ impl App {
     /// Push an overlay, and give it a reader of its own (RFC 060 decision 3).
     ///
     /// **The only way an overlay reaches the stack**, so the reading latch cannot be inherited by a
-    /// card that was never read. `pub(crate)` for the tests that push a card directly.
-    pub fn push_overlay(&mut self, overlay: Overlay) {
+    /// card that was never read.
+    ///
+    /// **`pub(crate)`, deliberately** (review v1 F1). `Overlay`'s variants are public and
+    /// constructible, so a public way onto the stack would let a front end show a confirmation card
+    /// the program never decided to show -- built from a plan the front end made up -- and a key
+    /// would then act on it. A card reaches the stack only where the program decided to open it.
+    /// A test that needs one directly uses [`Self::push_overlay_for_test`].
+    pub(crate) fn push_overlay(&mut self, overlay: Overlay) {
         self.overlay_surface = self.mint_surface();
         self.overlays.push(overlay);
     }
@@ -6439,6 +6445,17 @@ impl App {
     #[cfg(test)]
     pub(crate) fn push_screen(&mut self, screen: Screen) {
         self.screens.push(screen);
+    }
+
+    /// **Put a card on the stack directly** — test fixtures only.
+    ///
+    /// Named like the other fixtures, and behind the same feature, because it is one: a golden
+    /// scene needs to draw a card no key sequence reaches (a confirmation with a consequence too
+    /// long for any window), and that is a test's business and nobody else's. See
+    /// [`Self::push_overlay`] for why no shipped build has a way in.
+    #[cfg(any(test, feature = "test-fixtures"))]
+    pub fn push_overlay_for_test(&mut self, overlay: Overlay) {
+        self.push_overlay(overlay);
     }
 
     /// Focus a ref directly — for tests about how the status bar fits a long one (RFC 060

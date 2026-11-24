@@ -30,13 +30,13 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 068 | [Every advisory in the tree is seen](./accepted/068-every-advisory-is-seen.md) | the supply-chain gate reports unsound and unmaintained advisories at any depth; `rustix` to 1.1.6; the unreachable `lru` advisory recorded | [A: every advisory is seen](./handoffs/068-every-advisory-is-seen/a-every-advisory-is-seen-handoff-v1.md) |
 | 065 | [Choosing the GUI toolkit: Snora first, measured](./accepted/065-choosing-the-gui-toolkit.md) | path B ruled (Snora), tested for five reversal triggers by one prototype drawn from the real `stikk-app` | none: the architect measures |
 
 ## Done (implemented)
 
 | ID | Title | Shipped in | Deferred, carried forward | Handoff |
 |----|-------|------------|---------------------------|---------|
+| 068 | [Every advisory in the tree is seen](./done/068-every-advisory-is-seen.md) | ships in 0.22.0 | the workflow stays dispatch-only (RFC 020's open question) | [A: every advisory is seen](./handoffs/068-every-advisory-is-seen/a-every-advisory-is-seen-handoff-v1.md) |
 | 066 | [Every release build is tried before a tag](./done/066-every-release-build-is-tried-first.md) | ships in 0.22.0 | the trial repeats `guard`'s version command; `installers.yml` keeps its own copies of the fill and the packaging | [A: the release trial](./handoffs/066-every-release-build-is-tried-first/a-release-trial-handoff-v1.md) |
 | 067 | [`stikk-app`: the program, shared by every front end](./done/067-stikk-app-the-shared-program.md) | ships in 0.22.0 | none | [A: the seams](./handoffs/067-stikk-app-the-shared-program/a-the-seams-handoff-v1.md) · [B: the move](./handoffs/067-stikk-app-the-shared-program/b-the-move-handoff-v1.md) |
 | 059 | [Readable colours](./done/059-readable-colours.md) | shipped in 0.21.0 | conhost not checked (falls back safely); macOS documented only | [A: readable colours](./handoffs/059-readable-colours/a-readable-colours-handoff-v1.md) |

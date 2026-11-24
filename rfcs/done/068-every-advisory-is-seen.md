@@ -1,6 +1,6 @@
 # RFC 068 — Every advisory in the tree is seen
 
-**Status.** **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/068-every-advisory-is-seen/a-every-advisory-is-seen-handoff-v1.md). **Proposed 2026-11-24** by the architect. **Added to 0.22.0's scope by the project owner, 2026-11-24**
+**Status.** **Done (implemented) 2026-11-25** at `b0bf467`, shipping in 0.22.0; see *Delivered* below. **Accepted by the project owner 2026-11-24**; [Handoff A](../handoffs/068-every-advisory-is-seen/a-every-advisory-is-seen-handoff-v1.md). **Proposed 2026-11-24** by the architect. **Added to 0.22.0's scope by the project owner, 2026-11-24**
 (*"Yes. Authorized."*). **No open question.**
 **Measured** on `main` at `55329db` with cargo-deny 0.20.2 and the advisory database of 2026-11-24, in a scratch
 worktree. Found while measuring RFC 065 against knotra's `deny.toml`.
@@ -65,6 +65,15 @@ That is 0.23.0's question, when a GUI crate joins the workspace. **This RFC make
    - why it is unreachable (ratatui calls only `get_or_insert` and `resize`, and its `(Rect, Layout)` keys cannot
      panic on drop);
    - **what retires it:** a ratatui release on `lru >= 0.18.2`, which the next ratatui upgrade must check.
+
+   **Amended at review, 2026-11-25, by the architect: the gate retires the record itself.** `deny.toml` also sets
+   `unused-ignored-advisory = "deny"`. Measured with cargo-deny 0.20.2 on `38e67db`:
+   - by default, an ignore that matches nothing is a `warning[advisory-not-detected]`, and the run stays `ok`;
+   - with `"deny"`, the same is an `error`, and the run is `FAILED`;
+   - today's tree passes, since the `lru` record still matches.
+
+   So the day a ratatui release brings a fixed `lru`, the gate fails until the record is deleted. **A check that runs
+   rather than one that is remembered,** as RFC 066 put it.
 4. **Nothing else changes.**
    - The supply-chain workflow keeps its triggers. Dispatch only is RFC 020's open question for the owner, not this
      RFC's.
@@ -89,3 +98,30 @@ That is 0.23.0's question, when a GUI crate joins the workspace. **This RFC make
 `### Security`: *the supply-chain check now reports unsound and unmaintained advisories at any depth of the dependency
 tree. `rustix` is updated to 1.1.6 (RUSTSEC-2026-0486). RUSTSEC-2026-0253 (`lru`, through ratatui) is recorded as not
 reachable from stikk until ratatui moves to a fixed `lru`.*
+
+## Delivered
+
+**On `main` at `b0bf467`, 2026-11-25:** `1ae8a52`, `38e67db` and `b0bf467`. Handoff A was reviewed by the architect
+and approved with one addition, recorded in decision 3's amendment.
+
+**What was delivered:**
+- **`deny.toml`'s `[advisories]`:** `unsound = "all"`, `unmaintained = "all"` and `unused-ignored-advisory = "deny"`,
+  each with its reason;
+- **`rustix`** 1.1.4 → 1.1.6, the only lock entry to move;
+- **one ignore, RUSTSEC-2026-0253,** with:
+  - its path;
+  - why it is unreachable, checked by the dev team in ratatui-core 0.1.0: no `pop` anywhere in the crate, and no
+    `impl Drop`;
+  - the self-retiring condition;
+- `### Security` in the changelog.
+
+**Evidence, checked by the architect:**
+- the setting alone fails on exactly the two advisories;
+- the head passes all four checks, run by me;
+- a planted unused ignore fails the gate under `"deny"`;
+- **green at `b0bf467`:** CI, Docs, the dispatched supply-chain run (its first with the new settings) and the
+  full-matrix suite.
+
+**Carried:**
+- the supply-chain workflow stays dispatch-only (RFC 020's open question for the owner);
+- the GUI tree's five unmaintained advisories belong to 0.23.0's GUI RFC.

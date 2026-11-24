@@ -1,6 +1,6 @@
 # Handoff A — RFC 068: every advisory in the tree is seen (v1)
 
-**Companion to:** [RFC 068](../../accepted/068-every-advisory-is-seen.md), **accepted 2026-11-24**. **Read the RFC
+**Companion to:** [RFC 068](../../done/068-every-advisory-is-seen.md), **accepted 2026-11-24**. **Read the RFC
 first**: F1–F2 and decisions 1–4. **Covers:** all of it. **0.22.0, added by the owner 2026-11-24.** **Not a release.**
 
 > **What this increment is.** The supply-chain gate starts reporting unsound and unmaintained advisories at any depth.

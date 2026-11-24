@@ -4,6 +4,17 @@ All notable changes to stikk are recorded here. Dates are ISO-8601.
 
 ## Unreleased
 
+### Security
+
+- **The supply-chain check now reports unsound and unmaintained advisories at any depth of the
+  dependency tree.** It reported them only for crates stikk depends on directly, so a defect two or
+  three crates down passed the gate in silence while still being in the binary stikk ships. Two were
+  found that way: **`rustix` is updated to 1.1.6** (RUSTSEC-2026-0486, zero-length `xattr` buffers),
+  and **RUSTSEC-2026-0253** (`lru`, reached through ratatui) is **recorded as not reachable from
+  stikk** — the defect needs a cache eviction ratatui never asks for, with a key whose drop could
+  panic, and ratatui's keys are plain data. That record names what retires it: a ratatui release on
+  a fixed `lru`.
+
 ### Changed
 
 - **The program every front end drives is its own crate.** For contributors: `stikk-app` now holds

@@ -30,7 +30,7 @@ _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
-| 067 | [`stikk-app`: the program, shared by every front end](./accepted/067-stikk-app-the-shared-program.md) | the program moves out of the terminal front end into a crate that knows no terminal; no user-visible change, proved by byte-identical frames | [A: the seams](./handoffs/067-stikk-app-the-shared-program/a-the-seams-handoff-v1.md) |
+| 067 | [`stikk-app`: the program, shared by every front end](./accepted/067-stikk-app-the-shared-program.md) | the program moves out of the terminal front end into a crate that knows no terminal; no user-visible change, proved by byte-identical frames | [A: the seams](./handoffs/067-stikk-app-the-shared-program/a-the-seams-handoff-v1.md) · [B: the move](./handoffs/067-stikk-app-the-shared-program/b-the-move-handoff-v1.md) |
 
 ## Done (implemented)
 

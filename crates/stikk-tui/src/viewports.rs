@@ -4,7 +4,7 @@
 //! on top. But an offset is a fact about a window — about how a text wrapped at a width, and how
 //! many rows were left over — and the program has no window. So the offsets live here, beside the
 //! renderer that is the only thing able to clamp them, and the program is told what the reader saw
-//! through an [`crate::app::Reading`] after each draw.
+//! through an [`stikk_app::Reading`] after each draw.
 //!
 //! **Keyed by [`Surface`]**, which the program mints and hands out. A surface that is no longer
 //! current simply never comes up again, and a new one has no entry, so a new card starts at the top
@@ -12,8 +12,8 @@
 
 use std::collections::HashMap;
 
-use crate::app::{Direction, Effect, Reading, Surface};
 use crate::overlay::Scroll;
+use stikk_app::{Direction, Effect, Reading, Surface};
 
 /// Every surface's offset, by surface.
 #[derive(Debug, Default)]

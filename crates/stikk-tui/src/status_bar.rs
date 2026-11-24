@@ -18,9 +18,9 @@ use ratatui::widgets::Paragraph;
 
 use stikk_model::{Binding, CurrentBranch, Readiness, RoleReadiness};
 
-use crate::app::{App, OrientationState, RefFocus};
 use crate::text::{identifier, inert};
 use crate::theme::Palette;
+use stikk_app::{App, OrientationState, RefFocus};
 
 /// The mark a shortened value ends with.
 const ELLIPSIS: &str = "…";

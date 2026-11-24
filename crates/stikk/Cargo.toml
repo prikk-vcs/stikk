@@ -32,6 +32,7 @@ stikk-model = { workspace = true }
 stikk-prikk = { workspace = true }
 stikk-state = { workspace = true }
 stikk-core  = { workspace = true }
+stikk-app   = { workspace = true }
 stikk-tui   = { workspace = true }
 
 [lints]

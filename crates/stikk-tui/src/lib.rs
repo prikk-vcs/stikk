@@ -8,7 +8,7 @@
 //! **Every seam-driving read runs on a worker thread (RFC 010).** [`run`] spawns one via
 //! `std::thread::scope` — which lets it *borrow* `prikk` and `repo` rather than requiring `Arc` or a
 //! `'static` bound, so this function's signature is unchanged — and drives the render/input loop on
-//! the calling thread throughout, applying results as they arrive (`worker::Response`) without ever
+//! the calling thread throughout, applying results as they arrive (`stikk_app::Response`) without ever
 //! blocking on them. `stikk-core` itself stays synchronous (RFC 010 decision 3); the worker is simply
 //! the thread that calls it.
 //!
@@ -21,7 +21,6 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-pub mod app;
 pub mod overlay;
 pub mod text;
 
@@ -34,7 +33,6 @@ mod theme;
 mod title;
 mod view;
 mod viewports;
-mod worker;
 
 #[cfg(test)]
 mod golden;
@@ -42,10 +40,12 @@ mod golden;
 mod readme_visuals;
 #[cfg(test)]
 pub(crate) mod test_util;
+#[cfg(test)]
+mod wiring;
 
-pub use app::{App, Effect, Focus, Operation, OperationStatus, OrientationState, RefFocus, Screen};
-pub use keys::{Intent, handle_key};
-pub use overlay::Overlay;
+// **The program is not re-exported** (RFC 067 Handoff B §1.4): a front end and the launcher name
+// `stikk_app::` directly, so each item has one path and not two.
+pub use keys::handle_key;
 pub use terminal::stdout_is_tty;
 // `SchemeKind` is re-exported because [`Palette::kind`] is a public field: a field whose type a
 // caller cannot name is not really public (RFC 059).
@@ -59,6 +59,7 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 
+use stikk_app::{App, Session};
 use stikk_model::{Result, StikkError};
 use stikk_prikk::Prikk;
 use stikk_state::Config;
@@ -70,19 +71,6 @@ use crate::terminal::TerminalGuard;
 /// with the seam now off-thread (RFC 010), this bounds only how long a *response* waits to be applied,
 /// and 250ms of visible latency after a fast read would be a stutter that did not exist before.
 const POLL: Duration = Duration::from_millis(50);
-
-/// Where stikk may remember this repository between launches (RFC 046).
-///
-/// **The caller decides whether there is one at all.** `None` to [`run`] means no record is read
-/// and none is written: `STIKK_PRIVATE=1` (decision 6), and a host with no resolvable state
-/// directory, reach the TUI the same way — as a session that simply does not remember.
-#[derive(Debug, Clone)]
-pub struct Session {
-    /// Where `sessions/` lives — [`stikk_state::paths::state_dir`]'s answer.
-    pub state_dir: std::path::PathBuf,
-    /// The repository's **canonical** root, which names the record and is stored inside it.
-    pub canonical_root: std::path::PathBuf,
-}
 
 /// Run the interactive TUI over `repo`, driving prikk through the seam on a worker thread and
 /// rendering with the palette resolved from `config` and the terminal itself (RFC 059). The caller
@@ -136,7 +124,7 @@ pub fn run(
         // returns, which `ui_loop` observes as a disconnected channel (RFC 010 §7).
         scope.spawn(move || {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                worker::run(prikk, repo, req_rx, res_tx);
+                stikk_app::run(prikk, repo, req_rx, res_tx);
             }));
         });
         ui_loop(&mut terminal, repo, resolved, session, req_tx, &res_rx)
@@ -150,8 +138,8 @@ fn ui_loop(
     repo: &Path,
     resolved: theme::Resolved,
     session: Option<Session>,
-    req_tx: mpsc::Sender<worker::Request>,
-    res_rx: &mpsc::Receiver<worker::Response>,
+    req_tx: mpsc::Sender<stikk_app::Request>,
+    res_rx: &mpsc::Receiver<stikk_app::Response>,
 ) -> Result<()> {
     // **The run loop owns the colours** (RFC 067 decision 3): `resolved` stays here, a local of
     // the loop that draws, instead of being handed to the program. Nothing about detection changes

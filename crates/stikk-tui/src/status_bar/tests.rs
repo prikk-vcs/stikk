@@ -265,9 +265,9 @@ fn unfocused_app(repo: &str, queued: u64) -> App {
     let (tx, rx) = mpsc::channel();
     let mut app = App::open(format!("/x/{repo}"), None, tx);
     let first = rx.try_recv().expect("the first Orientation read");
-    app.apply(crate::worker::Response {
+    app.apply(stikk_app::Response {
         seq: first.seq,
-        kind: crate::worker::ResponseKind::Orient(crate::worker::OrientRead::stamped(Ok(view_on(
+        kind: stikk_app::ResponseKind::Orient(stikk_app::OrientRead::stamped(Ok(view_on(
             stikk_model::CurrentBranch::NotReported,
             queued,
         )))),

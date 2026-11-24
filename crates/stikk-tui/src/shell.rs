@@ -8,11 +8,11 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use crate::app::{App, Focus, OrientationState};
 use crate::text::{identifier, inert};
 use crate::theme::{Palette, Resolved};
 use crate::viewports::Viewports;
 use crate::{overlay, status_bar, view};
+use stikk_app::{App, Focus, OrientationState};
 
 /// Minimum usable terminal size (design TU-10, as RFC 060 decision 1 amends it).
 ///

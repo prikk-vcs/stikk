@@ -32,7 +32,6 @@ use stikk_core::{
 use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 
-use crate::keys::Intent;
 use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
 use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
@@ -58,6 +57,35 @@ pub enum Effect {
     },
 }
 
+/// A resolved user intent.
+///
+/// **[`Self::Run`] carries the catalog entry itself**, so nothing here repeats what an action is
+/// called or what key it has. The rest are the two halves of `app.move`, which the catalog lists as
+/// one key, the gentler half of `app.back`, and text entry's own two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Intent {
+    /// No bound action for this key.
+    None,
+    /// Quit the application unconditionally (Ctrl-C).
+    Quit,
+    /// Back, **and never quit** — the left arrow, `app.back`'s gentler half (RFC 061 review v1 C2).
+    ///
+    /// The catalog binds one action to `←`, `Esc` and `q`; this is the one of the three that stops at
+    /// the root instead of ending the session, because a reader moving around presses an arrow key
+    /// constantly.
+    BackWithoutQuit,
+    /// Move the selection up — `app.move`'s upper half.
+    Up,
+    /// Move the selection down — `app.move`'s lower half.
+    Down,
+    /// Run one catalog action.
+    Run(&'static stikk_core::Action),
+    /// A typed character (text-entry overlays only).
+    Input(char),
+    /// Delete the last typed character (text-entry overlays only).
+    Backspace,
+}
+
 /// Which way a [`Effect::Scroll`] moves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
@@ -65,6 +93,19 @@ pub enum Direction {
     Up,
     /// On towards the last.
     Down,
+}
+
+/// Where stikk may remember this repository between launches (RFC 046).
+///
+/// **The caller decides whether there is one at all.** `None` to `stikk_tui::run` means no record
+/// is read and none is written: `STIKK_PRIVATE=1` (decision 6), and a host with no resolvable state
+/// directory, reach the TUI the same way — as a session that simply does not remember.
+#[derive(Debug, Clone)]
+pub struct Session {
+    /// Where `sessions/` lives — [`stikk_state::paths::state_dir`]'s answer.
+    pub state_dir: std::path::PathBuf,
+    /// The repository's **canonical** root, which names the record and is stored inside it.
+    pub canonical_root: std::path::PathBuf,
 }
 
 /// **One thing a reader can be reading**: the overlay on top, or the scrolling view under it.
@@ -84,8 +125,8 @@ impl Surface {
     ///
     /// **Test-only, and not a public constructor** (§4.1): outside the tests nothing but the
     /// program can make a surface, so nothing but the program can claim a card was read.
-    #[cfg(test)]
-    pub(crate) fn for_test(id: u64) -> Self {
+    #[cfg(any(test, feature = "test-fixtures"))]
+    pub fn for_test(id: u64) -> Self {
         Self(id)
     }
 }
@@ -601,7 +642,7 @@ pub struct App {
     check_pending: Option<u64>,
     /// Where this repository is remembered, or `None` for a launch that remembers nothing
     /// (RFC 046 decision 6, and a host with no resolvable state directory).
-    session: Option<crate::Session>,
+    session: Option<Session>,
     /// What was remembered, read once at open. **Never shown** — it is handed to
     /// [`stikk_core::restore`] once prikk's own reads are in, and nothing of it reaches the
     /// screen before that (`T-T4`; §5 trap 2).
@@ -682,7 +723,7 @@ enum PendingSeal {
 /// was typed, so by the time one of these exists there is one name, passed to prikk as **one
 /// argument** whatever is in it (trap 3: a space is legal to prikk).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RefWriteOp {
+pub enum RefWriteOp {
     /// `branch create <name> --from <from_ref>`. **`--from` is always passed** (trap 1): the user
     /// chose a ref, and prikk's default source is a different question.
     CreateBranch {
@@ -947,13 +988,13 @@ enum PendingRefWrite {
 }
 
 impl App {
-    /// Open `repo` and send the initial orientation request. The caller (normally [`crate::run`])
+    /// Open `repo` and send the initial orientation request. The caller (normally `stikk_tui::run`)
     /// owns the paired worker and receiver — **and the colours**: what the terminal settled on is
     /// the front end's to know (RFC 067 decision 3), so it is no longer handed in here.
     #[must_use]
-    pub(crate) fn open(
+    pub fn open(
         repo: impl Into<PathBuf>,
-        session: Option<crate::Session>,
+        session: Option<Session>,
         req_tx: mpsc::Sender<Request>,
     ) -> Self {
         let mut app = Self::new(repo, OrientationState::Loading, req_tx);
@@ -982,9 +1023,9 @@ impl App {
     /// **A `Loaded` state starts focused on `heads/main`**, as if its first read had resolved there, so a
     /// test about something else needs no resolution step. Any other state starts `Pending`, and a test
     /// about resolution (RFC 029 Handoff B) starts there and drives `apply`.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-fixtures"))]
     #[must_use]
-    pub(crate) fn from_state(
+    pub fn from_state(
         repo: impl Into<PathBuf>,
         state: OrientationState,
         req_tx: mpsc::Sender<Request>,
@@ -3595,7 +3636,7 @@ impl App {
 
     /// **Open the selected row** — what `Enter` did before RFC 061, and what `→` does now
     /// (decision 2). The catalog's `row.open`, and the first entry of every row's action list.
-    pub(crate) fn select_screen_or_row(&mut self) {
+    pub fn select_screen_or_row(&mut self) {
         if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
             self.focus_selected_ref();
             return;
@@ -4300,7 +4341,7 @@ impl App {
     /// **What one intent does** (RFC 067 decision 1) — the program's own entry point, which takes an
     /// [`Intent`] and never a key event.
     ///
-    /// Nothing about a keyboard reaches here: [`crate::keys::handle_key`] does the translating, so
+    /// Nothing about a keyboard reaches here: `stikk_tui::handle_key` does the translating, so
     /// the next front end drives the program with intents of its own making.
     ///
     /// The returned [`Effect`] is what the program asks the front end to do afterwards, for the one
@@ -4417,7 +4458,7 @@ impl App {
     /// `seq` does not match what is currently awaited for its slot is stale — the user has navigated
     /// away since it was requested — and its content is discarded; the background-operations
     /// bookkeeping still records that the operation finished either way (§4/§5).
-    pub(crate) fn apply(&mut self, response: Response) {
+    pub fn apply(&mut self, response: Response) {
         let Response { seq, kind } = response;
         let ok = match &kind {
             ResponseKind::ChangeCheck(r) => r.is_ok(),
@@ -5718,7 +5759,7 @@ impl App {
     /// [`stikk_model::StikkError`] to route through `present()` for "the channel closed", so this is a
     /// direct fault, stated exactly once by the caller (repeating it on every subsequent poll would
     /// make the fault screen impossible to dismiss).
-    pub(crate) fn worker_stopped(&mut self) {
+    pub fn worker_stopped(&mut self) {
         self.fault = Some(
             "the background worker stopped unexpectedly; your session is preserved, but nothing new \
              can be loaded until you restart stikk"
@@ -5835,7 +5876,7 @@ impl App {
     /// **The keys a reader has here** (RFC 061 decision 5), for the key line — the same row and
     /// screen Enter's list is built from, so the line and the list cannot disagree about what a key
     /// does here.
-    pub(crate) fn keys_here(&self) -> Vec<&'static stikk_core::Action> {
+    pub fn keys_here(&self) -> Vec<&'static stikk_core::Action> {
         let row = self.selected_row().map(|(kind, _)| kind);
         let screen = if self.overlays.is_empty() {
             self.screen_kind()
@@ -5991,7 +6032,7 @@ impl App {
     ///
     /// Returns whether the id was one this build runs: `every_catalog_action_runs` asserts it for
     /// every entry, so an action the catalog lists and nothing answers cannot ship.
-    pub(crate) fn run_action(&mut self, id: &str) -> bool {
+    pub fn run_action(&mut self, id: &str) -> bool {
         match id {
             // moving around
             "row.actions" => self.select(),
@@ -6301,20 +6342,23 @@ impl App {
     /// **No report means "at the end"**, which is what an undrawn card meant when the renderer
     /// wrote the offsets: `max` was zero, so `at_end` was true and `↓` moved the cursor. Every
     /// handler test that never draws depends on it.
-    fn at_end(&self) -> bool {
+    #[must_use]
+    pub fn at_end(&self) -> bool {
         self.observed().is_none_or(|o| o.at_end)
     }
 
     /// Whether anything is scrolled off the top — what `↑` asks before it scrolls back. **No report
     /// means nothing is**, as an undrawn card's zero offset meant.
-    fn more_above(&self) -> bool {
+    #[must_use]
+    pub fn more_above(&self) -> bool {
         self.observed().is_some_and(|o| o.more_above)
     }
 
     /// **Whether a confirmation may be offered at all** (RFC 060 decision 3): the whole card has
     /// been on screen. **No report means not read**, which is the safe failure — a front end that
     /// never reports leaves every confirmation closed.
-    fn seen_whole_card(&self) -> bool {
+    #[must_use]
+    pub fn seen_whole_card(&self) -> bool {
         self.observed().is_some_and(|o| o.seen)
     }
 
@@ -6352,7 +6396,7 @@ impl App {
     ///
     /// **The only way an overlay reaches the stack**, so the reading latch cannot be inherited by a
     /// card that was never read. `pub(crate)` for the tests that push a card directly.
-    pub(crate) fn push_overlay(&mut self, overlay: Overlay) {
+    pub fn push_overlay(&mut self, overlay: Overlay) {
         self.overlay_surface = self.mint_surface();
         self.overlays.push(overlay);
     }
@@ -6399,14 +6443,14 @@ impl App {
 
     /// Focus a ref directly — for tests about how the status bar fits a long one (RFC 060
     /// decision 5).
-    #[cfg(test)]
-    pub(crate) fn focus_ref_for_tests(&mut self, reff: &str) {
+    #[cfg(any(test, feature = "test-fixtures"))]
+    pub fn focus_ref_for_tests(&mut self, reff: &str) {
         self.ref_focus = RefFocus::Ref(reff.to_string());
     }
 
     /// Surface a seam error directly — for tests (drives the ER-03 routing).
-    #[cfg(test)]
-    pub(crate) fn surface_error(&mut self, error: &stikk_model::StikkError, op: OperationContext) {
+    #[cfg(any(test, feature = "test-fixtures"))]
+    pub fn surface_error(&mut self, error: &stikk_model::StikkError, op: OperationContext) {
         self.surface(error, op);
     }
 }

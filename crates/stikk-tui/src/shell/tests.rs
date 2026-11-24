@@ -1,7 +1,7 @@
 //! Full-shell render tests (design TS-01/TS-02), driven by the scripted backend.
 //!
 //! `App` sends requests to a worker thread rather than calling `Prikk` directly (RFC 010), so these
-//! tests drive it through the same [`crate::worker::run`] function the real worker thread calls —
+//! tests drive it through the same [`stikk_app::run`] function the real worker thread calls —
 //! synchronously, on the test thread, one batch of queued requests at a time via [`drain`] — rather than
 //! spinning up a real thread. That is exactly the split the design calls for: the async plumbing itself
 //! is proven in `app::tests` and `worker::tests`; these tests only care that a loaded (or still-loading)
@@ -18,7 +18,7 @@ use stikk_state::Config;
 
 use super::*;
 use crate::test_util::buffer_text;
-use crate::worker::Request;
+use stikk_app::Request;
 
 fn draw(app: &App, w: u16, h: u16) -> String {
     draw_in(app, &look(), w, h)
@@ -102,7 +102,7 @@ fn drain(app: &mut App, rx: &mpsc::Receiver<Request>, backend: &NullBackend) {
         tmp_tx.send(req).unwrap();
         drop(tmp_tx);
         let (res_tx, res_rx) = mpsc::channel();
-        crate::worker::run(backend, app.repo(), tmp_rx, res_tx);
+        stikk_app::run(backend, app.repo(), tmp_rx, res_tx);
         if let Ok(response) = res_rx.try_recv() {
             app.apply(response);
         }
@@ -393,7 +393,7 @@ fn picking_the_unpublished_heads_main_opens_its_empty_history_at_80x24() {
     assert!(
         matches!(
             app.top_overlay(),
-            Some(crate::overlay::Overlay::RefPicker {
+            Some(stikk_app::Overlay::RefPicker {
                 unpublished_main: true,
                 ..
             })
@@ -2012,7 +2012,7 @@ fn capture_rfc061_what_can_be_done_here_on_every_screen() {
         (screen.reach)(&mut app, &rx, &backend);
         let before = format!("{:?}", app.top_overlay().map(std::mem::discriminant));
         app.select();
-        let Some(crate::overlay::Overlay::ActionList {
+        let Some(stikk_app::Overlay::ActionList {
             subject,
             entries,
             readiness,
@@ -2531,12 +2531,12 @@ fn capture_rfc060b_every_surface_that_advertises_down_moves_on_down() {
 /// the sweep only asks whether there is more than one.
 fn rows_to_select(app: &App) -> usize {
     match app.top_overlay() {
-        Some(crate::overlay::Overlay::RefPicker { refs, .. }) => refs.len(),
-        Some(crate::overlay::Overlay::Refusals { records, .. }) => records.len(),
-        Some(crate::overlay::Overlay::Palette { filter, .. }) => {
+        Some(stikk_app::Overlay::RefPicker { refs, .. }) => refs.len(),
+        Some(stikk_app::Overlay::Refusals { records, .. }) => records.len(),
+        Some(stikk_app::Overlay::Palette { filter, .. }) => {
             stikk_core::actions::matching(filter).len()
         }
-        Some(crate::overlay::Overlay::ActionList { entries, .. }) => entries.len(),
+        Some(stikk_app::Overlay::ActionList { entries, .. }) => entries.len(),
         Some(_) => 0,
         None => match app.focus() {
             Focus::History(view, _) => view.blocks.len(),

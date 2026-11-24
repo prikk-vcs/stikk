@@ -32,16 +32,19 @@ pub(crate) const HISTORY_LIMIT: usize = stikk_core::UNDO_HISTORY_LIMIT;
 /// [`crate::app::App::apply`] can discard a reply for work the user has navigated away from since it
 /// was sent (RFC 010 §4 — the correctness risk this increment exists to close).
 #[derive(Debug)]
-pub(crate) struct Request {
-    pub(crate) seq: u64,
-    pub(crate) kind: RequestKind,
+pub struct Request {
+    /// The sequence number the answer must carry back, so a response for a read the reader has
+    /// navigated away from can be recognized and discarded (RFC 010).
+    pub seq: u64,
+    /// What to read or do.
+    pub kind: RequestKind,
 }
 
 /// The operation a [`Request`] asks the worker to run — one per `stikk-core` read this frontend drives.
 /// Deliberately mirrors the design's request-category vocabulary at the granularity the TUI needs it,
 /// not the full `CT-03` set (only the reads this frontend currently issues have a variant).
 #[derive(Debug)]
-pub(crate) enum RequestKind {
+pub enum RequestKind {
     /// Read the change token, then the repository orientation (RFC 031 §3), answered together.
     Orient,
     /// Read the change token alone: the silent check (RFC 031 §4). `App` sends it without recording an
@@ -337,14 +340,16 @@ pub(crate) enum RequestKind {
 
 /// The worker's answer to one [`Request`], echoing its `seq`.
 #[derive(Debug)]
-pub(crate) struct Response {
-    pub(crate) seq: u64,
-    pub(crate) kind: ResponseKind,
+pub struct Response {
+    /// The sequence number of the [`Request`] this answers.
+    pub seq: u64,
+    /// The answer.
+    pub kind: ResponseKind,
 }
 
 /// The result of running the [`RequestKind`] a [`Response`] echoes.
 #[derive(Debug)]
-pub(crate) enum ResponseKind {
+pub enum ResponseKind {
     /// Answers [`RequestKind::Orient`].
     Orient(OrientRead),
     /// Answers [`RequestKind::ChangeCheck`].
@@ -363,7 +368,9 @@ pub(crate) enum ResponseKind {
     /// Answers [`RequestKind::BlockState`], echoing the ref it was read for, so the screen it fills names
     /// that ref and a later refresh re-reads it (RFC 031 review v1 §2.2).
     BlockState {
+        /// The ref the block's detail was read for.
         reff: String,
+        /// The detail, or the read's refusal.
         result: Result<BlockDetailView>,
     },
     /// Answers [`RequestKind::Refs`] — the merged pointers **and** the unpublished current
@@ -443,15 +450,19 @@ pub(crate) enum ResponseKind {
 /// in the token, so the next check differs and refreshes, which is harmless. Read the other way round,
 /// the change would be in the token and not on screen, and no check would ever notice it.
 #[derive(Debug)]
-pub(crate) struct OrientRead {
+pub struct OrientRead {
     pub(crate) token: Result<ChangeToken>,
     pub(crate) view: Result<OrientationView>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-fixtures"))]
 impl OrientRead {
     /// A read whose token is `NullBackend::supported()`'s default, for tests about something else.
-    pub(crate) fn stamped(view: Result<OrientationView>) -> Self {
+    ///
+    /// Behind `test-fixtures` for the reason `App::from_state` is (Handoff B §1.5): a front end's
+    /// own tests build these, and `#[cfg(test)]` does not reach across a crate boundary.
+    #[must_use]
+    pub fn stamped(view: Result<OrientationView>) -> Self {
         Self {
             token: Ok(ChangeToken::compose(
                 [("heads/main", "0".repeat(64).as_str())],
@@ -519,7 +530,7 @@ impl RequestKind {
 /// so a shared reference to either cannot cross into a spawned thread (only an owned value, or a
 /// `Sender`'s own `Clone`, can) — this is `std::thread::scope`'s own sketch in the handoff, not an
 /// incidental choice.
-pub(crate) fn run(
+pub fn run(
     prikk: &impl Prikk,
     repo: &Path,
     req_rx: mpsc::Receiver<Request>,

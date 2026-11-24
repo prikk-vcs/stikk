@@ -19,6 +19,7 @@ stikk-model = { version = "0.21.1", path = "crates/stikk-model" }
 stikk-prikk = { version = "0.21.1", path = "crates/stikk-prikk" }
 stikk-state = { version = "0.21.1", path = "crates/stikk-state" }
 stikk-core  = { version = "0.21.1", path = "crates/stikk-core" }
+stikk-app   = { version = "0.21.1", path = "crates/stikk-app" }
 stikk-tui   = { version = "0.21.1", path = "crates/stikk-tui" }
 
 # RFC 001 (accepted 2026-09-01): the TUI is built on ratatui over the crossterm backend. crossterm is

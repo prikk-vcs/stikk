@@ -42,13 +42,13 @@ const HEADING_HANG: &str = "      ";
 /// Render Compare for `view` into `area`, scrolled to `offset` (clamped here and written back).
 /// `cursor` selects an entry — which `v` then shows prikk's own fields for.
 pub fn render(
-    focus: crate::app::CompareFocus<'_>,
+    focus: stikk_app::CompareFocus<'_>,
     scrolled: &crate::overlay::Scroll,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
 ) {
-    let crate::app::CompareFocus {
+    let stikk_app::CompareFocus {
         view,
         opened,
         cursor,
@@ -104,7 +104,7 @@ pub fn render(
 #[allow(clippy::too_many_arguments)] // one more: the width the rows are drawn in (RFC 061)
 fn compare_lines<'a>(
     view: &CompareView,
-    opened: &crate::app::CompareSource,
+    opened: &stikk_app::CompareSource,
     cursor: usize,
     raw: bool,
     palette: &Palette,
@@ -134,7 +134,7 @@ fn compare_lines<'a>(
     // pieces; only the role words are added here, because only this layer knows which key chose
     // which side. `(marked)` and `(selected)` are stikk's own words, so they are `Said`.
     let heading = match opened {
-        crate::app::CompareSource::RefPair { .. } => {
+        stikk_app::CompareSource::RefPair { .. } => {
             let mut pieces = compared.from.label_with_block();
             pieces.push(stikk_core::Piece::said("  (marked)"));
             pieces.push(stikk_core::Piece::said("  \u{2192}  "));

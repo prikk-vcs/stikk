@@ -41,9 +41,9 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier};
 
-use crate::app::{App, OrientationState};
 use crate::theme::Palette;
-use crate::worker::{Response, ResponseKind};
+use stikk_app::{App, OrientationState};
+use stikk_app::{Response, ResponseKind};
 
 /// Where the committed images live, relative to the workspace root.
 const IMAGE_DIR: &str = "docs/assets/readme";
@@ -104,7 +104,7 @@ fn orientation() -> stikk_core::OrientationView {
 /// **The palette is the explicit dark one, at 24-bit** (RFC 059 decision 11): an image is not a
 /// terminal, so there is nothing to detect and nothing that could answer, and the page behind the
 /// cells supplies the dark background these colours were chosen against ([`BACKGROUND`]).
-fn app() -> (App, mpsc::Receiver<crate::worker::Request>) {
+fn app() -> (App, mpsc::Receiver<stikk_app::Request>) {
     let (tx, rx) = mpsc::channel();
     let app = App::from_state(
         PathBuf::from(REPO),
@@ -217,7 +217,7 @@ fn scene_compare() -> Buffer {
     app.apply(Response {
         seq: request.seq,
         kind: ResponseKind::Compare {
-            opened: crate::app::CompareSource::PreviousInHistory,
+            opened: stikk_app::CompareSource::PreviousInHistory,
             result: Ok(stikk_core::CompareView::Listed(stikk_core::compared(
                 compare_diff(),
             ))),

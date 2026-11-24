@@ -10,6 +10,7 @@ authors.workspace       = true
 repository.workspace    = true
 
 [dependencies]
+stikk-app   = { workspace = true }
 stikk-model = { workspace = true }
 stikk-prikk = { workspace = true }
 stikk-state = { workspace = true }
@@ -22,3 +23,8 @@ terminal-colorsaurus = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# The program's own test constructor, for the tests that drive the program *and* the drawing
+# together (RFC 067 Handoff B §2). Off in every normal build.
+stikk-app = { workspace = true, features = ["test-fixtures"] }

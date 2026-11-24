@@ -1,7 +1,7 @@
 //! **Key dispatch, from the catalog** (design `TU-05`; RFC 061 decision 2).
 //!
 //! There is no list of bindings here. A key event resolves to one of RFC 061's [`Key`]s, that key's
-//! action comes from [`stikk_core::actions`], and [`crate::app::App::run_action`] says what it does.
+//! action comes from [`stikk_core::actions`], and [`stikk_app::App::run_action`] says what it does.
 //! So a key exists only where the catalog binds it — which is how the phantom `g o` the palette used
 //! to print became impossible (RFC 061 F2).
 //!
@@ -16,41 +16,12 @@
 //! When a **text-entry** overlay is open (the palette's filter, a commit message, a ref name, a
 //! path), printable keys become [`Intent::Input`] and Backspace [`Intent::Backspace`] — **every
 //! character as typed, upper case included** (RFC 061 trap 2: a typed key id must still tell `A`
-//! from `a`). The run loop passes [`crate::app::App::wants_text_input`].
+//! from `a`). The run loop passes [`stikk_app::App::wants_text_input`].
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use stikk_core::{Action as CatalogAction, Key, actions};
+use stikk_core::{Key, actions};
 
-use crate::app::{App, Effect};
-
-/// A resolved user intent.
-///
-/// **[`Self::Run`] carries the catalog entry itself**, so nothing here repeats what an action is
-/// called or what key it has. The rest are the two halves of `app.move`, which the catalog lists as
-/// one key, the gentler half of `app.back`, and text entry's own two.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Intent {
-    /// No bound action for this key.
-    None,
-    /// Quit the application unconditionally (Ctrl-C).
-    Quit,
-    /// Back, **and never quit** — the left arrow, `app.back`'s gentler half (RFC 061 review v1 C2).
-    ///
-    /// The catalog binds one action to `←`, `Esc` and `q`; this is the one of the three that stops at
-    /// the root instead of ending the session, because a reader moving around presses an arrow key
-    /// constantly.
-    BackWithoutQuit,
-    /// Move the selection up — `app.move`'s upper half.
-    Up,
-    /// Move the selection down — `app.move`'s lower half.
-    Down,
-    /// Run one catalog action.
-    Run(&'static CatalogAction),
-    /// A typed character (text-entry overlays only).
-    Input(char),
-    /// Delete the last typed character (text-entry overlays only).
-    Backspace,
-}
+use stikk_app::{App, Effect, Intent};
 
 /// The catalog action a [`Key`] runs, or [`Intent::None`] when the catalog binds that key to nothing.
 fn run(key: Key) -> Intent {

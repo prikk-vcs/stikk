@@ -46,11 +46,11 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use stikk_core::{ConfirmationSummary, NextStep, NextTarget, OperationContext, RefusalCard};
 use stikk_model::{Capability, Readiness, Tier};
 
-use crate::app::{App, Focus, Operation, OperationStatus, OrientationState};
-use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
 use crate::theme::{Depth, Palette, Resolved, Scheme};
 use crate::viewports::Viewports;
-use crate::worker::{Request, Response, ResponseKind};
+use stikk_app::{App, Focus, Operation, OperationStatus, OrientationState};
+use stikk_app::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
+use stikk_app::{Request, Response, ResponseKind};
 
 /// Where the committed manifest lives, relative to this crate.
 const MANIFEST: &str = "src/golden/frames.txt";
@@ -564,7 +564,7 @@ fn scene_compare(palette: Palette) -> Staged {
         answer(app, rx, |_| ResponseKind::History(Ok(history())));
         app.compare();
         answer(app, rx, |_| ResponseKind::Compare {
-            opened: crate::app::CompareSource::PreviousInHistory,
+            opened: stikk_app::CompareSource::PreviousInHistory,
             result: Ok(compare()),
         });
     })

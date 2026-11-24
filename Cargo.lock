@@ -1135,11 +1135,22 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "stikk"
 version = "0.21.1"
 dependencies = [
+ "stikk-app",
  "stikk-core",
  "stikk-model",
  "stikk-prikk",
  "stikk-state",
  "stikk-tui",
+]
+
+[[package]]
+name = "stikk-app"
+version = "0.21.1"
+dependencies = [
+ "stikk-core",
+ "stikk-model",
+ "stikk-prikk",
+ "stikk-state",
 ]
 
 [[package]]
@@ -1185,6 +1196,7 @@ name = "stikk-tui"
 version = "0.21.1"
 dependencies = [
  "ratatui",
+ "stikk-app",
  "stikk-core",
  "stikk-model",
  "stikk-prikk",

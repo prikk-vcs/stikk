@@ -54,7 +54,7 @@ Notes:
 ///
 /// **Read-only mode still remembers**: `STIKK_READ_ONLY=1` forbids repository mutations, and the
 /// record is stikk's own file, outside every repository.
-fn session(root: &std::path::Path) -> Option<stikk_tui::Session> {
+fn session(root: &std::path::Path) -> Option<stikk_app::Session> {
     if private_requested(std::env::var_os("STIKK_PRIVATE")) {
         return None;
     }
@@ -78,8 +78,8 @@ fn private_requested(value: Option<std::ffi::OsString>) -> bool {
 fn session_from(
     state_dir: Option<std::path::PathBuf>,
     root: &std::path::Path,
-) -> Option<stikk_tui::Session> {
-    Some(stikk_tui::Session {
+) -> Option<stikk_app::Session> {
+    Some(stikk_app::Session {
         state_dir: state_dir?,
         canonical_root: std::fs::canonicalize(root).ok()?,
     })

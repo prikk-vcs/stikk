@@ -1,0 +1,28 @@
+[package]
+name        = "stikk-app"
+description = "The program every stikk front end drives: the application state, its transitions, and the worker protocol. Owns no widgets and no terminal; a front end supplies intents and reports what it drew."
+
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
+
+[dependencies]
+stikk-model = { workspace = true }
+stikk-prikk = { workspace = true }
+stikk-state = { workspace = true }
+stikk-core  = { workspace = true }
+
+[features]
+# **Test fixtures, for a front end's own tests** (RFC 067 Handoff B §1.5/§2).
+#
+# `App::from_state` builds an app in an explicit state without sending a request. It is how the
+# program's own tests are written, and `stikk-tui`'s tests that drive the program *and* the drawing
+# together need the same constructor across the crate boundary -- where `#[cfg(test)]` cannot reach.
+# Off in every normal build, and enabled only as a dev-dependency.
+test-fixtures = []
+
+[lints]
+workspace = true

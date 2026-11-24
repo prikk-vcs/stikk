@@ -9,8 +9,8 @@ use stikk_core::{CompareView, compared};
 use stikk_prikk::{Diff, DiffEntry, DiffFile, DiffSide, DiffTarget, QueuedOnSide, UnsupportedPath};
 
 use super::*;
-use crate::app::CompareSource;
 use crate::test_util::buffer_text;
+use stikk_app::CompareSource;
 
 /// prikk's own fields as `Json::render` writes them — multi-line and indented. Pinned against a
 /// **real captured report** in `stikk-prikk`'s `an_entrys_raw_fields_are_multi_line_indented_json`.
@@ -98,12 +98,12 @@ fn draw_at(
     terminal
         .draw(|f| {
             render(
-                crate::app::CompareFocus {
+                stikk_app::CompareFocus {
                     view,
                     opened,
                     cursor,
                     raw,
-                    surface: crate::app::Surface::for_test(1),
+                    surface: stikk_app::Surface::for_test(1),
                 },
                 &scrolled,
                 &Palette::default(),

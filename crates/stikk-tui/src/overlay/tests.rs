@@ -1790,7 +1790,7 @@ fn cases() -> Vec<Case> {
         Case {
             name: "RefName",
             build: Box::new(|_| Overlay::RefName {
-                kind: crate::overlay::RefNameKind::Branch,
+                kind: stikk_app::RefNameKind::Branch,
                 source: "heads/".to_string() + &"long-source-ref-".repeat(4),
                 typed: "feature".to_string(),
             }),
@@ -1820,7 +1820,7 @@ fn cases() -> Vec<Case> {
         Case {
             name: "RefWriteResult",
             build: Box::new(|_| Overlay::RefWriteResult {
-                kind: crate::overlay::RefWriteKind::CreateTag,
+                kind: stikk_app::RefWriteKind::CreateTag,
                 lines: (0..30)
                     .map(|i| format!("target block: {}", format!("{i:02}").repeat(32)))
                     .collect(),
@@ -2148,10 +2148,12 @@ fn the_gate_covers_every_overlay_variant() {
 /// field sits two levels in, a doc comment begins with `/`, and a variant's closing `},` begins
 /// with `}`.
 fn overlay_variants() -> usize {
-    const SOURCE: &str = include_str!("../overlay.rs");
+    // **The enum is the program's** (RFC 067 decision 2), so this reads it where it lives. The
+    // gate it feeds is the drawing's, which is why the test stays here.
+    const SOURCE: &str = include_str!("../../../stikk-app/src/overlay.rs");
     let body = SOURCE
         .split_once("pub enum Overlay {")
-        .expect("the enum is in this file")
+        .expect("the enum is in the program's overlay module")
         .1
         .split_once("\n}\n")
         .expect("and it closes at column zero")

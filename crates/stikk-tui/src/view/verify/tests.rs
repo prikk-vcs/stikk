@@ -76,9 +76,19 @@ fn draw(view: &VerifyView, raw: bool) -> String {
 fn draw_scrolled_to_end(view: &VerifyView, raw: bool) -> String {
     let backend = TestBackend::new(80, 30);
     let mut terminal = Terminal::new(backend).unwrap();
-    let offset = std::cell::Cell::new(u16::MAX);
+    let scrolled = crate::test_util::scrolled_to(u16::MAX);
     terminal
-        .draw(|f| render(view, raw, false, &offset, &Palette::default(), f, f.area()))
+        .draw(|f| {
+            render(
+                view,
+                raw,
+                false,
+                &scrolled,
+                &Palette::default(),
+                f,
+                f.area(),
+            )
+        })
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -86,14 +96,14 @@ fn draw_scrolled_to_end(view: &VerifyView, raw: bool) -> String {
 fn draw_at(view: &VerifyView, raw: bool, refreshing: bool, width: u16, height: u16) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
-    let offset = std::cell::Cell::new(0);
+    let scrolled = crate::overlay::Scroll::default();
     terminal
         .draw(|f| {
             render(
                 view,
                 raw,
                 refreshing,
-                &offset,
+                &scrolled,
                 &Palette::default(),
                 f,
                 f.area(),

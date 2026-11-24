@@ -118,9 +118,9 @@ fn flattened(screen: &str) -> String {
 fn draw_at(view: &BundleOpened, width: u16, height: u16, offset: u16) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
-    let offset = std::cell::Cell::new(offset);
+    let scrolled = crate::test_util::scrolled_to(offset);
     terminal
-        .draw(|f| render(view, &offset, &Palette::default(), f, f.area()))
+        .draw(|f| render(view, &scrolled, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -627,9 +627,9 @@ fn opened_at_0_58(
 fn drawn_whole(view: &BundleOpened, width: u16, palette: &Palette) -> String {
     let backend = TestBackend::new(width, 60);
     let mut terminal = Terminal::new(backend).unwrap();
-    let offset = std::cell::Cell::new(0);
+    let scrolled = crate::overlay::Scroll::default();
     terminal
-        .draw(|f| render(view, &offset, palette, f, f.area()))
+        .draw(|f| render(view, &scrolled, palette, f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -690,9 +690,9 @@ fn capture_rfc063_the_card_scrolls_rather_than_clipping_at_the_plans_two_sizes()
         for (theme, palette) in [("dark", Palette::default()), ("light", Palette::light())] {
             let backend = TestBackend::new(w, h);
             let mut terminal = Terminal::new(backend).unwrap();
-            let offset = std::cell::Cell::new(0);
+            let scrolled = crate::overlay::Scroll::default();
             terminal
-                .draw(|f| render(&view, &offset, &palette, f, f.area()))
+                .draw(|f| render(&view, &scrolled, &palette, f, f.area()))
                 .unwrap();
             let text = buffer_text(terminal.backend().buffer());
             println!("--- RFC 063: {w}×{h}, {theme}\n{text}");
@@ -707,9 +707,9 @@ fn capture_rfc063_the_card_scrolls_rather_than_clipping_at_the_plans_two_sizes()
             // Scrolled to the end, prikk's refusals are on screen either way.
             let backend = TestBackend::new(w, h);
             let mut terminal = Terminal::new(backend).unwrap();
-            let offset = std::cell::Cell::new(200);
+            let scrolled = crate::test_util::scrolled_to(200);
             terminal
-                .draw(|f| render(&view, &offset, &palette, f, f.area()))
+                .draw(|f| render(&view, &scrolled, &palette, f, f.area()))
                 .unwrap();
             let end = buffer_text(terminal.backend().buffer());
             println!("--- RFC 063: {w}×{h}, {theme}, scrolled to the end\n{end}");

@@ -17,3 +17,13 @@ pub(crate) fn buffer_text(buffer: &Buffer) -> String {
     }
     out
 }
+
+/// **A surface already scrolled to `offset`**, for a test that draws one frame at a position.
+///
+/// The offsets live in the drawing now (RFC 067 decision 4), so a renderer test makes its own
+/// instead of reaching into an `App` that no longer holds any.
+pub(crate) fn scrolled_to(offset: u16) -> crate::overlay::Scroll {
+    let scrolled = crate::overlay::Scroll::default();
+    scrolled.set_offset(offset);
+    scrolled
+}

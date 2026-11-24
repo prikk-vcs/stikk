@@ -72,9 +72,9 @@ fn view(lines: &[&str], outcome: MergeOutcome) -> MergePlanView {
 fn draw_at(view: &MergePlanView, width: u16, height: u16, offset: u16) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
-    let offset = std::cell::Cell::new(offset);
+    let scrolled = crate::test_util::scrolled_to(offset);
     terminal
-        .draw(|f| render(view, &offset, &Palette::default(), f, f.area()))
+        .draw(|f| render(view, &scrolled, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }

@@ -370,7 +370,7 @@ fn stikks_own_commit_is_never_taken_for_an_outside_change() {
     app.focus_gained(t0);
     let early_check = sent_check(&rx);
 
-    read_the_card(&app);
+    read_the_card(&mut app);
 
     app.select(); // Enter: confirm-and-execute
     let confirm_req = next_request(&rx);
@@ -478,7 +478,7 @@ fn a_change_detected_at_seals_consent_step_makes_it_stale_at_once() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // the first act: -> SealConsent
     assert!(matches!(
         app.top_overlay(),
@@ -624,7 +624,7 @@ fn block_detail_screen(is_tip: bool) -> Screen {
     Screen::BlockDetail {
         cursor: 0,
         reff: "heads/main".into(),
-        offset: std::cell::Cell::new(0),
+        surface: crate::app::Surface::for_test(1),
         view: BlockDetailView {
             row: block("bbbb", 2),
             is_tip,

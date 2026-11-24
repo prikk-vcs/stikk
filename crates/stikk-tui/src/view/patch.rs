@@ -20,8 +20,6 @@
 //! toggle, never a second read — and it is where an `unresolved_node_id`, a blob id and a mode as
 //! prikk's own integer are legible rather than apologised for (F6).
 
-use std::cell::Cell;
-
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -45,7 +43,7 @@ const DETAIL: &str = "      ";
 pub fn render(
     view: &PatchDetailView,
     raw: bool,
-    offset: &Cell<u16>,
+    scrolled: &crate::overlay::Scroll,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -58,8 +56,11 @@ pub fn render(
     let max_offset = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_sub(viewport);
-    let scroll = offset.get().min(max_offset);
-    offset.set(scroll);
+    let scroll = scrolled.offset().min(max_offset);
+    // **The program is told how far this goes** (RFC 067 decision 4): it holds no
+    // offsets any more, so without the max it could not know the end was on screen.
+    scrolled.note_max(max_offset);
+    scrolled.set_offset(scroll);
 
     // `NFR-A03`: which view is showing, and that there is more, are said rather than left to guess.
     // **Which key switches it is on the key line** (RFC 061 decision 5), one row above the status

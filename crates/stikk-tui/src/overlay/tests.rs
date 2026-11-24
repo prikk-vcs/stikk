@@ -20,6 +20,18 @@ fn draw(overlay: &Overlay) -> String {
 
 /// Render one overlay at an explicit terminal size, **with a scroll state the caller keeps** — so a
 /// test can scroll a card the way a reader does and see what changes (RFC 060 decision 3).
+/// **Scroll one row, the way `Viewports` does** (RFC 067 decision 4): unclamped, because the
+/// renderer clamps on the next draw. These tests drive a renderer directly, so they stand in for
+/// the front end that would carry the program's effect out.
+fn scroll_one(scroll: &Scroll, rows: i32) {
+    let offset = scroll.offset();
+    scroll.set_offset(if rows < 0 {
+        offset.saturating_sub(1)
+    } else {
+        offset.saturating_add(1)
+    });
+}
+
 fn draw_scrolled(overlay: &Overlay, scroll: &Scroll, w: u16, h: u16) -> String {
     let backend = TestBackend::new(w, h);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -36,7 +48,7 @@ fn read_to_the_end(overlay: &Overlay, w: u16, h: u16) -> (String, usize) {
     let mut text = draw_scrolled(overlay, &scroll, w, h);
     let mut presses = 0;
     while !scroll.at_end() && presses < 500 {
-        scroll.down();
+        scroll_one(&scroll, 1);
         text = draw_scrolled(overlay, &scroll, w, h);
         presses += 1;
     }
@@ -82,7 +94,7 @@ fn glossary_scrolled(presses: usize, w: u16, h: u16) -> (Scroll, String) {
     let scroll = Scroll::default();
     let mut text = draw_scrolled(&overlay, &scroll, w, h);
     for _ in 0..presses {
-        scroll.down();
+        scroll_one(&scroll, 1);
         text = draw_scrolled(&overlay, &scroll, w, h);
     }
     (scroll, text)
@@ -108,7 +120,7 @@ fn scan_glossary_down(w: u16, h: u16, found: impl Fn(&str) -> bool) -> (Option<S
             // The clamp pinned it: this is the bottom.
             return (found(&last).then(|| last.clone()), last);
         }
-        scroll.down();
+        scroll_one(&scroll, 1);
         last = draw_scrolled(&overlay, &scroll, w, h);
     }
 }
@@ -990,7 +1002,7 @@ fn scrolling_past_the_end_parks_rather_than_banking_presses() {
     assert!(scroll.at_end(), "and it must be parked at its end");
 
     // One more press, then a render: the clamp puts it straight back.
-    scroll.down();
+    scroll_one(&scroll, 1);
     let again = draw_scrolled(&overlay, &scroll, 80, 24);
     assert!(
         scroll.at_end(),
@@ -999,7 +1011,7 @@ fn scrolling_past_the_end_parks_rather_than_banking_presses() {
     assert_eq!(again, at_bottom, "and the screen must not have moved");
 
     // So a single ↑ visibly moves, instead of being swallowed.
-    scroll.up();
+    scroll_one(&scroll, -1);
     let up_one = draw_scrolled(&overlay, &scroll, 80, 24);
     assert_ne!(up_one, at_bottom, "one press up must move the screen");
 }
@@ -1018,7 +1030,7 @@ fn a_tall_terminal_does_not_scroll_and_does_not_advertise_scrolling() {
     assert!(!text.contains("more below"), "nor a foot line:\n{text}");
     // Five presses against a panel that fits: the clamp pins it at the top.
     for _ in 0..5 {
-        scroll.down();
+        scroll_one(&scroll, 1);
     }
     let after = draw_scrolled(&overlay, &scroll, 90, 400);
     assert!(
@@ -1041,7 +1053,7 @@ fn every_code_entry_is_reachable_at_80x24() {
     let scroll = Scroll::default();
     let mut seen = flattened(&draw_scrolled(&overlay, &scroll, 80, 24));
     while !scroll.at_end() {
-        scroll.down();
+        scroll_one(&scroll, 1);
         let screen = draw_scrolled(&overlay, &scroll, 80, 24);
         seen.push(' ');
         seen.push_str(&flattened(&screen));
@@ -5370,7 +5382,7 @@ fn the_actions_stay_on_screen_at_every_offset() {
         if scroll.at_end() {
             break;
         }
-        scroll.down();
+        scroll_one(&scroll, 1);
         offsets += 1;
         assert!(offsets < 200, "the scroll never reached the end");
     }

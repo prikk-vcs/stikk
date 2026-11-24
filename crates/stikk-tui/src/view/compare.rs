@@ -43,6 +43,7 @@ const HEADING_HANG: &str = "      ";
 /// `cursor` selects an entry — which `v` then shows prikk's own fields for.
 pub fn render(
     focus: crate::app::CompareFocus<'_>,
+    scrolled: &crate::overlay::Scroll,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -52,7 +53,8 @@ pub fn render(
         opened,
         cursor,
         raw,
-        offset,
+        // The surface names the offsets; the drawing looked them up and passed them in.
+        surface: _,
     } = focus;
     let width = usize::from(area.width.saturating_sub(3));
     // The width the rows are drawn in, one wider than they wrap to (RFC 061 decision 4).
@@ -63,8 +65,11 @@ pub fn render(
     let max_offset = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_sub(viewport);
-    let scroll = offset.get().min(max_offset);
-    offset.set(scroll);
+    let scroll = scrolled.offset().min(max_offset);
+    // **The program is told how far this goes** (RFC 067 decision 4): it holds no
+    // offsets any more, so without the max it could not know the end was on screen.
+    scrolled.note_max(max_offset);
+    scrolled.set_offset(scroll);
 
     // One title builder, for every frame (RFC 060 review v1 C1). `↑/↓` is named only where something
     // is hidden, as it always has been: an affordance for a surface that does not scroll is noise.

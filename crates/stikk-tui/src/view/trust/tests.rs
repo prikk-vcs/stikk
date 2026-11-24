@@ -34,9 +34,9 @@ fn drawn(view: &TrustView, width: u16, height: u16) -> String {
 fn drawn_at(view: &TrustView, cursor: usize, width: u16, height: u16) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
-    let offset = std::cell::Cell::new(0);
+    let scrolled = crate::overlay::Scroll::default();
     terminal
-        .draw(|f| render(view, cursor, &offset, &Palette::default(), f, f.area()))
+        .draw(|f| render(view, cursor, &scrolled, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }

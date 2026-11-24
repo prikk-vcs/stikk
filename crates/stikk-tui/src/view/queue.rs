@@ -17,8 +17,6 @@
 //! rather than rows and `Enter` opens the one that is marked. The clamp and the write-back are unchanged,
 //! because only this function knows the wrapped height.
 
-use std::cell::Cell;
-
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -44,7 +42,7 @@ const OPERATION: &str = "      ";
 /// and with `cursor` selecting one patch.
 pub fn render(
     view: &QueueView,
-    offset: &Cell<u16>,
+    scrolled: &crate::overlay::Scroll,
     cursor: usize,
     palette: &Palette,
     frame: &mut Frame,
@@ -61,7 +59,7 @@ pub fn render(
     let max_offset = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_sub(viewport);
-    let mut scroll = offset.get().min(max_offset);
+    let mut scroll = scrolled.offset().min(max_offset);
     // The scroll follows the cursor (§4.2), by the least it can: the selected patch's own rows are
     // brought on screen, and nothing else moves. `patch_rows` is where each patch's block of rows
     // starts and ends in the wrapped output, which only this function knows.
@@ -75,7 +73,10 @@ pub fn render(
         }
         scroll = scroll.min(max_offset);
     }
-    offset.set(scroll);
+    // **The program is told how far this goes** (RFC 067 decision 4): it holds no
+    // offsets any more, so without the max it could not know the end was on screen.
+    scrolled.note_max(max_offset);
+    scrolled.set_offset(scroll);
 
     // `NFR-A03`: "there is more" is said, never left to guess — only when there is somewhere to go.
     // One title builder, for every frame (RFC 060 review v1 C1).

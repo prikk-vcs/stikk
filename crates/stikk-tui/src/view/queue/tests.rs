@@ -32,7 +32,7 @@ fn draw(view: &QueueView) -> String {
         .draw(|f| {
             render(
                 view,
-                &std::cell::Cell::new(0),
+                &crate::overlay::Scroll::default(),
                 0,
                 &Palette::default(),
                 f,
@@ -304,15 +304,15 @@ fn tall_queue() -> QueueView {
     )
 }
 
-fn draw_scrolled(view: &QueueView, offset: &std::cell::Cell<u16>) -> String {
-    draw_at(view, offset, 0)
+fn draw_scrolled(view: &QueueView, scrolled: &crate::overlay::Scroll) -> String {
+    draw_at(view, scrolled, 0)
 }
 
 /// The same, with `cursor` selecting a patch — which is what moves the scroll since RFC 035 §4.2.
-fn draw_at(view: &QueueView, offset: &std::cell::Cell<u16>, cursor: usize) -> String {
+fn draw_at(view: &QueueView, scrolled: &crate::overlay::Scroll, cursor: usize) -> String {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     terminal
-        .draw(|f| render(view, offset, cursor, &Palette::default(), f, f.area()))
+        .draw(|f| render(view, scrolled, cursor, &Palette::default(), f, f.area()))
         .unwrap();
     buffer_text(terminal.backend().buffer())
 }
@@ -320,9 +320,9 @@ fn draw_at(view: &QueueView, offset: &std::cell::Cell<u16>, cursor: usize) -> St
 #[test]
 fn a_tall_queue_scrolls_to_follow_the_selected_patch_and_says_where_it_is() {
     let view = tall_queue();
-    let offset = std::cell::Cell::new(0);
+    let scrolled = crate::overlay::Scroll::default();
 
-    let top = draw_at(&view, &offset, 0);
+    let top = draw_at(&view, &scrolled, 0);
     println!("--- Queue, twelve patches, first selected, 80×24\n{top}");
     // A name and a position, which is the whole of a title (RFC 061 decision 5).
     assert!(top.contains(" Queue — lines 1–22 of 53 "), "{top}");
@@ -334,11 +334,11 @@ fn a_tall_queue_scrolls_to_follow_the_selected_patch_and_says_where_it_is() {
         )),
         "the first patch is marked: {top}"
     );
-    assert_eq!(offset.get(), 0, "nothing to scroll to yet");
+    assert_eq!(scrolled.offset(), 0, "nothing to scroll to yet");
 
     // RFC 035 §4.2: the scroll follows the **cursor**, not a key of its own. Selecting the last patch
     // brings its rows on screen, and no further.
-    let end = draw_at(&view, &offset, 11);
+    let end = draw_at(&view, &scrolled, 11);
     println!("--- Queue, twelve patches, last selected, 80×24\n{end}");
     assert!(end.contains("patch 12"), "{end}");
     assert!(end.contains("create-file p12.txt"), "{end}");
@@ -350,12 +350,12 @@ fn a_tall_queue_scrolls_to_follow_the_selected_patch_and_says_where_it_is() {
     // on screen, which is the whole point of following the cursor by the least it can — the rows below
     // it stay below it.
     // And the offset the renderer wrote back is the least that shows it, not the end of the list.
-    let followed = offset.get();
+    let followed = scrolled.offset();
     assert!(followed > 0 && followed <= 53 - 22, "{followed}");
 
     // Selecting back upwards scrolls back up by the least it can, too.
-    let back = draw_at(&view, &offset, 0);
-    assert_eq!(offset.get(), 0, "{back}");
+    let back = draw_at(&view, &scrolled, 0);
+    assert_eq!(scrolled.offset(), 0, "{back}");
     assert!(
         back.contains("12 patch(es) queued for heads/main"),
         "{back}"
@@ -364,11 +364,10 @@ fn a_tall_queue_scrolls_to_follow_the_selected_patch_and_says_where_it_is() {
 
 #[test]
 fn a_refresh_that_shrinks_the_queue_clamps_the_offset() {
-    let offset = std::cell::Cell::new(0);
-    offset.set(u16::MAX);
+    let scrolled = crate::test_util::scrolled_to(u16::MAX);
     // The last patch selected, so the clamp is tested against a scroll the cursor justifies.
-    draw_at(&tall_queue(), &offset, 11);
-    assert_eq!(offset.get(), 53 - 22);
+    draw_at(&tall_queue(), &scrolled, 11);
+    assert_eq!(scrolled.offset(), 53 - 22);
 
     // The refreshed queue fits: the kept offset clamps to zero, and the title is plain.
     let small = view_at(
@@ -378,8 +377,8 @@ fn a_refresh_that_shrinks_the_queue_clamps_the_offset() {
             target: Some("heads/main".to_string()),
         },
     );
-    let text = draw_scrolled(&small, &offset);
-    assert_eq!(offset.get(), 0, "{text}");
+    let text = draw_scrolled(&small, &scrolled);
+    assert_eq!(scrolled.offset(), 0, "{text}");
     assert!(text.contains("1 patch(es) queued for heads/main"), "{text}");
 }
 
@@ -395,9 +394,9 @@ fn a_queue_that_fits_shows_the_plain_title_and_does_not_scroll() {
             |m| QueuedMessage::Text(m.to_string()),
         ),
     );
-    let offset = std::cell::Cell::new(5);
-    let text = draw_scrolled(&view, &offset);
-    assert_eq!(offset.get(), 0, "nothing to scroll to");
+    let scrolled = crate::test_util::scrolled_to(5);
+    let text = draw_scrolled(&view, &scrolled);
+    assert_eq!(scrolled.offset(), 0, "nothing to scroll to");
     assert!(text.contains("┌ Queue ─"), "{text}");
     assert!(!text.contains("to scroll"), "{text}");
     assert!(text.contains("2 patch(es) queued for heads/main"), "{text}");
@@ -417,7 +416,7 @@ fn rfc035_the_queue_marks_the_selected_patch_at_80_columns() {
             |m| QueuedMessage::Text(m.to_string()),
         ),
     );
-    let text = draw_at(&view, &std::cell::Cell::new(0), 1);
+    let text = draw_at(&view, &crate::overlay::Scroll::default(), 1);
     println!("--- RFC 035 §6: the Queue with its selection, 80 columns\n{text}");
     let marked: Vec<&str> = text
         .lines()
@@ -490,8 +489,8 @@ fn assert_title_is_whole(screen: &str, tail: &str) {
 #[test]
 fn the_queue_title_is_whole_at_80_columns_with_the_scroll_indicator() {
     let view = tall_queue();
-    let offset = std::cell::Cell::new(0);
-    let top = draw_at(&view, &offset, 0);
+    let scrolled = crate::overlay::Scroll::default();
+    let top = draw_at(&view, &scrolled, 0);
     assert_title_is_whole(&top, "of 53 ");
 }
 
@@ -534,7 +533,14 @@ fn an_interrupted_seal_heads_the_queue_at_both_sizes_and_themes() {
             let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
             terminal
                 .draw(|f| {
-                    render(&view, &std::cell::Cell::new(0), 0, &palette, f, f.area());
+                    render(
+                        &view,
+                        &crate::overlay::Scroll::default(),
+                        0,
+                        &palette,
+                        f,
+                        f.area(),
+                    );
                 })
                 .unwrap();
             let text = buffer_text(terminal.backend().buffer());

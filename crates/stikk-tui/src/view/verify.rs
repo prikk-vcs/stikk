@@ -37,7 +37,7 @@ pub fn render(
     view: &VerifyView,
     raw: bool,
     refreshing: bool,
-    offset: &std::cell::Cell<u16>,
+    scrolled: &crate::overlay::Scroll,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -49,8 +49,11 @@ pub fn render(
     let max_offset = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_sub(viewport);
-    let scroll = offset.get().min(max_offset);
-    offset.set(scroll);
+    let scroll = scrolled.offset().min(max_offset);
+    // **The program is told how far this goes** (RFC 067 decision 4): it holds no
+    // offsets any more, so without the max it could not know the end was on screen.
+    scrolled.note_max(max_offset);
+    scrolled.set_offset(scroll);
 
     // **"from this run"**, never a time: stikk has no clock policy beyond its own session (RFC
     // 040 decision 4), and a wall-clock time would be a precision it has not earned.

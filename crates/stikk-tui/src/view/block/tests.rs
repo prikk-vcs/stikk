@@ -51,7 +51,7 @@ fn draw(detail: &BlockDetailView) -> String {
             render(
                 detail,
                 0,
-                &std::cell::Cell::new(0),
+                &crate::overlay::Scroll::default(),
                 &Palette::default(),
                 f,
                 f.area(),
@@ -238,7 +238,7 @@ fn draw_at(detail: &BlockDetailView, cursor: usize, width: u16) -> String {
             render(
                 detail,
                 cursor,
-                &std::cell::Cell::new(0),
+                &crate::overlay::Scroll::default(),
                 &Palette::default(),
                 f,
                 f.area(),

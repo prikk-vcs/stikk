@@ -3668,66 +3668,70 @@ fn claim_sentence(claim: KeyClaim) -> Option<&'static str> {
     Some(text)
 }
 
-/// **Where a card is scrolled to, and whether its text has been read to the end** (RFC 060 decision
-/// 3).
+/// **Where one surface is scrolled to** (RFC 060 decision 3; RFC 067 decision 4).
 ///
-/// One of these belongs to whichever overlay is on top: `App` holds it and stamps it with the
-/// overlay stack's generation, so a new card always starts at the top, unread. The latch
-/// (`Self::seen_whole_card`) is set by the renderer, which is the only thing that knows when the
-/// last row of text has actually been on screen — and it is **never cleared while the same overlay is
-/// on top**, so a reader who scrolls to the end and back up does not lose the confirmation they
-/// earned.
+/// One of these belongs to each surface the reader has looked at, and
+/// [`crate::viewports::Viewports`] — in the drawing, never in the program — holds them by
+/// [`crate::app::Surface`]. A new surface has no entry, so a new card always starts at the top.
 ///
-/// Every field is a `Cell`, for the reason the Glossary's offset already is: the renderer clamps the
-/// offset against a height only it knows and writes the clamp back, so the keys and the panel cannot
-/// disagree about where the card is.
+/// **Whether the card has been read is not here.** That is a fact about the reader, which the
+/// program keeps, from the [`crate::app::Reading`] each draw produces. What is here is only where
+/// the text sits.
+///
+/// Both fields are `Cell`s, for the reason the Glossary's offset already was: the renderer clamps
+/// the offset against a height only it knows and writes the clamp back, so the keys and the panel
+/// cannot disagree about where the text is.
 #[derive(Debug, Default)]
 pub struct Scroll {
-    /// The overlay generation this state belongs to; a different one resets it.
-    owner: std::cell::Cell<u64>,
     /// How many rows of text are scrolled off the top.
     offset: std::cell::Cell<u16>,
-    /// The largest offset with anything left to show — written by the renderer.
+    /// The largest offset with anything left to show — written by the renderer, which is the only
+    /// thing that knows how the text wrapped.
     max: std::cell::Cell<u16>,
-    /// **The latch.** Set once the last row of text has been on screen.
+    /// **Whether this card's last row has been on screen since it was first drawn.**
+    ///
+    /// The drawing's own latch, for the drawing's own question: may the confirm line say it is
+    /// ready? That is a statement about the text this renderer has just laid out, so it is answered
+    /// from what this renderer measured, **in the same frame**, and the affordance never flickers.
+    ///
+    /// **The evidence is a different latch, in the program** (RFC 067 decision 4), fed by the
+    /// [`crate::app::Reading`] each draw produces: `Seen::WholeCard` is made there and nowhere else.
+    /// The two agree because the run loop reports immediately after it draws and before it reads the
+    /// next key — so by the time a reader can press `Enter` on a line this said was ready, the
+    /// program has been told the same thing.
     seen: std::cell::Cell<bool>,
 }
 
 impl Scroll {
-    /// This state, for the overlay identified by `generation` — reset if it belongs to another.
-    pub(crate) fn for_overlay(&self, generation: u64) -> &Self {
-        if self.owner.get() != generation {
-            self.owner.set(generation);
-            self.offset.set(0);
-            self.max.set(0);
-            self.seen.set(false);
-        }
-        self
-    }
-
-    /// Whether the text is scrolled as far as it goes — **the question `↓` asks** before it moves a
-    /// highlight into the actions (decision 3's one reading path).
+    /// Whether the text is scrolled as far as it goes — what the foot line says, and what the
+    /// program is told through a [`crate::app::Reading`].
     pub(crate) fn at_end(&self) -> bool {
         self.offset.get() >= self.max.get()
     }
 
-    /// Whether anything is scrolled off the top — what `↑` asks before it scrolls back.
+    /// Whether anything is scrolled off the top.
     pub(crate) fn more_above(&self) -> bool {
         self.offset.get() > 0
     }
 
-    /// Scroll one row down. The renderer clamps.
-    pub(crate) fn down(&self) {
-        self.offset.set(self.offset.get().saturating_add(1));
+    /// Where the text is now.
+    pub(crate) fn offset(&self) -> u16 {
+        self.offset.get()
     }
 
-    /// Scroll one row up.
-    pub(crate) fn up(&self) {
-        self.offset.set(self.offset.get().saturating_sub(1));
+    /// Move the text, unclamped: the renderer clamps, because only it knows the wrapped height.
+    pub(crate) fn set_offset(&self, offset: u16) {
+        self.offset.set(offset);
     }
 
-    /// **Whether a confirmation may be offered at all** (decision 3): the whole card has been on
-    /// screen.
+    /// **What the renderer found the largest offset to be**, for a view that clamps its own offset
+    /// rather than calling [`Self::fit`]. Without this the program would be told a view's end was
+    /// always on screen.
+    pub(crate) fn note_max(&self, max: u16) {
+        self.max.set(max);
+    }
+
+    /// **Whether the confirm line may say it is ready** — see [`Self::seen`].
     pub(crate) fn seen_whole_card(&self) -> bool {
         self.seen.get()
     }

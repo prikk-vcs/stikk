@@ -24,6 +24,34 @@ fn draw(app: &App, w: u16, h: u16) -> String {
     draw_in(app, &look(), w, h)
 }
 
+/// **A front end, for a test that scrolls** (RFC 067 decision 4).
+///
+/// The offsets are the front end's now, so a test that presses a key and then looks at the screen
+/// has to be one: it keeps one set of offsets, reports what each draw found, and carries out what
+/// the program asks for. That order — draw, report, press, perform — is the run loop's.
+#[derive(Default)]
+struct Front {
+    viewports: crate::viewports::Viewports,
+}
+
+impl Front {
+    fn draw(&mut self, app: &mut App, w: u16, h: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+        terminal
+            .draw(|f| render(app, &look(), &mut self.viewports, f))
+            .unwrap();
+        if let Some(surface) = app.reading_surface() {
+            app.report_reading(self.viewports.reading(surface));
+        }
+        buffer_text(terminal.backend().buffer())
+    }
+
+    /// Press a key and do what the program answers with.
+    fn press(&mut self, app: &mut App, key: ratatui::crossterm::event::KeyEvent) {
+        self.viewports.apply(crate::keys::handle_key(app, key));
+    }
+}
+
 /// The colours a test draws in when it is not about colours: what a default `Config` resolves to
 /// with no terminal to ask, which is exactly what these tests' apps used to hold before the colours
 /// left `App` (RFC 067 decision 3; RFC 059: `system` with no answer is `plain`).
@@ -34,9 +62,14 @@ fn look() -> crate::theme::Resolved {
 }
 
 fn draw_in(app: &App, look: &crate::theme::Resolved, w: u16, h: u16) -> String {
+    // **A draw of its own keeps offsets of its own** (RFC 067 decision 4): a test that draws once
+    // starts every surface at the top, which is what an app with its own offsets gave it.
+    let mut viewports = crate::viewports::Viewports::default();
     let backend = TestBackend::new(w, h);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render(app, look, f)).unwrap();
+    terminal
+        .draw(|f| render(app, look, &mut viewports, f))
+        .unwrap();
     buffer_text(terminal.backend().buffer())
 }
 
@@ -707,9 +740,12 @@ fn capture_rfc063_a_commit_off_the_current_branch_at_both_sizes_and_themes() {
 
 /// The whole rendered buffer, not its text: these tests are about colour, cell by cell.
 fn drawn(app: &App, look: &crate::theme::Resolved, w: u16, h: u16) -> ratatui::buffer::Buffer {
+    let mut viewports = crate::viewports::Viewports::default();
     let backend = TestBackend::new(w, h);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render(app, look, f)).unwrap();
+    terminal
+        .draw(|f| render(app, look, &mut viewports, f))
+        .unwrap();
     terminal.backend().buffer().clone()
 }
 
@@ -2288,11 +2324,12 @@ fn the_help_scrolls_with_down_through_the_key_path() {
         let backend = stocked();
         let (tx, rx) = mpsc::channel();
         let mut app = App::open("/repo", None, tx);
+        let mut front = Front::default();
         drain(&mut app, &rx, &backend);
 
         // `?` opens the help, as a reader opens it.
-        crate::keys::handle_key(&mut app, key(KeyCode::Char('?')));
-        let opened = draw(&app, 102, 24);
+        front.press(&mut app, key(KeyCode::Char('?')));
+        let opened = front.draw(&mut app, 102, 24);
         println!("--- the help, opened with ? ({what}), 102x24\n{opened}");
         let (first, _, total) = position(&opened).unwrap_or_else(|| {
             panic!("the help must say where the reader is:\n{opened}");
@@ -2305,8 +2342,8 @@ fn the_help_scrolls_with_down_through_the_key_path() {
         // renderer owns the clamp.
         let mut previous = first;
         for press in 1..=10 {
-            crate::keys::handle_key(&mut app, key(down));
-            let text = draw(&app, 102, 24);
+            front.press(&mut app, key(down));
+            let text = front.draw(&mut app, 102, 24);
             let (now, _, _) = position(&text)
                 .unwrap_or_else(|| panic!("press {press} lost the position:\n{text}"));
             assert_eq!(
@@ -2319,8 +2356,8 @@ fn the_help_scrolls_with_down_through_the_key_path() {
 
         // ↑ comes back, one row at a time.
         for press in 1..=10 {
-            crate::keys::handle_key(&mut app, key(up));
-            let text = draw(&app, 102, 24);
+            front.press(&mut app, key(up));
+            let text = front.draw(&mut app, 102, 24);
             let (now, _, _) = position(&text)
                 .unwrap_or_else(|| panic!("press {press} lost the position:\n{text}"));
             assert_eq!(
@@ -2334,11 +2371,11 @@ fn the_help_scrolls_with_down_through_the_key_path() {
 
         // **Enter changes nothing** (Handoff B §1.3): the help has nothing to choose, and Enter used
         // to be the only key that scrolled it.
-        let before = draw(&app, 102, 24);
+        let before = front.draw(&mut app, 102, 24);
         for _ in 0..3 {
-            crate::keys::handle_key(&mut app, key(KeyCode::Enter));
+            front.press(&mut app, key(KeyCode::Enter));
         }
-        let after = draw(&app, 102, 24);
+        let after = front.draw(&mut app, 102, 24);
         assert_eq!(after, before, "Enter must not scroll the help:\n{after}");
     }
 }
@@ -2351,15 +2388,16 @@ fn down_reaches_the_end_of_the_help_and_the_foot_line_turns_over() {
     let backend = stocked();
     let (tx, rx) = mpsc::channel();
     let mut app = App::open("/repo", None, tx);
+    let mut front = Front::default();
     drain(&mut app, &rx, &backend);
-    crate::keys::handle_key(&mut app, key(KeyCode::Char('?')));
+    front.press(&mut app, key(KeyCode::Char('?')));
 
-    let mut text = draw(&app, 102, 24);
+    let mut text = front.draw(&mut app, 102, 24);
     let (_, _, total) = position(&text).expect("a position");
     let mut presses = 0;
     while text.contains("\u{2193} more below") && presses < total + 10 {
-        crate::keys::handle_key(&mut app, key(KeyCode::Down));
-        text = draw(&app, 102, 24);
+        front.press(&mut app, key(KeyCode::Down));
+        text = front.draw(&mut app, 102, 24);
         presses += 1;
     }
     println!("--- the help, {presses} presses of down, 102x24\n{text}");
@@ -2396,7 +2434,6 @@ fn down_reaches_the_end_of_the_help_and_the_foot_line_turns_over() {
 fn capture_rfc060b_every_surface_that_advertises_down_moves_on_down() {
     use ratatui::crossterm::event::KeyCode;
 
-    let resolved = resolved_for(stikk_state::config::Theme::Dark, None);
     let mut scrolled: Vec<String> = Vec::new();
     let mut selected: Vec<String> = Vec::new();
     let mut quiet: Vec<String> = Vec::new();
@@ -2404,18 +2441,19 @@ fn capture_rfc060b_every_surface_that_advertises_down_moves_on_down() {
         let backend = (screen.backend)();
         let (tx, rx) = mpsc::channel();
         let mut app = App::open("/repo", None, tx);
+        let mut front = Front::default();
         if screen.first_read {
             drain(&mut app, &rx, &backend);
         }
         (screen.reach)(&mut app, &rx, &backend);
 
-        let before = draw_in(&app, &resolved, 60, 15);
+        let before = front.draw(&mut app, 60, 15);
         let advertises = before.contains("\u{2193} more below");
         let position_before = position(&before);
         let selectable = before.contains(crate::theme::SELECTED_MARKER.trim());
         // **The key, not the handler** (trap 2).
-        crate::keys::handle_key(&mut app, key(KeyCode::Down));
-        let after = draw_in(&app, &resolved, 60, 15);
+        front.press(&mut app, key(KeyCode::Down));
+        let after = front.draw(&mut app, 60, 15);
 
         if advertises || position_before.is_some() {
             assert_ne!(
@@ -2587,14 +2625,15 @@ fn capture_rfc060c_block_detail_reaches_every_row_at_60x15() {
     let backend = stocked();
     let (tx, rx) = mpsc::channel();
     let mut app = App::open("/repo", None, tx);
+    let mut front = Front::default();
     drain(&mut app, &rx, &backend);
     // History, then its tip block — with the right arrow, which opens a row (RFC 061 decision 2).
-    crate::keys::handle_key(&mut app, key(KeyCode::Right));
+    front.press(&mut app, key(KeyCode::Right));
     drain(&mut app, &rx, &backend);
-    crate::keys::handle_key(&mut app, key(KeyCode::Right));
+    front.press(&mut app, key(KeyCode::Right));
     drain(&mut app, &rx, &backend);
 
-    let top = draw(&app, 60, 15);
+    let top = front.draw(&mut app, 60, 15);
     println!("--- Block detail at 60x15, at the top\n{top}");
     let (first, last, total) = position(&top).unwrap_or_else(|| {
         panic!("Block detail must say where the reader is at 60x15:\n{top}");
@@ -2607,8 +2646,8 @@ fn capture_rfc060c_block_detail_reaches_every_row_at_60x15() {
     let mut presses = 0;
     let mut text = top.clone();
     while position(&text).is_some_and(|(_, last, total)| last < total) && presses < total + 10 {
-        crate::keys::handle_key(&mut app, key(KeyCode::Down));
-        text = draw(&app, 60, 15);
+        front.press(&mut app, key(KeyCode::Down));
+        text = front.draw(&mut app, 60, 15);
         seen.push(' ');
         seen.push_str(&flattened(&text));
         presses += 1;
@@ -2633,9 +2672,9 @@ fn capture_rfc060c_block_detail_reaches_every_row_at_60x15() {
     }
     // And ↑ comes back to the top.
     for _ in 0..presses {
-        crate::keys::handle_key(&mut app, key(KeyCode::Up));
+        front.press(&mut app, key(KeyCode::Up));
     }
-    let back = draw(&app, 60, 15);
+    let back = front.draw(&mut app, 60, 15);
     assert_eq!(
         position(&back).map(|(first, _, _)| first),
         Some(1),

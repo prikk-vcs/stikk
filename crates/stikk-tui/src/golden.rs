@@ -49,6 +49,7 @@ use stikk_model::{Capability, Readiness, Tier};
 use crate::app::{App, Focus, Operation, OperationStatus, OrientationState};
 use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
 use crate::theme::{Depth, Palette, Resolved, Scheme};
+use crate::viewports::Viewports;
 use crate::worker::{Request, Response, ResponseKind};
 
 /// Where the committed manifest lives, relative to this crate.
@@ -107,18 +108,35 @@ fn serialize(buffer: &Buffer) -> String {
 }
 
 /// Draw one `App` through the same `shell::render` the run loop calls, at `width` x `height`.
-fn draw(app: &App, look: &Resolved, width: u16, height: u16) -> Buffer {
+///
+/// **Then report what was drawn**, as the run loop does (RFC 067 decision 4): the offsets live in
+/// `viewports` now, and the program learns where the text got to only by being told.
+fn draw_into(
+    app: &mut App,
+    look: &Resolved,
+    viewports: &mut Viewports,
+    width: u16,
+    height: u16,
+) -> Buffer {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("a test terminal");
     terminal
-        .draw(|frame| crate::shell::render(app, look, frame))
+        .draw(|frame| crate::shell::render(app, look, viewports, frame))
         .expect("a draw");
+    if let Some(surface) = app.reading_surface() {
+        app.report_reading(viewports.reading(surface));
+    }
     terminal.backend().buffer().clone()
 }
 
-/// **One `↓`, through the key path** — never a handler call (RFC 067 decision 3's rule, and RFC 060
-/// Handoff B's lesson: only a test that presses a key proves the wiring).
-fn press_down(app: &mut App) {
-    crate::keys::handle_key(app, KeyEvent::from(KeyCode::Down));
+/// One frame of a scene that is not scrolled: its own offsets, every surface at the top.
+fn draw(app: &mut App, look: &Resolved, width: u16, height: u16) -> Buffer {
+    draw_into(app, look, &mut Viewports::default(), width, height)
+}
+
+/// **One `↓`, through the key path** — never a handler call (RFC 060 Handoff B's lesson: only a
+/// test that presses a key proves the wiring). The effect is carried out, as the run loop does.
+fn press_down(app: &mut App, viewports: &mut Viewports) {
+    viewports.apply(crate::keys::handle_key(app, KeyEvent::from(KeyCode::Down)));
 }
 
 /// Draw, then press `↓`, until the frame stops changing — the path `Seen` depends on (§1.2).
@@ -126,11 +144,15 @@ fn press_down(app: &mut App) {
 /// **The stop condition is the frame itself**, not any internal field: a card scrolls to its end and
 /// then `↓` moves into its actions, a view scrolls to its end and then `↓` clamps, and either way the
 /// frame settles. The bound is a safety net, not the expected exit.
+///
+/// One `Viewports` for the whole walk, because it is one reader scrolling one surface: the order is
+/// the run loop's — draw, report, press, perform.
 fn scrolled_to_rest(app: &mut App, look: &Resolved, width: u16, height: u16) -> Buffer {
-    let mut frame = draw(app, look, width, height);
+    let mut viewports = Viewports::default();
+    let mut frame = draw_into(app, look, &mut viewports, width, height);
     for _ in 0..64 {
-        press_down(app);
-        let next = draw(app, look, width, height);
+        press_down(app, &mut viewports);
+        let next = draw_into(app, look, &mut viewports, width, height);
         if next == frame {
             return frame;
         }
@@ -1167,16 +1189,16 @@ fn every_frame() -> BTreeMap<String, (u64, String)> {
     let mut frames = BTreeMap::new();
     for (scene, build) in SCENES {
         for (width, height) in SIZES {
-            let staged = build(dark());
-            let text = serialize(&draw(&staged.app, &staged.look, width, height));
+            let mut staged = build(dark());
+            let text = serialize(&draw(&mut staged.app, &staged.look, width, height));
             frames.insert(
                 key(scene, width, height, "dark", "base"),
                 (fnv1a(text.as_bytes()), text),
             );
         }
         for (name, palette) in palettes().into_iter().skip(1) {
-            let staged = build(palette);
-            let text = serialize(&draw(&staged.app, &staged.look, 80, 24));
+            let mut staged = build(palette);
+            let text = serialize(&draw(&mut staged.app, &staged.look, 80, 24));
             frames.insert(
                 key(scene, 80, 24, name, "base"),
                 (fnv1a(text.as_bytes()), text),

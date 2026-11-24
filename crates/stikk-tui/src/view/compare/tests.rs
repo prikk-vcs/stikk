@@ -94,7 +94,7 @@ fn draw_at(
 ) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
-    let offset = std::cell::Cell::new(0);
+    let scrolled = crate::overlay::Scroll::default();
     terminal
         .draw(|f| {
             render(
@@ -103,8 +103,9 @@ fn draw_at(
                     opened,
                     cursor,
                     raw,
-                    offset: &offset,
+                    surface: crate::app::Surface::for_test(1),
                 },
+                &scrolled,
                 &Palette::default(),
                 f,
                 f.area(),

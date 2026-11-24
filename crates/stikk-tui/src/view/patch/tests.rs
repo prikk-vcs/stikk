@@ -37,7 +37,7 @@ fn draw_sized(view: &PatchDetailView, raw: bool, width: u16, height: u16) -> Str
             render(
                 view,
                 raw,
-                &std::cell::Cell::new(0),
+                &crate::overlay::Scroll::default(),
                 &Palette::default(),
                 f,
                 f.area(),
@@ -279,10 +279,10 @@ fn a_bounded_preimage_says_how_many_bytes_it_withheld() {
     let text = draw(&view, false);
     println!("--- RFC 035 §6: a bounded preimage, 80×24 (the top)\n{text}");
     // And scrolled to where the bound bites, which is the half of this capture worth looking at.
-    let offset = std::cell::Cell::new(u16::MAX);
+    let scrolled = crate::test_util::scrolled_to(u16::MAX);
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     terminal
-        .draw(|f| render(&view, false, &offset, &Palette::default(), f, f.area()))
+        .draw(|f| render(&view, false, &scrolled, &Palette::default(), f, f.area()))
         .unwrap();
     let end = buffer_text(terminal.backend().buffer());
     println!("--- RFC 035 §6: a bounded preimage, 80×24 (where the bound bites)\n{end}");

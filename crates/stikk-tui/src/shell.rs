@@ -11,6 +11,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use crate::app::{App, Focus, OrientationState};
 use crate::text::{identifier, inert};
 use crate::theme::{Palette, Resolved};
+use crate::viewports::Viewports;
 use crate::{overlay, status_bar, view};
 
 /// Minimum usable terminal size (design TU-10, as RFC 060 decision 1 amends it).
@@ -35,9 +36,9 @@ fn too_small(area: Rect) -> bool {
 /// **The colours arrive as a parameter** (RFC 067 decision 3). `App` used to hold them, which made
 /// the program's state depend on what one terminal could display; what a screen can show is the
 /// front end's business, and the run loop owns the [`Resolved`] it detected at startup.
-pub fn render(app: &App, look: &Resolved, frame: &mut Frame) {
+pub fn render(app: &App, look: &Resolved, viewports: &mut Viewports, frame: &mut Frame) {
     let area = frame.area();
-    render_frame(app, look, frame, area);
+    render_frame(app, look, viewports, frame, area);
     // **Last, so it is under everything** — see [`paint_the_themes_own_pair`].
     if let Some(bg) = look.palette.bg {
         paint_the_themes_own_pair(frame, area, look.palette.fg, bg);
@@ -74,7 +75,13 @@ fn paint_the_themes_own_pair(frame: &mut Frame, area: Rect, fg: Color, bg: Color
 }
 
 /// The frame itself: header, body, banner, key line, status bar, and the overlay layer above them.
-fn render_frame(app: &App, look: &Resolved, frame: &mut Frame, area: Rect) {
+fn render_frame(
+    app: &App,
+    look: &Resolved,
+    viewports: &mut Viewports,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let palette = &look.palette;
 
     if too_small(area) {
@@ -112,7 +119,7 @@ fn render_frame(app: &App, look: &Resolved, frame: &mut Frame, area: Rect) {
     if let Some(detail) = app.fault() {
         render_fault(palette, frame, body, detail);
     } else {
-        render_body(app, look, frame, body);
+        render_body(app, look, viewports, frame, body);
     }
     if !banner_lines.is_empty() {
         frame.render_widget(Paragraph::new(banner_lines), banner);
@@ -127,12 +134,14 @@ fn render_frame(app: &App, look: &Resolved, frame: &mut Frame, area: Rect) {
     );
     status_bar::render(app, palette, frame, status);
 
-    if let Some(top) = app.top_overlay() {
+    // **The card and its surface together** (RFC 067 decision 4): a card on top is the current
+    // surface, so its offsets are the ones the program's scroll decisions were made against.
+    if let Some((top, surface)) = app.top_card() {
         overlay::render(
             top,
             app.marked_ref(),
             palette,
-            app.overlay_scroll(),
+            viewports.of(surface),
             frame,
             area,
         );
@@ -231,7 +240,13 @@ fn render_header(app: &App, palette: &Palette, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
-fn render_body(app: &App, look: &Resolved, frame: &mut Frame, area: Rect) {
+fn render_body(
+    app: &App,
+    look: &Resolved,
+    viewports: &mut Viewports,
+    frame: &mut Frame,
+    area: Rect,
+) {
     let palette = &look.palette;
     match app.focus() {
         Focus::Orientation(state) => match state {
@@ -254,16 +269,16 @@ fn render_body(app: &App, look: &Resolved, frame: &mut Frame, area: Rect) {
                 .map(|m| m.block_id.as_str());
             view::history::render(v, cursor, marked, palette, frame, area);
         }
-        Focus::BlockDetail(detail, cursor, offset) => {
-            view::block::render(detail, cursor, offset, palette, frame, area);
+        Focus::BlockDetail(detail, cursor, surface) => {
+            view::block::render(detail, cursor, viewports.of(surface), palette, frame, area);
         }
-        Focus::Bundle(opened, offset) => {
-            view::bundle::render(opened, offset, palette, frame, area);
+        Focus::Bundle(opened, surface) => {
+            view::bundle::render(opened, viewports.of(surface), palette, frame, area);
         }
-        Focus::Trust(trust, cursor, offset) => {
-            view::trust::render(trust, cursor, offset, palette, frame, area);
+        Focus::Trust(trust, cursor, surface) => {
+            view::trust::render(trust, cursor, viewports.of(surface), palette, frame, area);
         }
-        Focus::Changes(v, hide_untracked, history, offset) => {
+        Focus::Changes(v, hide_untracked, history, surface) => {
             // RFC 032: the `renames` count is shown at prikk ≥ 0.38, where a rename can be declared.
             let renames_reported =
                 matches!(app.state(), OrientationState::Loaded(o) if o.prikk_minor >= 38);
@@ -280,22 +295,34 @@ fn render_body(app: &App, look: &Resolved, frame: &mut Frame, area: Rect) {
                     renames_reported,
                     compares,
                 },
-                offset,
+                viewports.of(surface),
                 palette,
                 frame,
                 area,
             );
         }
-        Focus::Queue(v, offset, cursor) => {
-            view::queue::render(v, offset, cursor, palette, frame, area);
+        Focus::Queue(v, surface, cursor) => {
+            view::queue::render(v, viewports.of(surface), cursor, palette, frame, area);
         }
-        Focus::PatchDetail(v, raw, offset) => {
-            view::patch::render(v, raw, offset, palette, frame, area);
+        Focus::PatchDetail(v, raw, surface) => {
+            view::patch::render(v, raw, viewports.of(surface), palette, frame, area);
         }
-        Focus::Compare(focus) => view::compare::render(focus, palette, frame, area),
-        Focus::MergePlan(v, offset) => view::merge::render(v, offset, palette, frame, area),
-        Focus::Verify(v, raw, refreshing, offset) => {
-            view::verify::render(v, raw, refreshing, offset, palette, frame, area);
+        Focus::Compare(focus) => {
+            view::compare::render(focus, viewports.of(focus.surface), palette, frame, area);
+        }
+        Focus::MergePlan(v, surface) => {
+            view::merge::render(v, viewports.of(surface), palette, frame, area);
+        }
+        Focus::Verify(v, raw, refreshing, surface) => {
+            view::verify::render(
+                v,
+                raw,
+                refreshing,
+                viewports.of(surface),
+                palette,
+                frame,
+                area,
+            );
         }
     }
 }

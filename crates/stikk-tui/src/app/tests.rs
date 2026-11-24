@@ -37,6 +37,26 @@ fn palette() -> crate::theme::Palette {
     crate::theme::Palette::default()
 }
 
+/// Draw the whole shell at 80 x `height` through `viewports`, then report what was seen — the run
+/// loop's order (RFC 067 decision 4), for a test whose presses and draws are about the same text.
+fn shell_text(app: &mut App, viewports: &mut crate::viewports::Viewports, height: u16) -> String {
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height)).expect("a terminal");
+    terminal
+        .draw(|frame| crate::shell::render(app, &look(), viewports, frame))
+        .expect("a draw");
+    if let Some(surface) = app.reading_surface() {
+        app.report_reading(viewports.reading(surface));
+    }
+    crate::test_util::buffer_text(terminal.backend().buffer())
+}
+
+/// **Press a key and carry out what the program asked for**, as the run loop does (RFC 067
+/// decision 4): the program decides, the front end moves the text.
+fn perform(viewports: &mut crate::viewports::Viewports, effect: crate::app::Effect) {
+    viewports.apply(effect);
+}
+
 /// The colours a whole-shell drawing test draws in, from the same [`palette`].
 fn look() -> crate::theme::Resolved {
     crate::theme::Resolved::drawing_with(palette())
@@ -1121,7 +1141,7 @@ fn confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result
     let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // message step -> preview request
     let preview_req = next_request(&rx);
     let backend = commit_backend();
@@ -1132,7 +1152,7 @@ fn confirming_a_commit_dispatches_confirm_execute_and_a_success_shows_the_result
         kind: ResponseKind::CommitPreview(Ok(outcome)),
     });
 
-    read_the_card(&app);
+    read_the_card(&mut app);
 
     app.select(); // confirm step -> confirm+execute request
     let confirm_req = next_request(&rx);
@@ -1176,7 +1196,7 @@ fn a_failed_commit_confirm_execute_surfaces_through_present_not_silently() {
     let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let preview_req = next_request(&rx);
     let backend = commit_backend();
@@ -1186,7 +1206,7 @@ fn a_failed_commit_confirm_execute_surfaces_through_present_not_silently() {
         seq: preview_req.seq,
         kind: ResponseKind::CommitPreview(Ok(outcome)),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let confirm_req = next_request(&rx);
     app.apply(Response {
@@ -1331,7 +1351,7 @@ fn confirming_a_seal_opens_consent_not_confirm_execute() {
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
 
-    read_the_card(&app);
+    read_the_card(&mut app);
 
     app.select(); // the confirmation's own Enter — the ceremony's first act
     match app.top_overlay() {
@@ -1365,9 +1385,9 @@ fn an_unacknowledged_enter_on_consent_does_nothing() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // -> SealConsent, unacknowledged
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // Enter again, still unacknowledged
     assert!(
         matches!(app.top_overlay(), Some(Overlay::SealConsent { .. })),
@@ -1394,14 +1414,14 @@ fn toggling_then_confirming_consent_dispatches_confirm_execute() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // -> SealConsent
     app.toggle_seal_consent();
     match app.top_overlay() {
         Some(Overlay::SealConsent { acknowledged, .. }) => assert!(*acknowledged),
         other => panic!("expected SealConsent, got {other:?}"),
     }
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // consent's own Enter — the ceremony's second act
     let confirm_req = next_request(&rx);
     assert!(matches!(
@@ -1429,10 +1449,10 @@ fn a_successful_seal_shows_the_result_verbatim_and_refreshes_orientation() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     app.toggle_seal_consent();
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let confirm_req = next_request(&rx);
 
@@ -1476,10 +1496,10 @@ fn a_trust_refusal_mid_ceremony_surfaces_with_adoption_guidance() {
         seq: preview_req.seq,
         kind: ResponseKind::SealPreview(Ok(outcome)),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     app.toggle_seal_consent();
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let confirm_req = next_request(&rx);
     app.apply(Response {
@@ -1625,28 +1645,41 @@ fn enter_twice(app: &mut App) {
     app.select();
 }
 
-fn read_the_card(app: &App) {
+fn read_the_card(app: &mut App) {
     // Nothing on top is nothing to read: the key under test is then a screen's, not a card's.
     if app.top_overlay().is_some() {
         let _ = top_overlay_text(app);
     }
 }
 
-fn top_overlay_text(app: &App) -> String {
-    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+/// **Draw the top card, then tell the program what was seen** — one turn of the run loop's own
+/// order (RFC 067 decision 4 / handoff §4.5).
+///
+/// The reading is no longer latched by drawing into state the program owns: the drawing measures,
+/// reports, and the program decides. A test that draws a card and then presses `Enter` on it has to
+/// do both halves, because that is what the run loop does between the two.
+fn draw_card(app: &mut App, viewports: &mut crate::viewports::Viewports, w: u16, h: u16) -> String {
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
     terminal
         .draw(|f| {
             crate::overlay::render(
                 app.top_overlay().unwrap(),
                 app.marked_ref(),
                 &palette(),
-                app.overlay_scroll(),
+                viewports.of(app.reading_surface().expect("a card on top is a surface")),
                 f,
                 f.area(),
             )
         })
         .unwrap();
+    if let Some(surface) = app.reading_surface() {
+        app.report_reading(viewports.reading(surface));
+    }
     crate::test_util::buffer_text(terminal.backend().buffer())
+}
+
+fn top_overlay_text(app: &mut App) -> String {
+    draw_card(app, &mut crate::viewports::Viewports::default(), 80, 24)
 }
 
 /// A `RefList` with no unpublished current branch reported — the shape every test here used
@@ -1859,7 +1892,7 @@ fn an_empty_ref_list_offers_an_unpublished_heads_main_and_picking_it_focuses_it(
             ..
         })
     ));
-    let text = top_overlay_text(&app);
+    let text = top_overlay_text(&mut app);
     println!("--- empty ref picker, 80×24\n{text}");
     assert!(text.contains("no published refs"), "{text}");
     assert!(text.contains("▶ heads/main (not published)"), "{text}");
@@ -1892,7 +1925,7 @@ fn a_non_empty_ref_list_offers_no_unpublished_row() {
             ..
         })
     ));
-    let text = top_overlay_text(&app);
+    let text = top_overlay_text(&mut app);
     assert!(text.contains("heads/dev"), "{text}");
     assert!(!text.contains("not published"), "{text}");
     assert!(!text.contains("no published refs"), "{text}");
@@ -2562,7 +2595,7 @@ fn m_marks_a_ref_and_a_second_m_on_the_same_row_unmarks_it() {
 
     app.mark_block(); // `m` — the picker is open, so it marks a ref
     assert_eq!(app.marked_ref(), Some("heads/main"));
-    let text = top_overlay_text(&app);
+    let text = top_overlay_text(&mut app);
     println!("--- RFC 041: the ref picker with a mark set, 80×24\n{text}");
     // The mark is on its row, and the title says one is set (the row can scroll out of sight).
     assert!(text.contains("● heads/main"), "{text}");
@@ -2570,7 +2603,7 @@ fn m_marks_a_ref_and_a_second_m_on_the_same_row_unmarks_it() {
 
     app.mark_block(); // `m` again on the same row
     assert_eq!(app.marked_ref(), None);
-    let text = top_overlay_text(&app);
+    let text = top_overlay_text(&mut app);
     assert!(!text.contains("● heads/main"), "{text}");
     assert!(text.contains("m marks a ref"), "{text}");
 }
@@ -2582,7 +2615,7 @@ fn m_on_another_row_moves_the_mark_rather_than_adding_one() {
     app.nav_down();
     app.mark_block();
     assert_eq!(app.marked_ref(), Some("heads/feature"));
-    let text = top_overlay_text(&app);
+    let text = top_overlay_text(&mut app);
     // Exactly one row carries the mark.
     assert_eq!(
         text.lines().filter(|l| l.contains('●')).count(),
@@ -2708,7 +2741,7 @@ fn the_ref_mark_survives_reopening_the_picker_and_dies_on_a_ref_change() {
         ]))),
     });
     assert_eq!(app.marked_ref(), Some("heads/main"));
-    assert!(top_overlay_text(&app).contains("● heads/main"));
+    assert!(top_overlay_text(&mut app).contains("● heads/main"));
 
     // **A ref change ends it.** A stale pair is worse than an empty one.
     app.nav_down();
@@ -3110,7 +3143,7 @@ fn a_successful_ref_write_shows_prikks_lines_and_re_reads_the_refs() {
         seq: preview_req.seq,
         kind: ResponseKind::RefWritePreview(Ok(preview)),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // confirm
     let exec_req = next_request(&rx);
     let lines = vec![
@@ -3387,7 +3420,7 @@ fn a_successful_switch_moves_focus_and_re_reads() {
         seq: preview_req.seq,
         kind: ResponseKind::SwitchPreview(Ok(switch_core_preview())),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // confirm
     let exec_req = next_request(&rx);
     app.apply(Response {
@@ -3433,7 +3466,7 @@ fn a_refused_switch_hands_back_to_the_picker() {
         seq: preview_req.seq,
         kind: ResponseKind::SwitchPreview(Ok(switch_core_preview())),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let exec_req = next_request(&rx);
     app.apply(Response {
@@ -4111,14 +4144,15 @@ fn the_merge_plan_is_inert_and_scrolls() {
             },
         )))),
     });
-    app.nav_down();
+    let mut viewports = crate::viewports::Viewports::default();
+    perform(&mut viewports, app.nav_down());
     match app.focus() {
-        Focus::MergePlan(_, offset) => assert_eq!(offset.get(), 1),
+        Focus::MergePlan(_, surface) => assert_eq!(viewports.of(surface).offset(), 1),
         other => panic!("expected the Merge plan, got {other:?}"),
     }
-    app.nav_up();
+    perform(&mut viewports, app.nav_up());
     match app.focus() {
-        Focus::MergePlan(_, offset) => assert_eq!(offset.get(), 0),
+        Focus::MergePlan(_, surface) => assert_eq!(viewports.of(surface).offset(), 0),
         other => panic!("expected the Merge plan, got {other:?}"),
     }
     // `r` re-reads nothing: a plan is about the tips as they stood when it was read.
@@ -4143,7 +4177,14 @@ fn capture_the_into_current_refusal_at_80x24() {
     let mut terminal =
         ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("a terminal");
     terminal
-        .draw(|frame| crate::shell::render(&app, &look(), frame))
+        .draw(|frame| {
+            crate::shell::render(
+                &app,
+                &look(),
+                &mut crate::viewports::Viewports::default(),
+                frame,
+            )
+        })
         .expect("a draw");
     let text = crate::test_util::buffer_text(terminal.backend().buffer());
     println!("{text}");
@@ -4198,16 +4239,10 @@ fn verifys_report_scrolls_when_it_is_taller_than_the_panel() {
         )))),
     });
 
-    let draw = |app: &App, height: u16| {
-        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))
-            .expect("a terminal");
-        terminal
-            .draw(|frame| crate::shell::render(app, &look(), frame))
-            .expect("a draw");
-        crate::test_util::buffer_text(terminal.backend().buffer())
-    };
-
-    let top = draw(&app, 24);
+    // **One set of offsets for the whole test** (RFC 067 decision 4): the presses and the draws
+    // have to be about the same text, which is what the run loop arranges.
+    let mut viewports = crate::viewports::Viewports::default();
+    let top = shell_text(&mut app, &mut viewports, 24);
     assert!(top.contains("condition-00"), "{top}");
     assert!(
         !top.contains("condition-19"),
@@ -4215,36 +4250,44 @@ fn verifys_report_scrolls_when_it_is_taller_than_the_panel() {
     );
 
     // `↓` advances the offset, and the screen moves with it.
-    app.nav_down();
+    perform(&mut viewports, app.nav_down());
     match app.focus() {
-        Focus::Verify(_, _, _, offset) => assert_eq!(offset.get(), 1),
+        Focus::Verify(_, _, _, surface) => assert_eq!(viewports.of(surface).offset(), 1),
         other => panic!("expected Verify, got {other:?}"),
     }
-    let scrolled = draw(&app, 24);
+    let scrolled = shell_text(&mut app, &mut viewports, 24);
     assert_ne!(scrolled, top, "the report moved");
 
     // And the tail is reachable: press until the renderer's own clamp parks it at the end.
     for _ in 0..200 {
-        app.nav_down();
+        perform(&mut viewports, app.nav_down());
     }
-    let end = draw(&app, 24);
+    let end = shell_text(&mut app, &mut viewports, 24);
     assert!(end.contains("condition-19"), "{end}");
 
     // `↑` comes back, and never past the top.
     for _ in 0..500 {
-        app.nav_up();
+        perform(&mut viewports, app.nav_up());
     }
     match app.focus() {
-        Focus::Verify(_, _, _, offset) => assert_eq!(offset.get(), 0),
+        Focus::Verify(_, _, _, surface) => assert_eq!(viewports.of(surface).offset(), 0),
         other => panic!("expected Verify, got {other:?}"),
     }
-    assert_eq!(draw(&app, 24), top, "back where it started");
+    assert_eq!(
+        shell_text(&mut app, &mut viewports, 24),
+        top,
+        "back where it started"
+    );
 
     // A report that fits does not scroll: the renderer clamps the press away rather than
     // banking it, the Glossary's own rule.
-    let tall = draw(&app, 60);
-    app.nav_down();
-    assert_eq!(draw(&app, 60), tall, "nothing to scroll, nothing scrolled");
+    let tall = shell_text(&mut app, &mut viewports, 60);
+    perform(&mut viewports, app.nav_down());
+    assert_eq!(
+        shell_text(&mut app, &mut viewports, 60),
+        tall,
+        "nothing to scroll, nothing scrolled"
+    );
 }
 
 /// **`Enter` merges, and only from a plan prikk judged `Confluent`** (RFC 047 decision 6).
@@ -4452,14 +4495,14 @@ fn a_landed_merge_shows_prikks_lines_and_re_reads() {
             },
         )))),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select_screen_or_row(); // the right arrow, which opens the selected row
     let seq = next_request(&rx).seq;
     app.apply(Response {
         seq,
         kind: ResponseKind::MergePreview(Ok(merge_core_preview())),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // the explicit yes Tier Three takes
     let seq = next_request(&rx).seq;
     app.apply(Response {
@@ -4653,20 +4696,19 @@ fn rfc050_enter_does_nothing_on_the_bundle_view_and_the_arrows_scroll_it() {
     assert!(rx.try_recv().is_err(), "the arrow dispatches nothing here");
     assert!(matches!(app.focus(), Focus::Bundle(..)));
 
-    let Focus::Bundle(_, offset) = app.focus() else {
+    let mut viewports = crate::viewports::Viewports::default();
+    let Focus::Bundle(_, surface) = app.focus() else {
         panic!("the Bundle view");
     };
-    assert_eq!(offset.get(), 0);
-    app.nav_down();
-    let Focus::Bundle(_, offset) = app.focus() else {
-        panic!("the Bundle view");
-    };
-    assert_eq!(offset.get(), 1, "the same keys that scroll Verify");
-    app.nav_up();
-    let Focus::Bundle(_, offset) = app.focus() else {
-        panic!("the Bundle view");
-    };
-    assert_eq!(offset.get(), 0);
+    assert_eq!(viewports.of(surface).offset(), 0);
+    perform(&mut viewports, app.nav_down());
+    assert_eq!(
+        viewports.of(surface).offset(),
+        1,
+        "the same keys that scroll Verify"
+    );
+    perform(&mut viewports, app.nav_up());
+    assert_eq!(viewports.of(surface).offset(), 0);
 }
 
 // =============================================================================================
@@ -4813,7 +4855,7 @@ fn rfc050_a_landed_import_moves_focus_to_the_received_branch() {
             ..
         })
     ));
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // the confirmation's yes
     let req = next_request(&rx);
     assert!(matches!(req.kind, RequestKind::ImportConfirmExecute { .. }));
@@ -5421,7 +5463,7 @@ fn the_security_event_has_no_confirmation_and_sends_nothing() {
         app.top_overlay(),
         Some(Overlay::TrustConflict { .. })
     ));
-    let text = flattened(&top_overlay_text(&app));
+    let text = flattened(&top_overlay_text(&mut app));
     assert!(text.contains("Two keys cannot share an id"), "{text}");
     assert!(!text.contains("to confirm"), "nothing to approve: {text}");
     app.select();
@@ -5477,7 +5519,7 @@ fn a_removal_is_confirmed_by_typing_the_id_and_points_at_verify() {
         }
         other => panic!("expected a confirmation, got {other:?}"),
     }
-    let card = flattened(&top_overlay_text(&app));
+    let card = flattened(&top_overlay_text(&mut app));
     assert!(card.contains("Verify will fail them"), "{card}");
     assert!(
         card.contains(&format!("Type \"{RFC056_THEIRS}\"")),
@@ -5515,7 +5557,7 @@ fn a_removal_is_confirmed_by_typing_the_id_and_points_at_verify() {
             },
         })),
     });
-    let text = flattened(&top_overlay_text(&app));
+    let text = flattened(&top_overlay_text(&mut app));
     assert!(
         text.contains("revoked maintainer key"),
         "prikk's line: {text}"
@@ -5571,12 +5613,12 @@ fn no_trust_surface_draws_key_material() {
     let (mut app, _rx) = on_trust();
     let mut drawn = Vec::new();
     app.begin_adopt_key();
-    drawn.push(top_overlay_text(&app));
+    drawn.push(top_overlay_text(&mut app));
     for ch in RFC056_NEW_KEY.chars() {
         app.input_char(ch);
     }
     app.select();
-    drawn.push(top_overlay_text(&app));
+    drawn.push(top_overlay_text(&mut app));
     for text in drawn {
         for forbidden in ["seed", "SEED", "PRIKK_", "/.local/share", "private key"] {
             assert!(!text.contains(forbidden), "{forbidden} in {text}");
@@ -5811,14 +5853,14 @@ fn a_blocked_undo_preview_is_a_banner_with_nothing_armed() {
 fn a_recorded_undo_shows_prikks_commit_result() {
     let (mut app, rx) = undoing();
     app.begin_undo_block();
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let seq = next_request(&rx).seq;
     app.apply(Response {
         seq,
         kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let request = next_request(&rx);
     assert!(
@@ -5856,14 +5898,14 @@ fn a_recorded_undo_shows_prikks_commit_result() {
 fn a_stopped_undo_names_what_it_changed_and_carries_prikks_words() {
     let (mut app, rx) = undoing();
     app.begin_undo_block();
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let seq = next_request(&rx).seq;
     app.apply(Response {
         seq,
         kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
     });
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let seq = next_request(&rx).seq;
     app.apply(Response {
@@ -5970,7 +6012,7 @@ fn u_works_in_block_detail_too() {
     }];
     app.push_screen(Screen::BlockDetail {
         reff: "heads/main".into(),
-        offset: std::cell::Cell::new(0),
+        surface: crate::app::Surface::for_test(1),
         view: BlockDetailView {
             row,
             is_tip: true,
@@ -6108,7 +6150,14 @@ fn rfc063_an_invalid_seal_opens_the_warning_over_the_bundle_card() {
     // The card beneath, drawn tall enough to hold all of it.
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 60)).unwrap();
     terminal
-        .draw(|f| crate::shell::render(&app, &look(), f))
+        .draw(|f| {
+            crate::shell::render(
+                &app,
+                &look(),
+                &mut crate::viewports::Viewports::default(),
+                f,
+            )
+        })
         .unwrap();
     let text = crate::test_util::buffer_text(terminal.backend().buffer());
     assert!(
@@ -6172,9 +6221,9 @@ fn rfc063_a_refused_adopt_opens_the_warning_card() {
     };
     app.begin_adopt_key();
     type_in(&mut app, RFC056_NEW_KEY);
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let req = next_request(&rx);
     app.apply(Response {
@@ -6182,7 +6231,7 @@ fn rfc063_a_refused_adopt_opens_the_warning_card() {
         kind: ResponseKind::TrustAdoptPreview(Ok(stikk_core::AdoptPreview::Ready { token })),
     });
     type_in(&mut app, RFC056_NEW_ID);
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select();
     let req = next_request(&rx);
     app.apply(Response {
@@ -6207,7 +6256,7 @@ fn rfc063_a_refused_adopt_opens_the_warning_card() {
             },
         })),
     });
-    let text = flattened(&top_overlay_text(&app));
+    let text = flattened(&top_overlay_text(&mut app));
     assert!(
         matches!(app.top_overlay(), Some(Overlay::TrustConflict { .. })),
         "the security event, not the generic gloss: {text}"
@@ -6225,7 +6274,12 @@ fn rfc063_a_refused_adopt_opens_the_warning_card() {
 
 /// Draw the top overlay at an explicit size, so a test can put the app in front of a window too
 /// small for its card.
-fn draw_top_overlay_at(app: &App, w: u16, h: u16) -> String {
+fn draw_top_overlay_at(
+    app: &mut App,
+    viewports: &mut crate::viewports::Viewports,
+    w: u16,
+    h: u16,
+) -> String {
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
     terminal
         .draw(|f| {
@@ -6233,12 +6287,15 @@ fn draw_top_overlay_at(app: &App, w: u16, h: u16) -> String {
                 app.top_overlay().unwrap(),
                 app.marked_ref(),
                 &palette(),
-                app.overlay_scroll(),
+                viewports.of(app.reading_surface().expect("a card on top is a surface")),
                 f,
                 f.area(),
             )
         })
         .unwrap();
+    if let Some(surface) = app.reading_surface() {
+        app.report_reading(viewports.reading(surface));
+    }
     crate::test_util::buffer_text(terminal.backend().buffer())
 }
 
@@ -6249,7 +6306,7 @@ fn commit_awaiting_confirmation() -> (App, std::sync::mpsc::Receiver<Request>) {
     let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
     app.begin_commit();
     app.input_char('x');
-    read_the_card(&app);
+    read_the_card(&mut app);
     app.select(); // the message step -> a preview request
     let preview = next_request(&rx);
     let backend = commit_backend();
@@ -6268,9 +6325,11 @@ fn commit_awaiting_confirmation() -> (App, std::sync::mpsc::Receiver<Request>) {
 /// Driven through the request recorder: the proof that nothing happened is that no request was sent.
 #[test]
 fn enter_on_an_unread_confirmation_dispatches_nothing() {
+    // One set of offsets, drawn through and reported from: the run loop's own arrangement.
+    let mut viewports = crate::viewports::Viewports::default();
     let (mut app, rx) = commit_awaiting_confirmation();
     // Drawn at a size the card cannot fit in, which is what leaves it unread.
-    let small = draw_top_overlay_at(&app, 60, 10);
+    let small = draw_top_overlay_at(&mut app, &mut viewports, 60, 10);
     assert!(
         small.contains("read to the end to confirm"),
         "the card says what is missing:\n{small}"
@@ -6288,13 +6347,13 @@ fn enter_on_an_unread_confirmation_dispatches_nothing() {
 
     // Now read it: `↓` to the end, as a reader would.
     for _ in 0..200 {
-        let _ = draw_top_overlay_at(&app, 60, 10);
-        if app.overlay_scroll().at_end() {
+        let _ = draw_top_overlay_at(&mut app, &mut viewports, 60, 10);
+        if app.at_end() {
             break;
         }
-        app.nav_down();
+        perform(&mut viewports, app.nav_down());
     }
-    let read = draw_top_overlay_at(&app, 60, 10);
+    let read = draw_top_overlay_at(&mut app, &mut viewports, 60, 10);
     assert!(
         read.contains("Enter to confirm"),
         "and now it is offered:\n{read}"
@@ -6313,6 +6372,8 @@ fn enter_on_an_unread_confirmation_dispatches_nothing() {
 /// decision 3's one reading path), on a card that has both text and an action list.
 #[test]
 fn down_scrolls_the_text_before_it_moves_the_highlight() {
+    // One set of offsets, drawn through and reported from: the run loop's own arrangement.
+    let mut viewports = crate::viewports::Viewports::default();
     let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.push_overlay(Overlay::Refusal {
         card: stikk_core::RefusalCard {
@@ -6341,12 +6402,12 @@ fn down_scrolls_the_text_before_it_moves_the_highlight() {
     };
 
     // The text does not fit at this height, so the first `↓`s scroll it and the highlight stays put.
-    let _ = draw_top_overlay_at(&app, 60, 12);
+    let _ = draw_top_overlay_at(&mut app, &mut viewports, 60, 12);
     assert_eq!(cursor(&app), 0);
     let mut scrolls = 0;
-    while !app.overlay_scroll().at_end() {
-        app.nav_down();
-        let _ = draw_top_overlay_at(&app, 60, 12);
+    while !app.at_end() {
+        perform(&mut viewports, app.nav_down());
+        let _ = draw_top_overlay_at(&mut app, &mut viewports, 60, 12);
         scrolls += 1;
         assert_eq!(cursor(&app), 0, "the highlight waits for the text");
         assert!(scrolls < 100);
@@ -6354,23 +6415,23 @@ fn down_scrolls_the_text_before_it_moves_the_highlight() {
     assert!(scrolls > 0, "the card had text to scroll");
 
     // At the end, `↓` moves into the actions.
-    app.nav_down();
-    let _ = draw_top_overlay_at(&app, 60, 12);
+    perform(&mut viewports, app.nav_down());
+    let _ = draw_top_overlay_at(&mut app, &mut viewports, 60, 12);
     assert_eq!(cursor(&app), 1, "and only then the highlight moves");
 
     // `↑` walks back through the actions to the first, and then up the text.
-    app.nav_up();
-    let _ = draw_top_overlay_at(&app, 60, 12);
+    perform(&mut viewports, app.nav_up());
+    let _ = draw_top_overlay_at(&mut app, &mut viewports, 60, 12);
     assert_eq!(cursor(&app), 0);
-    app.nav_up();
-    let _ = draw_top_overlay_at(&app, 60, 12);
+    perform(&mut viewports, app.nav_up());
+    let _ = draw_top_overlay_at(&mut app, &mut viewports, 60, 12);
     assert_eq!(
         cursor(&app),
         0,
         "the cursor stays while the text comes back"
     );
     assert!(
-        app.overlay_scroll().more_above() || scrolls == 1,
+        app.more_above() || scrolls == 1,
         "the text scrolled back up"
     );
 }
@@ -6381,12 +6442,13 @@ fn down_scrolls_the_text_before_it_moves_the_highlight() {
 fn the_reading_latch_does_not_outlive_its_card() {
     let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
     app.open_glossary();
-    let _ = draw_top_overlay_at(&app, 90, 240); // the whole Glossary on screen
-    assert!(app.overlay_scroll().seen_whole_card() || app.top_overlay().is_some());
+    let mut viewports = crate::viewports::Viewports::default();
+    let _ = draw_top_overlay_at(&mut app, &mut viewports, 90, 240); // the whole Glossary on screen
+    assert!(app.seen_whole_card() || app.top_overlay().is_some());
     app.back();
     app.open_refusals();
     assert!(
-        !app.overlay_scroll().seen_whole_card(),
+        !app.seen_whole_card(),
         "the next card starts unread, whatever was read before it"
     );
 }
@@ -6552,7 +6614,7 @@ fn each_row_kinds_list_is_titled_by_its_row() {
         kind: ResponseKind::History(Ok(two_block_history())),
     });
     app.select();
-    let text = top_overlay_text(&app);
+    let text = top_overlay_text(&mut app);
     assert!(text.contains("Block bbbb"), "{text}");
     assert!(text.contains("Open this block"), "{text}");
     assert!(text.contains("Mark it, to compare"), "{text}");
@@ -6564,7 +6626,7 @@ fn each_row_kinds_list_is_titled_by_its_row() {
     block_with_files(&mut app, &rx, 55);
     app.nav_down();
     app.select();
-    let text = top_overlay_text(&app);
+    let text = top_overlay_text(&mut app);
     // `block_with_files` leaves the cursor on the block's first row; one down is its second file.
     assert!(text.contains("File run.sh"), "{text}");
     assert!(text.contains("Save this file, as it was here"), "{text}");
@@ -6628,4 +6690,140 @@ fn the_left_arrow_goes_back_through_every_step_but_the_last() {
         "the screen is popped"
     );
     assert!(!app.should_quit());
+}
+
+// ---------------------------------------------------------------------------------------------
+// The reading, reported rather than drawn (RFC 067 decision 4; Handoff A §4.4/§4.6)
+// ---------------------------------------------------------------------------------------------
+
+/// **No report means "at the end" for the scroll decision, and "not seen" for the evidence**
+/// (§4.4).
+///
+/// Those two answers are not symmetrical, and both halves matter. An undrawn surface used to say
+/// *"at the end"* because its `max` was zero, and every handler test that never draws depends on
+/// that — while `seen` was false, which is what keeps a confirmation closed. A front end that never
+/// reports therefore gets a working keyboard and no confirmations, which is the safe failure.
+#[test]
+fn a_surface_nobody_has_reported_on_is_at_the_end_and_unread() {
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
+    app.open_glossary();
+    assert!(
+        app.reading_surface().is_some(),
+        "an overlay on top is a surface"
+    );
+    assert!(app.at_end(), "no report: the end is treated as on screen");
+    assert!(
+        !app.more_above(),
+        "no report: nothing is scrolled off the top"
+    );
+    assert!(!app.seen_whole_card(), "no report: nothing has been read");
+    // So `↓` is not answered with a scroll: it falls through to whatever the card selects, which
+    // for the Glossary is nothing at all.
+    assert_eq!(
+        app.handle(crate::keys::Intent::Down),
+        Effect::None,
+        "with the end on screen, the press is not a scroll"
+    );
+}
+
+/// **A confirmation with no report cannot be confirmed** (§4.6.1) — and nothing is dispatched.
+///
+/// No drawing anywhere in this test: the card is never laid out, so nothing can have reported that
+/// it was read, so the gate stays closed. This is the same guarantee
+/// `enter_on_an_unread_confirmation_dispatches_nothing` proves through a window too small for the
+/// card, reached here with no window at all.
+#[test]
+fn a_card_that_was_never_reported_on_cannot_be_confirmed() {
+    let (mut app, rx) = commit_awaiting_confirmation();
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::Confirmation { .. })),
+        "a confirmation is on top"
+    );
+    app.handle(crate::keys::Intent::Run(
+        stikk_core::actions::by_key(stikk_core::Key::Enter).expect("Enter is bound"),
+    ));
+    assert!(
+        rx.try_recv().is_err(),
+        "an unread card must dispatch nothing at all"
+    );
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::Confirmation { .. })),
+        "and the card stays open"
+    );
+
+    // **The control**: the same press, after a report that the end was on screen, does dispatch.
+    // Without this the test above would pass even if `Enter` reached nothing at all.
+    let surface = app.reading_surface().expect("the card is a surface");
+    app.report_reading(Reading {
+        surface,
+        more_above: true,
+        at_end: true,
+    });
+    app.handle(crate::keys::Intent::Run(
+        stikk_core::actions::by_key(stikk_core::Key::Enter).expect("Enter is bound"),
+    ));
+    assert!(
+        rx.try_recv().is_ok(),
+        "a card reported read is a card that can be confirmed"
+    );
+}
+
+/// **A report for a previous surface does not open the current card** (§4.6.2).
+///
+/// This is why the surface is in the report at all: a draw that finished after the reader moved on
+/// would otherwise mark a card read that nobody has seen. Here the first card is read to its end,
+/// and its report arrives after a second card is on top.
+#[test]
+fn a_report_for_a_previous_surface_does_not_open_the_current_card() {
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
+    app.open_glossary();
+    let first = app.reading_surface().expect("the Glossary is a surface");
+    app.open_refusals();
+    let second = app.reading_surface().expect("the next card is a surface");
+    assert_ne!(first, second, "a new card is a new surface");
+
+    app.report_reading(Reading {
+        surface: first,
+        more_above: true,
+        at_end: true,
+    });
+    assert!(
+        !app.seen_whole_card(),
+        "a late report cannot mark the newer card read"
+    );
+    assert!(
+        app.at_end(),
+        "and the current surface still has no report of its own"
+    );
+}
+
+/// **An `at_end` report opens the card, and a later report does not close it again** (§4.6.3).
+///
+/// The latch is a fact about the reader, not about the offset: scrolling back up after reaching the
+/// end does not unread what was read.
+#[test]
+fn an_at_end_report_opens_the_card_and_scrolling_back_does_not_close_it() {
+    let (mut app, _rx) = from_state("/repo", loaded(orientation_view(0, None, None)));
+    app.open_glossary();
+    let surface = app.reading_surface().expect("the Glossary is a surface");
+
+    app.report_reading(Reading {
+        surface,
+        more_above: true,
+        at_end: true,
+    });
+    assert!(app.seen_whole_card(), "the end was on screen: it is read");
+
+    // Scrolled back to the top: more above is gone, the end is no longer on screen.
+    app.report_reading(Reading {
+        surface,
+        more_above: false,
+        at_end: false,
+    });
+    assert!(
+        app.seen_whole_card(),
+        "what has been read stays read for this surface"
+    );
+    assert!(!app.at_end(), "but the position is this report's");
+    assert!(!app.more_above(), "and so is what is above");
 }

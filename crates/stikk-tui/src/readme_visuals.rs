@@ -342,8 +342,11 @@ fn draw(app: &App) -> Buffer {
     // **The same colours as before the palette left `App`** (RFC 067 decision 3): these images are
     // compared byte for byte, so the look is `Palette::default()`, exactly what the app held.
     let look = crate::theme::Resolved::drawing_with(Palette::default());
+    // **Its own offsets, every surface at the top** (RFC 067 decision 4): an image is one frame of
+    // an unscrolled screen, which is what the app's own fresh offsets gave it before.
+    let mut viewports = crate::viewports::Viewports::default();
     terminal
-        .draw(|frame| crate::shell::render(app, &look, frame))
+        .draw(|frame| crate::shell::render(app, &look, &mut viewports, frame))
         .expect("a draw");
     terminal.backend().buffer().clone()
 }

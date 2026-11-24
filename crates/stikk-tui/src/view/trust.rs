@@ -37,7 +37,7 @@ const UNDER: &str = "    ";
 pub fn render(
     view: &TrustView,
     cursor: usize,
-    offset: &std::cell::Cell<u16>,
+    scrolled: &crate::overlay::Scroll,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -51,7 +51,7 @@ pub fn render(
     let max_offset = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_sub(viewport);
-    let mut scroll = offset.get().min(max_offset);
+    let mut scroll = scrolled.offset().min(max_offset);
     // **The selected row is always drawn** (RFC 056 decision 3). `x` acts on it, so a cursor
     // scrolled out of sight would leave a reader confirming a key they cannot see -- and the
     // typed id is the only thing that would have told them which one it was.
@@ -64,7 +64,10 @@ pub fn render(
         }
         scroll = scroll.min(max_offset);
     }
-    offset.set(scroll);
+    // **The program is told how far this goes** (RFC 067 decision 4): it holds no
+    // offsets any more, so without the max it could not know the end was on screen.
+    scrolled.note_max(max_offset);
+    scrolled.set_offset(scroll);
 
     // One title builder, for every frame (RFC 060 review v1 C1). `a adopts` and `x removes` are key
     // hints, so they go with the group.

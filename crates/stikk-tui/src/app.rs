@@ -40,13 +40,81 @@ use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 ///
 /// The program decides everything it can decide on its own; an effect is for the one thing it
 /// cannot, because only the front end knows how a text came out on a screen of a given size.
-///
-/// It has one variant today. The type exists now so that the commit which adds scrolling is about
-/// scrolling, and not about changing every caller's signature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect {
     /// Nothing for the front end to do.
     None,
+    /// **Move the text of `surface` one row.** The program has decided that this press scrolls
+    /// rather than moves a selection; where the rows are, and how far they go, is the front end's.
+    ///
+    /// Naming the surface is what makes the effect safe to perform late: a front end that has since
+    /// drawn something else scrolls nothing, because the surface it holds offsets for is no longer
+    /// this one.
+    Scroll {
+        /// The surface to move.
+        surface: Surface,
+        /// Which way.
+        direction: Direction,
+    },
+}
+
+/// Which way a [`Effect::Scroll`] moves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    /// Back towards the first row.
+    Up,
+    /// On towards the last.
+    Down,
+}
+
+/// **One thing a reader can be reading**: the overlay on top, or the scrolling view under it.
+///
+/// An opaque token (RFC 067 decision 4). It has no public constructor, because only the program may
+/// say what a surface is: a front end that could mint one could claim a card had been read.
+///
+/// **It changes whenever the surface does** — a new overlay, a popped overlay, or a view replaced by
+/// a reload each get a fresh one, generalizing the `overlay_generation` that used to reset the
+/// overlay scroll. That is what makes a late report harmless: it names a surface that is no longer
+/// current, so it is ignored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Surface(u64);
+
+impl Surface {
+    /// A surface for a renderer's own test, which has no `App` to be handed one by.
+    ///
+    /// **Test-only, and not a public constructor** (§4.1): outside the tests nothing but the
+    /// program can make a surface, so nothing but the program can claim a card was read.
+    #[cfg(test)]
+    pub(crate) fn for_test(id: u64) -> Self {
+        Self(id)
+    }
+}
+
+/// **What the front end saw after it laid a surface out** (RFC 067 decision 4).
+///
+/// The program cannot know any of this: it depends on the window's size and on how the text wrapped
+/// in it. So the front end measures and reports, and the program decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reading {
+    /// Which surface was laid out. A report for any surface but the current one is ignored.
+    pub surface: Surface,
+    /// Whether anything is scrolled off the top — what `↑` asks before it scrolls back.
+    pub more_above: bool,
+    /// Whether the last row has been on screen — what `↓` asks before it moves a selection, and
+    /// what a confirmation waits for.
+    pub at_end: bool,
+}
+
+/// What the last report said, plus the latch it fed.
+#[derive(Debug, Clone, Copy)]
+struct Observed {
+    /// The surface the report was for.
+    surface: Surface,
+    more_above: bool,
+    at_end: bool,
+    /// **The latch.** Set once the whole surface has been on screen, and never unset for this
+    /// surface: a reader who has read the card has read it, whatever they scroll back to afterwards.
+    seen: bool,
 }
 
 /// The fallback ref (RFC 029 Handoff B §2, §4): focused on open **only** when prikk names no current
@@ -133,7 +201,7 @@ pub enum Screen {
         /// 60 × 15 it drew eleven rows of twenty-two and said nothing. The renderer clamps the value
         /// and writes it back, because only it knows the wrapped height; where a row is selected it
         /// also **follows the cursor**, so the selected row is never off screen.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
         /// The `seq` of an in-flight refresh, if any (RFC 031 §7). Only the tip's detail is ever
         /// refreshed: an older block's detail cannot change.
         refreshing: Option<u64>,
@@ -151,7 +219,7 @@ pub enum Screen {
         /// view has no selectable row — what `d` compares is the whole worktree — so `↑`/`↓` scroll
         /// its content, Patch detail's idiom. It had neither a scroll nor a position, and at 60 × 15
         /// a worktree of fourteen rows showed ten of them in silence.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
         /// The `seq` of an in-flight refresh (`r`, or a detected change), if any — the view stays
         /// visible while it runs, as History's does (RFC 010 §5; RFC 031 §7).
         refreshing: Option<u64>,
@@ -168,7 +236,7 @@ pub enum Screen {
         /// far as it must to keep the selected patch on screen; it still clamps the value and writes it
         /// back, the Glossary's idiom, because only the renderer knows the wrapped height. A refresh
         /// keeps both, and the next render clamps them to the new content.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
         /// The selected queued patch (RFC 035 §4.2), `0` for an empty queue. `Enter` opens Patch detail
         /// for it, with one `show <patch-id>` read.
         cursor: usize,
@@ -188,7 +256,7 @@ pub enum Screen {
         refreshing: Option<u64>,
         /// First content row drawn, clamped and written back by the renderer (Patch detail's
         /// idiom): one entry's hunks can be a whole file.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
     },
     /// prikk's plan for merging one branch into another (`FR-080`; RFC 047 decision 4).
     ///
@@ -199,7 +267,7 @@ pub enum Screen {
         view: Box<stikk_core::MergePlanView>,
         /// First content row drawn, clamped and written back by the renderer: a plan can run
         /// past a short terminal, and `FR-081` asks for all of it.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
     },
     /// What one bundle file is, and what it would change (`FR-091`; RFC 050 decision 3).
     ///
@@ -211,7 +279,7 @@ pub enum Screen {
         view: Box<stikk_core::BundleOpened>,
         /// First content row drawn, clamped and written back by the renderer: a verification
         /// and a long effect list run past a short terminal.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
     },
     /// The maintainer keys this repository trusts (RFC 054 decision 2; RFC 056 decisions 2
     /// and 3). `a` adopts a key and `x` removes the selected one, each previewed and confirmed
@@ -224,7 +292,7 @@ pub enum Screen {
         /// First content row drawn, clamped and written back by the renderer — Verify's idiom:
         /// a repository can adopt more keys than a terminal has rows. The renderer keeps the
         /// cursor's own row inside it.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
     },
     /// prikk's verdict on whether the repository is sound (`FR-100`; RFC 040).
     Verify {
@@ -238,7 +306,7 @@ pub enum Screen {
         refreshing: Option<u64>,
         /// First content row drawn, clamped and written back by the renderer (Patch detail's
         /// idiom): 17 stages plus the raw report is taller than a terminal.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
     },
     /// One patch's detail: what it changed, in prikk's own terms (`FR-030`; RFC 035).
     PatchDetail {
@@ -253,7 +321,7 @@ pub enum Screen {
         refreshing: Option<u64>,
         /// First content row drawn, clamped and written back by the renderer (the Queue's idiom): a
         /// patch's operations, and a bounded preimage among them, run past one screen.
-        offset: std::cell::Cell<u16>,
+        surface: Surface,
     },
 }
 
@@ -342,35 +410,25 @@ pub enum Focus<'a> {
     /// A History screen and its selection cursor.
     History(&'a HistoryView, usize),
     /// A Block-detail screen and its selected patch.
-    BlockDetail(&'a BlockDetailView, usize, &'a std::cell::Cell<u16>),
+    BlockDetail(&'a BlockDetailView, usize, Surface),
     /// The Trust view (RFC 054 decision 2): the keys this repository trusts, and the scroll
     /// offset the renderer clamps and writes back.
-    Trust(&'a stikk_core::TrustView, usize, &'a std::cell::Cell<u16>),
+    Trust(&'a stikk_core::TrustView, usize, Surface),
     /// The Changes view, whether untracked entries are hidden, and whether the ref has published history.
-    Changes(
-        &'a ChangesView,
-        bool,
-        &'a RefHistory,
-        &'a std::cell::Cell<u16>,
-    ),
+    Changes(&'a ChangesView, bool, &'a RefHistory, Surface),
     /// The Queue view, its scroll offset and its selected patch.
-    Queue(&'a QueueView, &'a std::cell::Cell<u16>, usize),
+    Queue(&'a QueueView, Surface, usize),
     /// One patch's detail, whether the raw view is showing, and its scroll offset.
-    PatchDetail(&'a PatchDetailView, bool, &'a std::cell::Cell<u16>),
+    PatchDetail(&'a PatchDetailView, bool, Surface),
     /// A comparison and the state the screen holds for it.
     Compare(CompareFocus<'a>),
     /// prikk's merge plan for two branches, and the screen's scroll offset.
-    MergePlan(&'a stikk_core::MergePlanView, &'a std::cell::Cell<u16>),
+    MergePlan(&'a stikk_core::MergePlanView, Surface),
     /// What one bundle file is and what it would change, and the screen's scroll offset.
-    Bundle(&'a stikk_core::BundleOpened, &'a std::cell::Cell<u16>),
+    Bundle(&'a stikk_core::BundleOpened, Surface),
     /// The Verify report, whether the raw view is showing, whether a re-run is in flight, and the
     /// scroll offset.
-    Verify(
-        &'a stikk_core::VerifyView,
-        bool,
-        bool,
-        &'a std::cell::Cell<u16>,
-    ),
+    Verify(&'a stikk_core::VerifyView, bool, bool, Surface),
 }
 
 /// One background operation the worker has answered or is still working on — display-only bookkeeping
@@ -413,7 +471,7 @@ pub struct CompareFocus<'a> {
     /// Whether the raw view is showing for that entry.
     pub raw: bool,
     /// The scroll offset, clamped and written back by the renderer.
-    pub offset: &'a std::cell::Cell<u16>,
+    pub surface: Surface,
 }
 
 /// A block marked for comparison (`m`), with the lineage it was marked in.
@@ -442,14 +500,20 @@ pub struct App {
     ref_focus: RefFocus,
     screens: Vec<Screen>,
     overlays: Vec<Overlay>,
-    /// **The top overlay's scroll state and reading latch** (RFC 060 decision 3).
+    /// **The top overlay's surface** (RFC 067 decision 4).
     ///
-    /// One, not one per overlay: only the top overlay is drawn and only it takes keys. It is stamped
-    /// with [`Self::overlay_generation`], so a card pushed where another was does not inherit the
-    /// reader it never had.
-    overlay_scroll: crate::overlay::Scroll,
-    /// Bumped by every change to [`Self::overlays`] — see [`Self::overlay_scroll`].
-    overlay_generation: u64,
+    /// One, not one per overlay: only the top overlay is drawn and only it takes keys. It is minted
+    /// afresh by every change to [`Self::overlays`], so a card pushed where another was does not
+    /// inherit the reader it never had.
+    overlay_surface: Surface,
+    /// Mints [`Surface`]s. Never reused, so a report can always be told from a late one.
+    next_surface: u64,
+    /// **What the front end last said it saw** (RFC 067 decision 4), for the surface it named.
+    ///
+    /// `None`, or a report for a surface that is no longer current, reads as *"nothing is scrolled
+    /// off the top, the end is on screen, and no card has been read"* — which is what an undrawn
+    /// surface meant before the offsets left the program, and what the handler tests depend on.
+    reading: Option<Observed>,
     refusals: RefusalHistory,
     /// A transient one-line banner for non-overlay presentations (lock-conflict, guidance, plain
     /// statements). Cleared on the next navigation (design OP-03 banner class).
@@ -841,6 +905,28 @@ enum PendingMerge {
     },
 }
 
+impl Screen {
+    /// **The surface this screen is, if it scrolls** (RFC 067 decision 4).
+    ///
+    /// `None` for the screens with nothing to scroll: Orientation is not a screen at all, and
+    /// History and a pending `Loading` move a selection or wait. A screen with no surface has no
+    /// reading to report, and the drawing holds no offsets for it.
+    fn surface(&self) -> Option<Surface> {
+        match self {
+            Self::BlockDetail { surface, .. }
+            | Self::Changes { surface, .. }
+            | Self::Queue { surface, .. }
+            | Self::PatchDetail { surface, .. }
+            | Self::Compare { surface, .. }
+            | Self::MergePlan { surface, .. }
+            | Self::Bundle { surface, .. }
+            | Self::Trust { surface, .. }
+            | Self::Verify { surface, .. } => Some(*surface),
+            Self::History { .. } | Self::Loading { .. } => None,
+        }
+    }
+}
+
 /// See [`App::pending_ref_write`].
 enum PendingRefWrite {
     /// `Overlay::Loading` is on the stack; a [`RequestKind::RefWritePreview`] is in flight.
@@ -922,8 +1008,9 @@ impl App {
             ref_focus: RefFocus::Pending,
             screens: Vec::new(),
             overlays: Vec::new(),
-            overlay_scroll: crate::overlay::Scroll::default(),
-            overlay_generation: 0,
+            overlay_surface: Surface(0),
+            next_surface: 1,
+            reading: None,
             refusals: RefusalHistory::new(),
             banner: None,
             fault: None,
@@ -1186,7 +1273,7 @@ impl App {
         } else {
             (SEAL_OPERATION, OperationContext::Other)
         };
-        self.overlay_generation = self.overlay_generation.wrapping_add(1);
+        self.overlay_surface = self.mint_surface();
         self.overlays.truncate(index);
         self.pending_commit = None;
         self.pending_seal = None;
@@ -1270,11 +1357,13 @@ impl App {
         };
         match result {
             Ok(view) => {
+                // Minted before the borrow below, because a screen of its own is a surface of its own.
+                let surface = self.mint_surface();
                 if let Some(slot) = self.screens.get_mut(index) {
                     *slot = Screen::Trust {
                         view,
                         cursor: 0,
-                        offset: std::cell::Cell::new(0),
+                        surface,
                     };
                 }
             }
@@ -1418,12 +1507,12 @@ impl App {
         let pending = self.pending_trust.take();
         match result {
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
             Ok(stikk_core::AdoptPreview::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -1451,12 +1540,12 @@ impl App {
         let pending = self.pending_trust.take();
         match result {
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
             Ok(stikk_core::RemovePreview::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -1474,7 +1563,7 @@ impl App {
         pending: Option<PendingTrust>,
     ) {
         let Some(PendingTrust::AwaitingPreview(target)) = pending else {
-            self.overlay_generation = self.overlay_generation.wrapping_add(1);
+            self.overlay_surface = self.mint_surface();
             self.overlays.remove(index);
             return; // defensive
         };
@@ -1536,7 +1625,7 @@ impl App {
         self.pending_trust = None;
         match result {
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 // **prikk's own words, under stikk's heading** (decision 5). The refusal path
                 // is the usual one; what RFC 056 adds is the heading, which `surface` draws
@@ -2298,7 +2387,7 @@ impl App {
         let pending = self.pending_import.take();
         match result {
             Ok(stikk_core::ImportPreview::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -2307,7 +2396,7 @@ impl App {
             // answer changed between opening the card and asking: stikk's own lead, then
             // prikk's sentences verbatim.
             Ok(stikk_core::ImportPreview::WouldRefuse(refusals)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(stikk_core::would_refuse_the_import(&refusals));
             }
@@ -2321,7 +2410,7 @@ impl App {
             }
             Ok(stikk_core::ImportPreview::Ready { token }) => {
                 let Some(PendingImport::AwaitingPreview { target }) = pending else {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
@@ -2336,7 +2425,7 @@ impl App {
                 self.pending_import = Some(PendingImport::Confirming { token, target });
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2391,7 +2480,7 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::BundleImport::Unavailable => {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::bundle_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -2399,7 +2488,7 @@ impl App {
                 }
             },
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2768,7 +2857,7 @@ impl App {
         self.pending_undo = None;
         match result {
             Ok(stikk_core::UndoPreviewOutcome::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -2784,7 +2873,7 @@ impl App {
                 self.pending_undo = Some(PendingUndo::Confirming { token });
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
@@ -2824,7 +2913,7 @@ impl App {
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
@@ -2848,19 +2937,19 @@ impl App {
         };
         let pending = self.pending_save.take();
         if let Some(error) = error {
-            self.overlay_generation = self.overlay_generation.wrapping_add(1);
+            self.overlay_surface = self.mint_surface();
             self.overlays.remove(index);
             self.surface(&error, OperationContext::Bundle);
             return;
         }
         if let Some(reason) = blocked {
-            self.overlay_generation = self.overlay_generation.wrapping_add(1);
+            self.overlay_surface = self.mint_surface();
             self.overlays.remove(index);
             self.banner = Some(reason);
             return;
         }
         let (Some(token), Some(PendingSave::AwaitingPreview(target))) = (token, pending) else {
-            self.overlay_generation = self.overlay_generation.wrapping_add(1);
+            self.overlay_surface = self.mint_surface();
             self.overlays.remove(index);
             return; // defensive
         };
@@ -2894,7 +2983,7 @@ impl App {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::FileSaved::Done => {
                     let Some(PendingSave::Executing(SaveTarget::File(target))) = pending else {
-                        self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                        self.overlay_surface = self.mint_surface();
                         self.overlays.remove(index);
                         return; // defensive
                     };
@@ -2905,7 +2994,7 @@ impl App {
                     }
                 }
                 stikk_prikk::FileSaved::Unavailable => {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::files_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -2913,7 +3002,7 @@ impl App {
                 }
             },
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2938,7 +3027,7 @@ impl App {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::Extracted::Read(report) => {
                     let Some(PendingSave::Executing(SaveTarget::All(target))) = pending else {
-                        self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                        self.overlay_surface = self.mint_surface();
                         self.overlays.remove(index);
                         return; // defensive
                     };
@@ -2949,7 +3038,7 @@ impl App {
                     }
                 }
                 stikk_prikk::Extracted::Unavailable => {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::files_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -2957,7 +3046,7 @@ impl App {
                 }
             },
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -2981,13 +3070,13 @@ impl App {
         let pending = self.pending_export.take();
         match result {
             Ok(stikk_core::ExportPreview::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::ExportPreview::Ready { token }) => {
                 let Some(PendingExport::AwaitingPreview { target }) = pending else {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     return; // defensive
                 };
@@ -3002,7 +3091,7 @@ impl App {
                 self.pending_export = Some(PendingExport::Confirming { token, target });
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -3033,7 +3122,7 @@ impl App {
                     }
                 }
                 stikk_prikk::BundleExport::Unavailable => {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::export_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -3041,7 +3130,7 @@ impl App {
                 }
             },
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
@@ -3086,13 +3175,13 @@ impl App {
         let pending = self.pending_merge.take();
         match result {
             Ok(stikk_core::MergePreview::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::MergePreview::Ready { token }) => {
                 let Some(PendingMerge::AwaitingPreview { target }) = pending else {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
@@ -3107,7 +3196,7 @@ impl App {
                 self.pending_merge = Some(PendingMerge::Confirming { token, target });
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::MergePlan);
             }
@@ -3163,7 +3252,7 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::MergeResult::Unavailable => {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::merge_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -3171,7 +3260,7 @@ impl App {
                 }
             },
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::MergePlan);
             }
@@ -3442,7 +3531,7 @@ impl App {
                 // the consequence they would be agreeing to. The confirm line says so, and `↓` is
                 // the way on. `stikk_core::confirm` refuses the same thing again, so a renderer that
                 // drew the key anyway could not open the gate either.
-                if !self.overlay_scroll().seen_whole_card() {
+                if !self.seen_whole_card() {
                     return;
                 }
                 let (tier, typed) = (*tier, typed.clone());
@@ -3546,12 +3635,14 @@ impl App {
                         rows.len(),
                         self.prikk_minor(),
                     );
+                    // Minted before the borrow below, because a screen of its own is a surface of its own.
+                    let surface = self.mint_surface();
                     self.screens.push(Screen::PatchDetail {
                         view: detail,
                         raw: false,
                         source: PatchSource::InBlock,
                         refreshing: None,
-                        offset: std::cell::Cell::new(0),
+                        surface,
                     });
                 }
             }
@@ -3978,17 +4069,22 @@ impl App {
     }
 
     /// Move the selection up (the top overlay's cursor if it has one, else the History cursor).
-    pub fn nav_up(&mut self) {
+    pub fn nav_up(&mut self) -> Effect {
         // **One reading path, read top to bottom** (RFC 060 decision 3). `↑` walks up the action
         // list to its first row and only then scrolls the text back up, which is `↓`'s path in
         // reverse. Where the text fits, nothing is scrolled and this is exactly today's behaviour.
-        if !self.overlays.is_empty()
-            && self.overlay_cursor().unwrap_or(0) == 0
-            && self.overlay_scroll().more_above()
+        //
+        // **The answer comes from the last report** (RFC 067 decision 4), where it came from the
+        // renderer's write-back before: the program asks what the reader saw, and the front end is
+        // the only thing that can know.
+        if !self.overlays.is_empty() && self.overlay_cursor().unwrap_or(0) == 0 && self.more_above()
         {
-            self.overlay_scroll().up();
-            return;
+            return self.scroll(Direction::Up);
         }
+        // **Whether this press scrolls a view** instead of moving a selection. Set inside the
+        // match, acted on after it, because the effect needs the surface and the match holds the
+        // borrow that would name it.
+        let mut scrolls = false;
         match self.overlays.last_mut() {
             Some(Overlay::RefPicker { cursor, .. })
             | Some(Overlay::Refusal { cursor, .. })
@@ -4037,14 +4133,9 @@ impl App {
                 }
                 // As `nav_down`: the cursor where the block offers a row, the content where it does
                 // not (RFC 060 Handoff C §1).
-                Some(Screen::BlockDetail {
-                    view,
-                    cursor,
-                    offset,
-                    ..
-                }) => {
+                Some(Screen::BlockDetail { view, cursor, .. }) => {
                     if stikk_core::block_cursor_len(view) == 0 {
-                        offset.set(offset.get().saturating_sub(1));
+                        scrolls = true;
                     } else {
                         *cursor = cursor.saturating_sub(1);
                     }
@@ -4056,31 +4147,38 @@ impl App {
                 // here moved it, so the keys did nothing and a long report's tail could not be
                 // reached at all.
                 Some(
-                    Screen::PatchDetail { offset, .. }
-                    | Screen::MergePlan { offset, .. }
-                    | Screen::Bundle { offset, .. }
-                    | Screen::Changes { offset, .. }
-                    | Screen::Verify { offset, .. },
+                    Screen::PatchDetail { .. }
+                    | Screen::MergePlan { .. }
+                    | Screen::Bundle { .. }
+                    | Screen::Changes { .. }
+                    | Screen::Verify { .. },
                 ) => {
-                    offset.set(offset.get().saturating_sub(1));
+                    scrolls = true;
                 }
                 // **A row, not a scroll** (RFC 056 decision 3): see `nav_down`.
                 Some(Screen::Trust { cursor, .. }) => *cursor = cursor.saturating_sub(1),
                 _ => {}
             },
         }
+        if scrolls {
+            return self.scroll(Direction::Up);
+        }
+        Effect::None
     }
 
     /// Move the selection down, clamped to the active list length.
-    pub fn nav_down(&mut self) {
+    pub fn nav_down(&mut self) -> Effect {
         // **`↓` scrolls the card's text to its end, and only then moves the highlight into the
-        // actions** (RFC 060 decision 3). `at_end` is the renderer's answer from the last draw —
-        // the same write-back the Glossary's clamp has always used — so the keys and the panel
-        // cannot disagree about where the card is.
-        if !self.overlays.is_empty() && !self.overlay_scroll().at_end() {
-            self.overlay_scroll().down();
-            return;
+        // actions** (RFC 060 decision 3). `at_end` is the front end's answer from the last draw
+        // (RFC 067 decision 4) — the same answer the renderer's write-back gave before — so the
+        // keys and the panel cannot disagree about where the card is.
+        if !self.overlays.is_empty() && !self.at_end() {
+            return self.scroll(Direction::Down);
         }
+        // **Whether this press scrolls a view** instead of moving a selection. Set inside the
+        // match, acted on after it, because the effect needs the surface and the match holds the
+        // borrow that would name it.
+        let mut scrolls = false;
         match self.overlays.last_mut() {
             Some(Overlay::RefPicker {
                 refs,
@@ -4158,15 +4256,10 @@ impl App {
                 // JSON floor and every one whose files prikk did not list, `↓` scrolls the content
                 // instead: the view is twenty-two rows at 60 × 15 either way, and a key that did
                 // nothing there is the defect this handoff is about.
-                Some(Screen::BlockDetail {
-                    view,
-                    cursor,
-                    offset,
-                    ..
-                }) => {
+                Some(Screen::BlockDetail { view, cursor, .. }) => {
                     let rows = stikk_core::block_cursor_len(view);
                     if rows == 0 {
-                        offset.set(offset.get().saturating_add(1));
+                        scrolls = true;
                     } else {
                         *cursor = next_index(*cursor, rows);
                     }
@@ -4174,13 +4267,13 @@ impl App {
                 // Deliberately unclamped here: only the renderer knows the wrapped height, so it clamps
                 // and writes the clamped value back, as the Glossary does.
                 Some(
-                    Screen::PatchDetail { offset, .. }
-                    | Screen::MergePlan { offset, .. }
-                    | Screen::Bundle { offset, .. }
-                    | Screen::Changes { offset, .. }
-                    | Screen::Verify { offset, .. },
+                    Screen::PatchDetail { .. }
+                    | Screen::MergePlan { .. }
+                    | Screen::Bundle { .. }
+                    | Screen::Changes { .. }
+                    | Screen::Verify { .. },
                 ) => {
-                    offset.set(offset.get().saturating_add(1));
+                    scrolls = true;
                 }
                 // **The Trust view selects a row** (RFC 056 decision 3), because `x` acts on
                 // one. The renderer still scrolls, and keeps the selected row in view.
@@ -4198,6 +4291,10 @@ impl App {
                 _ => {}
             },
         }
+        if scrolls {
+            return self.scroll(Direction::Down);
+        }
+        Effect::None
     }
 
     /// **What one intent does** (RFC 067 decision 1) — the program's own entry point, which takes an
@@ -4213,10 +4310,12 @@ impl App {
         // **One arm per intent, not one per action** (RFC 061 decision 1): a catalog action goes to
         // `run_action`, which is the one place that says what an action does.
         match intent {
+            // **The two intents that may scroll** return what they decided; the rest decide
+            // nothing the front end has to carry out.
+            Intent::Up => return self.nav_up(),
+            Intent::Down => return self.nav_down(),
             Intent::Quit => self.quit(),
             Intent::BackWithoutQuit => self.back_without_quit(),
-            Intent::Up => self.nav_up(),
-            Intent::Down => self.nav_down(),
             Intent::Run(action) => {
                 // Every catalog id has an arm (`every_catalog_action_runs`); the key press is spent
                 // either way.
@@ -4691,13 +4790,15 @@ impl App {
         if let Some(index) = index {
             match result {
                 Ok(detail) => {
+                    // Minted before the borrow below, because a screen of its own is a surface of its own.
+                    let surface = self.mint_surface();
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::BlockDetail {
                             reff,
                             view: detail,
                             cursor: 0,
                             refreshing: None,
-                            offset: std::cell::Cell::new(0),
+                            surface,
                         };
                     }
                 }
@@ -4745,11 +4846,13 @@ impl App {
         if let Some(index) = index {
             match result {
                 Ok(view) => {
+                    // Minted before the borrow below, because a screen of its own is a surface of its own.
+                    let surface = self.mint_surface();
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::Queue {
                             view,
                             refreshing: None,
-                            offset: std::cell::Cell::new(0),
+                            surface,
                             cursor: 0,
                         };
                     }
@@ -4788,17 +4891,21 @@ impl App {
             }
             match result {
                 Ok(compared) => {
+                    // **A reload is a new surface** (RFC 067 decision 4): the text is not the text
+                    // that was read, so neither the offset nor the latch carries over. Minted
+                    // before the borrow below.
+                    let fresh = self.mint_surface();
                     if let Some(Screen::Compare {
                         view,
                         cursor,
-                        offset,
+                        surface,
                         ..
                     }) = self.screens.last_mut()
                     {
                         *view = compared;
                         // The content changed shape; the next render clamps both to it.
                         *cursor = 0;
-                        offset.set(0);
+                        *surface = fresh;
                     }
                 }
                 Err(error) => self.surface(&error, OperationContext::Compare),
@@ -4812,6 +4919,8 @@ impl App {
         if let Some(index) = index {
             match result {
                 Ok(view) => {
+                    // Minted before the borrow below, because a screen of its own is a surface of its own.
+                    let surface = self.mint_surface();
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::Compare {
                             view,
@@ -4819,7 +4928,7 @@ impl App {
                             cursor: 0,
                             raw: false,
                             refreshing: None,
-                            offset: std::cell::Cell::new(0),
+                            surface,
                         };
                     }
                 }
@@ -4853,11 +4962,10 @@ impl App {
         };
         match result {
             Ok(stikk_core::MergePlanRead::Read(view)) => {
+                // Minted before the borrow below, because a screen of its own is a surface of its own.
+                let surface = self.mint_surface();
                 if let Some(slot) = self.screens.get_mut(index) {
-                    *slot = Screen::MergePlan {
-                        view,
-                        offset: std::cell::Cell::new(0),
-                    };
+                    *slot = Screen::MergePlan { view, surface };
                 }
             }
             Ok(stikk_core::MergePlanRead::Declined(reason)) => {
@@ -4900,10 +5008,12 @@ impl App {
                     stikk_core::BundleOpened::Read(view) => view.warning.clone(),
                     _ => None,
                 };
+                // Minted before the borrow below, because a screen of its own is a surface of its own.
+                let surface = self.mint_surface();
                 if let Some(slot) = self.screens.get_mut(index) {
                     *slot = Screen::Bundle {
                         view: Box::new(opened),
-                        offset: std::cell::Cell::new(0),
+                        surface,
                     };
                 }
                 if let Some(warning) = warning {
@@ -4930,14 +5040,16 @@ impl App {
             if let Some(Screen::Verify { refreshing, .. }) = self.screens.last_mut() {
                 *refreshing = None;
             }
+            // A reload is a new surface (RFC 067 decision 4); minted before the borrow.
+            let reloaded = self.mint_surface();
             match result {
                 Ok(fresh) => {
-                    if let Some(Screen::Verify { view, offset, .. }) = self.screens.last_mut() {
+                    if let Some(Screen::Verify { view, surface, .. }) = self.screens.last_mut() {
                         // **Replaced, never merged.** A verdict is about the moment it was taken
                         // (RFC 040 decision 4), so the previous one is gone the instant this one
                         // lands -- there is no state in which the screen shows two runs at once.
                         *view = fresh;
-                        offset.set(0);
+                        *surface = reloaded;
                     }
                 }
                 Err(error) => self.surface(&error, OperationContext::Verify),
@@ -4951,12 +5063,14 @@ impl App {
         if let Some(index) = index {
             match result {
                 Ok(view) => {
+                    // Minted before the borrow below, because a screen of its own is a surface of its own.
+                    let surface = self.mint_surface();
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::Verify {
                             view,
                             raw: false,
                             refreshing: None,
-                            offset: std::cell::Cell::new(0),
+                            surface,
                         };
                     }
                 }
@@ -4981,13 +5095,15 @@ impl App {
             if let Some(Screen::PatchDetail { refreshing, .. }) = self.screens.last_mut() {
                 *refreshing = None;
             }
+            // A reload is a new surface (RFC 067 decision 4); minted before the borrow.
+            let reloaded = self.mint_surface();
             match result {
                 Ok(detail) => {
-                    if let Some(Screen::PatchDetail { view, offset, .. }) = self.screens.last_mut()
+                    if let Some(Screen::PatchDetail { view, surface, .. }) = self.screens.last_mut()
                     {
                         *view = detail;
                         // The content changed shape; the next render clamps this to it.
-                        offset.set(0);
+                        *surface = reloaded;
                     }
                 }
                 Err(error) => self.surface(&error, OperationContext::LoadPatch),
@@ -5006,13 +5122,15 @@ impl App {
                         patch_id: view.patch_id.clone(),
                         message: self.queued_message(&view.patch_id),
                     };
+                    // Minted before the borrow below, because a screen of its own is a surface of its own.
+                    let surface = self.mint_surface();
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::PatchDetail {
                             view,
                             raw: false,
                             source,
                             refreshing: None,
-                            offset: std::cell::Cell::new(0),
+                            surface,
                         };
                     }
                 }
@@ -5071,13 +5189,15 @@ impl App {
         if let Some(index) = index {
             match result {
                 Ok(read) => {
+                    // Minted before the borrow below, because a screen of its own is a surface of its own.
+                    let surface = self.mint_surface();
                     if let Some(slot) = self.screens.get_mut(index) {
                         *slot = Screen::Changes {
                             view: read.view,
                             hide_untracked: self.hide_untracked_default,
                             history: read.history,
                             refreshing: None,
-                            offset: std::cell::Cell::new(0),
+                            surface,
                         };
                     }
                 }
@@ -5151,7 +5271,7 @@ impl App {
                     }
                 }
                 Err(error) => {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     self.surface(&error, OperationContext::ListRefs);
                 }
@@ -5180,7 +5300,7 @@ impl App {
         let pending = self.pending_commit.take();
         match result {
             Ok(CommitPreviewOutcome::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
@@ -5201,7 +5321,7 @@ impl App {
             }
             Ok(CommitPreviewOutcome::Ready { preview: _, token }) => {
                 let Some(PendingCommit::AwaitingPreview { message }) = pending else {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
@@ -5216,7 +5336,7 @@ impl App {
                 self.pending_commit = Some(PendingCommit::Confirming { token, message });
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
@@ -5248,7 +5368,7 @@ impl App {
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
@@ -5272,13 +5392,13 @@ impl App {
         let pending = self.pending_seal.take();
         match result {
             Ok(SealPreviewOutcome::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
             Ok(SealPreviewOutcome::Ready { token }) => {
                 let Some(PendingSeal::AwaitingPreview { reff }) = pending else {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
@@ -5296,7 +5416,7 @@ impl App {
                 });
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
@@ -5329,7 +5449,7 @@ impl App {
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
@@ -5357,7 +5477,7 @@ impl App {
         let pending = self.pending_ref_write.take();
         match result {
             Ok(stikk_core::RefWritePreview::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
                 // **The typed name survives a block too** (RFC 044 §3). A blocked close has no
@@ -5371,7 +5491,7 @@ impl App {
             }
             Ok(stikk_core::RefWritePreview::Ready { token }) => {
                 let Some(PendingRefWrite::AwaitingPreview { op }) = pending else {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
@@ -5386,7 +5506,7 @@ impl App {
                 self.pending_ref_write = Some(PendingRefWrite::Confirming { token, op });
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.restore_prompt(pending);
                 self.surface(&error, OperationContext::Other);
@@ -5429,7 +5549,7 @@ impl App {
                 // The band is checked before the keys offer anything, so this is only reachable
                 // if prikk changed under the session. stikk's own words, never prikk's silence.
                 stikk_prikk::RefWrite::Unavailable => {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::ref_writes_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -5437,7 +5557,7 @@ impl App {
                 }
             },
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.restore_prompt(pending);
                 self.surface(&error, OperationContext::Other);
@@ -5477,13 +5597,13 @@ impl App {
         let pending = self.pending_switch.take();
         match result {
             Ok(stikk_core::SwitchPreview::Blocked(reason)) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::SwitchPreview::Ready { token }) => {
                 let Some(PendingSwitch::AwaitingPreview { target }) = pending else {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
@@ -5498,7 +5618,7 @@ impl App {
                 self.pending_switch = Some(PendingSwitch::Confirming { token, target });
             }
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
@@ -5565,7 +5685,7 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::SwitchResult::Unavailable => {
-                    self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                    self.overlay_surface = self.mint_surface();
                     self.overlays.remove(index);
                     self.banner = Some(stikk_core::switch_unavailable(
                         self.prikk_minor().unwrap_or_default(),
@@ -5573,7 +5693,7 @@ impl App {
                 }
             },
             Err(error) => {
-                self.overlay_generation = self.overlay_generation.wrapping_add(1);
+                self.overlay_surface = self.mint_surface();
                 self.overlays.remove(index);
                 // **Back to the picker, under prikk's refusal** (§3e). A dirty worktree or a
                 // file in the way is something the reader fixes and tries again, and the picker
@@ -6036,61 +6156,148 @@ impl App {
             Some(Screen::BlockDetail {
                 view,
                 cursor,
-                offset,
+                surface,
                 ..
-            }) => Focus::BlockDetail(view, *cursor, offset),
+            }) => Focus::BlockDetail(view, *cursor, *surface),
             Some(Screen::Changes {
                 view,
                 hide_untracked,
                 history,
-                offset,
+                surface,
                 ..
-            }) => Focus::Changes(view, *hide_untracked, history, offset),
+            }) => Focus::Changes(view, *hide_untracked, history, *surface),
             Some(Screen::Queue {
                 view,
-                offset,
+                surface,
                 cursor,
                 ..
-            }) => Focus::Queue(view, offset, *cursor),
+            }) => Focus::Queue(view, *surface, *cursor),
             Some(Screen::PatchDetail {
-                view, raw, offset, ..
-            }) => Focus::PatchDetail(view, *raw, offset),
-            Some(Screen::MergePlan { view, offset }) => Focus::MergePlan(view, offset),
-            Some(Screen::Bundle { view, offset }) => Focus::Bundle(view, offset),
+                view, raw, surface, ..
+            }) => Focus::PatchDetail(view, *raw, *surface),
+            Some(Screen::MergePlan { view, surface }) => Focus::MergePlan(view, *surface),
+            Some(Screen::Bundle { view, surface }) => Focus::Bundle(view, *surface),
             Some(Screen::Verify {
                 view,
                 raw,
                 refreshing,
-                offset,
-            }) => Focus::Verify(view, *raw, refreshing.is_some(), offset),
+                surface,
+            }) => Focus::Verify(view, *raw, refreshing.is_some(), *surface),
             Some(Screen::Trust {
                 view,
                 cursor,
-                offset,
-            }) => Focus::Trust(view, *cursor, offset),
+                surface,
+            }) => Focus::Trust(view, *cursor, *surface),
             Some(Screen::Compare {
                 view,
                 opened,
                 cursor,
                 raw,
-                offset,
+                surface,
                 ..
             }) => Focus::Compare(CompareFocus {
                 view,
                 opened,
                 cursor: *cursor,
                 raw: *raw,
-                offset,
+                surface: *surface,
             }),
             None => Focus::Orientation(&self.state),
         }
     }
 
-    /// **The top overlay's scroll state** (RFC 060 decision 3), reset if the overlay on top is not
-    /// the one it was last used for.
+    /// Mint a surface no earlier one can be mistaken for.
+    fn mint_surface(&mut self) -> Surface {
+        let surface = Surface(self.next_surface);
+        self.next_surface = self.next_surface.wrapping_add(1);
+        surface
+    }
+
+    /// **What the reader is reading now**: the top overlay, or the scrolling view under it.
+    ///
+    /// `None` on a screen with nothing to scroll (Orientation, History), where there is no surface
+    /// for a front end to report about.
+    ///
+    /// (Named for the reading, because [`Self::surface`] already means *"show this error"*.)
     #[must_use]
-    pub fn overlay_scroll(&self) -> &crate::overlay::Scroll {
-        self.overlay_scroll.for_overlay(self.overlay_generation)
+    pub fn reading_surface(&self) -> Option<Surface> {
+        if self.overlays.is_empty() {
+            self.screens.last().and_then(Screen::surface)
+        } else {
+            Some(self.overlay_surface)
+        }
+    }
+
+    /// **The card on top, with the surface it is** (RFC 067 decision 4 / §4.1).
+    ///
+    /// One accessor, because the two are one fact: a card on top *is* the current surface, and
+    /// handing them out together means the drawing cannot hold a card without the offsets that
+    /// belong to it, nor have to answer for a surface that cannot be missing.
+    #[must_use]
+    pub fn top_card(&self) -> Option<(&Overlay, Surface)> {
+        self.overlays.last().map(|top| (top, self.overlay_surface))
+    }
+
+    /// **The front end reports what it saw** (RFC 067 decision 4), after it has laid a surface out.
+    ///
+    /// **A report for any surface but the current one is ignored**, which is the whole reason the
+    /// surface is in the report: a draw that finished after the reader moved on cannot mark a newer
+    /// card read. `seen` only ever goes from false to true, and only for its own surface.
+    pub fn report_reading(&mut self, reading: Reading) {
+        if self.reading_surface() != Some(reading.surface) {
+            return;
+        }
+        let seen_already = self
+            .reading
+            .is_some_and(|o| o.surface == reading.surface && o.seen);
+        self.reading = Some(Observed {
+            surface: reading.surface,
+            more_above: reading.more_above,
+            at_end: reading.at_end,
+            // **The latch** (RFC 060 decision 3): the end having been on screen is a fact about the
+            // reader, not about the current offset.
+            seen: seen_already || reading.at_end,
+        });
+    }
+
+    /// **Ask the front end to move the current surface** (RFC 067 decision 4).
+    ///
+    /// The program changes nothing: where the rows are, and how far they go, is known only where
+    /// the text was laid out. With no current surface there is nothing to scroll.
+    fn scroll(&self, direction: Direction) -> Effect {
+        match self.reading_surface() {
+            Some(surface) => Effect::Scroll { surface, direction },
+            None => Effect::None,
+        }
+    }
+
+    /// The last report, if it was about the surface that is current now.
+    fn observed(&self) -> Option<Observed> {
+        let surface = self.reading_surface()?;
+        self.reading.filter(|o| o.surface == surface)
+    }
+
+    /// Whether the text is scrolled as far as it goes — **the question `↓` asks** before it moves a
+    /// highlight into the actions (RFC 060 decision 3's one reading path).
+    ///
+    /// **No report means "at the end"**, which is what an undrawn card meant when the renderer
+    /// wrote the offsets: `max` was zero, so `at_end` was true and `↓` moved the cursor. Every
+    /// handler test that never draws depends on it.
+    fn at_end(&self) -> bool {
+        self.observed().is_none_or(|o| o.at_end)
+    }
+
+    /// Whether anything is scrolled off the top — what `↑` asks before it scrolls back. **No report
+    /// means nothing is**, as an undrawn card's zero offset meant.
+    fn more_above(&self) -> bool {
+        self.observed().is_some_and(|o| o.more_above)
+    }
+
+    /// **Whether a confirmation may be offered at all** (RFC 060 decision 3): the whole card has
+    /// been on screen. **No report means not read**, which is the safe failure — a front end that
+    /// never reports leaves every confirmation closed.
+    fn seen_whole_card(&self) -> bool {
+        self.observed().is_some_and(|o| o.seen)
     }
 
     /// **What the reader has seen of the card on top**, in the shape `stikk_core::confirm` asks for
@@ -6100,7 +6307,7 @@ impl App {
     /// `select` already refuses to dispatch without the latch; passing the real answer here is what
     /// makes core's own gate load-bearing rather than decorative.
     fn seen(&self) -> Seen {
-        if self.overlay_scroll().seen_whole_card() {
+        if self.seen_whole_card() {
             Seen::WholeCard
         } else {
             Seen::NotYet
@@ -6128,13 +6335,13 @@ impl App {
     /// **The only way an overlay reaches the stack**, so the reading latch cannot be inherited by a
     /// card that was never read. `pub(crate)` for the tests that push a card directly.
     pub(crate) fn push_overlay(&mut self, overlay: Overlay) {
-        self.overlay_generation = self.overlay_generation.wrapping_add(1);
+        self.overlay_surface = self.mint_surface();
         self.overlays.push(overlay);
     }
 
     /// Pop the top overlay; whatever is under it is a different card, with its own reader.
     fn pop_overlay(&mut self) -> Option<Overlay> {
-        self.overlay_generation = self.overlay_generation.wrapping_add(1);
+        self.overlay_surface = self.mint_surface();
         self.overlays.pop()
     }
 

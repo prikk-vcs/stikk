@@ -33,6 +33,7 @@ mod terminal;
 mod theme;
 mod title;
 mod view;
+mod viewports;
 mod worker;
 
 #[cfg(test)]
@@ -156,14 +157,23 @@ fn ui_loop(
     // the loop that draws, instead of being handed to the program. Nothing about detection changes
     // (RFC 059 decision 5) -- it is settled before this function is called.
     let mut app = App::open(repo, session, req_tx);
+    // **The offsets live here, not in the program** (RFC 067 decision 4): where a text sits is a
+    // fact about this window, so the thing with the window keeps it.
+    let mut viewports = viewports::Viewports::default();
     // Tracked locally, not on `App`: once the worker is gone there is nothing left to poll, and this
     // must flip at most once so the fault it records stays dismissible (§ `App::worker_stopped`).
     let mut worker_alive = true;
 
     while !app.should_quit() {
+        // **Draw, report, then read the next key** (RFC 067 decision 4 / handoff §4.5). The order
+        // matters and is the order it already was: a key has always acted on what the last draw
+        // found, because that is the only draw whose measurements exist.
         terminal
-            .draw(|frame| shell::render(&app, &resolved, frame))
+            .draw(|frame| shell::render(&app, &resolved, &mut viewports, frame))
             .map_err(|e| StikkError::environment("failed to draw the terminal", e))?;
+        if let Some(surface) = app.reading_surface() {
+            app.report_reading(viewports.reading(surface));
+        }
 
         if event::poll(POLL).map_err(|e| StikkError::environment("input poll failed", e))? {
             let ev = event::read().map_err(|e| StikkError::environment("input read failed", e))?;
@@ -180,7 +190,9 @@ fn ui_loop(
                 // no handler — as `↓` did not reach the help's own scroll — is a thing a test can
                 // catch. The effect is what the program asks for in return; there is nothing to ask
                 // for until RFC 067's fourth commit.
-                let Effect::None = keys::handle_key(&mut app, key);
+                // **The program answers with what it cannot do itself**, and the front end does
+                // it: only the drawing knows where the rows are (RFC 067 decision 4).
+                viewports.apply(keys::handle_key(&mut app, key));
             }
         }
 

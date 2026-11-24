@@ -26,8 +26,6 @@
 //! F2 is why this project wraps by hand). **Ids and paths are identifiers and are hard-split**
 //! ([`wrap_verbatim`]); stikk's own sentences word-wrap ([`wrap_indented`]).
 
-use std::cell::Cell;
-
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -51,7 +49,7 @@ use crate::title::{Position, Title};
 pub fn render(
     detail: &BlockDetailView,
     cursor: usize,
-    offset: &Cell<u16>,
+    scrolled: &crate::overlay::Scroll,
     palette: &Palette,
     frame: &mut Frame,
     area: Rect,
@@ -64,7 +62,7 @@ pub fn render(
     let max_offset = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_sub(viewport);
-    let mut scroll = offset.get().min(max_offset);
+    let mut scroll = scrolled.offset().min(max_offset);
     // **The window follows the cursor, by the least it can** — the Queue's own rule (RFC 028 A review
     // v1 §2.1): the selected row's own rows are brought on screen and nothing else moves.
     // `cursor_rows` is where each selectable row's block of rows starts and ends in the wrapped
@@ -79,7 +77,10 @@ pub fn render(
         }
         scroll = scroll.min(max_offset);
     }
-    offset.set(scroll);
+    // **The program is told how far this goes** (RFC 067 decision 4): it holds no
+    // offsets any more, so without the max it could not know the end was on screen.
+    scrolled.note_max(max_offset);
+    scrolled.set_offset(scroll);
 
     // One title builder, for every frame (RFC 060 review v1 C1), and the position says what is
     // hidden (RFC 024 §4) — `record_cut` below refuses a frame that hides rows without it.

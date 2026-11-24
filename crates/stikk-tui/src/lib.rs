@@ -36,6 +36,8 @@ mod view;
 mod worker;
 
 #[cfg(test)]
+mod golden;
+#[cfg(test)]
 mod readme_visuals;
 #[cfg(test)]
 pub(crate) mod test_util;

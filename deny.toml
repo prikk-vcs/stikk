@@ -15,7 +15,31 @@ all-features = false
 no-default-features = false
 
 [advisories]
-ignore = []
+# **An advisory deep in the tree is still in the binary stikk ships** (RFC 068).
+#
+# cargo-deny's defaults report an *unsound* or *unmaintained* advisory only for a crate the
+# workspace depends on directly, so a defect two or three crates down passes the gate in silence.
+# Every advisory in the tree is reported here, at any depth, and anything that cannot be fixed is
+# written down below with the reason it does not reach stikk -- said in the file, not by the gate
+# staying quiet.
+unsound = "all"
+unmaintained = "all"
+
+ignore = [
+    # **RUSTSEC-2026-0253 (2026-05-12), `lru` 0.16.4: a use-after-free if `LruCache::pop()` is
+    # called while a stored key's `Drop` panics.** Reached as ratatui-core 0.1.0 -> ratatui ->
+    # `stikk-tui`; ratatui-core 0.1.0 requires `lru` 0.16, so there is no version of it to move to.
+    #
+    # **It cannot happen in stikk**, checked in ratatui-core 0.1.0's own source: the layout cache is
+    # `LruCache<(Rect, Layout), (Segments, Spacers)>` (`layout/layout.rs:36`) and ratatui calls only
+    # `resize` (`:303`) and `get_or_insert` (`:720`) on it -- never `pop`, in that file or anywhere
+    # else in the crate. The keys cannot panic on drop either: `Rect` is four `u16`s, `Layout` is
+    # plain enums and a `Vec<Constraint>`, and ratatui-core writes no `Drop` impl at all.
+    #
+    # **What retires this entry:** a ratatui release that depends on `lru >= 0.18.2`. The next
+    # ratatui upgrade must check for one and delete this (RFC 068 decision 3).
+    { id = "RUSTSEC-2026-0253", reason = "lru 0.16.4 through ratatui-core 0.1.0 -> ratatui -> stikk-tui. The defect needs LruCache::pop() to run while a key's Drop panics; ratatui calls only resize (layout/layout.rs:303) and get_or_insert (:720) on its layout cache and never pop, and the cache's (Rect, Layout) keys are plain data with no Drop impl in the crate, so the path is unreachable from stikk. Retire this entry when a ratatui release depends on lru >= 0.18.2 -- the next ratatui upgrade must check (RFC 068)." },
+]
 
 [licenses]
 # The exact set of licenses actually in the tree today (`cargo deny list`), not a generic permissive

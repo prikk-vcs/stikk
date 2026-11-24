@@ -37,6 +37,20 @@ ignore = false
 multiple-versions = "warn"
 wildcards = "deny"
 
+# **The program cannot grow a terminal dependency** (RFC 067 decision 6).
+#
+# `stikk-app` is the program every front end drives, and the whole point of it being its own crate
+# is that nothing in it can quietly start depending on a terminal. A `wrappers` entry allows a crate
+# only beneath the crates named: ratatui and the colour query only under `stikk-tui`, and crossterm
+# only through ratatui's own backend, which is how stikk uses it so the two cannot drift apart.
+#
+# This is checked by the supply-chain workflow on every push rather than remembered.
+deny = [
+  { crate = "ratatui", wrappers = ["stikk-tui"] },
+  { crate = "terminal-colorsaurus", wrappers = ["stikk-tui"] },
+  { crate = "crossterm", wrappers = ["ratatui-crossterm"] },
+]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"

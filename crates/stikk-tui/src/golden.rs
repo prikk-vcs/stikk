@@ -122,8 +122,8 @@ fn draw_into(
     terminal
         .draw(|frame| crate::shell::render(app, look, viewports, frame))
         .expect("a draw");
-    if let Some(surface) = app.reading_surface() {
-        app.report_reading(viewports.reading(surface));
+    if let Some(reading) = app.reading_surface().and_then(|s| viewports.reading(s)) {
+        app.report_reading(reading);
     }
     terminal.backend().buffer().clone()
 }

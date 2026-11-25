@@ -40,8 +40,11 @@ impl Front {
         terminal
             .draw(|f| render(app, &look(), &mut self.viewports, f))
             .unwrap();
-        if let Some(surface) = app.reading_surface() {
-            app.report_reading(self.viewports.reading(surface));
+        if let Some(reading) = app
+            .reading_surface()
+            .and_then(|s| self.viewports.reading(s))
+        {
+            app.report_reading(reading);
         }
         buffer_text(terminal.backend().buffer())
     }

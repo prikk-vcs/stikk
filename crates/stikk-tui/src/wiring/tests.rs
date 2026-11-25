@@ -1234,8 +1234,8 @@ fn draw_top_overlay_at(
             )
         })
         .unwrap();
-    if let Some(surface) = app.reading_surface() {
-        app.report_reading(viewports.reading(surface));
+    if let Some(reading) = app.reading_surface().and_then(|s| viewports.reading(s)) {
+        app.report_reading(reading);
     }
     crate::test_util::buffer_text(terminal.backend().buffer())
 }
@@ -1504,8 +1504,8 @@ fn shell_text_at(
     terminal
         .draw(|frame| crate::shell::render(app, &look(), viewports, frame))
         .expect("a draw");
-    if let Some(surface) = app.reading_surface() {
-        app.report_reading(viewports.reading(surface));
+    if let Some(reading) = app.reading_surface().and_then(|s| viewports.reading(s)) {
+        app.report_reading(reading);
     }
     crate::test_util::buffer_text(terminal.backend().buffer())
 }
@@ -1610,8 +1610,8 @@ fn draw_card(app: &mut App, viewports: &mut crate::viewports::Viewports, w: u16,
             )
         })
         .unwrap();
-    if let Some(surface) = app.reading_surface() {
-        app.report_reading(viewports.reading(surface));
+    if let Some(reading) = app.reading_surface().and_then(|s| viewports.reading(s)) {
+        app.report_reading(reading);
     }
     crate::test_util::buffer_text(terminal.backend().buffer())
 }
@@ -1724,4 +1724,90 @@ fn dirty_worktree_status() -> WorktreeStatus {
         queued_elsewhere: None,
         declarations: Vec::new(),
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The reading gate holds again (RFC 067 Handoff C; the 0.22.0 regression)
+// ---------------------------------------------------------------------------------------------
+
+/// **A card hidden behind the "window too small" notice cannot be confirmed** (Handoff C §4).
+///
+/// At 60 × 14 `shell::render` draws the too-small notice and returns before any card is laid out.
+/// In 0.22.0 the run loop reported *"the end is on screen"* anyway, the program latched it, and one
+/// `Enter` committed a card nobody had seen. The real binary did exactly that: `60x14 … queued
+/// patches 1`, where 0.21.1 gave 0.
+#[test]
+fn a_card_behind_the_too_small_notice_cannot_be_confirmed() {
+    let (mut app, rx) = commit_awaiting_confirmation();
+    let mut viewports = crate::viewports::Viewports::default();
+
+    // One turn of the run loop at a window too small to draw anything but the notice.
+    let notice = shell_text_at(&mut app, &mut viewports, 60, 14);
+    assert!(
+        !notice.contains("Confirm"),
+        "the card is not on screen at 60x14:\n{notice}"
+    );
+    assert!(
+        !app.seen_whole_card(),
+        "and nothing drew it, so nothing can have read it"
+    );
+
+    crate::keys::handle_key(&mut app, key(ratatui::crossterm::event::KeyCode::Enter));
+    assert!(
+        rx.try_recv().is_err(),
+        "a card nobody has seen must dispatch nothing at all"
+    );
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::Confirmation { .. })),
+        "and the card stays open, found {:?}",
+        app.top_overlay()
+    );
+}
+
+/// **The two latches agree through a Loading → Confirmation swap** (Handoff C §4).
+///
+/// This is the case the 0.22.0 agreement test never drove, and it is exactly where the two
+/// disagreed: the drawing said *"read to the end to confirm"* while the program said *seen*,
+/// because the confirmation had kept the short Loading card's surface.
+#[test]
+fn the_two_latches_agree_through_a_loading_to_confirmation_swap() {
+    use ratatui::crossterm::event::KeyCode;
+
+    let (mut app, _rx) = from_state("/repo", loaded(author_orientation_view()));
+    let mut viewports = crate::viewports::Viewports::default();
+
+    // The message step dispatches the preview, so a Loading card is on top. Draw it — it is one
+    // line, so this really does put its end on screen and really does latch it.
+    app.begin_commit();
+    app.input_char('x');
+    app.select();
+    assert!(matches!(app.top_overlay(), Some(Overlay::Loading { .. })));
+    let _ = shell_text_at(&mut app, &mut viewports, 60, 15);
+
+    // The answer replaces it with a card too tall for this window.
+    app.push_overlay_for_test(Overlay::Confirmation {
+        summary: Box::new(long_confirmation()),
+        tier: Tier::Two,
+        typed: String::new(),
+        error: None,
+    });
+
+    let mut scrolls = 0;
+    loop {
+        let _ = shell_text_at(&mut app, &mut viewports, 60, 15);
+        let surface = app.reading_surface().expect("a card is on top");
+        assert_eq!(
+            app.seen_whole_card(),
+            viewports.of(surface).seen_whole_card(),
+            "after {scrolls} scrolls the program and the drawing disagree"
+        );
+        if app.at_end() {
+            break;
+        }
+        viewports.apply(crate::keys::handle_key(&mut app, key(KeyCode::Down)));
+        scrolls += 1;
+        assert!(scrolls < 200, "the card never reached its end");
+    }
+    assert!(scrolls > 0, "the card must not fit, or this proves nothing");
+    assert!(app.seen_whole_card(), "and reaching the end reads it");
 }

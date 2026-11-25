@@ -63,16 +63,39 @@ impl Viewports {
         self.by_surface.len()
     }
 
-    /// **What the last draw of `surface` found**, to report to the program.
+    /// **What the last draw of `surface` found**, or `None` if no draw has laid it out.
     ///
-    /// A surface with no entry has not been drawn, and reads as *"nothing above, and the end is on
-    /// screen"* — the same answer an undrawn card gave when the program held the offsets.
-    pub(crate) fn reading(&self, surface: Surface) -> Reading {
-        let scroll = self.by_surface.get(&surface);
-        Reading {
-            surface,
-            more_above: scroll.is_some_and(Scroll::more_above),
-            at_end: scroll.is_none_or(Scroll::at_end),
+    /// **`None` is how *"not drawn"* reaches the program** (Handoff C §2.2), and it is the whole
+    /// point of this signature. The two questions the program asks about a surface have different
+    /// answers for one that was never drawn, and 0.22.0 merged them:
+    ///
+    /// - **may `↓` move into the actions?** For an undrawn card, *"yes, it is at the end"* — which
+    ///   is what `App::at_end`'s *"no report means at the end"* already says, and every handler test
+    ///   that never draws depends on it.
+    /// - **has the reader seen the end?** For an undrawn card, **no**, and only a draw can make it
+    ///   yes.
+    ///
+    /// Reporting `at_end: true` for an undrawn surface answered the first question and silently
+    /// answered the second as well, so a confirmation hidden behind the *"window too small"* notice
+    /// -- where `shell::render` returns before any card is drawn -- was latched as read and could be
+    /// confirmed unseen. Saying nothing leaves both answers to the program's own defaults, which are
+    /// right: `↓` still moves, and the gate stays closed.
+    ///
+    /// **Having an entry is not having been drawn** (trap 3): [`Self::apply`] creates one for a
+    /// surface it has only scrolled, so the answer comes from
+    /// [`crate::overlay::Scroll::was_measured`], which only a renderer sets.
+    pub(crate) fn reading(&self, surface: Surface) -> Option<Reading> {
+        let scroll = self.by_surface.get(&surface)?;
+        if !scroll.was_measured() {
+            return None;
         }
+        Some(Reading {
+            surface,
+            more_above: scroll.more_above(),
+            at_end: scroll.at_end(),
+        })
     }
 }
+
+#[cfg(test)]
+mod tests;

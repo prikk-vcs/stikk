@@ -159,8 +159,12 @@ fn ui_loop(
         terminal
             .draw(|frame| shell::render(&app, &resolved, &mut viewports, frame))
             .map_err(|e| StikkError::environment("failed to draw the terminal", e))?;
-        if let Some(surface) = app.reading_surface() {
-            app.report_reading(viewports.reading(surface));
+        // **Only a surface that was laid out is reported** (Handoff C §2.3). With the too-small
+        // notice up, `shell::render` returns before any card is drawn, and there is nothing to
+        // report; saying nothing leaves the program's own defaults, which keep `↓` moving and keep
+        // the confirmation closed.
+        if let Some(reading) = app.reading_surface().and_then(|s| viewports.reading(s)) {
+            app.report_reading(reading);
         }
 
         if event::poll(POLL).map_err(|e| StikkError::environment("input poll failed", e))? {

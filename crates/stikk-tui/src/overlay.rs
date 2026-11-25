@@ -3211,6 +3211,18 @@ pub struct Scroll {
     /// `app::tests::the_two_latches_agree_on_the_first_draw_of_a_card_that_fits` does the same for
     /// the first frame of a card that does.
     seen: std::cell::Cell<bool>,
+    /// **Whether a renderer has actually laid this surface out** (Handoff C §2.1).
+    ///
+    /// `Default` leaves it false, and only [`Self::fit`] and [`Self::note_max`] -- the two calls a
+    /// renderer makes while drawing -- set it. So an entry that exists because
+    /// [`crate::viewports::Viewports::apply`] carried out a scroll, or because `of` was asked for
+    /// one, is **not** measured until it is drawn.
+    ///
+    /// It is what lets [`crate::viewports::Viewports::reading`] answer *"not drawn"* rather than
+    /// guess. Having an entry is not having been drawn, which is the second cause of the 0.22.0
+    /// regression: with the too-small notice up, `shell::render` returns before any card is drawn,
+    /// and the report still said the end was on screen.
+    measured: std::cell::Cell<bool>,
 }
 
 impl Scroll {
@@ -3239,6 +3251,7 @@ impl Scroll {
     /// rather than calling [`Self::fit`]. Without this the program would be told a view's end was
     /// always on screen.
     pub(crate) fn note_max(&self, max: u16) {
+        self.measured.set(true);
         self.max.set(max);
     }
 
@@ -3247,9 +3260,15 @@ impl Scroll {
         self.seen.get()
     }
 
+    /// Whether a renderer has laid this surface out — see [`Self::measured`].
+    pub(crate) fn was_measured(&self) -> bool {
+        self.measured.get()
+    }
+
     /// Clamp the offset to a viewport of `viewport` rows over `rows` rows of text, and latch
     /// *"seen"* when the last row is among those on screen. Called by the renderer, once per draw.
     fn fit(&self, rows: usize, viewport: usize) -> u16 {
+        self.measured.set(true);
         let max = u16::try_from(rows.saturating_sub(viewport)).unwrap_or(u16::MAX);
         self.max.set(max);
         let offset = self.offset.get().min(max);

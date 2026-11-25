@@ -31,7 +31,7 @@ _Design settled; implementer may start; work has not yet shipped._
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
 | 072 | [Checks follow their causes, and the release steps are written once](./accepted/072-checks-follow-their-causes.md) | the supply-chain check runs when the dependencies change; the installer fill, the archive packaging and the version read become shared scripts | [A: checks and shared steps](./handoffs/072-checks-follow-their-causes/a-checks-and-shared-steps-handoff-v1.md) |
-| 065 | [Choosing the GUI toolkit: Snora first, measured](./accepted/065-choosing-the-gui-toolkit.md) | path B ruled (Snora), tested for five reversal triggers by one prototype drawn from the real `stikk-app` | [A: the remaining measurements, under the GUI rules](./handoffs/065-choosing-the-gui-toolkit/a-the-measurements-under-the-gui-rules-handoff-v1.md) (the dev team measures, the architect reviews; owner, 2026-11-25) |
+| 065 | [Choosing the GUI toolkit: Snora first, measured](./accepted/065-choosing-the-gui-toolkit.md) | path B ruled (Snora), tested for five reversal triggers by one prototype drawn from the real `stikk-app` | [A: the remaining measurements, under the GUI rules](./handoffs/065-choosing-the-gui-toolkit/a-the-measurements-under-the-gui-rules-handoff-v1.md) (the dev team measures, the architect reviews; owner, 2026-11-25) · [B: the owner's Windows kit](./handoffs/065-choosing-the-gui-toolkit/b-the-owners-windows-kit-handoff-v1.md) |
 
 ## Done (implemented)
 

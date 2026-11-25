@@ -2,7 +2,12 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
-## Unreleased
+## 0.22.1 — 2026-11-25
+
+**0.22.0 with its confirmation gate fixed. Use 0.22.1: in 0.22.0 a confirmation that did not fit the
+window could be confirmed without being read.** Nothing else changed, and no public API did:
+`cargo public-api -p <crate> diff 0.22.0` reports no removed, no changed and no added item in any of
+the six library crates (the `stikk` launcher has no library API to diff).
 
 ### Fixed
 

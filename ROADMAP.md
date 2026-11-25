@@ -299,6 +299,10 @@ increments are underneath it.
   fixed is recorded with why it does not reach stikk — and an ignore that stops matching now **fails
   the gate**, so the record goes the day it is no longer needed.
 
+- **Released again as 0.22.1**: 0.22.0 let a confirmation that did not fit the window be confirmed
+  unread, and one behind the *"window too small"* notice be confirmed unseen. 0.22.1 is 0.22.0 with
+  that fixed ([RFC 067 Handoff C](rfcs/handoffs/067-stikk-app-the-shared-program/c-the-reading-gate-holds-handoff-v1.md)).
+
 **In progress, not shipped:** [RFC 065](rfcs/accepted/065-choosing-the-gui-toolkit.md), the GUI toolkit. It ships
 nothing in 0.22.0, and 0.22.0 promises no GUI.
 

@@ -609,15 +609,26 @@ nothing in 0.22.0, and 0.22.0 promises no GUI.
 - **The validated prikk range is unchanged — `>= 0.28`, through `0.51.0`** — and the real-binary suite drives 47
   cases at 0.28.0 and 0.51.0 on Linux, macOS and Windows.
 
-## Next — 0.22.0: choosing the GUI toolkit
+## Next — 0.23.0: the desktop app takes shape, unpublished
 
-**0.22.0's theme is choosing the GUI toolkit** (owner, 2026-11-21). A TUI cannot give screen readers, real
-typography, or the OS's own text size and zoom. The toolkit RFC prototypes egui (with AccessKit), iced and GTK, and
-chooses by RFC 001's filter, accessibility first. The new prikk 0.57/0.58 features are **0.22.0 candidates** too:
-going back to an older block in one step, counting what a key removal breaks, exact parents for undo and undoing a
-merge, `uncommit`, and `bundle preview --adopt`.
+**0.23.0 designs, builds and tests stikk's desktop app, and does not publish it** (owner, 2026-11-25). The app is
+published in a later release, once it draws every screen and card the terminal does: a desktop app that lists an
+action it cannot do would confuse the users it is for.
 
-**The scope is proposed once 0.21.0 is cut.**
+- **The toolkit is closed** ([RFC 065](rfcs/accepted/065-choosing-the-gui-toolkit.md)): Snora on iced, unless a
+  measurement under the GUI test rules finds a serious issue.
+- **The desktop app's design rules** (RFC 069), for older and visually impaired users: type sizes by purpose, contrast
+  floors, one zoom, 44 px targets, colour never alone, and the keyboard model. They include the rules that keep later
+  languages cheap, right-to-left among them, and the rule that a front end reports only what it drew.
+- **The app's foundation and its reading screens** (RFC 070), tested headless on Linux, macOS and Windows.
+- **How the app will reach users** (RFC 071): designed and measured; built in the release that publishes it.
+- **The supply-chain check runs when the dependencies change** ([RFC 072](rfcs/accepted/072-checks-follow-their-causes.md)).
+- **Nothing acts behind the terminal's "window too small" notice** (RFC 073): only quitting does.
+
+**After 0.23.0:** prikk 0.57 and 0.58's features (going back in one step, `uncommit`, undoing a merge and more) come
+once the desktop app has caught up, so that both front ends gain them together. Multilingual support (Japanese first,
+right-to-left later) is its own work, and comes before the app is published. Fixes for terminal users in the meantime
+ship as 0.22.x patches.
 
 **Decision points, carried:** **SignPath signing** — re-entered only together with prikk's own signing decision,
 since signing stikk alone leaves `prikk.exe` blocked; **the Homebrew tap keeps waiting** on the owner's repository and

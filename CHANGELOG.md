@@ -2,6 +2,15 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+### Fixed
+
+- **A confirmation card that did not fit the window could be confirmed with one `Enter` without
+  being read, and one hidden behind the *"window too small"* notice could be confirmed unseen** (a
+  regression in 0.22.0; 0.21.1 was not affected). The card again waits until its last line has been
+  on screen.
+
 ## 0.22.0 — 2026-11-25
 
 **The same stikk for a user. Its program is now its own crate, ready to be shared with a second

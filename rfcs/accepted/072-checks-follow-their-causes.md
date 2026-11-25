@@ -1,6 +1,6 @@
 # RFC 072 — Checks follow their causes, and the release steps are written once
 
-**Status.** **Proposed 2026-11-25** by the architect, as 0.23.0's increments 4 and 5
+**Status.** **Accepted by the project owner 2026-11-25**; [Handoff A](../handoffs/072-checks-follow-their-causes/a-checks-and-shared-steps-handoff-v1.md). **Proposed 2026-11-25** by the architect, as 0.23.0's increments 4 and 5
 (`.git-exclude/release/0-23-0-scope.md`, authorized by the project owner 2026-11-25). **No open question.**
 **Measured** on `main` at `baed649` (the 0.22.0 tag).
 **Tracks.**

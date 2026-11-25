@@ -24,13 +24,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 |----|-------|-----------|
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 072 | [Checks follow their causes, and the release steps are written once](./proposed/072-checks-follow-their-causes.md) | the supply-chain check runs when the dependencies change (RFC 020 Q1 answered: no schedule); the installer fill, the archive packaging and the version read become shared scripts |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
+| 072 | [Checks follow their causes, and the release steps are written once](./accepted/072-checks-follow-their-causes.md) | the supply-chain check runs when the dependencies change; the installer fill, the archive packaging and the version read become shared scripts | [A: checks and shared steps](./handoffs/072-checks-follow-their-causes/a-checks-and-shared-steps-handoff-v1.md) |
 | 065 | [Choosing the GUI toolkit: Snora first, measured](./accepted/065-choosing-the-gui-toolkit.md) | path B ruled (Snora), tested for five reversal triggers by one prototype drawn from the real `stikk-app` | none: the architect measures |
 
 ## Done (implemented)

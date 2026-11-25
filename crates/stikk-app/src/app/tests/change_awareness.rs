@@ -457,7 +457,7 @@ fn a_change_detected_under_a_commit_confirmation_makes_it_stale_at_once() {
         other => panic!("expected the stale overlay, got {other:?}"),
     }
     assert_eq!(
-        app.overlays.len(),
+        app.cards.len(),
         1,
         "the confirmation was replaced, not covered"
     );
@@ -499,7 +499,7 @@ fn a_change_detected_at_seals_consent_step_makes_it_stale_at_once() {
         }
         other => panic!("expected the stale overlay, got {other:?}"),
     }
-    assert_eq!(app.overlays.len(), 1);
+    assert_eq!(app.cards.len(), 1);
     assert!(app.pending_seal.is_none(), "nothing stays armed");
     let requests = drain(&rx);
     assert_refreshed_with_notice(&app, &requests);
@@ -708,11 +708,7 @@ fn a_change_finds_a_commit_confirmation_beneath_the_glossary_and_clears_everythi
         }
         other => panic!("expected the stale overlay on top, got {other:?}"),
     }
-    assert_eq!(
-        app.overlays.len(),
-        1,
-        "no Confirmation or Glossary beneath it"
-    );
+    assert_eq!(app.cards.len(), 1, "no Confirmation or Glossary beneath it");
     assert!(app.pending_commit.is_none(), "nothing stays armed");
     let requests = drain(&rx);
     assert_refreshed_with_notice(&app, &requests);
@@ -746,11 +742,7 @@ fn a_change_finds_seals_consent_step_beneath_the_palette_and_clears_everything_a
         }
         other => panic!("expected the stale overlay on top, got {other:?}"),
     }
-    assert_eq!(
-        app.overlays.len(),
-        1,
-        "no SealConsent or palette beneath it"
-    );
+    assert_eq!(app.cards.len(), 1, "no SealConsent or palette beneath it");
     assert!(app.pending_seal.is_none(), "nothing stays armed");
     let requests = drain(&rx);
     assert_refreshed_with_notice(&app, &requests);

@@ -5925,3 +5925,389 @@ fn an_at_end_report_opens_the_card_and_scrolling_back_does_not_close_it() {
 // ---------------------------------------------------------------------------------------------
 // The two latches agree (review v1 F2)
 // ---------------------------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------------------------
+// A card that takes another card's place is a new card (Handoff C §4; the 0.22.0 regression)
+// ---------------------------------------------------------------------------------------------
+
+/// **The gate holds across the swap.** Drives one flow's `Overlay::Loading` to the point where its
+/// answer replaces it, and holds the card that appears to the rule.
+///
+/// The Loading card is one line, so its first draw really does put its end on screen and the latch
+/// really does set — that is not a contrivance, it is what happens. In 0.22.0 the confirmation that
+/// replaced it kept that surface and was therefore born *read*, and one `Enter` committed it. So:
+///
+/// 1. the Loading card is on top, and is reported read to its end;
+/// 2. the answer arrives;
+/// 3. the card that appears has **a different surface** and is **not read**;
+/// 4. a report for **its own** surface is what opens it.
+fn the_gate_holds_across_the_swap(app: &mut App, answer: impl FnOnce(&mut App)) {
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::Loading { .. })),
+        "this flow should be waiting on a Loading card, found {:?}",
+        app.top_overlay()
+    );
+    let loading = app.reading_surface().expect("a card on top is a surface");
+    app.report_reading(Reading {
+        surface: loading,
+        more_above: false,
+        at_end: true,
+    });
+    assert!(
+        app.seen_whole_card(),
+        "the Loading card's own end was on screen, so it is read"
+    );
+
+    answer(app);
+
+    let (card, surface) = app.top_card().expect("a card is on top after the answer");
+    assert!(
+        matches!(card, Overlay::Confirmation { .. }),
+        "the answer should open a confirmation, found {card:?}"
+    );
+    assert_ne!(
+        surface, loading,
+        "a card that takes another's place is a new card"
+    );
+    assert!(
+        !app.seen_whole_card(),
+        "and it is unread until it has been read"
+    );
+
+    app.report_reading(Reading {
+        surface,
+        more_above: false,
+        at_end: true,
+    });
+    assert!(
+        app.seen_whole_card(),
+        "a report for its own surface is what opens it"
+    );
+}
+
+/// Commit — `apply_commit_preview` (`app.rs:5301`).
+#[test]
+fn a_commit_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
+    app.begin_commit();
+    app.input_char('x');
+    app.select();
+    let req = next_request(&rx);
+    let backend = commit_backend();
+    let outcome = commit_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("a scripted backend's preview always succeeds");
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::CommitPreview(Ok(outcome)),
+        });
+    });
+}
+
+/// Seal — `apply_seal_preview` (`app.rs:5370`), the site the handoff names.
+#[test]
+fn a_seal_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let (mut app, rx) = from_state(
+        "/repo",
+        loaded(maintainer_orientation_view(1, Some("heads/main"))),
+    );
+    app.begin_seal();
+    let req = next_request(&rx);
+    let backend = seal_backend();
+    let outcome = seal_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("a scripted backend's preview always succeeds");
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::SealPreview(Ok(outcome)),
+        });
+    });
+}
+
+/// Switch — `apply_switch_preview` (`app.rs:5558`).
+#[test]
+fn a_switch_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let (mut app, rx) = switch_picker(switch_view(52, "heads/main"), 1);
+    app.begin_switch_branch();
+    let req = next_request(&rx);
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::SwitchPreview(Ok(switch_core_preview())),
+        });
+    });
+}
+
+/// Undo — `apply_undo_preview` (`app.rs:2886`).
+#[test]
+fn an_undo_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let (mut app, rx) = undoing();
+    app.begin_undo_block();
+    app.input_char('!');
+    app.select();
+    let req = next_request(&rx);
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::UndoPreview(Ok(undo_preview_outcome())),
+        });
+    });
+}
+
+/// Ref write — `apply_ref_write_preview` (`app.rs:5455`).
+#[test]
+fn a_ref_write_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let (mut app, rx) = open_picker(0);
+    app.begin_create_branch();
+    for ch in "feature".chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    let req = next_request(&rx);
+    let backend = NullBackend::supported();
+    let preview = stikk_core::create_branch_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        "heads/feature",
+        "heads/main",
+    )
+    .expect("a scripted backend's preview always succeeds");
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::RefWritePreview(Ok(preview)),
+        });
+    });
+}
+
+/// Merge — `apply_merge_preview` (`app.rs:3177`).
+#[test]
+fn a_merge_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let armed = merge_core_preview();
+    let (mut app, rx) = merge_picker(
+        merge_view(53, "heads/other", 0, None),
+        Some("heads/feature"),
+        0,
+    );
+    app.begin_merge_plan();
+    let seq = next_request(&rx).seq;
+    app.apply(Response {
+        seq,
+        kind: ResponseKind::MergePlan(Ok(stikk_core::MergePlanRead::Read(Box::new(
+            stikk_core::MergePlanView {
+                from: "heads/feature".into(),
+                into: "heads/main".into(),
+                baseline: "88f34150e099".into(),
+                lines: vec!["evidence outcome: Confluent".into()],
+                outcome: stikk_prikk::MergeOutcome::Confluent,
+            },
+        )))),
+    });
+    app.select_screen_or_row();
+    let seq = next_request(&rx).seq;
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq,
+            kind: ResponseKind::MergePreview(Ok(armed)),
+        });
+    });
+}
+
+/// Import — `apply_import_preview` (`app.rs:2446`).
+#[test]
+fn an_import_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let (mut app, rx) = bundle_app(53);
+    bundle_screen(&mut app, &rx, Some(TIP));
+    app.begin_import();
+    let req = next_request(&rx);
+    let token = stikk_core::import_preview(
+        &stikk_prikk::NullBackend::supported()
+            .with_version(0, 53, 0)
+            .with_bundle_verify(vec![format!("tip block: {TIP}")])
+            .with_bundle_preview(stikk_prikk::BundlePreviewRead {
+                bundle_ref: "heads/main".to_string(),
+                local_ref: "heads/main".to_string(),
+                connectivity: stikk_prikk::Connectivity::FastForward,
+                conflict: Some(stikk_prikk::BundleConflict::AppliesCleanly),
+                conflict_detail: None,
+                sealed_by: Vec::new(),
+                sealed_by_note: "n".to_string(),
+                effects: Vec::new(),
+                rename_note: "r".to_string(),
+                seal_outcomes: None,
+                import_refusals: None,
+            })
+            .with_refs(Vec::new()),
+        std::path::Path::new("/repo"),
+        std::path::Path::new("/tmp/v1.bundle"),
+        200,
+    )
+    .expect("a preview");
+    let stikk_core::ImportPreview::Ready { token } = token else {
+        panic!("a first import arms");
+    };
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::ImportPreview(Ok(stikk_core::ImportPreview::Ready { token })),
+        });
+    });
+}
+
+/// Trust write — `arm_trust_confirmation` (`app.rs:1609`), reached by the adopt flow.
+#[test]
+fn a_trust_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let (mut app, rx) = on_trust();
+    let backend = NullBackend::supported()
+        .with_version(0, 56, 0)
+        .with_trusted_keys(vec![stikk_prikk::TrustedKey {
+            key_id: RFC056_MINE.to_string(),
+            public_key: RFC056_MINE_KEY.to_string(),
+        }]);
+    let stikk_core::AdoptPreview::Ready { token } = stikk_core::adopt_preview(
+        &backend,
+        std::path::Path::new("/repo"),
+        Readiness {
+            read_only: false,
+            ..Readiness::none()
+        },
+        RFC056_NEW_ID,
+        RFC056_NEW_KEY,
+    )
+    .expect("the preview answers") else {
+        panic!("expected an armed adopt: the id is not in the list");
+    };
+    app.begin_adopt_key();
+    for ch in RFC056_NEW_KEY.chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    for ch in RFC056_NEW_ID.chars() {
+        app.input_char(ch);
+    }
+    app.select();
+    let req = next_request(&rx);
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::TrustAdoptPreview(Ok(stikk_core::AdoptPreview::Ready { token })),
+        });
+    });
+}
+
+/// Export — `apply_export_preview` (`app.rs:3081`).
+#[test]
+fn an_export_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let mut view = orientation_view(0, None, Some("abc123"));
+    view.prikk_minor = 53;
+    let (mut app, rx) = picker(
+        view,
+        vec![entry("heads/main", false)],
+        stikk_prikk::UnpublishedBranch::None,
+        0,
+    );
+    app.begin_export();
+    type_in(&mut app, "out.bundle");
+    app.select();
+    let req = next_request(&rx);
+    let RequestKind::ExportPreview { target } = &req.kind else {
+        panic!("expected an ExportPreview, got {:?}", req.kind);
+    };
+    let preview = stikk_core::export_preview(
+        &NullBackend::supported().with_version(0, 53, 0),
+        std::path::Path::new("/repo"),
+        &target.reff,
+        &target.output,
+    )
+    .expect("a scripted backend's preview always succeeds");
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::ExportPreview(Ok(preview)),
+        });
+    });
+}
+
+/// Save — `apply_save_preview` (`app.rs:2968`), reached by `f` on a file.
+#[test]
+fn a_save_confirmation_does_not_inherit_the_loading_cards_reading() {
+    let (mut app, rx) = from_state("/repo", loaded(files_orientation_view()));
+    block_with_files(&mut app, &rx, 55);
+    app.begin_save_file();
+    app.select();
+    let req = next_request(&rx);
+    let RequestKind::SaveFilePreview { target } = &req.kind else {
+        panic!("expected a SaveFilePreview, got {:?}", req.kind);
+    };
+    let preview = stikk_core::save_file_preview(
+        &NullBackend::supported()
+            .with_version(0, 55, 0)
+            .with_file_meta(stikk_prikk::FileMeta {
+                kind: "file".to_string(),
+                encoding: "text".to_string(),
+                mode: 0o100_644,
+                size: 12,
+            }),
+        std::path::Path::new("/repo"),
+        &target.block,
+        &target.path,
+        &target.output,
+    )
+    .expect("a scripted backend's preview always succeeds");
+    if let stikk_core::SaveFilePreview::Blocked(why) = &preview {
+        panic!("the scripted save preview was blocked: {why}");
+    }
+    the_gate_holds_across_the_swap(&mut app, |app| {
+        app.apply(Response {
+            seq: req.seq,
+            kind: ResponseKind::SaveFilePreview(Ok(preview)),
+        });
+    });
+}
+
+/// **A card replaced below the top leaves the reader where they are** (trap 1).
+///
+/// The other half of the rule: minting on every replace would throw away the latch of the card the
+/// reader *is* reading, which would erase the fact that they scrolled to its end. So a preview's
+/// answer landing under an open card changes neither the top's surface nor its reading.
+#[test]
+fn an_answer_that_lands_below_the_top_leaves_the_tops_reading_alone() {
+    let (mut app, rx) = from_state("/repo", loaded(author_orientation_view()));
+    app.begin_commit();
+    app.input_char('x');
+    app.select();
+    let req = next_request(&rx);
+
+    // A card the reader opens over the one waiting for its answer, and reads to the end.
+    app.open_glossary();
+    let top = app.reading_surface().expect("the Glossary is a surface");
+    app.report_reading(Reading {
+        surface: top,
+        more_above: false,
+        at_end: true,
+    });
+    assert!(app.seen_whole_card());
+
+    let backend = commit_backend();
+    let outcome = commit_preview(&backend, std::path::Path::new("/repo"), "heads/main")
+        .expect("a scripted backend's preview always succeeds");
+    app.apply(Response {
+        seq: req.seq,
+        kind: ResponseKind::CommitPreview(Ok(outcome)),
+    });
+
+    assert_eq!(
+        app.reading_surface(),
+        Some(top),
+        "the reader is still reading the Glossary"
+    );
+    assert!(
+        app.seen_whole_card(),
+        "and what they read stays read: the answer landed underneath"
+    );
+    assert!(
+        matches!(app.top_overlay(), Some(Overlay::Glossary)),
+        "the Glossary is still on top, found {:?}",
+        app.top_overlay()
+    );
+}

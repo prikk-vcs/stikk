@@ -32,6 +32,7 @@ use stikk_core::{
 use stikk_core::{PatchDetailView, PatchMessageState, QueueView, RefHistory};
 use stikk_model::{ChangeToken, CurrentBranch, StaleCause, StikkError, Tier};
 
+use crate::cards::Cards;
 use crate::overlay::{Overlay, RefNameKind, RefWriteKind, SavePathKind};
 use crate::worker::{OrientRead, Request, RequestKind, Response, ResponseKind};
 
@@ -121,6 +122,17 @@ pub struct Session {
 pub struct Surface(u64);
 
 impl Surface {
+    /// The surface an empty stack reports, before anything has been minted.
+    pub(crate) fn first() -> Self {
+        Self(0)
+    }
+
+    /// **Minted by [`crate::cards::Cards`] and nowhere else**, so every surface in the program comes
+    /// from one counter and two of them cannot collide in the front end's offsets.
+    pub(crate) fn of(id: u64) -> Self {
+        Self(id)
+    }
+
     /// A surface for a renderer's own test, which has no `App` to be handed one by.
     ///
     /// **Test-only, and not a public constructor** (§4.1): outside the tests nothing but the
@@ -540,15 +552,11 @@ pub struct App {
     /// from then on. A later read never moves it (RFC 029 Handoff B §2).
     ref_focus: RefFocus,
     screens: Vec<Screen>,
-    overlays: Vec<Overlay>,
-    /// **The top overlay's surface** (RFC 067 decision 4).
-    ///
-    /// One, not one per overlay: only the top overlay is drawn and only it takes keys. It is minted
-    /// afresh by every change to [`Self::overlays`], so a card pushed where another was does not
-    /// inherit the reader it never had.
-    overlay_surface: Surface,
-    /// Mints [`Surface`]s. Never reused, so a report can always be told from a late one.
-    next_surface: u64,
+    /// **The overlay stack and the surface of the card on top** (RFC 067 decision 4), behind a type
+    /// whose fields this module cannot reach — see [`crate::cards`] for why that matters: every way
+    /// a card reaches the top mints a surface, so none can inherit the reading of the card it
+    /// replaced. It mints screens' surfaces too, from the same counter.
+    cards: Cards,
     /// **What the front end last said it saw** (RFC 067 decision 4), for the surface it named.
     ///
     /// `None`, or a report for a surface that is no longer current, reads as *"nothing is scrolled
@@ -1048,9 +1056,7 @@ impl App {
             orientation_pending: None,
             ref_focus: RefFocus::Pending,
             screens: Vec::new(),
-            overlays: Vec::new(),
-            overlay_surface: Surface(0),
-            next_surface: 1,
+            cards: Cards::default(),
             reading: None,
             refusals: RefusalHistory::new(),
             banner: None,
@@ -1306,7 +1312,7 @@ impl App {
             Overlay::SealConsent { .. } => true,
             _ => false,
         };
-        let Some(index) = self.overlays.iter().rposition(armed) else {
+        let Some(index) = self.cards.iter().rposition(armed) else {
             return;
         };
         let (operation, context) = if commit {
@@ -1314,8 +1320,7 @@ impl App {
         } else {
             (SEAL_OPERATION, OperationContext::Other)
         };
-        self.overlay_surface = self.mint_surface();
-        self.overlays.truncate(index);
+        self.cards.truncate(index);
         self.pending_commit = None;
         self.pending_seal = None;
         let stale = StikkError::Stale {
@@ -1422,7 +1427,7 @@ impl App {
     /// prompt whose answer prikk could not take.
     pub fn begin_adopt_key(&mut self) {
         self.banner = None;
-        if !matches!(self.screens.last(), Some(Screen::Trust { .. })) || !self.overlays.is_empty() {
+        if !matches!(self.screens.last(), Some(Screen::Trust { .. })) || !self.cards.is_empty() {
             return;
         }
         if let Some(reason) = self.trust_writes_unavailable() {
@@ -1489,7 +1494,7 @@ impl App {
                 });
             }
             Err(said) => {
-                if let Some(Overlay::TrustPublicKey { error, .. }) = self.overlays.last_mut() {
+                if let Some(Overlay::TrustPublicKey { error, .. }) = self.cards.top_mut() {
                     *error = Some(said);
                 }
             }
@@ -1507,7 +1512,7 @@ impl App {
                 });
             }
             Err(said) => {
-                if let Some(Overlay::TrustKeyId { error, .. }) = self.overlays.last_mut() {
+                if let Some(Overlay::TrustKeyId { error, .. }) = self.cards.top_mut() {
                     *error = Some(said);
                 }
             }
@@ -1548,20 +1553,17 @@ impl App {
         let pending = self.pending_trust.take();
         match result {
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
             Ok(stikk_core::AdoptPreview::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             // **Its own overlay, and no confirmation** (decision 4).
             Ok(stikk_core::AdoptPreview::TwoKeys(warning)) => {
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::TrustConflict { warning };
-                }
+                self.cards
+                    .replace(index, Overlay::TrustConflict { warning });
             }
             Ok(stikk_core::AdoptPreview::Ready { token }) => {
                 self.arm_trust_confirmation(index, token, pending);
@@ -1581,13 +1583,11 @@ impl App {
         let pending = self.pending_trust.take();
         match result {
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
             Ok(stikk_core::RemovePreview::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::RemovePreview::Ready { token }) => {
@@ -1604,18 +1604,18 @@ impl App {
         pending: Option<PendingTrust>,
     ) {
         let Some(PendingTrust::AwaitingPreview(target)) = pending else {
-            self.overlay_surface = self.mint_surface();
-            self.overlays.remove(index);
+            self.cards.remove(index);
             return; // defensive
         };
-        if let Some(slot) = self.overlays.get_mut(index) {
-            *slot = Overlay::Confirmation {
+        self.cards.replace(
+            index,
+            Overlay::Confirmation {
                 summary: Box::new(token.summary().clone()),
                 tier: token.tier(),
                 typed: String::new(),
                 error: None,
-            };
-        }
+            },
+        );
         self.pending_trust = Some(PendingTrust::Confirming { token, target });
     }
 
@@ -1666,8 +1666,7 @@ impl App {
         self.pending_trust = None;
         match result {
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 // **prikk's own words, under stikk's heading** (decision 5). The refusal path
                 // is the usual one; what RFC 056 adds is the heading, which `surface` draws
                 // from the context.
@@ -1680,25 +1679,26 @@ impl App {
                     *view = outcome.result.view.clone();
                     *cursor = 0;
                 }
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    // **prikk's own key-id conflict is the security event** (RFC 063
-                    // decision 7), and it arrives here rather than from the preview for a
-                    // removed id, which is not in the list stikk's guard reads.
-                    *slot = match outcome.result.warning.clone() {
+                // **prikk's own key-id conflict is the security event** (RFC 063
+                // decision 7), and it arrives here rather than from the preview for a
+                // removed id, which is not in the list stikk's guard reads.
+                self.cards.replace(
+                    index,
+                    match outcome.result.warning.clone() {
                         Some(warning) => Overlay::TrustConflict { warning },
                         None => Overlay::TrustResult {
                             printed: outcome.result.printed.clone(),
                             see_verify: outcome.result.see_verify,
                         },
-                    };
-                }
+                    },
+                );
             }
         }
     }
 
     /// The index of the `Loading` overlay waiting on `seq`, or `None` where it has gone.
     fn loading_at(&self, seq: u64) -> Option<usize> {
-        self.overlays
+        self.cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
     }
@@ -1854,7 +1854,7 @@ impl App {
     /// `Overlay::SealConsent.acknowledged` ever changes. Reaching this screen implies nothing; only
     /// this explicit act does.
     pub fn toggle_seal_consent(&mut self) {
-        if let Some(Overlay::SealConsent { acknowledged, .. }) = self.overlays.last_mut() {
+        if let Some(Overlay::SealConsent { acknowledged, .. }) = self.cards.top_mut() {
             *acknowledged = !*acknowledged;
         }
     }
@@ -1863,7 +1863,7 @@ impl App {
     /// acknowledged is true** — an unacknowledged `Enter` does nothing, which is the whole point of
     /// this step existing (cannot be defaulted).
     fn submit_seal_consent(&mut self) {
-        let Some(Overlay::SealConsent { acknowledged, .. }) = self.overlays.last() else {
+        let Some(Overlay::SealConsent { acknowledged, .. }) = self.cards.top() else {
             return;
         };
         if !*acknowledged {
@@ -1923,14 +1923,14 @@ impl App {
     /// are the two things prikk's `--target` takes (F2), and the key means the one the reader is
     /// looking at.
     pub fn begin_create_tag(&mut self) {
-        let target = if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
+        let target = if matches!(self.cards.top(), Some(Overlay::RefPicker { .. })) {
             let Some(reff) = self.ref_write_source() else {
                 return;
             };
             self.pop_overlay();
             reff
         } else {
-            if !self.overlays.is_empty() || !self.ref_writes_offered() {
+            if !self.cards.is_empty() || !self.ref_writes_offered() {
                 return;
             }
             match self.screens.last() {
@@ -1963,7 +1963,7 @@ impl App {
         // in the picker and *remove a key* on Trust, and each is now found by name where it applies
         // (`ref.close`, `trust.remove`). The Trust guard stays, so that `ref.close` run from the
         // palette on the Trust screen still cannot close the branch under it.
-        if self.overlays.is_empty() && matches!(self.screens.last(), Some(Screen::Trust { .. })) {
+        if self.cards.is_empty() && matches!(self.screens.last(), Some(Screen::Trust { .. })) {
             return;
         }
         let Some(name) = self.ref_write_source() else {
@@ -2001,7 +2001,7 @@ impl App {
             cursor,
             unpublished_main,
             unpublished_current,
-        }) = self.overlays.last()
+        }) = self.cards.top()
         else {
             return None;
         };
@@ -2098,7 +2098,7 @@ impl App {
             cursor,
             unpublished_main,
             unpublished_current,
-        }) = self.overlays.last()
+        }) = self.cards.top()
         else {
             return None;
         };
@@ -2190,7 +2190,7 @@ impl App {
     /// waste the typing.
     pub fn begin_open_bundle(&mut self) {
         self.banner = None;
-        if !self.overlays.is_empty() {
+        if !self.cards.is_empty() {
             return;
         }
         if let Some(minor) = self.prikk_minor()
@@ -2237,7 +2237,7 @@ impl App {
             cursor,
             unpublished_main,
             unpublished_current,
-        }) = self.overlays.last()
+        }) = self.cards.top()
         else {
             return None;
         };
@@ -2419,7 +2419,7 @@ impl App {
         result: stikk_model::Result<stikk_core::ImportPreview>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -2428,8 +2428,7 @@ impl App {
         let pending = self.pending_import.take();
         match result {
             Ok(stikk_core::ImportPreview::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             // **prikk says it would refuse this import** (RFC 063 decision 6). The bundle card
@@ -2437,37 +2436,34 @@ impl App {
             // answer changed between opening the card and asking: stikk's own lead, then
             // prikk's sentences verbatim.
             Ok(stikk_core::ImportPreview::WouldRefuse(refusals)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(stikk_core::would_refuse_the_import(&refusals));
             }
             // **A seal that does not verify against the key trusted under its id**, at
             // 0.56–0.57, where prikk refuses the import but does not yet list its refusals in
             // full: the same card the bundle view opens, so one event is one card.
             Ok(stikk_core::ImportPreview::InvalidSeal(warning)) => {
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::TrustConflict { warning };
-                }
+                self.cards
+                    .replace(index, Overlay::TrustConflict { warning });
             }
             Ok(stikk_core::ImportPreview::Ready { token }) => {
                 let Some(PendingImport::AwaitingPreview { target }) = pending else {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::Confirmation {
+                self.cards.replace(
+                    index,
+                    Overlay::Confirmation {
                         summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
-                    };
-                }
+                    },
+                );
                 self.pending_import = Some(PendingImport::Confirming { token, target });
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
         }
@@ -2486,7 +2482,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::BundleImport>>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -2501,9 +2497,7 @@ impl App {
         match result {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::BundleImport::Done(printed) => {
-                    if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::ImportResult { printed };
-                    }
+                    self.cards.replace(index, Overlay::ImportResult { printed });
                     if let Some(target) = target {
                         self.clear_ref_mark_on_ref_change(&target.received);
                         self.ref_focus = RefFocus::Ref(target.received.clone());
@@ -2521,16 +2515,14 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::BundleImport::Unavailable => {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     self.banner = Some(stikk_core::bundle_unavailable(
                         self.prikk_minor().unwrap_or_default(),
                     ));
                 }
             },
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
         }
@@ -2555,7 +2547,7 @@ impl App {
             cursor,
             unpublished_main,
             unpublished_current,
-        }) = self.overlays.last()
+        }) = self.cards.top()
         else {
             return;
         };
@@ -2785,7 +2777,7 @@ impl App {
     /// queue at the moment the key was pressed.
     pub fn begin_undo_block(&mut self) {
         self.banner = None;
-        if !self.overlays.is_empty() {
+        if !self.cards.is_empty() {
             return;
         }
         // The same gate `undo_confirm_and_execute` takes, with commit's category, so the key and
@@ -2889,7 +2881,7 @@ impl App {
         result: stikk_model::Result<stikk_core::UndoPreviewOutcome>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -2898,24 +2890,23 @@ impl App {
         self.pending_undo = None;
         match result {
             Ok(stikk_core::UndoPreviewOutcome::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::UndoPreviewOutcome::Ready { token, .. }) => {
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::Confirmation {
+                self.cards.replace(
+                    index,
+                    Overlay::Confirmation {
                         summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
-                    };
-                }
+                    },
+                );
                 self.pending_undo = Some(PendingUndo::Confirming { token });
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
         }
@@ -2932,7 +2923,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_core::UndoResult>>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -2948,14 +2939,11 @@ impl App {
                         text: stikk_core::stopped_text(&stopped.cause),
                     },
                 };
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = overlay;
-                }
+                self.cards.replace(index, overlay);
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
         }
@@ -2970,7 +2958,7 @@ impl App {
         error: Option<stikk_model::StikkError>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -2978,30 +2966,28 @@ impl App {
         };
         let pending = self.pending_save.take();
         if let Some(error) = error {
-            self.overlay_surface = self.mint_surface();
-            self.overlays.remove(index);
+            self.cards.remove(index);
             self.surface(&error, OperationContext::Bundle);
             return;
         }
         if let Some(reason) = blocked {
-            self.overlay_surface = self.mint_surface();
-            self.overlays.remove(index);
+            self.cards.remove(index);
             self.banner = Some(reason);
             return;
         }
         let (Some(token), Some(PendingSave::AwaitingPreview(target))) = (token, pending) else {
-            self.overlay_surface = self.mint_surface();
-            self.overlays.remove(index);
+            self.cards.remove(index);
             return; // defensive
         };
-        if let Some(slot) = self.overlays.get_mut(index) {
-            *slot = Overlay::Confirmation {
+        self.cards.replace(
+            index,
+            Overlay::Confirmation {
                 summary: Box::new(token.summary().clone()),
                 tier: token.tier(),
                 typed: String::new(),
                 error: None,
-            };
-        }
+            },
+        );
         self.pending_save = Some(PendingSave::Confirming { token, target });
     }
 
@@ -3013,7 +2999,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::FileSaved>>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -3024,27 +3010,25 @@ impl App {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::FileSaved::Done => {
                     let Some(PendingSave::Executing(SaveTarget::File(target))) = pending else {
-                        self.overlay_surface = self.mint_surface();
-                        self.overlays.remove(index);
+                        self.cards.remove(index);
                         return; // defensive
                     };
-                    if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::SaveResult {
+                    self.cards.replace(
+                        index,
+                        Overlay::SaveResult {
                             lines: vec![stikk_core::saved_file_line(&target)],
-                        };
-                    }
+                        },
+                    );
                 }
                 stikk_prikk::FileSaved::Unavailable => {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     self.banner = Some(stikk_core::files_unavailable(
                         self.prikk_minor().unwrap_or_default(),
                     ));
                 }
             },
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
         }
@@ -3057,7 +3041,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::Extracted>>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -3068,27 +3052,25 @@ impl App {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::Extracted::Read(report) => {
                     let Some(PendingSave::Executing(SaveTarget::All(target))) = pending else {
-                        self.overlay_surface = self.mint_surface();
-                        self.overlays.remove(index);
+                        self.cards.remove(index);
                         return; // defensive
                     };
-                    if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::SaveResult {
+                    self.cards.replace(
+                        index,
+                        Overlay::SaveResult {
                             lines: stikk_core::saved_all_lines(&target, &report),
-                        };
-                    }
+                        },
+                    );
                 }
                 stikk_prikk::Extracted::Unavailable => {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     self.banner = Some(stikk_core::files_unavailable(
                         self.prikk_minor().unwrap_or_default(),
                     ));
                 }
             },
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
         }
@@ -3102,7 +3084,7 @@ impl App {
         result: stikk_model::Result<stikk_core::ExportPreview>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -3111,29 +3093,27 @@ impl App {
         let pending = self.pending_export.take();
         match result {
             Ok(stikk_core::ExportPreview::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::ExportPreview::Ready { token }) => {
                 let Some(PendingExport::AwaitingPreview { target }) = pending else {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     return; // defensive
                 };
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::Confirmation {
+                self.cards.replace(
+                    index,
+                    Overlay::Confirmation {
                         summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
-                    };
-                }
+                    },
+                );
                 self.pending_export = Some(PendingExport::Confirming { token, target });
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
         }
@@ -3148,7 +3128,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::BundleExport>>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -3158,21 +3138,17 @@ impl App {
         match result {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::BundleExport::Done(printed) => {
-                    if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::ExportResult { printed };
-                    }
+                    self.cards.replace(index, Overlay::ExportResult { printed });
                 }
                 stikk_prikk::BundleExport::Unavailable => {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     self.banner = Some(stikk_core::export_unavailable(
                         self.prikk_minor().unwrap_or_default(),
                     ));
                 }
             },
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Bundle);
             }
         }
@@ -3207,7 +3183,7 @@ impl App {
         result: stikk_model::Result<stikk_core::MergePreview>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -3216,29 +3192,27 @@ impl App {
         let pending = self.pending_merge.take();
         match result {
             Ok(stikk_core::MergePreview::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::MergePreview::Ready { token }) => {
                 let Some(PendingMerge::AwaitingPreview { target }) = pending else {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::Confirmation {
+                self.cards.replace(
+                    index,
+                    Overlay::Confirmation {
                         summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
-                    };
-                }
+                    },
+                );
                 self.pending_merge = Some(PendingMerge::Confirming { token, target });
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::MergePlan);
             }
         }
@@ -3256,7 +3230,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::MergeResult>>,
     ) {
         let Some(index) = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq))
         else {
@@ -3271,9 +3245,7 @@ impl App {
         match result {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::MergeResult::Done(printed) => {
-                    if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::MergeResult { printed };
-                    }
+                    self.cards.replace(index, Overlay::MergeResult { printed });
                     // **The branch merged into gained a block**, so a History of it is now
                     // short by one. Every other screen shows something this did not touch.
                     if let Some(target) = &target
@@ -3293,16 +3265,14 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::MergeResult::Unavailable => {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     self.banner = Some(stikk_core::merge_unavailable(
                         self.prikk_minor().unwrap_or_default(),
                     ));
                 }
             },
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::MergePlan);
             }
         }
@@ -3420,7 +3390,7 @@ impl App {
             cursor,
             unpublished_main,
             ..
-        }) = self.overlays.last()
+        }) = self.cards.top()
         else {
             return;
         };
@@ -3451,7 +3421,7 @@ impl App {
 
     /// The context-sensitive select/drill-in action (the `Enter` key). Overlays take priority.
     pub fn select(&mut self) {
-        match self.overlays.last() {
+        match self.cards.top() {
             // **A row list answers Enter with its row's actions** (RFC 061 decision 3). The picker is
             // an overlay, but its rows are rows: the trap's *"Enter inside an overlay is unchanged"*
             // is about the cards that are read or chosen from, and decision 3 names a ref in the
@@ -3627,7 +3597,7 @@ impl App {
             | None => {
                 // **A card is read, not chosen from** (RFC 061 trap 4): these take no Enter, and the
                 // key falls through to the screen under them only when there is no card at all.
-                if self.overlays.is_empty() {
+                if self.cards.is_empty() {
                     self.open_action_list();
                 }
             }
@@ -3637,11 +3607,11 @@ impl App {
     /// **Open the selected row** — what `Enter` did before RFC 061, and what `→` does now
     /// (decision 2). The catalog's `row.open`, and the first entry of every row's action list.
     pub fn select_screen_or_row(&mut self) {
-        if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
+        if matches!(self.cards.top(), Some(Overlay::RefPicker { .. })) {
             self.focus_selected_ref();
             return;
         }
-        if self.overlays.is_empty() {
+        if self.cards.is_empty() {
             self.select_screen();
         }
     }
@@ -3738,7 +3708,7 @@ impl App {
         // **The picker's `m` marks a ref, not a block** (RFC 041 decision 1). An overlay is what
         // the reader is looking at, so it answers the key first -- and the two marks are stored
         // apart, so neither key can ever read the other's.
-        if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
+        if matches!(self.cards.top(), Some(Overlay::RefPicker { .. })) {
             self.mark_ref();
             return;
         }
@@ -3785,7 +3755,7 @@ impl App {
             cursor,
             unpublished_main,
             unpublished_current,
-        }) = self.overlays.last()
+        }) = self.cards.top()
         else {
             return;
         };
@@ -3833,7 +3803,7 @@ impl App {
     pub fn compare(&mut self) {
         // **The picker's `d` compares two refs** (RFC 041 decision 1), and it closes the picker
         // on its way, so the Compare screen is not drawn under an overlay.
-        let pair = if matches!(self.overlays.last(), Some(Overlay::RefPicker { .. })) {
+        let pair = if matches!(self.cards.top(), Some(Overlay::RefPicker { .. })) {
             match self.ref_pair_comparison() {
                 Some(pair) => {
                     self.pop_overlay();
@@ -3864,7 +3834,7 @@ impl App {
             cursor,
             unpublished_main,
             unpublished_current,
-        }) = self.overlays.last()
+        }) = self.cards.top()
         else {
             return None;
         };
@@ -3987,7 +3957,7 @@ impl App {
 
     /// Open the glossary / help browser (the `?` key).
     pub fn open_glossary(&mut self) {
-        if matches!(self.overlays.last(), Some(Overlay::Glossary)) {
+        if matches!(self.cards.top(), Some(Overlay::Glossary)) {
             self.pop_overlay();
         } else {
             self.push_overlay(Overlay::Glossary);
@@ -4020,7 +3990,7 @@ impl App {
     /// Open the Background Operations overlay (the `o` key; TU-01) — a snapshot listing, no cancel
     /// action (RFC 010 decision 6).
     pub fn open_operations(&mut self) {
-        if matches!(self.overlays.last(), Some(Overlay::Operations { .. })) {
+        if matches!(self.cards.top(), Some(Overlay::Operations { .. })) {
             self.pop_overlay();
         } else {
             self.push_overlay(Overlay::Operations {
@@ -4032,7 +4002,7 @@ impl App {
     /// Type a character — the palette's filter, a tier-3-typed confirmation's typed name (RFC 013 §6),
     /// or the commit message (RFC 014 §3, reusing this same plumbing).
     pub fn input_char(&mut self, ch: char) {
-        match self.overlays.last_mut() {
+        match self.cards.top_mut() {
             Some(Overlay::Palette { filter, cursor, .. }) => {
                 filter.push(ch);
                 *cursor = 0;
@@ -4058,7 +4028,7 @@ impl App {
     /// Delete the last typed character — the palette's filter, a tier-3-typed confirmation's typed
     /// name, or the commit message.
     pub fn backspace(&mut self) {
-        match self.overlays.last_mut() {
+        match self.cards.top_mut() {
             Some(Overlay::Palette { filter, cursor, .. }) => {
                 filter.pop();
                 *cursor = 0;
@@ -4089,7 +4059,7 @@ impl App {
     #[must_use]
     pub fn wants_text_input(&self) -> bool {
         matches!(
-            self.overlays.last(),
+            self.cards.top(),
             Some(
                 Overlay::Palette { .. }
                     | Overlay::CommitMessage { .. }
@@ -4104,7 +4074,7 @@ impl App {
                     | Overlay::TagMessage { .. }
             )
         ) || matches!(
-            self.overlays.last(),
+            self.cards.top(),
             Some(Overlay::Confirmation { tier, .. }) if *tier == Tier::ThreeTyped
         )
     }
@@ -4118,15 +4088,14 @@ impl App {
         // **The answer comes from the last report** (RFC 067 decision 4), where it came from the
         // renderer's write-back before: the program asks what the reader saw, and the front end is
         // the only thing that can know.
-        if !self.overlays.is_empty() && self.overlay_cursor().unwrap_or(0) == 0 && self.more_above()
-        {
+        if !self.cards.is_empty() && self.overlay_cursor().unwrap_or(0) == 0 && self.more_above() {
             return self.scroll(Direction::Up);
         }
         // **Whether this press scrolls a view** instead of moving a selection. Set inside the
         // match, acted on after it, because the effect needs the surface and the match holds the
         // borrow that would name it.
         let mut scrolls = false;
-        match self.overlays.last_mut() {
+        match self.cards.top_mut() {
             Some(Overlay::RefPicker { cursor, .. })
             | Some(Overlay::Refusal { cursor, .. })
             | Some(Overlay::Stale { cursor, .. })
@@ -4213,14 +4182,14 @@ impl App {
         // actions** (RFC 060 decision 3). `at_end` is the front end's answer from the last draw
         // (RFC 067 decision 4) — the same answer the renderer's write-back gave before — so the
         // keys and the panel cannot disagree about where the card is.
-        if !self.overlays.is_empty() && !self.at_end() {
+        if !self.cards.is_empty() && !self.at_end() {
             return self.scroll(Direction::Down);
         }
         // **Whether this press scrolls a view** instead of moving a selection. Set inside the
         // match, acted on after it, because the effect needs the surface and the match holds the
         // borrow that would name it.
         let mut scrolls = false;
-        match self.overlays.last_mut() {
+        match self.cards.top_mut() {
             Some(Overlay::RefPicker {
                 refs,
                 cursor,
@@ -5269,7 +5238,7 @@ impl App {
             return;
         }
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         if let Some(index) = index {
@@ -5302,18 +5271,18 @@ impl App {
                             list.unpublished_current,
                             stikk_prikk::UnpublishedBranch::NotReported
                         );
-                    if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::RefPicker {
+                    self.cards.replace(
+                        index,
+                        Overlay::RefPicker {
                             refs,
                             cursor,
                             unpublished_main,
                             unpublished_current,
-                        };
-                    }
+                        },
+                    );
                 }
                 Err(error) => {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     self.surface(&error, OperationContext::ListRefs);
                 }
             }
@@ -5330,7 +5299,7 @@ impl App {
         result: stikk_model::Result<CommitPreviewOutcome>,
     ) {
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         let Some(index) = index else {
@@ -5341,44 +5310,42 @@ impl App {
         let pending = self.pending_commit.take();
         match result {
             Ok(CommitPreviewOutcome::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             // RFC 027 decision 5: prikk says commit would refuse. In place of the loading placeholder,
             // as an overlay — never the one-line banner above, which cannot hold a path and prikk's
             // reason for each — and never through `present()`: nothing was attempted.
             Ok(CommitPreviewOutcome::WouldRefuse(paths)) => {
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::CommitWouldRefuse { paths };
-                }
+                self.cards
+                    .replace(index, Overlay::CommitWouldRefuse { paths });
             }
             // RFC 034 §5: the same posture for a declaration prikk would refuse — an overlay, because
             // prikk's refusal is two sentences and a banner would clip it.
             Ok(CommitPreviewOutcome::WouldRefuseDeclarations(declarations)) => {
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::CommitWouldRefuseDeclarations { declarations };
-                }
+                self.cards.replace(
+                    index,
+                    Overlay::CommitWouldRefuseDeclarations { declarations },
+                );
             }
             Ok(CommitPreviewOutcome::Ready { preview: _, token }) => {
                 let Some(PendingCommit::AwaitingPreview { message }) = pending else {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::Confirmation {
+                self.cards.replace(
+                    index,
+                    Overlay::Confirmation {
                         summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
-                    };
-                }
+                    },
+                );
                 self.pending_commit = Some(PendingCommit::Confirming { token, message });
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
         }
@@ -5393,7 +5360,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::CommitResult>>,
     ) {
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         let Some(index) = index else {
@@ -5401,16 +5368,16 @@ impl App {
         };
         match result {
             Ok(outcome) => {
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::CommitResult {
+                self.cards.replace(
+                    index,
+                    Overlay::CommitResult {
                         result: outcome.result,
-                    };
-                }
+                    },
+                );
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Commit);
             }
         }
@@ -5422,7 +5389,7 @@ impl App {
     /// confirmation — seal's first act), or a genuine seam failure (the usual `present()` routing).
     fn apply_seal_preview(&mut self, seq: u64, result: stikk_model::Result<SealPreviewOutcome>) {
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         let Some(index) = index else {
@@ -5433,32 +5400,30 @@ impl App {
         let pending = self.pending_seal.take();
         match result {
             Ok(SealPreviewOutcome::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             Ok(SealPreviewOutcome::Ready { token }) => {
                 let Some(PendingSeal::AwaitingPreview { reff }) = pending else {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::Confirmation {
+                self.cards.replace(
+                    index,
+                    Overlay::Confirmation {
                         summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
-                    };
-                }
+                    },
+                );
                 self.pending_seal = Some(PendingSeal::Confirming {
                     token: *token,
                     reff,
                 });
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
         }
@@ -5474,7 +5439,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::SealResult>>,
     ) {
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         let Some(index) = index else {
@@ -5482,16 +5447,16 @@ impl App {
         };
         match result {
             Ok(outcome) => {
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::SealResult {
+                self.cards.replace(
+                    index,
+                    Overlay::SealResult {
                         result: outcome.result,
-                    };
-                }
+                    },
+                );
                 self.orientation_pending = Some(self.dispatch(RequestKind::Orient));
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
         }
@@ -5507,7 +5472,7 @@ impl App {
         result: stikk_model::Result<stikk_core::RefWritePreview>,
     ) {
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         let Some(index) = index else {
@@ -5518,8 +5483,7 @@ impl App {
         let pending = self.pending_ref_write.take();
         match result {
             Ok(stikk_core::RefWritePreview::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
                 // **The typed name survives a block too** (RFC 044 §3). A blocked close has no
                 // prompt to come back to; a blocked create does, and retyping it would be the
@@ -5532,23 +5496,22 @@ impl App {
             }
             Ok(stikk_core::RefWritePreview::Ready { token }) => {
                 let Some(PendingRefWrite::AwaitingPreview { op }) = pending else {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     return; // defensive: should not happen, but nothing to confirm without this
                 };
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::Confirmation {
+                self.cards.replace(
+                    index,
+                    Overlay::Confirmation {
                         summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
-                    };
-                }
+                    },
+                );
                 self.pending_ref_write = Some(PendingRefWrite::Confirming { token, op });
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.restore_prompt(pending);
                 self.surface(&error, OperationContext::Other);
             }
@@ -5570,7 +5533,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::RefWrite>>,
     ) {
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         let Some(index) = index else {
@@ -5582,24 +5545,21 @@ impl App {
         match result {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::RefWrite::Done(lines) => {
-                    if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::RefWriteResult { kind, lines };
-                    }
+                    self.cards
+                        .replace(index, Overlay::RefWriteResult { kind, lines });
                     self.dispatch(RequestKind::Refs);
                 }
                 // The band is checked before the keys offer anything, so this is only reachable
                 // if prikk changed under the session. stikk's own words, never prikk's silence.
                 stikk_prikk::RefWrite::Unavailable => {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     self.banner = Some(stikk_core::ref_writes_unavailable(
                         self.prikk_minor().unwrap_or_default(),
                     ));
                 }
             },
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.restore_prompt(pending);
                 self.surface(&error, OperationContext::Other);
             }
@@ -5629,7 +5589,7 @@ impl App {
         result: stikk_model::Result<stikk_core::SwitchPreview>,
     ) {
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         let Some(index) = index else {
@@ -5638,29 +5598,27 @@ impl App {
         let pending = self.pending_switch.take();
         match result {
             Ok(stikk_core::SwitchPreview::Blocked(reason)) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.banner = Some(reason);
             }
             Ok(stikk_core::SwitchPreview::Ready { token }) => {
                 let Some(PendingSwitch::AwaitingPreview { target }) = pending else {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     return; // defensive: nothing to confirm without this
                 };
-                if let Some(slot) = self.overlays.get_mut(index) {
-                    *slot = Overlay::Confirmation {
+                self.cards.replace(
+                    index,
+                    Overlay::Confirmation {
                         summary: Box::new(token.summary().clone()),
                         tier: token.tier(),
                         typed: String::new(),
                         error: None,
-                    };
-                }
+                    },
+                );
                 self.pending_switch = Some(PendingSwitch::Confirming { token, target });
             }
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 self.surface(&error, OperationContext::Other);
             }
         }
@@ -5680,7 +5638,7 @@ impl App {
         result: stikk_model::Result<stikk_core::Outcome<stikk_prikk::SwitchResult>>,
     ) {
         let index = self
-            .overlays
+            .cards
             .iter()
             .position(|o| matches!(o, Overlay::Loading { seq: s, .. } if *s == seq));
         let Some(index) = index else {
@@ -5695,9 +5653,8 @@ impl App {
         match result {
             Ok(outcome) => match outcome.result {
                 stikk_prikk::SwitchResult::Done { printed, noted } => {
-                    if let Some(slot) = self.overlays.get_mut(index) {
-                        *slot = Overlay::SwitchResult { printed, noted };
-                    }
+                    self.cards
+                        .replace(index, Overlay::SwitchResult { printed, noted });
                     if let Some(target) = target {
                         self.clear_ref_mark_on_ref_change(&target);
                         self.ref_focus = RefFocus::Ref(target.clone());
@@ -5726,16 +5683,14 @@ impl App {
                 // The band is checked before the key offers anything, so this is only reachable
                 // if prikk changed under the session.
                 stikk_prikk::SwitchResult::Unavailable => {
-                    self.overlay_surface = self.mint_surface();
-                    self.overlays.remove(index);
+                    self.cards.remove(index);
                     self.banner = Some(stikk_core::switch_unavailable(
                         self.prikk_minor().unwrap_or_default(),
                     ));
                 }
             },
             Err(error) => {
-                self.overlay_surface = self.mint_surface();
-                self.overlays.remove(index);
+                self.cards.remove(index);
                 // **Back to the picker, under prikk's refusal** (§3e). A dirty worktree or a
                 // file in the way is something the reader fixes and tries again, and the picker
                 // is where the second attempt starts; the list is re-read on the way, because
@@ -5878,7 +5833,7 @@ impl App {
     /// does here.
     pub fn keys_here(&self) -> Vec<&'static stikk_core::Action> {
         let row = self.selected_row().map(|(kind, _)| kind);
-        let screen = if self.overlays.is_empty() {
+        let screen = if self.cards.is_empty() {
             self.screen_kind()
         } else {
             None
@@ -5895,7 +5850,7 @@ impl App {
         let (row, subject) = self.selected_row().unzip();
         // **The picker's rows belong to the picker, not to the screen under it** (RFC 061 decision
         // 3): a ref row's list is the ref's eight actions, and the screen below is not *here*.
-        let screen = if self.overlays.is_empty() {
+        let screen = if self.cards.is_empty() {
             self.screen_kind()
         } else {
             None
@@ -5963,7 +5918,7 @@ impl App {
             cursor,
             unpublished_main,
             ..
-        }) = self.overlays.last()
+        }) = self.cards.top()
         {
             let name = if *unpublished_main {
                 DEFAULT_REF.to_string()
@@ -5978,7 +5933,7 @@ impl App {
             let what = if is_tag { "Tag" } else { "Branch" };
             return Some((Kind::Ref, format!("{what} {name}")));
         }
-        if !self.overlays.is_empty() {
+        if !self.cards.is_empty() {
             return None;
         }
         match self.screens.last() {
@@ -6247,11 +6202,10 @@ impl App {
         }
     }
 
-    /// Mint a surface no earlier one can be mistaken for.
+    /// Mint a surface for a screen. Overlays' surfaces are minted by [`crate::cards::Cards`]
+    /// itself, whenever the card on top changes.
     fn mint_surface(&mut self) -> Surface {
-        let surface = Surface(self.next_surface);
-        self.next_surface = self.next_surface.wrapping_add(1);
-        surface
+        self.cards.mint_for_screen()
     }
 
     /// **What the reader is reading now**: the top overlay, or the scrolling view under it.
@@ -6262,10 +6216,10 @@ impl App {
     /// (Named for the reading, because `App::surface` already means *"show this error"*.)
     #[must_use]
     pub fn reading_surface(&self) -> Option<Surface> {
-        if self.overlays.is_empty() {
+        if self.cards.is_empty() {
             self.screens.last().and_then(Screen::surface)
         } else {
-            Some(self.overlay_surface)
+            Some(self.cards.surface())
         }
     }
 
@@ -6276,7 +6230,7 @@ impl App {
     /// belong to it, nor have to answer for a surface that cannot be missing.
     #[must_use]
     pub fn top_card(&self) -> Option<(&Overlay, Surface)> {
-        self.overlays.last().map(|top| (top, self.overlay_surface))
+        self.cards.top().map(|top| (top, self.cards.surface()))
     }
 
     /// **Every surface a reader can still return to** (review v1 F1).
@@ -6291,8 +6245,8 @@ impl App {
     #[must_use]
     pub fn live_surfaces(&self) -> Vec<Surface> {
         let mut live: Vec<Surface> = self.screens.iter().filter_map(Screen::surface).collect();
-        if !self.overlays.is_empty() {
-            live.push(self.overlay_surface);
+        if !self.cards.is_empty() {
+            live.push(self.cards.surface());
         }
         live
     }
@@ -6379,7 +6333,7 @@ impl App {
     /// The top overlay's selection, where it has one — what `↑` asks before it scrolls (RFC 060
     /// decision 3). `None` for a card that is read rather than chosen from.
     fn overlay_cursor(&self) -> Option<usize> {
-        match self.overlays.last() {
+        match self.cards.top() {
             Some(
                 Overlay::RefPicker { cursor, .. }
                 | Overlay::Refusal { cursor, .. }
@@ -6394,8 +6348,12 @@ impl App {
 
     /// Push an overlay, and give it a reader of its own (RFC 060 decision 3).
     ///
-    /// **The only way an overlay reaches the stack**, so the reading latch cannot be inherited by a
-    /// card that was never read.
+    /// **Every card that reaches the top — by push, by replace or by pop — has a surface no earlier
+    /// card had** (Handoff C §1.3). That is [`crate::cards::Cards`]'s doing, not this method's: it
+    /// owns the stack and the surface together, so there is no way to put a card on top without
+    /// minting. Until 0.22.1 this doc claimed to be *"the only way an overlay reaches the stack"*
+    /// while twenty-six places replaced a card in its slot without minting, and a confirmation that
+    /// took a short Loading card's place was born already read.
     ///
     /// **`pub(crate)`, deliberately** (review v1 F1). `Overlay`'s variants are public and
     /// constructible, so a public way onto the stack would let a front end show a confirmation card
@@ -6403,26 +6361,24 @@ impl App {
     /// would then act on it. A card reaches the stack only where the program decided to open it.
     /// A test that needs one directly uses [`Self::push_overlay_for_test`].
     pub(crate) fn push_overlay(&mut self, overlay: Overlay) {
-        self.overlay_surface = self.mint_surface();
-        self.overlays.push(overlay);
+        self.cards.push(overlay);
     }
 
     /// Pop the top overlay; whatever is under it is a different card, with its own reader.
     fn pop_overlay(&mut self) -> Option<Overlay> {
-        self.overlay_surface = self.mint_surface();
-        self.overlays.pop()
+        self.cards.pop()
     }
 
     /// The top overlay, if any (the one that renders and receives navigation keys).
     #[must_use]
     pub fn top_overlay(&self) -> Option<&Overlay> {
-        self.overlays.last()
+        self.cards.top()
     }
 
     /// Whether any overlay is open.
     #[must_use]
     pub fn has_overlay(&self) -> bool {
-        !self.overlays.is_empty()
+        !self.cards.is_empty()
     }
 
     /// Whether the run loop should exit.

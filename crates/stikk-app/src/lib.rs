@@ -36,6 +36,7 @@
 #![warn(missing_docs)]
 
 mod app;
+mod cards;
 mod overlay;
 mod worker;
 

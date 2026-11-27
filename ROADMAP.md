@@ -303,8 +303,8 @@ increments are underneath it.
   unread, and one behind the *"window too small"* notice be confirmed unseen. 0.22.1 is 0.22.0 with
   that fixed ([RFC 067 Handoff C](rfcs/handoffs/067-stikk-app-the-shared-program/c-the-reading-gate-holds-handoff-v1.md)).
 
-**In progress, not shipped:** [RFC 065](rfcs/accepted/065-choosing-the-gui-toolkit.md), the GUI toolkit. It ships
-nothing in 0.22.0, and 0.22.0 promises no GUI.
+**Decided after 0.22.1, not shipped:** [RFC 065](rfcs/done/065-choosing-the-gui-toolkit.md), the GUI toolkit. It
+ships nothing in 0.22.0, and 0.22.0 promises no GUI.
 
 ## Shipped — stikk is easy to read and easy to find your way in (0.21.0, breaking)
 
@@ -615,8 +615,8 @@ nothing in 0.22.0, and 0.22.0 promises no GUI.
 published in a later release, once it draws every screen and card the terminal does: a desktop app that lists an
 action it cannot do would confuse the users it is for.
 
-- **The toolkit is closed** ([RFC 065](rfcs/accepted/065-choosing-the-gui-toolkit.md)): Snora on iced, unless a
-  measurement under the GUI test rules finds a serious issue.
+- **The toolkit is closed** ([RFC 065](rfcs/done/065-choosing-the-gui-toolkit.md), 2026-11-27): Snora on iced. No
+  serious issue was found under the GUI test rules, on Linux or Windows.
 - **The desktop app's design rules** (RFC 069), for older and visually impaired users: type sizes by purpose, contrast
   floors, one zoom, 44 px targets, colour never alone, and the keyboard model. They include the rules that keep later
   languages cheap, right-to-left among them, and the rule that a front end reports only what it drew.

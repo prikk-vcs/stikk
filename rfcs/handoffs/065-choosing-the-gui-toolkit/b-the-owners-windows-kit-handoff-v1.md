@@ -1,6 +1,6 @@
 # Handoff B — RFC 065: the owner's Windows kit (v1)
 
-**Companion to:** [RFC 065](../../accepted/065-choosing-the-gui-toolkit.md) and [Handoff A](./a-the-measurements-under-the-gui-rules-handoff-v1.md).
+**Companion to:** [RFC 065](../../done/065-choosing-the-gui-toolkit.md) and [Handoff A](./a-the-measurements-under-the-gui-rules-handoff-v1.md).
 **Issued** 2026-11-26. **0.23.0 increment 0.** Nothing in the repository changes.
 
 > **What this is.** RFC 065's last measurements need the owner on a real Windows machine: about 20 minutes, by hand.

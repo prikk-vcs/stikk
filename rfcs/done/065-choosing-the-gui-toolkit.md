@@ -1,6 +1,6 @@
 # RFC 065 — Choosing the GUI toolkit: Snora first, measured
 
-**Status.** **Accepted by the project owner 2026-11-24, with decision 6 answered: path B** (*"egui will be necessary only if a serious issue on iced and snora is found"*). See decision 6's ruling. **Proposed 2026-11-24** by the architect, as 0.22.0's increment 3 (`.git-exclude/release/0-22-0-scope.md`,
+**Status.** **Done (decided) 2026-11-27: no trigger fired, and stikk's desktop app is built on Snora (path B)**; see *Outcome* below. **Accepted by the project owner 2026-11-24, with decision 6 answered: path B** (*"egui will be necessary only if a serious issue on iced and snora is found"*). See decision 6's ruling. **Proposed 2026-11-24** by the architect, as 0.22.0's increment 3 (`.git-exclude/release/0-22-0-scope.md`,
 authorized by the project owner 2026-11-24, amended the same day: *"Snora prototype first."*). **No open question
 before acceptance.** After the measurement, **the owner makes one decision** (decision 6).
 **Measured** on `main` at `6e2a5f2`, where `stikk-app` exists (RFC 067), and from Snora's own repository at 0.65.0.
@@ -125,6 +125,43 @@ blind user can work with**.
    - **If a trigger fires,** the owner decides between a fix in Snora and the egui prototype (path A's measurement).
 
    RFC 065 closes with the report and that outcome.
+
+## Outcome (2026-11-27)
+
+**Measured under the owner's GUI rules.** The dev team measured; the architect reviewed and reported
+(`.git-exclude/reports/065-gui-toolkit/snora/report.md`). The owner ran M6 on Linux and W1 to W4 on Windows.
+
+| # | Trigger | Fired? |
+|---|---|---|
+| T1 | A task cannot be done from the keyboard | **No.** Linux: M2, real and headless. Windows: W2 to W4 from the program's logs; W1 on the owner's word |
+| T2 | The reading gate cannot be held | **No.** Linux: M3, real and headless. Windows: W2. One report at startup on Windows is unexplained (below) |
+| T3 | Japanese input does not work | **No.** On both, the committed text reached the program, and the owner saw the preedit in the field |
+| T4 | A release target cannot be built or packaged | **No toolkit trigger.** A static musl binary can't open a window, which holds for any winit toolkit, so the desktop app ships glibc builds. The Windows build is console-subsystem, a build setting. aarch64 is RFC 071's |
+| T5 | Focus or text cannot meet stikk's contrast | **No.** Disabled controls fall below stikk's readability floor |
+
+**The owner's rulings, 2026-11-27** (*"Yes"*, to the four the report put):
+1. **Path B stands.** RFC 069 and RFC 070 build `stikk-gui` on Snora 0.65 and iced 0.14, and amend `NFR-A02`,
+   `GU-08`, `FE-03` and RFC 001's acceptance to *"screen readers when the toolkit exposes them"*. M7 found that iced
+   0.14 exposes nothing.
+2. **Disabled controls:** stikk works around Snora's style in its own design crate. It's a tested rule in RFC 069, and
+   a Snora issue until Snora changes it.
+3. **T2's startup report on Windows** (a card reported its end visible on arrival, before the window's scaled size
+   arrived) gets no fourth owner session. Instead:
+   - **RFC 069's rule:** a front end reports a reading only against a viewport it has confirmed from the window
+     itself;
+   - **RFC 070's test:** a Windows CI test asserts that no reading arrives before the viewport matches the window.
+4. **Reporting the two `iced_test` defects upstream** wasn't asked for. It stays open as the owner's call.
+
+**Carried into RFC 069 and RFC 070:**
+- every scrollable reserves its scrollbar's room;
+- stikk ships its own fonts and sets the default font;
+- 44 px targets, set explicitly;
+- Escape leaves a text field and closes its card in one press;
+- the desktop app draws every banner the program sets;
+- `Named(Process)` keys during IME composition are no action;
+- the right-to-left rules (isolation, start-edge alignment);
+- the real-window reading-gate sequence becomes the desktop app's regression check, in the nested compositor, by the
+  fixed-size method the knotra project shared.
 
 ## What this RFC does not do
 

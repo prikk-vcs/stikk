@@ -1,6 +1,6 @@
 # Handoff A — RFC 065: the remaining measurements, under the owner's GUI rules (v1)
 
-**Companion to:** [RFC 065](../../accepted/065-choosing-the-gui-toolkit.md), its measurements M1–M9 and triggers T1–T5.
+**Companion to:** [RFC 065](../../done/065-choosing-the-gui-toolkit.md), its measurements M1–M9 and triggers T1–T5.
 **Issued** 2026-11-25. **0.23.0 increment 0.** **Not a release, and nothing in the repository changes.**
 
 > **Why this comes to you.** The architect ran M2, M3 and the RTL check, and also wrote the scripts and judged the

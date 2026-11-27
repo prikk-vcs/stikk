@@ -8,6 +8,7 @@ accessibility filter that are its input); and the **TUI accessibility limitation
 (terminals give assistive tech little to work with, so the accessible path is the future GUI) is still
 to be stated plainly in the TUI's own docs. The handoff is
 [`../handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md`](../handoffs/001-frontend-toolkit-selection/tui-shell-and-orientation-handoff-v1.md).
+**Amended 2026-11-27 (RFC 065's outcome; RFC 069 rule 14).** This RFC's acceptance made an accessibility tree a gate on the GUI toolkit. RFC 065 chose Snora on iced and measured that iced exposes nothing to a screen reader (its M7). The gate now reads **"when the toolkit exposes them"**: full keyboard operability with visible focus is required outright, and the platform accessibility APIs are conditional on the toolkit. See [RFC 065](./065-choosing-the-gui-toolkit.md) and [RFC 069](../accepted/069-the-desktop-apps-design-rules.md).
 **Tracks.** Which rendering toolkits the TUI and GUI frontends are built on. Gates every interactive
 increment (the internal design deferred this to Program Design deliberately).
 **Touches.** `crates/stikk-tui` and `crates/stikk-gui` (neither exists yet); their dependency

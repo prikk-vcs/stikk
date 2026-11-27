@@ -214,7 +214,7 @@ Notation: each requirement is "stikk shall …". *[M/S/C]* = v1 priority. *(→ 
 ### 3.2 Accessibility (NFR-A…)
 
 - **NFR-A01** *[M]* TUI: fully keyboard-operable; every view reachable and operable without a pointer.
-- **NFR-A02** *[M]* GUI: exposes platform accessibility APIs (names, roles, focus order, keyboard operability for every action).
+- **NFR-A02** *[M]* GUI: full keyboard operability with visible focus for every action. Platform accessibility APIs (names, roles, focus order) when the toolkit exposes them. *Amended 2026-11-27 (RFC 069 rule 14): was “exposes platform accessibility APIs (names, roles, focus order, keyboard operability for every action)”. RFC 065 measured that iced exposes no accessibility tree at all (M7), so the old wording promised something the toolkit cannot give; keyboard operability, which it can, is now required outright and the platform APIs are conditional on the toolkit.*
 - **NFR-A03** *[M]* Status and severity are never encoded by color alone (shape/label always present); every colour stikk chooses meets 7 : 1 (WCAG AAA) on every reference background of its theme, and on the background the terminal reports. *Amended 2026-11-21 (RFC 059 decision 12): was “palettes meet WCAG AA contrast in both light and dark presentation”. AA was the wrong bar for the one requirement that exists for low vision, and the old wording was met by no row of RFC 059 F1's table: on a light terminal the default theme's body text measured 1.4 : 1. The bar is now checked by arithmetic on the palette and on every rendered screen, not asserted in a comment.*
 - **NFR-A04** *[S]* Reduced-motion preference respected; no information conveyed solely by animation.
 

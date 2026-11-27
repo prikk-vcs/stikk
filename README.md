@@ -9,6 +9,10 @@
 version control system** — a terminal (TUI) front-end, with a graphical (GUI) one planned, over one shared
 operation layer.
 
+stikk's desktop app and its terminal front end don't yet work with screen readers. The desktop app is
+built on iced, which doesn't yet expose an accessibility tree. stikk will support screen readers when
+iced does.
+
 ![stikk's History view: a ref's block lineage, newest first, with the queued tier above it, the tip marked, and a rollback block and one needing attestations called out](docs/assets/readme/history.svg)
 
 ![stikk's Compare view: what changed between two blocks, in prikk's own diff hunks, every line quoted byte for byte so a trailing space is visible](docs/assets/readme/compare.svg)

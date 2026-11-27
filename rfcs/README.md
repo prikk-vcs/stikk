@@ -24,13 +24,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 |----|-------|-----------|
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 069 | [The desktop app's design rules](./proposed/069-the-desktop-apps-design-rules.md) | the rules `stikk-gui` is built to (seeing, space, hands, reading, words, calm, assistive technology), each with its test; Q1: bundle Noto Sans (OFL-1.1) |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
+| 069 | [The desktop app's design rules](./accepted/069-the-desktop-apps-design-rules.md) | the rules `stikk-gui` is built to (seeing, space, hands, reading, words, calm, assistive technology), each with its test; the system's own interface font (Q1: B) | [A: the documentation, the theme and the font](./handoffs/069-the-desktop-apps-design-rules/a-documentation-theme-and-font-handoff-v1.md) |
 | 072 | [Checks follow their causes, and the release steps are written once](./accepted/072-checks-follow-their-causes.md) | the supply-chain check runs when the dependencies change; the installer fill, the archive packaging and the version read become shared scripts | [A: checks and shared steps](./handoffs/072-checks-follow-their-causes/a-checks-and-shared-steps-handoff-v1.md) |
 
 ## Done (implemented)

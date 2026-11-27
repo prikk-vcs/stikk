@@ -1,8 +1,9 @@
 # RFC 069 — The desktop app's design rules
 
-**Status.** **Proposed 2026-11-27** by the architect, as 0.23.0's increment 1 (`.git-exclude/release/0-23-0-scope.md`,
-revision 2, authorized by the project owner 2026-11-25). **One open question for the owner (Q1, a bundled font's
-licence).**
+**Status.** **Accepted by the project owner 2026-11-27** (*"Accepted."*), with **Q1 answered: B, the system's own
+interface font** (*"B"*). See Q1. [Handoff A](../handoffs/069-the-desktop-apps-design-rules/a-documentation-theme-and-font-handoff-v1.md).
+**Proposed 2026-11-27** by the architect, as 0.23.0's increment 1 (`.git-exclude/release/0-23-0-scope.md`, revision 2,
+authorized by the project owner 2026-11-25).
 **Measured** on `main` at `7c77193`, against Snora 0.65.0 and iced 0.14.0 as RFC 065 measured them.
 **Tracks.**
 - RFC 065 (done), whose outcome builds `stikk-gui` on Snora and carries eight findings here;
@@ -19,7 +20,10 @@ licence).**
   - `docs/src/reference/internal-design.md` (`FE-03`);
   - RFC 001's Status (an amendment note);
   - the README's statement about assistive technology.
-- **It also takes one measurement:** whether iced reads the desktop's light or dark setting on this machine.
+- **It also takes three measurements on this machine:**
+  - whether iced reads the desktop's light or dark setting;
+  - whether naming the interface font makes iced draw it;
+  - which fonts bracket the label-fit guard.
 - **The rules are built by RFC 070,** with the tests named in each rule.
 
 ## Summary
@@ -58,6 +62,7 @@ the ones its guards only checked by name (its analysis, §4).
 | Japanese input | the committed string reaches the program; the preedit shows in the field; Windows sends `Named(Process)` keys while composing | M6, W3 |
 | The desktop's light or dark setting | `iced::system::theme()` and `theme_changes()`, through `mundy` on Linux (`iced_winit` feature `linux-theme-detection`, on by default) and through winit elsewhere | source; **measured by this RFC's handoff** |
 | Headless layout | `iced_test::Simulator` substitutes Fira Sans when the default font is `Font::DEFAULT` | RFC 065 Handoff A, §3.4 |
+| The default font in a real window | **not the system's font:** cosmic-text 0.15 sets the sans-serif family to **"Open Sans"** by name (`src/font/system.rs:157-159`, *"TODO: configurable default fonts"*), overriding fontconfig's choice. So iced draws Open Sans where it's installed (as on this machine), and a platform fallback where it isn't | source; **measured by this RFC's handoff** |
 
 ### F2 — the reading contract has two halves, and the desktop's half is new
 
@@ -120,9 +125,17 @@ Snora style. The views live in `stikk-gui` and import from it. They never import
 - **Views call a role function** (`body(…)`, `meta(…)`, `title(…)`). No view names a size.
 - **Bold, never Semibold,** and emphasis never carries meaning alone. Noto Sans CJK has no SemiBold, so Japanese
   falls back to a serif (F3). Bold exists in the sans family on all three platforms.
-- **One bundled font, set as the default** (Q1):
-  - the same glyphs on every platform, in CI, and in `iced_test`, which otherwise measures Fira Sans (F1);
-  - Japanese and Arabic faces join with the multilingual task (rule 13).
+- **The system's own interface font, named explicitly** (Q1, the owner's ruling B):
+  - **Linux:** the face fontconfig resolves for `sans-serif`, which is the user's own choice.
+  - **Windows:** Segoe UI.
+  - **macOS:** the system font. **Unverified:** there's no Mac here, and the documentation says so.
+  - The font is named, so iced can't substitute Open Sans (F1).
+  - The system's fallback fonts cover the user's languages, so Japanese and Arabic need no bundled face later.
+  - **No font is bundled.**
+- **Tests that hold for fonts stikk can't see:** the label-fit guard (rule 4) runs with **two installed fonts, the
+  narrowest and the widest available on the CI runner,** chosen by their measured average advance width and recorded.
+  A label that fits both fits any reasonable interface font. That's safe because no layout depends on exact text
+  width (rule 4).
 - **Test (H):** every text in every screen's tree, at every zoom, has a size from the role table. That's measured on
   the rendered tree, not by scanning names.
 
@@ -307,25 +320,19 @@ Path B accepted that iced exposes nothing to screen readers (M7). **The document
 **Not promised:** following the OS text size or the OS high-contrast setting (knotra's analysis, *"What knotra does
 not do"*). stikk's zoom and its two high-contrast presets are the answer, and the documentation says which to use.
 
-## Open question
+## Q1 — the font (answered 2026-11-27: B)
 
-**Q1 — Bundle one font: Noto Sans, Regular and Bold, under the SIL Open Font License 1.1?**
-- **Why bundle at all:**
-  - the same glyphs on Linux, macOS and Windows;
-  - headless tests that measure the font users see (otherwise `iced_test` measures Fira Sans);
-  - Bold that exists.
-- **Why Noto Sans:**
-  - it's the face knotra users already see on Linux;
-  - it's designed to pair with Noto Sans CJK JP and Noto Naskh Arabic when the multilingual task adds them;
-  - Latin only for now.
-- **The licence:**
-  - OFL-1.1 lets the font be bundled with any software, Apache-2.0 included;
-  - the font files keep their own licence, and can't be sold on their own;
-  - that's not the "permissive" kind the dependency rule names, so it's yours to rule (your rule of 2026-11-24).
-- **The size:** about 1 MB for the two static faces together. The handoff records the exact bytes and their SHA-256.
-- **My recommendation: yes.**
-- **If no:** stikk names a system font by family. Headless tests then measure a different font from users on some
-  machines, and each rule that depends on measured text says so.
+**The question was whether to bundle Noto Sans** (OFL-1.1). The architect recommended it first, for identical glyphs
+everywhere and exact tests.
+
+**The owner asked whether that's good for various users,** some of whom are familiar with their system fonts. That
+led to F1's last row: iced doesn't draw the system font today either. Three ways were put:
+- **A. Bundle Noto Sans:** the same everywhere, but it overrides the user's own choice.
+- **B. The system's own interface font, named explicitly:** familiar, follows the user's choice, and covers their
+  languages. Tests bracket it with a narrow and a wide font.
+- **C. Bundle, with a setting to use the system font.**
+
+**The owner chose B.** Rule 2 states it. No font is bundled, so there's no licence question.
 
 ## What this RFC does not do
 
@@ -339,7 +346,8 @@ not do"*). stikk's zoom and its two high-contrast presets are the answer, and th
 | Question | Level | Where |
 |---|---|---|
 | Does iced read the desktop's light or dark setting on this machine, and fall back when none is reported? | real, read-only: the prototype logs `system::theme()` in the nested compositor; once as the session is, once with the portal unreachable (`DBUS_SESSION_BUS_ADDRESS` unset), which must give no preference and so `light_aaa`. **The owner's setting is read, never changed** | this RFC's handoff |
-| Is the bundled font's licence and size as stated (if Q1 is yes)? | the font files' own licence text, bytes and SHA-256 | this RFC's handoff |
+| Does naming the interface font work: does iced draw the face named, not Open Sans? | logic: the font database's answer for the name. Real: one capture in the nested compositor, its words read. **Linux** here (fontconfig's `sans-serif`). **Windows** (Segoe UI) is RFC 070's first Windows CI job. **macOS** is stated as unverified | this RFC's handoff (Linux) |
+| Which installed fonts are the narrowest and the widest for the label-fit guard? | the average advance width of each candidate, measured by script, here and from the CI runner's font list | this RFC's handoff |
 | Every rule's test | H, R or C, as each rule says | RFC 070 |
 
 Nothing here needs the owner's desktop or a Windows session.
@@ -349,9 +357,9 @@ Nothing here needs the owner's desktop or a Windows session.
 **One handoff after acceptance, Handoff A:**
 - the documentation of rule 14;
 - the theme measurement;
-- and, if Q1 is yes, the font's licence, bytes and checksum recorded in `.git-exclude/reports/`.
+- the two font measurements (naming the interface font, and the narrow and wide test fonts).
 
-RFC 070's handoffs build the rules. **RFC 070 isn't written until this RFC is accepted.**
+RFC 070's handoffs build the rules. RFC 070 is written next.
 
 ## Changelog
 

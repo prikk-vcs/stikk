@@ -21,9 +21,13 @@ stikk-state = { version = "0.22.1", path = "crates/stikk-state" }
 stikk-core  = { version = "0.22.1", path = "crates/stikk-core" }
 stikk-app   = { version = "0.22.1", path = "crates/stikk-app" }
 stikk-tui   = { version = "0.22.1", path = "crates/stikk-tui" }
-# RFC 070: the desktop app's two crates. Both `publish = false`, so no version is published for
-# either; the path dependency is what the workspace resolves, and the version is the workspace's.
-stikk-gui-design = { version = "0.22.1", path = "crates/stikk-gui-design" }
+# RFC 070: the desktop app's design crate. **A path and no version**, deliberately: both GUI
+# crates are `publish = false`, so there is no `stikk-gui-design` on crates.io for a version
+# requirement to resolve against -- and `cargo package --workspace` tries to package every member,
+# publishable or not, so a version here stops the packaging gate with *"no matching package named
+# stikk-gui-design found"* (measured, 2026-11-28). A path-only dependency is what an unpublished
+# crate takes.
+stikk-gui-design = { path = "crates/stikk-gui-design" }
 
 # RFC 001 (accepted 2026-09-01): the TUI is built on ratatui over the crossterm backend. crossterm is
 # used through ratatui's own re-export (`ratatui::crossterm`) so the two can never drift to

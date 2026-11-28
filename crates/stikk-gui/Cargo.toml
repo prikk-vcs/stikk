@@ -1,0 +1,36 @@
+[package]
+name        = "stikk-gui"
+description = "stikk's desktop app: the views, the key mapping, the reading report and the effects loop over the shared program. Not published."
+publish     = false
+
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
+
+[dependencies]
+stikk-app        = { workspace = true }
+stikk-core       = { workspace = true }
+stikk-model      = { workspace = true }
+stikk-prikk      = { workspace = true }
+stikk-state      = { workspace = true }
+stikk-gui-design = { workspace = true }
+snora            = { workspace = true }
+iced             = { workspace = true }
+
+[dev-dependencies]
+# The headless level the owner's rules ask for first: `iced_test` drives this crate's own `view`
+# and `update`, so a key goes through the same wiring a window does (RFC 070 F4).
+iced_test = { workspace = true }
+# Already in the lock through iced_test; used only to write a capture out as a PNG for a record.
+png = "=0.18.1"
+# The font database iced itself uses, asked by name (RFC 069 rule 2's font test).
+iced_graphics = "=0.14.0"
+# `App::from_state` and `push_overlay_for_test` across the crate boundary, exactly as stikk-tui's
+# own tests reach them. Off in every normal build.
+stikk-app = { workspace = true, features = ["test-fixtures"] }
+
+[lints]
+workspace = true

@@ -29,6 +29,65 @@ unmaintained = "all"
 unused-ignored-advisory = "deny"
 
 ignore = [
+    # ------------------------------------------------------------------------------------------
+    # **The desktop app's tree** (RFC 070 decision 8; RFC 068's rule: a dated reason, the path
+    # from `stikk-gui`, whether and how it reaches the user, and what retires the entry).
+    #
+    # **All five are `unmaintained`, and none is a vulnerability.** Every one of them is a
+    # transitive dependency of `iced = "=0.14.0"`, which this workspace pins exactly (RFC 065's
+    # findings are facts about that version), so there is no version of any of them for stikk to
+    # move to: each would need its own parent to move first. cargo-deny says so itself for all
+    # five — *"Solution: No safe upgrade is available!"*.
+    #
+    # **Nothing the desktop app ships today is published** (RFC 070: `publish = false`, and the
+    # release builds `-p stikk`), so none of these is in any binary a user installs yet. That
+    # changes in the release that publishes the app, which is why each entry below says what
+    # would retire it rather than leaving it to be re-derived then.
+    # ------------------------------------------------------------------------------------------
+
+    # **RUSTSEC-2024-0436 (2026-11-28), `paste` 1.0.15: the crate is no longer maintained.**
+    # Its author has said so; there is no defect behind the advisory.
+    #
+    # The path from stikk: `stikk-gui` -> snora -> iced -> iced_renderer -> iced_wgpu ->
+    # cryoglyph -> wgpu -> wgpu-hal -> metal -> `paste`. It is a macro crate used at compile
+    # time by wgpu's Metal backend, so **no code of its own is in the binary at all**, on any
+    # platform — and Metal is macOS's backend, which this project has no Mac to run.
+    #
+    # **What retires this entry:** a wgpu release whose Metal backend no longer uses `paste`
+    # (the ecosystem's replacement is `pastey`). `unused-ignored-advisory = "deny"` fails the
+    # gate the day this id stops matching the tree.
+    { id = "RUSTSEC-2024-0436", reason = "paste 1.0.15, unmaintained with no defect, through stikk-gui -> snora -> iced -> iced_renderer -> iced_wgpu -> cryoglyph -> wgpu -> wgpu-hal -> metal. A compile-time macro crate, so none of its code is in any binary, and its parent is wgpu's Metal backend. iced is pinned exactly at 0.14.0, so there is no version to move to from here. Retire when a wgpu release drops it (RFC 070 decision 8, RFC 068)." },
+
+    # **RUSTSEC-2026-0192 (2026-11-28), `ttf-parser` 0.25.1: unmaintained, and will not receive
+    # further fixes.** No defect is claimed.
+    #
+    # The path from stikk: `stikk-gui` -> snora -> iced -> ... -> cosmic-text -> fontdb ->
+    # `ttf-parser`. It parses font files, so it does read data the user's own system supplies —
+    # their installed fonts — which is the one of these five that reaches anything of the user's
+    # at all. It reads fonts, never repository content, and prikk is not involved.
+    #
+    # **What retires this entry:** a cosmic-text or fontdb release on the maintained successor
+    # (`read-fonts`/`skrifa`, both already in this tree through swash). The id stops matching the
+    # day it happens.
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser 0.25.1, unmaintained with no defect claimed, through stikk-gui -> snora -> iced -> cosmic-text -> fontdb. It parses the user's own installed font files and nothing else; no repository content reaches it. iced is pinned exactly at 0.14.0 and fontdb 0.23 requires ttf-parser 0.25, so there is no version to move to. Retire when cosmic-text or fontdb moves to read-fonts/skrifa (RFC 070 decision 8, RFC 068)." },
+
+    # **RUSTSEC-2026-0370, -0371 and -0372 (2026-11-28), `zvariant` 5.15.1, `zbus_names` 4.3.5
+    # and `zvariant_derive` 5.15.1: no longer maintained as standalone crates.** zbus 6.0.0
+    # provides all three itself; no defect is claimed for any of them.
+    #
+    # The path from stikk, the same for all three: `stikk-gui` -> snora -> iced -> iced_winit ->
+    # mundy -> zbus -> zvariant (and its two siblings). **This is the desktop portal reader iced
+    # uses to answer `system::theme()`** — which is rule 3's own mechanism: it is how the app
+    # learns whether the desktop is light or dark. So it does run, and it talks to the session
+    # bus; it reads one setting and writes nothing. RFC 069 Handoff A measured both sides of it
+    # on this machine: the portal's `1`, and `Mode::None` with no portal reachable.
+    #
+    # **What retires these entries:** an `iced_winit` release whose `mundy` dependency is on
+    # zbus 6, or iced dropping the portal reader. All three ids go together.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant 5.15.1, unmaintained as a standalone crate (zbus 6.0.0 provides it), no defect claimed. Path: stikk-gui -> snora -> iced -> iced_winit -> mundy -> zbus -> zvariant. It is the D-Bus wire format behind iced's desktop-portal read of the light-or-dark setting (RFC 069 rule 3): it runs, reads one setting over the session bus, and writes nothing. iced is pinned exactly at 0.14.0. Retire when iced_winit's mundy moves to zbus 6 (RFC 070 decision 8, RFC 068)." },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names 4.3.5, unmaintained as a standalone crate (zbus 6.0.0 provides it), no defect claimed. Same path and same reach as RUSTSEC-2026-0370: stikk-gui -> snora -> iced -> iced_winit -> mundy -> zbus. Retire with it, when iced_winit's mundy moves to zbus 6 (RFC 070 decision 8, RFC 068)." },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 5.15.1, unmaintained as a standalone crate (zbus 6.0.0 provides it), no defect claimed. A compile-time derive crate, so none of its own code is in the binary. Same path as RUSTSEC-2026-0370: stikk-gui -> snora -> iced -> iced_winit -> mundy -> zbus -> zvariant. Retire with it (RFC 070 decision 8, RFC 068)." },
+
     # **RUSTSEC-2026-0253 (2026-05-12), `lru` 0.16.4: a use-after-free if `LruCache::pop()` is
     # called while a stored key's `Drop` panics.** Reached as ratatui-core 0.1.0 -> ratatui ->
     # `stikk-tui`; ratatui-core 0.1.0 requires `lru` 0.16, so there is no version of it to move to.
@@ -56,6 +115,19 @@ allow = [
     "BSL-1.0",
     "Unicode-3.0",
     "Zlib",
+    # **The desktop app's tree** (RFC 070 decision 8, measured on this handoff's own lock, not
+    # copied from RFC 065's prototype). All four are permissive, so the owner's licence rule
+    # (2026-11-24: *"accepted if it fits Apache-2.0"*) admits them without a ruling.
+    #
+    # `arrayref`, `zerocopy`, `zerocopy-derive` — through wgpu and the Wayland stack.
+    "BSD-2-Clause",
+    # `tiny-skia`, `tiny-skia-path` (iced's software renderer), `num_enum`, `num_enum_derive`.
+    "BSD-3-Clause",
+    # `libloading` — what winit uses to load the Wayland and X11 libraries by name at run time,
+    # which is the same mechanism RFC 065's M8 found a static musl build has no loader for.
+    "ISC",
+    # `hexf-parse` — hexadecimal float literals, through the renderer.
+    "CC0-1.0",
 ]
 confidence-threshold = 0.8
 
@@ -73,7 +145,8 @@ wildcards = "deny"
 # only beneath the crates named: ratatui and the colour query only under `stikk-tui`, and crossterm
 # only through ratatui's own backend, which is how stikk uses it so the two cannot drift apart.
 #
-# This is checked by the supply-chain workflow on every push rather than remembered.
+# This is checked by the supply-chain workflow, dispatched, rather than remembered — the same run
+# as the rest of this file (see the header: never on push/PR).
 deny = [
   { crate = "ratatui", wrappers = ["stikk-tui"] },
   { crate = "terminal-colorsaurus", wrappers = ["stikk-tui"] },

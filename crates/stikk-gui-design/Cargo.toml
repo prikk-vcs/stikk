@@ -1,0 +1,20 @@
+[package]
+name        = "stikk-gui-design"
+description = "The desktop app's design crate: the only place that names a colour, a size, a font, a spacing or a Snora style (RFC 069 rule 1). Not published."
+publish     = false
+
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
+
+[dependencies]
+# Pinned exactly as RFC 065's prototype measured them (RFC 070 §2). `design` brings the token
+# presets, the style functions and the contrast utilities this crate is built from.
+snora = { workspace = true }
+iced  = { workspace = true }
+
+[lints]
+workspace = true

@@ -21,6 +21,9 @@ stikk-state = { version = "0.22.1", path = "crates/stikk-state" }
 stikk-core  = { version = "0.22.1", path = "crates/stikk-core" }
 stikk-app   = { version = "0.22.1", path = "crates/stikk-app" }
 stikk-tui   = { version = "0.22.1", path = "crates/stikk-tui" }
+# RFC 070: the desktop app's two crates. Both `publish = false`, so no version is published for
+# either; the path dependency is what the workspace resolves, and the version is the workspace's.
+stikk-gui-design = { version = "0.22.1", path = "crates/stikk-gui-design" }
 
 # RFC 001 (accepted 2026-09-01): the TUI is built on ratatui over the crossterm backend. crossterm is
 # used through ratatui's own re-export (`ratatui::crossterm`) so the two can never drift to
@@ -39,6 +42,19 @@ ratatui = "0.30"
 # Windows `windows-sys` with its `windows-link` shim; every one is MIT or Apache-2.0 and the highest
 # minimum Rust among them is 1.74, against this workspace's 1.88.
 terminal-colorsaurus = "1.0.3"
+
+# RFC 065 (done 2026-11-27) chose Snora on iced for the desktop app, and RFC 070 builds it. **Both
+# are pinned exactly**, to the versions RFC 065's prototype measured: its findings about what the
+# stack does and does not do by itself (the scrollbar's overlap, the disabled contrast, the default
+# font, `system::theme()`) are facts about these two versions, and a floating requirement would let
+# the tree move under rules that were measured against them. Both declare MSRV 1.88, this
+# workspace's own (RFC 070 F3), so no raise is needed.
+snora = { version = "=0.65.0", features = ["design"] }
+iced  = { version = "=0.14.0", features = ["tokio"] }
+
+# `iced_test`'s headless harness, for the H level (RFC 070 decision 7). A dev-dependency of
+# `stikk-gui` only; it never enters a shipped build.
+iced_test = "=0.14.0"
 
 # Lint discipline mirrors prikk's: unsafe is forbidden (no FFI in stikk yet; the TUI/GUI toolkit
 # decision is deferred to Program Design), public items must be documented, and the panic-prone

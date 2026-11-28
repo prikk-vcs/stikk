@@ -81,3 +81,45 @@ fn both_release_lists_are_in_dependency_order() {
         }
     }
 }
+
+/// **The GUI crates are not published, and the release's lists do not name them** (RFC 070
+/// decision 1).
+///
+/// `stikk-gui` and `stikk-gui-design` are `publish = false`, so nothing about the release changes
+/// when they arrive. The check above is what holds that, and this is what shows it is load-bearing:
+/// the same comparison, against a list with a GUI crate added, must refuse.
+#[test]
+fn the_gui_crates_are_not_in_the_release_lists() {
+    let published = support::published_crates();
+    for gui in ["stikk-gui", "stikk-gui-design"] {
+        assert!(
+            support::repo_root()
+                .join("crates")
+                .join(gui)
+                .join("Cargo.toml")
+                .is_file(),
+            "{gui} is a crate in this workspace, so this test is about something real"
+        );
+        assert!(
+            !published.contains(&gui.to_string()),
+            "{gui} says `publish = false`, so the release must not name it: {published:?}"
+        );
+    }
+    for list in crate_lists() {
+        for gui in ["stikk-gui", "stikk-gui-design"] {
+            assert!(
+                !list.contains(&gui.to_string()),
+                "release.yml's list names {gui}: {list:?}"
+            );
+        }
+    }
+    // **The run that fails it:** a list with a GUI crate in it is not the published set.
+    let mut wrong = published.clone();
+    wrong.push("stikk-gui".to_string());
+    wrong.sort();
+    assert_ne!(
+        wrong, published,
+        "a list that names a GUI crate differs from the published set, which is what the \
+         comparison above would refuse"
+    );
+}

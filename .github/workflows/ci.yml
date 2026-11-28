@@ -33,3 +33,125 @@ jobs:
         # warnings to 23 while nothing gated it. A docs-publishing failure (docs.yml) is a broken site;
         # a CI failure here is a caught regression before it ships — which is what this is for.
         run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --locked
+
+  gui:
+    name: stikk-gui (${{ matrix.os }})
+    # **RFC 070 decision 7's CI job.** The desktop app's headless level runs on all three
+    # platforms, because `iced_test` needs no display and the three differ in the one thing that
+    # matters most to rule 2 — which font the system resolves.
+    #
+    # **`cargo deny` is not here**, although RFC 070 §7 lists it: this workflow runs on every push
+    # and pull request, and the project's own ruling (RFC 020 decision 4, the owner's Q1) is that
+    # the supply-chain gate is advisory-only and **dispatch-only**, so a newly published advisory
+    # cannot redden a pull request for a reason the diff did not cause. `deny.toml` says the same
+    # in its own header. The GUI tree's own run is `supply-chain.yml`, dispatched, and its output
+    # is in this handoff's request.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Read the MSRV from Cargo.toml, never restate it
+        # `shell: bash` because the Windows runner's default shell is not one (RFC 020 §4's
+        # discipline, and the same note `real-binary.yml` carries).
+        id: msrv
+        shell: bash
+        run: echo "v=$(grep '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Install Rust (derived MSRV)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ steps.msrv.outputs.v }}
+      - name: Install the two fonts the label-fit guard is bracketed by (Linux)
+        # **RFC 069 rule 2, amended 2026-11-28:** the guard runs with two fonts **installed by
+        # name** — Liberation Sans as the narrow bound and DejaVu Sans as the wide one — because
+        # the runner image documents no text font and is rebuilt weekly. Each package's installed
+        # version is printed, so the guard's own record names what it measured against.
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y fonts-liberation fonts-dejavu-core
+          dpkg-query -W -f='${Package} ${Version}\n' fonts-liberation fonts-dejavu-core
+      - name: Record the fonts this runner inherits (Linux)
+        # Evidence, not a gate (RFC 069 rule 2): what the image happens to carry, so a label-fit
+        # finding can be read against it.
+        if: runner.os == 'Linux'
+        run: fc-list --format '%{family[0]}\n' | sort -u
+      - name: Build the desktop app and its probe
+        run: cargo build -p stikk-gui -p stikk-gui-design --examples --locked
+      - name: The headless tests
+        # `--nocapture`: every one of these prints what it measured — the heights it read off the
+        # tree, the contrast it read off the pixels, the font the database resolved — and that
+        # output is the record the owner's rules ask for, on a pass as much as on a failure.
+        run: cargo test -p stikk-gui -p stikk-gui-design --locked -- --nocapture --test-threads=1
+      - name: The label-fit guard, bracketed by the two pinned fonts (Linux only)
+        # **Linux only, and said so here:** these are the two fonts this job installs by name.
+        # macOS and Windows have their own system fonts, which rule 2 follows rather than pins, so
+        # bracketing there would be measuring a font nobody chose.
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          for font in "Liberation Sans" "DejaVu Sans"; do
+            echo "::group::the label-fit guard with $font"
+            STIKK_GUI_FONT="$font" cargo test -p stikk-gui --locked \
+              -- --nocapture --test-threads=1 rules::every_label_fits
+            echo "::endgroup::"
+          done
+      - name: Can this runner open the app's window? (RFC 070 Handoff A §1)
+        # **The first question of this handoff.** It opens the real app on a scratch directory,
+        # opens the Glossary through the program's own intent, logs every window fact it is given,
+        # and exits 0 only when the viewport is confirmed from the window **and** nothing was read
+        # before it was — which is RFC 069 rule 8's C test.
+        #
+        # On Linux a runner has no display, so the window is opened under Xvfb; macOS and Windows
+        # runners have a session of their own.
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get install -y xvfb
+            xvfb-run -a cargo run -p stikk-gui --example window_probe --locked -- --seconds 30
+          else
+            cargo run -p stikk-gui --example window_probe --locked -- --seconds 30
+          fi
+      - name: Rule 8's viewport, on the long card at 250 % (C)
+        # RFC 069 rule 8's own C test, at the zoom RFC 065's W2 was measured at: the Glossary is
+        # far longer than 512 x 288, and no reading may be taken before the window has answered.
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a cargo run -p stikk-gui --example window_probe --locked -- --scale 2.5 --seconds 30
+          else
+            cargo run -p stikk-gui --example window_probe --locked -- --scale 2.5 --seconds 30
+          fi
+      - name: Rule 2's Segoe UI, by name (C, Windows)
+        # The database's own answer, printed by the probe and asserted here, beside the design
+        # crate's own `windows_names_segoe_ui` test in the headless run above.
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run -p stikk-gui --example window_probe --locked -- --seconds 30 | tee probe.txt
+          grep -F 'interface font Some("Segoe UI")' probe.txt
+      - name: Rule 3's theme, from the desktop's own setting (C, Windows)
+        # **`AppsUseLightTheme` 0, then 1**, which is where Windows keeps it. The probe prints the
+        # preset rule 3 chose, so the assertion is on stikk's own answer to the desktop's setting
+        # and not on the registry.
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pair in "0 dark_aaa" "1 light_aaa"; do
+            set -- $pair
+            value="$1"
+            wanted="$2"
+            echo "::group::AppsUseLightTheme $value expects $wanted"
+            reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize" \
+              /v AppsUseLightTheme /t REG_DWORD /d "$value" /f
+            cargo run -p stikk-gui --example window_probe --locked -- --seconds 30 | tee theme.txt
+            grep -F "preset $wanted" theme.txt
+            echo "::endgroup::"
+          done

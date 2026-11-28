@@ -5,6 +5,8 @@ interface font** (*"B"*). See Q1. [Handoff A](../handoffs/069-the-desktop-apps-d
 **Amended 2026-11-28** from Handoff A's measurements, authorized by the owner (*"Authorized on both."*):
 - **rule 2:** the label-fit guard's two fonts are pinned by name, because GitHub's runner documents no text font;
 - **rule 3:** the default follows the desktop while the app is open, as well as at startup.
+**Clarified 2026-11-28** by the architect, from RFC 070 Handoff A's captures: rule 3's table names **the scrollbar's
+thumb** among the marks held to 3 : 1. It already fell under *"every mark"*. Snora's own thumb measured 1.45 : 1.
 **Proposed 2026-11-27** by the architect, as 0.23.0's increment 1 (`.git-exclude/release/0-23-0-scope.md`, revision 2,
 authorized by the project owner 2026-11-25).
 **Measured** on `main` at `7c77193`, against Snora 0.65.0 and iced 0.14.0 as RFC 065 measured them.
@@ -163,7 +165,7 @@ Snora style. The views live in `stikk-gui` and import from it. They never import
   |---|---|---|
   | Content text | 7 : 1 | 7 : 1 |
   | Labels, placeholders, **unavailable labels** | 4.5 : 1 | 7 : 1 |
-  | Lines, the focus ring, badges against the page | 3 : 1 | 4.5 : 1 |
+  | Lines, the focus ring, badges, **the scrollbar's thumb** (against its track and the page) | 3 : 1 | 4.5 : 1 |
 
 - **Unavailable controls stay readable and keep their shape** (RFC 065's ruling 2). `stikk-gui-design` overrides
   Snora's disabled style so the label meets 4.5 : 1 and the outline 3 : 1. An unavailable control never gains a

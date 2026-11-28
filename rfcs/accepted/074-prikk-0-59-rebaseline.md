@@ -1,6 +1,6 @@
 # RFC 074 — The prikk 0.59.0 re-baseline
 
-**Status.** **Proposed 2026-11-28** by the architect, as 0.23.0's conditional increment
+**Status.** **Accepted by the project owner 2026-11-28** (*"RFC 074 is accepted."*); [Handoff A](../handoffs/074-prikk-0-59-rebaseline/a-the-0-59-rebaseline-handoff-v1.md). **Proposed 2026-11-28** by the architect, as 0.23.0's conditional increment
 (`.git-exclude/release/0-23-0-scope.md`, revision 2: *"if prikk releases 0.59.0 before the cut"*; it did, on
 2026-11-28). The owner set the order on 2026-11-28 (*"Authorized on both."*): after RFC 070's Handoff A, with the reply
 to prikk's letter 034 drafted between them. **No open question.**

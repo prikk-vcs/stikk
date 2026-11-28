@@ -24,13 +24,13 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 |----|-------|-----------|
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 074 | [The prikk 0.59.0 re-baseline](./proposed/074-prikk-0-59-rebaseline.md) | the validated ceiling to 0.59; the switch, merge and adopt refusals shown in prikk's words with Seal offered as the way out; glosses that defer to sentences naming their way out; every JSON reader reads a refusal first; prikk's new wait kept |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._
 
 | ID | Title | Addresses | Handoff |
 |----|-------|-----------|---------|
+| 074 | [The prikk 0.59.0 re-baseline](./accepted/074-prikk-0-59-rebaseline.md) | the validated ceiling to 0.59; the switch, merge and adopt refusals in prikk's words with Seal offered; glosses that defer; every JSON reader reads a refusal first; prikk's wait kept | [A: the 0.59 re-baseline](./handoffs/074-prikk-0-59-rebaseline/a-the-0-59-rebaseline-handoff-v1.md) |
 | 070 | [`stikk-gui`: the crate and its reading screens](./accepted/070-stikk-gui-the-crate-and-its-reading-screens.md) | the desktop app's two crates (`publish = false`), its shell, keys, reading report and reading screens, tested to RFC 069's rules; nothing ships | [A: the foundation, Orientation and History](./handoffs/070-stikk-gui-the-crate-and-its-reading-screens/a-the-foundation-orientation-and-history-handoff-v1.md) |
 | 069 | [The desktop app's design rules](./accepted/069-the-desktop-apps-design-rules.md) | the rules `stikk-gui` is built to (seeing, space, hands, reading, words, calm, assistive technology), each with its test; the system's own interface font (Q1: B) | [A: the documentation, the theme and the font](./handoffs/069-the-desktop-apps-design-rules/a-documentation-theme-and-font-handoff-v1.md) |
 | 072 | [Checks follow their causes, and the release steps are written once](./accepted/072-checks-follow-their-causes.md) | the supply-chain check runs when the dependencies change; the installer fill, the archive packaging and the version read become shared scripts | [A: checks and shared steps](./handoffs/072-checks-follow-their-causes/a-checks-and-shared-steps-handoff-v1.md) |

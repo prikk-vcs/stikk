@@ -22,6 +22,7 @@ jobs:
     outputs:
       floor: ${{ steps.matrix.outputs.floor }}
       ceiling: ${{ steps.matrix.outputs.ceiling }}
+      below_switch: ${{ steps.below_switch.outputs.v }}
       msrv: ${{ steps.msrv.outputs.v }}
     steps:
       - uses: actions/checkout@v5
@@ -43,6 +44,14 @@ jobs:
           read -r FLOOR CEILING < <(cargo run --quiet -p stikk-prikk --example print_version_matrix)
           echo "floor=0.${FLOOR}.0" >> "$GITHUB_OUTPUT"
           echo "ceiling=0.${CEILING}.0" >> "$GITHUB_OUTPUT"
+      - name: Read the below-the-band version from stikk-core::switch, never hardcode it here
+        id: below_switch
+        # RFC 074 decision 4: the suite's third slot. Its own example, not a third word from
+        # `print_version_matrix` — that one is read with `read -r FLOOR CEILING`, where a third word
+        # would land inside CEILING and install the wrong binary without saying so.
+        run: |
+          V=$(cargo run --quiet -p stikk-core --example print_below_switch_version)
+          echo "v=0.${V}.0" >> "$GITHUB_OUTPUT"
 
   real-binary:
     name: real prikk (${{ matrix.os }})
@@ -62,6 +71,48 @@ jobs:
         run: cargo install prikk --version ${{ needs.determine-matrix.outputs.floor }} --locked --root ${{ runner.temp }}/prikk-floor
       - name: Install prikk (ceiling — ${{ needs.determine-matrix.outputs.ceiling }})
         run: cargo install prikk --version ${{ needs.determine-matrix.outputs.ceiling }} --locked --root ${{ runner.temp }}/prikk-ceiling
+      - name: Install prikk (below the switch band — ${{ needs.determine-matrix.outputs.below_switch }})
+        shell: bash
+        # **From the published release, checked against the release's own `.sha256`** (RFC 074's
+        # review, §2.2) — unlike the two slots above, which `cargo install` builds from crates.io.
+        # The archive is what prikk ships to a user, so the band this leg measures is measured on
+        # the binary a user would have.
+        #
+        # One bash step for all three runners: Windows runners run this through Git Bash, which has
+        # `unzip`; macOS has `shasum` where Linux has `sha256sum`.
+        run: |
+          set -euo pipefail
+          VERSION='${{ needs.determine-matrix.outputs.below_switch }}'
+          DEST='${{ runner.temp }}/prikk-below-switch/bin'
+          case '${{ matrix.os }}' in
+            ubuntu-latest)  ASSET=prikk-x86_64-unknown-linux-gnu.tar.gz ;;
+            macos-latest)   ASSET=prikk-aarch64-apple-darwin.tar.gz ;;
+            windows-latest) ASSET=prikk-x86_64-pc-windows-msvc.zip ;;
+            *) echo "no published archive is named for ${{ matrix.os }}" >&2; exit 1 ;;
+          esac
+          BASE="https://github.com/nabbisen/prikk/releases/download/${VERSION}"
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          curl -sSLf -O "${BASE}/${ASSET}"
+          curl -sSLf -O "${BASE}/${ASSET}.sha256"
+          # The release's own file, checked with whichever tool this runner has. A mismatch, or a
+          # missing tool, stops the job here rather than running an unverified binary.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum -c "${ASSET}.sha256"
+          elif command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 -c "${ASSET}.sha256"
+          else
+            echo 'no sha256 tool on this runner: refusing to install an unchecked binary' >&2
+            exit 1
+          fi
+          mkdir -p "$DEST"
+          case "$ASSET" in
+            *.tar.gz) tar -xzf "$ASSET" -C "$DEST" prikk ;;
+            *.zip)    unzip -o -j "$ASSET" 'prikk.exe' -d "$DEST" ;;
+          esac
+          chmod +x "$DEST"/prikk* || true
+          # It must be the version the constant named, and say so in the log.
+          "$DEST"/prikk${{ matrix.os == 'windows-latest' && '.exe' || '' }} --version
       - name: Run the real-binary integration suite
         shell: bash
         # --nocapture: every subprocess prikk invocation prints its own output, which is exactly the
@@ -71,3 +122,5 @@ jobs:
         env:
           STIKK_TEST_PRIKK_FLOOR_BIN: ${{ runner.temp }}/prikk-floor/bin/prikk${{ matrix.os == 'windows-latest' && '.exe' || '' }}
           STIKK_TEST_PRIKK_CEILING_BIN: ${{ runner.temp }}/prikk-ceiling/bin/prikk${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          # RFC 074 decision 4's third slot: the band stikk's own switch guard lives in.
+          STIKK_TEST_PRIKK_BELOW_SWITCH_BIN: ${{ runner.temp }}/prikk-below-switch/bin/prikk${{ matrix.os == 'windows-latest' && '.exe' || '' }}

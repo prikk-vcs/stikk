@@ -2,6 +2,38 @@
 
 All notable changes to stikk are recorded here. Dates are ISO-8601.
 
+## Unreleased
+
+**stikk reads prikk 0.59.** The version it has checked its output against is now 0.59, and what
+0.59 changed about refusals reaches the reader as prikk's own words.
+
+### Added
+
+- **stikk now validates prikk 0.59.** The whole real-binary suite runs against it.
+- **At prikk 0.59 and above, switching to a branch whose queued work the switch would overwrite is
+  refused with prikk's own words — and stikk offers to seal that work first.** prikk 0.59 refuses
+  that switch itself, before anything is written, and names the seal that keeps the files; stikk
+  shows prikk's sentence and offers its own Seal for the branch prikk named, with the usual
+  confirmation. Below 0.59 stikk's own refusal stays, because there prikk overwrites the files
+  instead of refusing (on prikk 0.58 the switch succeeds and the queued file is gone from the
+  worktree).
+- **The same for merging and importing** into the branch the repository is on: prikk's refusal
+  names the branch whose queue holds the work, and the offered seal is for that branch.
+
+### Changed
+
+- **A refusal shows prikk's own message on every command.** Every reader asks whether prikk
+  answered with a refusal document before it checks the report's own schema, so a refusal's words
+  reach the reader whichever command printed it — where before, a refusal on a command that had
+  never printed one would have been reported as an unknown schema version.
+- **stikk adds nothing to prikk's incomplete-publication refusal at 0.59 and above**, because
+  prikk's own sentence now names the command that resolves the state. Below 0.59 stikk's
+  explanation stays, where prikk's words name no command at all.
+- **A writer now waits for a lock whose holder is still running** — that is prikk 0.59's own
+  behaviour, up to five seconds, and stikk does not shorten it: waiting for a command that is
+  about to finish is better than refusing at once. The wait shows as the usual loading card, and
+  prikk's note about it never reads as a refusal or a warning.
+
 ## 0.22.1 — 2026-11-25
 
 **0.22.0 with its confirmation gate fixed. Use 0.22.1: in 0.22.0 a confirmation that did not fit the

@@ -1,6 +1,6 @@
 # RFC 070 — `stikk-gui`: the crate and its reading screens
 
-**Status.** **Proposed 2026-11-28** by the architect, as 0.23.0's increment 2 (`.git-exclude/release/0-23-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-11-28** (*"Accepted."*); [Handoff A](../handoffs/070-stikk-gui-the-crate-and-its-reading-screens/a-the-foundation-orientation-and-history-handoff-v1.md). **Proposed 2026-11-28** by the architect, as 0.23.0's increment 2 (`.git-exclude/release/0-23-0-scope.md`,
 revision 2, authorized by the project owner 2026-11-25). **No open question.**
 **Measured** on `main` at `89a6bdc`, and on RFC 065's prototype (`.git-exclude/reports/065-gui-toolkit/snora/proto/`).
 **Tracks.**
@@ -195,9 +195,9 @@ DejaVu Sans installed by name** (RFC 069 rule 2).
 
 | Handoff | Delivers | Its tests |
 |---|---|---|
-| **A** | both crates; the shell; the key function; the reading report; **Orientation and History**; theme, font and the design crate's presets and overrides; `deny.toml`; the CI job; **first, whether the Windows and macOS runners can open the window** | rules 1, 2, 3, 4 (the guard and its failing run), 6 (focus return, Escape, `Process`), 8 (the four Handoff C cases and the unconfirmed-viewport refusal), 9 and 12 at H; one R keyboard pass and one R reading sequence on a long read-only card; C as Handoff A's first question allows |
+| **A** | both crates; the shell; the key function; the reading report; **Orientation and History**; the generic card frame, with **the Glossary** drawn through it (the long card rule 8's real-window sequence needs); theme, font and the design crate's presets and overrides; `deny.toml`; the CI job; **first, whether the Windows and macOS runners can open the window** | rules 1, 2, 3, 4 (the guard and its failing run), 6 (focus return, `Process`), 8 (the four Handoff C cases and the unconfirmed-viewport refusal), 9 and 12 at H; one R keyboard pass and one R reading sequence on a long read-only card; C as Handoff A's first question allows |
 | **B** | Block detail, Trust, Changes, Queue, Patch detail, Compare, Merge plan, Bundle, Verify; **zoom** | the H matrix over every new screen; rule 5's hit areas and zoom persistence |
-| **C** | the action list, the palette (its filter is the first text field), help, the glossary, Refusal, Refusals, Stale, the ref picker, the read-only result cards | rule 6's letter rule on the palette's field; rule 7's sheet test; rule 11's labels; rule 13's template check; the R keyboard pass extended |
+| **C** | the action list, the palette (its filter is the first text field), help and the glossary's navigation, Refusal, Refusals, Stale, the ref picker, the read-only result cards | rule 6's letter rule and its Escape-from-a-field case on the palette's field; rule 7's sheet test; rule 11's labels; rule 13's template check; the R keyboard pass extended |
 
 **The real-window reading sequence** (rule 8's R test) runs in A on a long read-only card (a Refusal or the
 Glossary), because the commit confirmation is a writing card. It moves to the confirmation when the writing cards

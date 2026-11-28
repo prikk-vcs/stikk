@@ -622,6 +622,7 @@ action it cannot do would confuse the users it is for.
   languages cheap, right-to-left among them, and the rule that a front end reports only what it drew.
 - **The app's foundation and its reading screens** (RFC 070), tested headless on Linux, macOS and Windows.
 - **How the app will reach users** (RFC 071): designed and measured; built in the release that publishes it.
+  The stores, Flathub and the Microsoft Store, follow in RFC 075.
 - **The supply-chain check runs when the dependencies change** ([RFC 072](rfcs/accepted/072-checks-follow-their-causes.md)).
 - **Nothing acts behind the terminal's "window too small" notice** (RFC 073): only quitting does.
 

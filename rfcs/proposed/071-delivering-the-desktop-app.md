@@ -1,8 +1,14 @@
 # RFC 071 — Delivering the desktop app
 
 **Status.** **Proposed 2026-11-28** by the architect, as 0.23.0's increment 3 (`.git-exclude/release/0-23-0-scope.md`,
-revision 2, authorized by the project owner 2026-11-25: *"design only … built in the next release"*). **Three open
-questions for the owner (Q1–Q3).**
+revision 2, authorized by the project owner 2026-11-25: *"design only … built in the next release"*).
+**The owner's answers, 2026-11-28:**
+- **Q1:** agreed, with a careful comparison against the other candidate pairs, given under Q1;
+- **Q2:** agreed, Flathub included. The owner proposed **the Microsoft Store**, and asked what winget and Homebrew are.
+  Both are answered under Q2;
+- **Q3:** ruled. **No paid signing and no notarization.**
+
+**Awaiting the owner's acceptance.**
 **Measured** on `main` at `45340b2`: the release workflows, the installers, the AUR packages, and RFC 065's M8.
 **Tracks.**
 - RFC 065's M8 (packaging), and its outcome;
@@ -104,7 +110,13 @@ release builds it.**
 
 - **The desktop app ships as an `.app` bundle** (`Info.plist`, the icon as `.icns`), in a zip archive, for aarch64
   and x86_64.
-- **The install guide says plainly what Gatekeeper will say,** and how to open it, until Q3 decides on notarization.
+- **It isn't notarized** (Q3). **It's ad-hoc signed** in CI (`codesign --sign -`, which is free), and checked with
+  `codesign --verify`, because Apple Silicon won't run arm64 code without at least that.
+- **The install guide says plainly what Gatekeeper will say,** and how to open it. Since macOS 15 the way is
+  System Settings → Privacy & Security → *Open Anyway*, after one refused start. Control-click → *Open* no longer
+  works.
+- **`install.sh` also installs the `.app`** into `~/Applications`. A file fetched by `curl` carries no quarantine
+  mark, so Gatekeeper doesn't stop it. That's offered in the guide beside the download, as one line to paste.
 - **Unverified on a Mac:** there's no Mac here. The bundle is built and checked for structure on GitHub's macOS
   runner, and the guide says it hasn't been tried on a real Mac.
 
@@ -112,6 +124,9 @@ release builds it.**
 
 - **A `.desktop` file** (freedesktop's Desktop Entry spec) and **icons in the hicolor theme's sizes,** plus a scalable
   SVG.
+- **One app ID everywhere,** from the first release: the `.desktop` file's name, the window's Wayland `app_id`, and
+  later the stores' (Q1). A Wayland desktop finds a window's icon by matching the two, so they can't differ. Changing
+  the ID later breaks the launchers people have pinned.
 - `install.sh` puts them in the user's own data directory (`~/.local/share/applications`, `…/icons/hicolor`). The
   uninstaller removes them. The AUR packages install them system-wide.
 - **Validated with `desktop-file-validate`** in CI.
@@ -130,45 +145,96 @@ with that command.
 | Does the chosen build start on a real Debian 12? | a pinned `debian:12` container on the runner, with a virtual display (`Xvfb`), the probe of RFC 070 Handoff A §1: it opens, reports its viewport, exits 0 |
 | Which run-time libraries a minimal Debian 12, Ubuntu 22.04 and Fedora lack | the same containers, minimal, before and after installing the desktop packages |
 | The GUI-subsystem `.exe` | built on `windows-latest`; `file` or `dumpbin` shows the subsystem; the probe starts it |
-| The `.app` bundle | built on `macos-latest`; its structure checked; the probe started from inside it |
+| The `.app` bundle | built on `macos-latest`; its structure checked; ad-hoc signed, and `codesign --verify` clean; the probe started from inside it |
 | The `.desktop` file | `desktop-file-validate`, clean |
 
-## Open questions
+## The owner's questions, answered
 
-**Q1 — What's the desktop app called?**
-- **The name on the menu and in the window title: "stikk".**
-- **The executable: `stikk-desktop`.** It's beside the terminal's `stikk`, and "desktop" is a word a person knows
-  where "gui" is jargon.
-- The crate stays `stikk-gui`. That's internal.
-- **My recommendation: as above.**
+### Q1 — What's the desktop app called? (agreed, compared)
 
-**Q2 — Which channels, in the release that publishes the app?**
-- **Recommended:**
-  - the release archives and the one-line installers, extended as decisions 1–5 say;
-  - the AUR packages;
-  - the install guide, written for a person who has never used a terminal.
-- **Not yet:**
-  - **Flathub,** the store many Linux desktops show by default. It's the best novice route on Linux, but its sandbox
-    must let stikk run prikk and reach repositories anywhere in the home folder. That's a design of its own, and
-    deserves its own RFC after this one.
-  - **winget** and a **Homebrew cask** (the tap waits on the owner, as carried).
-- **My recommendation: as above.** Flathub gets its own RFC next.
+**Agreed:**
+- **"stikk"** on the menu, in the window title, and on the Windows and macOS shortcut and bundle names;
+- **`stikk-desktop`** as the executable;
+- the crate stays `stikk-gui`, which is internal.
 
-**Q3 — Signing, before the app is published.**
-- **Windows:** the carried decision stands. SignPath is re-entered only with prikk's own signing decision, because
-  signing stikk alone still leaves `prikk.exe` blocked. **Until then the guide shows SmartScreen's two clicks,** with a
-  picture.
-- **macOS:** notarization needs an Apple Developer Program membership, a paid yearly account in the owner's name.
-  **Without it, every macOS user meets Gatekeeper's refusal on first start.**
-- **My recommendation:**
-  - decide **Windows** together with prikk, as carried;
-  - decide **macOS** before the publishing release. Until then, ship with the guide's instructions, and say plainly on
-    the download page that the app isn't notarized.
+**Where a person meets the executable's name.** Not on the menu: the menu and the window say "stikk" whatever the
+file is called. Windows' Task Manager shows the `.exe`'s description, which is also "stikk". A person meets it:
+- in the download's file name;
+- in the AUR package's name;
+- in the guide;
+- in a terminal, if they use one.
+
+**The pairs compared** (terminal, desktop):
+
+| Pair | For | Against |
+|---|---|---|
+| **`stikk` + `stikk-desktop`** | the typed command keeps the short name; "desktop" is a word people know; the `-desktop` suffix is the established convention (`signal-desktop`, `github-desktop`, `element-desktop`); `stikk-<Tab>` keeps them together | a longer name, but it's typed rarely: the menu starts the app |
+| `stikk` + `stikk-gui` | short; developers know "GUI" | **jargon:** "gui" is the word the download page would show a novice. The convention is older tools (`git-gui`) |
+| `stikk-tui` + `stikk-gui` | symmetric | **renames the command every terminal user types,** along with the crates.io package's binary, both AUR packages, the installers and every page of the docs. And "tui" is jargon too. The command typed most deserves the shortest name |
+| one `stikk`, with `stikk desktop` | one file | **the terminal's binary would become the desktop's:** glibc-bound, so no musl (decision 1, RFC 048), many times larger, and needing display libraries on servers. A Windows `.exe` can't be a console and a GUI program at once (decision 3) |
+| `stikk` + `stikk-app` | short | **`stikk-app` is already an internal crate,** so contributors would confuse the two. And "app" doesn't tell the two apart, since the terminal is an app too |
+| `stikk` + `Stikk` | the brand | **the same file on Windows and macOS,** whose file systems ignore case by default |
+| `stikk` + `stikkw` | Windows' convention for a windowed twin (`pythonw`) | obscure, and only Windows knows it |
+
+**The app ID** (decision 5): **`io.github.prikk_vcs.stikk`**:
+- the reverse-DNS form freedesktop and Flathub require;
+- derived from the repository stikk's own `homepage` names;
+- with `-` written as `_`, which Flathub and D-Bus need.
+
+`org.prikk.stikk` would need the consent of whoever holds `prikk.org`, which isn't stikk's. **The stores' RFC
+confirms the ID before the publishing release.**
+
+### Q2 — Which channels? (agreed; the Microsoft Store added)
+
+**Agreed, for the publishing release:**
+- the release archives and the one-line installers, extended as decisions 1–5 say;
+- the AUR packages, named `stikk-desktop` and `stikk-desktop-bin` (Q1);
+- the install guide, written for a person who has never used a terminal.
+
+**The stores, in one RFC after this one** (RFC 075). Flathub and the Microsoft Store raise the same three questions,
+so one design answers them for both:
+- **Containment.** A store app runs contained: Flatpak's sandbox, or MSIX's virtualized `AppData`. stikk must run
+  prikk and read repositories anywhere in the home folder. **On Windows, a program started by a packaged app may
+  or may not see the same `AppData` as the app does.** Reports differ by Windows build and install path, and
+  prikk's keys and settings live there. That's measured, not assumed.
+- **prikk.** A person who got stikk from a store still needs prikk (decision 6). The store page and the app's first
+  screen must make that one plain step.
+- **The app ID** (Q1).
+
+**The Microsoft Store, measured for the owner's proposal:**
+- **Registration is free for individual developers.** Microsoft dropped the fee from June 2025. It asks for a
+  Microsoft account, and an identity check by ID and selfie, in the owner's name. Microsoft's own FAQ says the old
+  fee may still apply in some markets or through some sign-up pages, so the owner sees the price before agreeing.
+- **The Store signs an MSIX package itself.** A Store install then meets no SmartScreen warning, with no certificate
+  bought: that's Q3's Windows answer at no cost. An `.exe` or `.msi` submission would need stikk's own paid
+  certificate, so the Store route is MSIX.
+
+**What winget and Homebrew are, and why they're dropped from this RFC:**
+- **winget** is Windows' own command-line installer: `winget install <name>`, typed in a terminal. It's free, and
+  listed by a pull request to Microsoft's community repository.
+- **Homebrew** is the Mac's most used command-line installer, run by volunteers. Its official repository now accepts
+  only apps that are signed and notarized by Apple, and it has removed the way to skip that check. **After Q3, the
+  desktop app can't be listed there.**
+- **Both are typed commands,** so they serve terminal users, not the novice this app is for. **Neither is planned
+  for the desktop app.** The terminal's Homebrew tap stays carried, as before.
+
+### Q3 — Signing (ruled)
+
+**Ruled by the owner, 2026-11-28: no paid signing and no notarization.** What follows from it:
+- **macOS:** the `.app` ships ad-hoc signed and **not notarized,** for good (decision 4):
+  - the download page and the guide say so plainly;
+  - the guide shows *Open Anyway* in System Settings, with a picture, and offers `install.sh`'s one line, which
+    Gatekeeper doesn't stop.
+- **Windows, a direct download:** unsigned. **The guide shows SmartScreen's two clicks,** *More info* then *Run
+  anyway*, with a picture.
+- **Windows, the Store:** signed by the Store, for free (Q2).
+- **SignPath stays carried,** with prikk's own signing decision. Its programme for open-source projects is free, so
+  the ruling doesn't close it.
 
 ## What this RFC does not do
 
 - **No build, no installer change, no release change in 0.23.0.** The publishing release builds it.
-- **No Flathub design** (Q2): its own RFC.
+- **No store design** (Q2): Flathub and the Microsoft Store are RFC 075's.
 - **No icon artwork.** The icon is drawn in the publishing release's handoff, offered to the owner as two or three
   candidates, and chosen by the owner.
 

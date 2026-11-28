@@ -24,7 +24,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 |----|-------|-----------|
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
-| 071 | [Delivering the desktop app](./proposed/071-delivering-the-desktop-app.md) | a glibc build at a measured, pinned floor; library checks; a GUI-subsystem `.exe` with a Start menu entry; an `.app` bundle; a Linux menu entry and icons; design only, built in the publishing release; Q1 the name, Q2 the channels, Q3 signing |
+| 071 | [Delivering the desktop app](./proposed/071-delivering-the-desktop-app.md) | a glibc build at a measured, pinned floor; library checks; a GUI-subsystem `.exe` with a Start menu entry; an `.app` bundle; a Linux menu entry and icons; design only, built in the publishing release; the owner's answers recorded (`stikk-desktop`; the stores in RFC 075; no paid signing); awaiting acceptance |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

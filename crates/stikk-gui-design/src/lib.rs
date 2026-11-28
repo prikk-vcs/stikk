@@ -34,7 +34,7 @@ mod preset;
 mod style;
 mod text;
 
-pub use font::{interface_font, interface_font_name};
+pub use font::{MACOS_CANDIDATES, interface_font, interface_font_name};
 pub use preset::{Overrides, Preset, theme, tokens};
 pub use style::{
     button_primary, button_secondary, card_width, line, render, scrollbar_spacing, start,

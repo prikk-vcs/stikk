@@ -15,6 +15,10 @@ repository.workspace    = true
 # presets, the style functions and the contrast utilities this crate is built from.
 snora = { workspace = true }
 iced  = { workspace = true }
+# **The font database iced itself draws with**, asked by name (RFC 069 rule 2). Already in the
+# lock through iced; named here so this crate can refuse a family the database cannot honour
+# rather than hand iced a name that resolves to nothing.
+iced_graphics = "=0.14.0"
 
 [lints]
 workspace = true

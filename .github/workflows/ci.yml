@@ -74,6 +74,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fonts-liberation fonts-dejavu-core
           dpkg-query -W -f='${Package} ${Version}\n' fonts-liberation fonts-dejavu-core
+      - name: Install the libraries winit loads by name (Linux)
+        # **RFC 071 F2's own list, met for real.** winit and wgpu load the Wayland and X11
+        # libraries at run time rather than linking them, so a runner that has none of them cannot
+        # open a window — measured here, 2026-11-28: the probe died in `xkbcommon-dl`'s
+        # `x11.rs:59` with a panic, not an error, because `libxkbcommon-x11.so.0` was absent.
+        # A desktop has these; a CI image does not.
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y \
+            libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 \
+            libxcursor1 libxi6 libxrandr2 libegl1 libgl1
       - name: Record the fonts this runner inherits (Linux)
         # Evidence, not a gate (RFC 069 rule 2): what the image happens to carry, so a label-fit
         # finding can be read against it.
@@ -140,18 +152,25 @@ jobs:
         # **`AppsUseLightTheme` 0, then 1**, which is where Windows keeps it. The probe prints the
         # preset rule 3 chose, so the assertion is on stikk's own answer to the desktop's setting
         # and not on the registry.
+        #
+        # **PowerShell, not bash.** `shell: bash` on a Windows runner is Git Bash, which rewrites
+        # anything that looks like a path — so `reg add "HKCU\Software\..."` reached `reg` as
+        # something else and it answered `ERROR: Invalid syntax` (measured, 2026-11-28). The
+        # registry is Windows' own, and so is the shell that should touch it.
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          for pair in "0 dark_aaa" "1 light_aaa"; do
-            set -- $pair
-            value="$1"
-            wanted="$2"
-            echo "::group::AppsUseLightTheme $value expects $wanted"
-            reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize" \
-              /v AppsUseLightTheme /t REG_DWORD /d "$value" /f
-            cargo run -p stikk-gui --example window_probe --locked -- --seconds 30 | tee theme.txt
-            grep -F "preset $wanted" theme.txt
-            echo "::endgroup::"
-          done
+          $ErrorActionPreference = 'Stop'
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+          New-Item -Path $key -Force | Out-Null
+          foreach ($case in @(@{ Value = 0; Preset = 'dark_aaa' }, @{ Value = 1; Preset = 'light_aaa' })) {
+            Write-Host "::group::AppsUseLightTheme $($case.Value) expects $($case.Preset)"
+            Set-ItemProperty -Path $key -Name 'AppsUseLightTheme' -Value $case.Value -Type DWord
+            $out = cargo run -p stikk-gui --example window_probe --locked -- --seconds 30 2>&1 | Out-String
+            Write-Host $out
+            if ($LASTEXITCODE -ne 0) { throw "the probe exited $LASTEXITCODE" }
+            if ($out -notmatch [regex]::Escape("preset $($case.Preset)")) {
+              throw "the desktop said $($case.Value) and stikk did not draw $($case.Preset)"
+            }
+            Write-Host '::endgroup::'
+          }

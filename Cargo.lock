@@ -3640,6 +3640,7 @@ name = "stikk-gui-design"
 version = "0.22.1"
 dependencies = [
  "iced",
+ "iced_graphics",
  "snora",
 ]
 

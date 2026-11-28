@@ -14,8 +14,9 @@ fn the_interface_font_is_resolved_once() {
     println!("the interface font on this platform: {first:?}");
 }
 
-/// **A platform stikk cannot ask falls back to iced's own**, and says nothing to the user: it is a
-/// rendering matter and not theirs (rule 2).
+/// **A name is only given to iced when the font database can honour it** (rule 2), and a platform
+/// stikk cannot ask falls back to iced's own, saying nothing to the user: it is a rendering matter
+/// and not theirs.
 #[test]
 fn an_unknown_font_falls_back_to_iceds_own() {
     let font = interface_font();
@@ -35,6 +36,24 @@ fn an_unknown_font_falls_back_to_iceds_own() {
 #[test]
 fn windows_names_segoe_ui() {
     assert_eq!(interface_font_name(), Some("Segoe UI"));
+}
+
+/// **macOS names whichever of its candidates the database honours**, and the record says which.
+///
+/// There is no Mac in this project, so this asserts the shape and prints the answer rather than
+/// naming a face nobody here can check (rule 2's *unverified*). `None` is a legitimate outcome:
+/// iced's own fallback then draws, which rule 2 allows.
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_names_a_font_the_database_honours() {
+    let name = interface_font_name();
+    println!("macOS resolved the interface font to {name:?}");
+    if let Some(name) = name {
+        assert!(
+            super::MACOS_CANDIDATES.contains(&name),
+            "{name:?} is one of the candidates"
+        );
+    }
 }
 
 /// **Linux is whatever fontconfig resolves for `sans-serif`** — the user's own choice, which is

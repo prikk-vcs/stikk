@@ -28,6 +28,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use iced::Task;
 use stikk_gui::{Message, Settings, Stikk};
 
 /// Whether the viewport was confirmed before the deadline. Read by `main` after the window closes,
@@ -47,6 +48,8 @@ struct Probe {
     deadline: Duration,
     /// The last line written, so the log carries every change and not one line per beat.
     last: String,
+    /// **Whether the window has been asked a second time** (see [`Probe::update`]).
+    asked_again: bool,
 }
 
 impl Probe {
@@ -59,6 +62,7 @@ impl Probe {
                 started: Instant::now(),
                 deadline,
                 last: String::new(),
+                asked_again: false,
             },
             task,
         )
@@ -110,8 +114,33 @@ impl Probe {
             );
         }
         if self.stikk.viewport().confirmed() {
-            CONFIRMED.store(true, Ordering::SeqCst);
-            println!("probe: the viewport is confirmed; the app may report a reading");
+            // **The window is asked a second time before the probe believes it.**
+            //
+            // iced applies the app's own scale factor to the window's viewport when it
+            // synchronizes with the program, which is not necessarily before the first answers
+            // arrive — measured on GitHub's Windows runner, 2026-11-28: at `--scale 2.5` the
+            // first confirmation read 1280 x 720, the size *before* the zoom, and a probe that
+            // exited there would have reported a 250 % run it never laid out. So the first
+            // confirmation asks again, and only a second one that agrees with a layout in
+            // between is the answer. That is also the honest reading of rule 8: a viewport
+            // confirmed once by a window that is still settling is not confirmed.
+            if !self.asked_again {
+                self.asked_again = true;
+                println!("probe: confirmed once; asking the window again before believing it");
+                return Task::batch([
+                    iced::window::latest()
+                        .and_then(iced::window::size)
+                        .map(Message::WindowSize),
+                    iced::window::latest()
+                        .and_then(iced::window::scale_factor)
+                        .map(Message::ScaleFactor),
+                ]);
+            }
+            // `iced::exit()` does not stop a message already on its way, so the line is written
+            // once however many arrive after it.
+            if !CONFIRMED.swap(true, Ordering::SeqCst) {
+                println!("probe: the viewport is confirmed; the app may report a reading");
+            }
             return iced::exit();
         }
         if self.started.elapsed() >= self.deadline {

@@ -2,6 +2,9 @@
 
 **Status.** **Accepted by the project owner 2026-11-27** (*"Accepted."*), with **Q1 answered: B, the system's own
 interface font** (*"B"*). See Q1. [Handoff A](../handoffs/069-the-desktop-apps-design-rules/a-documentation-theme-and-font-handoff-v1.md).
+**Amended 2026-11-28** from Handoff A's measurements, authorized by the owner (*"Authorized on both."*):
+- **rule 2:** the label-fit guard's two fonts are pinned by name, because GitHub's runner documents no text font;
+- **rule 3:** the default follows the desktop while the app is open, as well as at startup.
 **Proposed 2026-11-27** by the architect, as 0.23.0's increment 1 (`.git-exclude/release/0-23-0-scope.md`, revision 2,
 authorized by the project owner 2026-11-25).
 **Measured** on `main` at `7c77193`, against Snora 0.65.0 and iced 0.14.0 as RFC 065 measured them.
@@ -132,10 +135,17 @@ Snora style. The views live in `stikk-gui` and import from it. They never import
   - The font is named, so iced can't substitute Open Sans (F1).
   - The system's fallback fonts cover the user's languages, so Japanese and Arabic need no bundled face later.
   - **No font is bundled.**
-- **Tests that hold for fonts stikk can't see:** the label-fit guard (rule 4) runs with **two installed fonts, the
-  narrowest and the widest available on the CI runner,** chosen by their measured average advance width and recorded.
-  A label that fits both fits any reasonable interface font. That's safe because no layout depends on exact text
-  width (rule 4).
+- **Tests that hold for fonts stikk can't see:** the label-fit guard (rule 4) runs with **two fonts installed by
+  name:**
+  - **Liberation Sans** (`fonts-liberation`), the narrow bound;
+  - **DejaVu Sans** (`fonts-dejavu-core`), the wide bound.
+
+  Each package's version is recorded in the guard's output. Handoff A ranked 53 faces that can draw the catalog's
+  longest labels. These two are 13.7 % apart, and Open Sans, Noto Sans, Cantarell, Fira Sans and Adwaita Sans sit
+  between them. A label that fits both fits any reasonable interface font. That's safe because no layout depends on
+  exact text width (rule 4).
+  - **They're pinned, not inherited,** because the runner image documents no text font and is rebuilt weekly.
+  - One `fc-list` step in RFC 070's first Linux job records what the runner inherits, as evidence.
 - **Test (H):** every text in every screen's tree, at every zoom, has a size from the role table. That's measured on
   the rendered tree, not by scanning names.
 
@@ -145,6 +155,8 @@ Snora style. The views live in `stikk-gui` and import from it. They never import
 - **The default follows the desktop** (0.23.0 scope, decision 2, authorized). iced's `system::theme()` reports Light
   or Dark, and stikk opens in `light_aaa` or `dark_aaa` to match. When the desktop reports no preference, stikk opens
   in **`light_aaa`** (knotra: *"for many older eyes"*). A preset the user chooses is remembered, and wins.
+- **It follows the desktop while the app is open, too** (`system::theme_changes()`), unless the user has chosen a
+  preset in stikk. A change of the desktop's setting is the user's own choice, made on their own desktop.
 - **Floors:**
 
   | What | Normal presets | High-contrast presets |
@@ -166,7 +178,12 @@ Snora style. The views live in `stikk-gui` and import from it. They never import
   - **(R)** The default follows the desktop on Linux: the mode the session reports, and the fallback when none is
     reported. The owner's setting is read, never changed.
   - **(C)** The same on GitHub's Windows runner, with the registry's `AppsUseLightTheme` set to 0 and then 1.
-  - The handoff first measures whether iced reports the setting here at all.
+  - **(H, logic level)** A theme-change message switches the preset when none is chosen, and leaves a chosen one
+    alone. A version that overrides a chosen preset must fail. **That's the run that fails it.** `iced_test` can't
+    answer `system::theme()` (its emulator drops `Action::System`), so the H test goes through the program's own
+    message.
+  - **Measured by Handoff A:** iced reports this session's setting (the portal's `1`, so `Dark`, so `dark_aaa`). With
+    no portal reachable it reports `None`, so `light_aaa`.
 
 ### 4. Space: lines not panels, start and end, and room for every word
 

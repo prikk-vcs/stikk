@@ -588,7 +588,17 @@ pub fn program(
 /// The window's settings, in one place.
 ///
 /// - **1280 × 720 logical at launch**, the owner's GUI rule, asked for through the app's own
-///   setting and never by resizing a running window (RFC 070 decision 2);
+///   setting and never by resizing a running window (RFC 070 decision 2).
+///
+///   **A measured warning for the zoom** (RFC 070 Handoff B, rule 5): iced multiplies this size
+///   by the program's own scale factor when it creates the window —
+///   `settings.size.width * scale_factor` (`iced_winit-0.14.1/src/conversion.rs:38-41`). So the
+///   app at 150 % does not lay out 1280 × 720 at 150 %; it asks for a **1920 × 1080** window and
+///   lays out 1280 × 720 in it. Measured at 250 % on three runners, 2026-11-28: Xvfb and Windows
+///   gave the app the 3200 × 1800 window it asked for and the viewport stayed 1280 × 720, while
+///   macOS clamped the window to 1024 × 642 and the viewport became 409.6 × 256.8. **Zoom that
+///   enlarges the window is not what rule 5 means** — it means bigger text in the same window —
+///   so whatever builds the zoom has to divide this size by it, or set it once and leave it;
 /// - **a minimum size** at which rule 4's guard passes at 100 %, which is the smaller of the two
 ///   sizes the H matrix runs;
 /// - **the app id on Linux only.** It is a Wayland and X11 concept, and `PlatformSpecific` is a

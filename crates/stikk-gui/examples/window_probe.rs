@@ -52,13 +52,13 @@ struct Probe {
     asked_again: bool,
     /// **How long the window is given to settle before any confirmation is believed.**
     ///
-    /// iced applies the app's own scale factor to the window's viewport when it synchronizes with
-    /// the program, which is not necessarily before the window's first answers arrive. Measured on
-    /// GitHub's runners, 2026-11-28: at `--scale 2.5` both Windows and Linux confirmed within
-    /// ~100 ms, reading 1280 x 720 — **the size before the zoom** — so a probe that believed the
-    /// first answer would report a 250 % run it never laid out. In a nested compositor, where the
-    /// first frame took longer, the same probe read 512 x 288 and was right. The difference was
-    /// timing, so the answer is a stated wait and not a cleverer condition.
+    /// **A window's first answer can be the size it asked for rather than the size it got.**
+    /// Measured on `macos-latest`, 2026-11-28: the app asked for 1280 x 720, the first
+    /// `window::size` answered **1280 x 720**, and the next one answered **1024 x 642**, which is
+    /// what the window actually was. Rule 8's condition caught it — the layout disagreed with the
+    /// first answer, so the viewport stayed unconfirmed — but only because the layout had already
+    /// happened. A probe that confirmed on a first agreement, on a runner where the two happened
+    /// to match before the window settled, would be measuring a window that was still moving.
     ///
     /// **Rule 8's own assertion runs throughout it**, so a longer wait makes the measurement
     /// stronger: it is more of the window's early life in which nothing may be read.

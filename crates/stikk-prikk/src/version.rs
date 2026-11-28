@@ -98,7 +98,7 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// The highest prikk minor version stikk has actually validated against (RFC 009 decision 7; raised to
 /// 31 by RFC 012 F-e, to 32 by RFC 015 §2/§8, to 33 by RFC 017 §8, to 38 by RFC 021, to 41 by RFC 026,
 /// to 42 by RFC 029, to 46 by RFC 034, to 51 by RFC 035, to 52 by RFC 043, to 53 by RFC 049, to 54
-/// by RFC 052, to 55 by RFC 055, then to **58 by RFC 063** — each only after empirical
+/// by RFC 052, to 55 by RFC 055, to 58 by RFC 063, then to **59 by RFC 074** — each only after empirical
 /// re-verification against a real released binary, never a changelog). RFC 017's re-verification found no output-shape
 /// drift; it found the classifier's own provenance gap instead (`classify.rs`'s module doc). A
 /// prikk above this still runs; [`Version::is_validated`] tells the caller to say so.
@@ -112,6 +112,26 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// first raise made **to build a view on the new version's report** rather than to absorb drift, and
 /// the order held for the same reason: the suite would not have run `show` at 0.51 at all until this
 /// constant named it.
+///
+/// **59 means prikk 0.59.0**, and it cost **two fixtures and one leg's assertion** (RFC 074). The
+/// suite was 100 green at 0.58.0; with only this constant moved it was **98 passed, 2 failed**, and
+/// both failures were the same change: 0.59 appends a way out to a refusal whose opening words are
+/// unchanged. The cross-ref commit refusal gained ``` `prikk uncommit <id>` … or `prikk seal
+/// --allow-no-audit --ref heads/main` ```, and the cross-ref seal refusal gained its own seal
+/// clause. Both fixtures are re-pinned at 0.59 and keep their old text below it; the clause the
+/// classifier reads sits before the colon and did not move.
+///
+/// **0.59 changes no JSON document, no value set and no exit code** (prikk's own CHANGELOG, 48
+/// states compared on both binaries). What it changes is behaviour and prose, and three of those
+/// reach stikk. A **writer now waits** up to five seconds for a lock whose holder is running, which
+/// stikk neither shortens nor shows as a warning -- on success prikk's `waiting …` line is on
+/// stderr, and `run` returns before stderr is read at all. About **thirty refusal sentences name a
+/// command that works**, which is why stikk's gloss for the generic incomplete-publication refusal
+/// stops at this version (`present::incomplete_publication_gloss`). And **`branch switch` refuses**
+/// where 0.56--0.58 overwrote or deleted the committed file, which is why stikk's own guard for
+/// that switch stops here too ([`stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR`]) and the
+/// refusal card offers prikk's named seal as stikk's own Seal. The third leg's assertion -- RFC
+/// 045's, that stikk blocks the switch -- is banded for the same reason.
 ///
 /// **58 means prikk 0.58.0**, and it is the first raise whose cost was not zero (RFC 063). With only
 /// this constant moved, **8 of the suite's 97 cases failed** (F1) — not from output drift, but
@@ -157,7 +177,7 @@ const SUPPORTED_MIN_MINOR: u32 = 28;
 /// machines, so only 0.54.1 was ever run (RFC 052 F3). What 0.54 changed that stikk shows is prikk's
 /// own fix: `show <block-id>` no longer refuses after consecutive text edits of one file, so Block
 /// and Patch detail open where 0.53 showed prikk's refusal verbatim.
-const VALIDATED_MAX_MINOR: u32 = 58;
+const VALIDATED_MAX_MINOR: u32 = 59;
 
 /// The first prikk minor whose reports stikk reads as **JSON** (prikk 0.39, where `log`, `branch` and
 /// `tag` gained `--format json`; RFC 026 §6).

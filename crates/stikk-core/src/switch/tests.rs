@@ -373,3 +373,104 @@ fn the_unshown_line_counts_what_it_hides() {
         assert!(line.contains("d on the other"), "{line}");
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// **RFC 074 decision 4: one refusal per version, never two.**
+//
+// Below 0.59 prikk *writes* — at 0.58 it reported `files deleted: 1` and the queued file was gone
+// — so stikk's own guard refuses first. From 0.59 prikk refuses before any write, naming the paths
+// and the seal, and stikk steps aside so the reader gets prikk's words and the way out.
+// ---------------------------------------------------------------------------------------------
+
+/// The same orientation at both ends of the band: queued work for the branch being switched to.
+fn queued_for_the_target(minor: u32) -> NullBackend {
+    backend(
+        CurrentBranch::Branch(stikk_model::RefName::parse("heads/main").expect("a ref name")),
+        1,
+        Some("heads/feature"),
+    )
+    .with_version(0, minor, 0)
+    .with_diff(diff(Vec::new(), Vec::new()))
+}
+
+/// **Below 0.59 stikk's guard fires**, for every version in the band.
+#[test]
+fn the_guard_fires_below_059() {
+    for minor in [28, 52, 55, 57, 58] {
+        let reason = blocked_reason(
+            switch_preview(&queued_for_the_target(minor), repo(), "heads/feature").expect("reads"),
+        );
+        assert_eq!(reason, WORK_IS_QUEUED_FOR_THIS_BRANCH, "at 0.{minor}");
+    }
+}
+
+/// **At 0.59 it does not** — prikk refuses this switch itself, and two refusals for one state
+/// would be stikk repeating a decision prikk has already made, in weaker words.
+///
+/// **This is the run that fails it:** take `PRIKK_REFUSES_THE_SWITCH_FROM_MINOR` out of the guard's
+/// condition in `switch_preview` and this test fails, because the 0.58 refusal comes back at 0.59.
+#[test]
+fn the_guard_does_not_fire_at_059_and_above() {
+    for minor in [59, 60, 71] {
+        let preview =
+            switch_preview(&queued_for_the_target(minor), repo(), "heads/feature").expect("reads");
+        match preview {
+            SwitchPreview::Blocked(reason) => {
+                panic!("at 0.{minor} stikk must let prikk refuse, but it blocked: {reason}")
+            }
+            SwitchPreview::Ready { .. } => {}
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// **The offer** (RFC 074 decision 4): prikk's refusal names a seal, and that seal is stikk's own.
+// ---------------------------------------------------------------------------------------------
+
+/// prikk 0.59's refusal, as `queue_held.rs` builds it (read at the tag) — both of its wordings.
+const PRIKK_SWITCH_REFUSAL: &str = "refusing to switch to heads/feature: its queue holds 1 commit(s) that change queued.txt, \
+     which the switch would overwrite or delete on disk (nothing was written); `prikk seal \
+     --allow-no-audit --ref heads/feature` publishes them and keeps your files; run the switch \
+     again after it";
+const PRIKK_MERGE_REFUSAL: &str = "refusing: heads/feature's queue holds 2 commit(s) that change a.txt, b.txt, which the merge \
+     would overwrite or delete on disk (nothing was written); `prikk seal --allow-no-audit --ref \
+     heads/feature` publishes them to heads/feature, where they stay; run this command again after \
+     it, and it writes heads/main without them";
+
+/// **The branch comes from prikk's sentence**, for the switch and for a producer alike.
+#[test]
+fn the_offer_names_the_branch_prikk_named() {
+    assert_eq!(
+        seal_offer(PRIKK_SWITCH_REFUSAL).as_deref(),
+        Some("heads/feature")
+    );
+    assert_eq!(
+        seal_offer(PRIKK_MERGE_REFUSAL).as_deref(),
+        Some("heads/feature")
+    );
+}
+
+/// **A sentence that names no seal offers nothing, and neither does one whose ref name is not one.**
+/// That is the run that fails it: drop the `RefName::parse` and the control-character case passes
+/// a name into stikk's own ceremony.
+#[test]
+fn a_sentence_without_a_usable_seal_offers_nothing() {
+    // prikk's other refusals, which name no seal.
+    assert_eq!(
+        seal_offer("error: active WAL has no patch records to seal"),
+        None
+    );
+    assert_eq!(seal_offer(WORK_IS_QUEUED_FOR_THIS_BRANCH), None);
+    // The clause, but never closed: prikk always closes it, so an unclosed one is not prikk's.
+    assert_eq!(
+        seal_offer("… `prikk seal --allow-no-audit --ref heads/feature publishes them"),
+        None
+    );
+    // A clause carrying no ref at all.
+    assert_eq!(seal_offer("… `prikk seal --allow-no-audit --ref ` …"), None);
+    // A control character is not a ref name, and never reaches the ceremony.
+    assert_eq!(
+        seal_offer("… `prikk seal --allow-no-audit --ref heads/\u{1b}[2Jfeature` …"),
+        None
+    );
+}

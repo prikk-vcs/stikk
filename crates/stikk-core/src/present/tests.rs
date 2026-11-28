@@ -869,11 +869,21 @@ const STOPPED_SEAL: &str = "error: precondition not met: repository mutation is 
 const ANOTHER_PUBLISHING: &str = "error: precondition not met: another command is publishing heads/main (pid 4812, from its lock); \
      run this command again when it finishes";
 
+/// prikk **0.59's** sentence for the one state that still prints the semicolon form, read at its
+/// tag (`prikk-store/src/refs.rs:456`). The words after the semicolon are the whole change, and
+/// they are the reason stikk stops glossing it (RFC 074 decision 3).
+const GENERIC_PUBLICATION_059: &str = "error: precondition not met: repository mutation is blocked by incomplete ref publication; run      `prikk verify`, which names the way out of this state";
+
 fn gloss_for(message: &str) -> String {
+    gloss_at(message, Some(58))
+}
+
+/// As [`gloss_for`], for a named prikk minor — the banding is what RFC 074 decision 3 turns on.
+fn gloss_at(message: &str, prikk_minor: Option<u32>) -> String {
     let err = StikkError::Refusal {
         message: message.to_string(),
     };
-    match present(&err, OperationContext::Commit, Some(58)) {
+    match present(&err, OperationContext::Commit, prikk_minor) {
         Presentation::RefusalOverlay(card) => {
             assert_eq!(card.verbatim, message, "prikk's words, verbatim (`ER-02`)");
             card.gloss.unwrap_or_default()
@@ -908,6 +918,64 @@ fn the_stopped_seal_refusal_gets_the_second_gloss_not_the_first() {
         !gloss_for(GENERIC_PUBLICATION).contains("Seal finishes"),
         "the two are keyed apart"
     );
+}
+
+/// **From 0.59 stikk adds nothing to the generic sentence** (RFC 074 decision 3): prikk's own words
+/// name `prikk verify`, and a gloss repeating it would paraphrase a sentence that already says what
+/// to do (`ER-02`).
+///
+/// **This is the run that fails it.** Take the version band out of
+/// `present::incomplete_publication_gloss` and this test fails on the first assertion, because the
+/// 0.58 gloss comes back at 0.59.
+#[test]
+fn the_generic_publication_refusal_is_unglossed_from_059() {
+    for message in [GENERIC_PUBLICATION, GENERIC_PUBLICATION_059] {
+        assert_eq!(
+            gloss_at(message, Some(59)),
+            "",
+            "0.59 names the command itself, so stikk adds nothing: {message}"
+        );
+        // prikk's words are still shown whole — dropping the gloss drops nothing of prikk's.
+        let err = StikkError::Refusal {
+            message: message.to_string(),
+        };
+        match present(&err, OperationContext::Commit, Some(59)) {
+            Presentation::RefusalOverlay(card) => {
+                assert_eq!(card.verbatim, message, "prikk's words, verbatim (`ER-02`)");
+            }
+            other => panic!("expected RefusalOverlay, got {other:?}"),
+        }
+    }
+}
+
+/// **Below 0.59 the gloss stays**, for the same sentence — there prikk names no command at all
+/// ("signer-backed seal retry" is not one), which is the gap it was written for (RFC 063 F9).
+#[test]
+fn the_generic_publication_refusal_keeps_its_gloss_below_059() {
+    for minor in [28, 55, 57, 58] {
+        let gloss = gloss_at(GENERIC_PUBLICATION, Some(minor));
+        assert!(gloss.contains("it is not damage"), "at 0.{minor}: {gloss}");
+        assert!(gloss.contains("open Verify"), "at 0.{minor}: {gloss}");
+    }
+    // An unknown version keeps it too: it cannot be excluded that this prikk is a 0.58.
+    assert!(
+        gloss_at(GENERIC_PUBLICATION, None).contains("open Verify"),
+        "an unknown version keeps the gloss"
+    );
+}
+
+/// **The stopped-seal gloss is untouched by the band**, at 0.59 as at 0.58: prikk's sentence for
+/// that state did not change in 0.59, and stikk's gloss names *stikk's* Seal, which prikk's
+/// `prikk seal --allow-no-audit` cannot (RFC 074 decision 3 — a gloss stays where it gives a step
+/// prikk's words do not).
+#[test]
+fn the_stopped_seal_gloss_is_the_same_at_058_and_059() {
+    assert_eq!(
+        gloss_at(STOPPED_SEAL, Some(58)),
+        gloss_at(STOPPED_SEAL, Some(59)),
+        "0.59 changed which states print this sentence, not the sentence"
+    );
+    assert!(gloss_at(STOPPED_SEAL, Some(59)).contains("Seal finishes it"));
 }
 
 /// **An in-flight publication is another writer, and nothing was changed.**

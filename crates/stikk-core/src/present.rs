@@ -127,7 +127,13 @@ pub struct RefusalCard {
     pub verbatim: String,
     /// A plain-language explanation in stikk's voice; `None` degrades to verbatim-only (RR-5).
     pub gloss: Option<String>,
-    /// Next-steps that exist, from `(class, operation)` — never parsed from `verbatim` (C-T2b).
+    /// Next-steps that exist, from `(class, operation)`.
+    ///
+    /// **One exception, since RFC 074 decision 4:** where prikk's own refusal names the seal that
+    /// keeps the files a switch, merge or import would overwrite, the card offers that seal. The
+    /// branch is read from prikk's exact command clause and validated as a ref name
+    /// ([`crate::switch::seal_offer`]); every other next-step is still decided by
+    /// `(class, operation)` and never by prikk's words (C-T2b).
     pub next_steps: Vec<NextStep>,
     /// Glossary codes named in the message that resolve to an entry (FR-111 links).
     pub glossary_codes: Vec<String>,
@@ -259,7 +265,7 @@ pub fn present(error: &StikkError, op: OperationContext, prikk_minor: Option<u32
                             .to_string(),
                     )
                 } else if is_incomplete_publication {
-                    Some(INCOMPLETE_PUBLICATION_GLOSS.to_string())
+                    incomplete_publication_gloss(prikk_minor).map(str::to_string)
                 } else if is_stopped_seal {
                     Some(STOPPED_SEAL_GLOSS.to_string())
                 } else if is_another_publishing {
@@ -297,6 +303,16 @@ pub fn present(error: &StikkError, op: OperationContext, prikk_minor: Option<u32
                             .to_string(),
                         target: NextTarget::DismissAndResolveExternally,
                     }]
+                } else if let Some(reff) = crate::switch::seal_offer(message) {
+                    // **prikk named the way out, and it is stikk's own Seal** (RFC 074 decision 4).
+                    // Navigation to the ceremony, which restates the ref and takes its own consent
+                    // — never a retry of the refused operation itself (`NFR-S04`).
+                    let mut steps = vec![NextStep {
+                        label: format!("Seal {reff} first, then try again"),
+                        target: NextTarget::OpenView(Target::Seal),
+                    }];
+                    steps.extend(refusal_next_steps(op));
+                    steps
                 } else {
                     refusal_next_steps(op)
                 },
@@ -453,7 +469,43 @@ const BUNDLE_DECODE_SKEW_GLOSS: &str = "This bundle was written by a newer prikk
 const FULL_QUEUE_GLOSS: &str = "Nothing is locked and no other writer is involved: the active queue \
      already holds as many patches as it is configured to allow. Seal the queue before trying again.";
 
-/// The gloss for prikk's **generic** incomplete-publication refusal (RFC 063 decision 10, F9).
+/// Whether stikk still has anything to add to prikk's generic incomplete-publication refusal, and
+/// what (RFC 074 decision 3).
+///
+/// **`None` from 0.59**, because there prikk's own sentence names the command. The gloss existed to
+/// send a reader to Verify, and 0.59's sentence for the one state that still prints this text says
+/// exactly that itself:
+///
+/// ```text
+/// 0.58  repository mutation is blocked by incomplete ref publication; run verify/doctor and use signer-backed seal retry
+/// 0.59  repository mutation is blocked by incomplete ref publication; run `prikk verify`, which names the way out of this state
+/// ```
+///
+/// (prikk's `refs.rs`, at each tag. 0.59 split the other states onto a **colon** — *"…incomplete ref
+/// publication: the ref pointer index has a damaged record; run …"* — which this code never matched
+/// and does not start matching: each of those names its own command, and prikk's words stand alone.)
+/// Keeping the gloss at 0.59 would paraphrase a sentence that already says what to do, which is what
+/// `ER-02` forbids.
+///
+/// **Below 0.59 it stays**, because there prikk's sentence names no command: *"signer-backed seal
+/// retry"* is not one, which is the gap RFC 063 F9 found and this gloss was written for.
+fn incomplete_publication_gloss(prikk_minor: Option<u32>) -> Option<&'static str> {
+    /// The first prikk whose generic incomplete-publication sentence names the command that
+    /// resolves the state (prikk 0.59.0's `### Output changes`; RFC 074 F3).
+    const NAMES_ITS_WAY_OUT_FROM: u32 = 59;
+
+    match prikk_minor {
+        Some(minor) if minor >= NAMES_ITS_WAY_OUT_FROM => None,
+        // An unknown version keeps the gloss. It is additive and never contradicts prikk: on 0.59 a
+        // reader would see "open Verify" beside prikk's own "run `prikk verify`", which is a
+        // repetition; dropping it on an unknown version would instead leave a 0.58 reader with the
+        // sentence that names no command at all, which is the worse of the two.
+        _ => Some(INCOMPLETE_PUBLICATION_GLOSS),
+    }
+}
+
+/// The gloss for prikk's **generic** incomplete-publication refusal (RFC 063 decision 10, F9), shown
+/// below prikk 0.59 only — see [`incomplete_publication_gloss`].
 ///
 /// prikk asks outright that this not be shown as damage: it can reach a healthy repository while
 /// another command publishes a tag (its letter 031 §4). It can also come from a publication that

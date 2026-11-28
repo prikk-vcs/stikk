@@ -1806,6 +1806,18 @@ impl App {
     /// dispatched (`C-T4d`), the same [`stikk_core::capability_gate`] check the palette's `op.seal`
     /// entry uses — the two must agree, matching `begin_commit`'s own precedent.
     pub fn begin_seal(&mut self) {
+        self.begin_seal_for(None);
+    }
+
+    /// As [`Self::begin_seal`], for the branch **prikk's own refusal named** (RFC 074 decision 4).
+    ///
+    /// `None` is the focused ref, which is every other caller. A `Some` comes from one place: a
+    /// refusal card whose message carries prikk's `prikk seal --allow-no-audit --ref <branch>`,
+    /// already validated as a ref name by `stikk_core::switch::seal_offer`. The ceremony from here
+    /// is the same one in every respect -- the capability gate, the preview, the confirmation that
+    /// restates the ref -- so the only thing the refusal decides is *which* branch is offered, and
+    /// the reader still consents to it by name.
+    pub fn begin_seal_for(&mut self, offered: Option<String>) {
         self.banner = None;
         let readiness = self.readiness();
         match stikk_core::capability_gate(
@@ -1814,8 +1826,14 @@ impl App {
             readiness,
         ) {
             Ok(()) => {
-                let Some(reff) = self.require_focus() else {
-                    return;
+                let reff = match offered {
+                    Some(reff) => reff,
+                    None => {
+                        let Some(reff) = self.require_focus() else {
+                            return;
+                        };
+                        reff
+                    }
                 };
                 let seq = self.dispatch(RequestKind::SealPreview { reff: reff.clone() });
                 self.push_overlay(Overlay::Loading {
@@ -3446,8 +3464,16 @@ impl App {
             Some(Overlay::Refusal { card, cursor }) => {
                 if let Some(step) = card.next_steps.get(*cursor) {
                     let target = step.target;
+                    // The branch prikk's refusal named, if it named one (RFC 074 decision 4): read
+                    // before the overlay goes, since the card goes with it.
+                    let offered = stikk_core::switch::seal_offer(&card.verbatim);
                     self.pop_overlay();
-                    self.activate(target);
+                    match (target, offered) {
+                        (NextTarget::OpenView(Target::Seal), Some(reff)) => {
+                            self.begin_seal_for(Some(reff));
+                        }
+                        (target, _) => self.activate(target),
+                    }
                 }
             }
             Some(Overlay::Stale {

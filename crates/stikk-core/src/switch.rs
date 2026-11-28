@@ -46,6 +46,15 @@ pub use stikk_prikk::DIFF_FROM_MINOR as SWITCH_FROM_MINOR;
 /// says so without spawning, because a confirmation for a no-op is a question not worth asking.
 pub const ALREADY_THE_CURRENT_BRANCH: &str = "this is already the current branch.";
 
+/// The first prikk that refuses this switch itself (RFC 074 F4; prikk 0.59.0's `### Output
+/// changes`, answering stikk's letter 024 §4).
+///
+/// Below it, prikk **writes**: at 0.52 it wrote the target's sealed files and left the queued ones
+/// absent; at 0.58 it reported `files deleted: 1` and the queued file was gone from the worktree.
+/// That is what [`WORK_IS_QUEUED_FOR_THIS_BRANCH`] exists to prevent, and why the guard stays at
+/// every version below this one.
+pub const PRIKK_REFUSES_THE_SWITCH_FROM_MINOR: u32 = 59;
+
 /// **Why stikk will not switch to a branch the queue holds work for** (decision 6, F5).
 ///
 /// Measured at 0.52.0: prikk allows it and writes the target's **sealed** files only. The queued
@@ -126,7 +135,15 @@ pub fn switch_preview(prikk: &impl Prikk, repo: &Path, target: &str) -> Result<S
         // **F5, and only F5** (§6 trap 4). Work queued for *another* ref is prikk's own refusal,
         // which already names the way out; widening this guard would take a decision from prikk
         // that prikk makes better.
-        if orientation.queued_patches > 0
+        //
+        // **Below 0.59 only** (RFC 074 decision 4). From 0.59 prikk refuses this switch itself,
+        // before any write, and names the paths and the seal that keeps them. Two refusals for one
+        // state would be stikk repeating a decision prikk has already made, in weaker words than
+        // prikk's; so above the band stikk asks, prikk refuses, and the refusal card shows prikk's
+        // own sentence — with Seal offered beside it, because that sentence names a command a
+        // stikk user cannot run.
+        if prikk.handshake()?.version.minor < PRIKK_REFUSES_THE_SWITCH_FROM_MINOR
+            && orientation.queued_patches > 0
             && orientation.queued_target.as_deref() == Some(target.as_str())
         {
             return Ok(blocked(WORK_IS_QUEUED_FOR_THIS_BRANCH));
@@ -288,3 +305,36 @@ fn blocked(reason: &str) -> (ReadView, ConfirmationSummary) {
 
 #[cfg(test)]
 mod tests;
+
+/// The branch prikk's own refusal says to seal, if it says so (RFC 074 decision 4).
+///
+/// From 0.59 prikk refuses a switch, a merge, an `--adopt` import or a `branch create` whose write
+/// would overwrite work another ref's queue holds, and names the seal that keeps the files:
+///
+/// ```text
+/// refusing to switch to heads/feature: its queue holds 1 commit(s) that change queued.txt, which
+/// the switch would overwrite or delete on disk (nothing was written)
+/// … `prikk seal --allow-no-audit --ref heads/feature` publishes them and keeps your files
+/// ```
+///
+/// That command is **stikk's Seal for that branch**, so the refusal card offers it. prikk builds
+/// the clause one way for all four refusals and both of its wordings (`queue_held.rs`'s
+/// `refusal_sentence`, read at the 0.59.0 tag), which is why one prefix finds it.
+///
+/// **This is the one place a next-step is decided by prikk's words**, and the card's own rule says
+/// so. Three things keep it inside `C-T2b`: the name is prikk's, not a user's display string; it is
+/// parsed only out of prikk's exact command clause and **validated as a ref name**, so a sentence
+/// that does not carry one offers nothing; and the offer is navigation to the seal ceremony, which
+/// restates the ref and takes its own consent — never a mutation this card performs.
+#[must_use]
+pub fn seal_offer(message: &str) -> Option<String> {
+    /// prikk's clause, verbatim up to the ref it names.
+    const SEAL_CLAUSE: &str = "`prikk seal --allow-no-audit --ref ";
+
+    let rest = message.split_once(SEAL_CLAUSE)?.1;
+    // The ref runs to the closing backtick prikk always writes; no backtick, no offer.
+    let reff = rest.split_once('`')?.0;
+    // A ref name, or nothing. prikk's words still stand alone on the card either way.
+    stikk_model::RefName::parse(reff).ok()?;
+    Some(reff.to_string())
+}

@@ -5161,3 +5161,83 @@ fn a_deep_value_in_a_read_field_is_refused_and_names_it() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// **RFC 074 decision 5: every reader reads a refusal document first.**
+//
+// prikk answers some refusals as a `refusal-v1` document on stdout. `verify` and `worktree-status`
+// print nothing there today, and prikk's RFC 174 would make them print one — at which point a
+// reader that checked only its own schema would call it "an unknown schema version" and lose
+// prikk's `message`. The check lives in `report`, which every reader goes through, so it is one
+// rule rather than sixteen.
+// ---------------------------------------------------------------------------------------------
+
+/// prikk's refusal document, as `extract` prints it today (RFC 053 decision 1).
+const A_REFUSAL: &str = r#"{"schema_version":"refusal-v1","refusal":"destination-inside-repository","message":"error: refusing to extract into the repository itself"}"#;
+
+/// The same shape with a schema stikk does not know and no refusal in it.
+const AN_UNKNOWN_SCHEMA: &str = r#"{"schema_version":"log-report-v9","blocks":[]}"#;
+
+/// Every reader, given a refusal document, answers prikk's refusal with its message.
+///
+/// The arguments beside the text are immaterial — the refusal is recognized before a field is read
+/// — so each is the simplest value that compiles, and the assertion is the same for all sixteen.
+#[test]
+fn every_reader_reads_a_refusal_document_first() {
+    fn refused(what: &str, result: Result<()>) {
+        match result {
+            Err(StikkError::Refusal { message }) => assert_eq!(
+                message, "error: refusing to extract into the repository itself",
+                "{what} must carry prikk's own message, verbatim"
+            ),
+            other => panic!("{what}: expected prikk's refusal, got {other:?}"),
+        }
+    }
+
+    refused("history", history(A_REFUSAL).map(|_| ()));
+    refused("refs", refs(A_REFUSAL, 59).map(|_| ()));
+    refused("tree", tree(A_REFUSAL, "heads/main").map(|_| ()));
+    refused(
+        "diff",
+        diff(A_REFUSAL, &Comparison::WorktreeAgainstBaseline).map(|_| ()),
+    );
+    refused("verify", verify(A_REFUSAL).map(|_| ()));
+    refused("tags", tags(A_REFUSAL).map(|_| ()));
+    refused("key_status", key_status(A_REFUSAL).map(|_| ()));
+    refused(
+        "worktree_status",
+        worktree_status(A_REFUSAL, 59).map(|_| ()),
+    );
+    refused("orientation", orientation(A_REFUSAL).map(|_| ()));
+    refused("queue", queue(A_REFUSAL, 59).map(|_| ()));
+    refused("show", show(A_REFUSAL).map(|_| ()));
+    refused("bundle_preview", bundle_preview(A_REFUSAL, 59).map(|_| ()));
+    refused("path_content", path_content(A_REFUSAL).map(|_| ()));
+    refused("extract_report", extract_report(A_REFUSAL).map(|_| ()));
+    refused("trust_added", trust_added(A_REFUSAL).map(|_| ()));
+    refused("trust_list", trust_list(A_REFUSAL).map(|_| ()));
+}
+
+/// **The order is the one rule** (RFC 074 decision 5): an unknown schema that is not a refusal is
+/// still an environment error, naming both versions, exactly as before this change.
+#[test]
+fn an_unknown_schema_that_is_not_a_refusal_still_errors() {
+    let err = history(AN_UNKNOWN_SCHEMA).expect_err("stikk does not guess at an unknown schema");
+    assert!(matches!(err, StikkError::Environment { .. }), "{err:?}");
+    let message = err.to_string();
+    assert!(message.contains("log-report-v9"), "{message}");
+    assert!(message.contains("log-report-v1"), "{message}");
+
+    // And text that is not JSON at all fails where it always did.
+    assert!(history("not json").is_err());
+}
+
+/// **A `refusal-v1` with no `message` is a shape error, not a quiet fall-through** — answering
+/// `None` there would send the reader on to parse the same text as a report, and prikk's refusal
+/// would be lost. (`refusal_message`'s own rule, now reached by every reader.)
+#[test]
+fn a_refusal_document_with_no_message_is_an_error_not_a_report() {
+    let text = r#"{"schema_version":"refusal-v1","refusal":"some-id"}"#;
+    let err = verify(text).expect_err("a refusal with no message is a shape error");
+    assert!(matches!(err, StikkError::Environment { .. }), "{err:?}");
+}

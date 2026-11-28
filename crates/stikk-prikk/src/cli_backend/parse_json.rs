@@ -113,8 +113,27 @@ fn opt_object_id_field<'a>(value: &'a Json, key: &str) -> Result<Option<&'a str>
     Ok(Some(id))
 }
 
-/// Parse `text`, then confirm it announces `want`.
+/// Parse `text`, then confirm it announces `want` — **after asking whether it is a refusal**.
+///
+/// **The refusal comes first** (RFC 074 decision 5). prikk answers some commands' refusals as a
+/// `refusal-v1` document on stdout, and `extract` and `trust` already catch that at their own call
+/// sites. `verify` and `worktree-status` print nothing on stdout at a refusal today; prikk's RFC 174
+/// would print one there, and until this change every reader would have called it *"an unknown
+/// schema version — upgrade stikk"* and thrown prikk's `message` away. Asking here, in the one
+/// function every reader goes through, means prikk's words reach the reader whichever command
+/// printed them, on the day that ships and with no further change.
+///
+/// **The order is the one rule.** A document that is not a `refusal-v1` keeps today's behaviour
+/// exactly: an unknown schema is still an environment error, and text that is not JSON still fails
+/// where it always did — [`refusal_message`] answers `None` for both, and never consumes the text.
+///
+/// The id is not carried onto the error: [`StikkError::Refusal`] holds a message, and the one
+/// caller that routes by a refusal id reads it with [`refusal_id_and_message`] before any reader is
+/// reached (`cli_backend.rs`, trust).
 fn report(text: &str, want: &str) -> Result<Json> {
+    if let Some(message) = refusal_message(text)? {
+        return Err(StikkError::Refusal { message });
+    }
     let value = json::parse(text)?;
     let found = value.str_field("schema_version")?;
     if found != want {

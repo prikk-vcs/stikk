@@ -1,6 +1,6 @@
 # RFC 071 — Delivering the desktop app
 
-**Status.** **Proposed 2026-11-28** by the architect, as 0.23.0's increment 3 (`.git-exclude/release/0-23-0-scope.md`,
+**Status.** **Accepted by the project owner 2026-11-28** (*"Accepted."*); [Handoff A](../handoffs/071-delivering-the-desktop-app/a-the-delivery-measurements-handoff-v1.md). **Proposed 2026-11-28** by the architect, as 0.23.0's increment 3 (`.git-exclude/release/0-23-0-scope.md`,
 revision 2, authorized by the project owner 2026-11-25: *"design only … built in the next release"*).
 **The owner's answers, 2026-11-28:**
 - **Q1:** agreed, with a careful comparison against the other candidate pairs, given under Q1;
@@ -8,7 +8,6 @@ revision 2, authorized by the project owner 2026-11-25: *"design only … built 
   Both are answered under Q2;
 - **Q3:** ruled. **No paid signing and no notarization.**
 
-**Awaiting the owner's acceptance.**
 **Measured** on `main` at `45340b2`: the release workflows, the installers, the AUR packages, and RFC 065's M8.
 **Tracks.**
 - RFC 065's M8 (packaging), and its outcome;

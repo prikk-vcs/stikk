@@ -19,7 +19,7 @@
 //! **It is an example**, so no probe code is in the app.
 //!
 //! ```text
-//! cargo run -p stikk-gui --example window_probe -- [--scale 2.5] [--seconds 30]
+//! cargo run -p stikk-gui --example window_probe -- [--scale 2.5] [--seconds 30] [--settle 1.5]
 //! ```
 //!
 //! **Why the exit code and not only the log:** a CI job must fail on its own, without a human
@@ -50,12 +50,33 @@ struct Probe {
     last: String,
     /// **Whether the window has been asked a second time** (see [`Probe::update`]).
     asked_again: bool,
+    /// **How long the window is given to settle before any confirmation is believed.**
+    ///
+    /// iced applies the app's own scale factor to the window's viewport when it synchronizes with
+    /// the program, which is not necessarily before the window's first answers arrive. Measured on
+    /// GitHub's runners, 2026-11-28: at `--scale 2.5` both Windows and Linux confirmed within
+    /// ~100 ms, reading 1280 x 720 — **the size before the zoom** — so a probe that believed the
+    /// first answer would report a 250 % run it never laid out. In a nested compositor, where the
+    /// first frame took longer, the same probe read 512 x 288 and was right. The difference was
+    /// timing, so the answer is a stated wait and not a cleverer condition.
+    ///
+    /// **Rule 8's own assertion runs throughout it**, so a longer wait makes the measurement
+    /// stronger: it is more of the window's early life in which nothing may be read.
+    settle: Duration,
 }
 
 impl Probe {
-    fn new(settings: Settings, deadline: Duration) -> (Self, iced::Task<Message>) {
+    fn new(
+        settings: Settings,
+        deadline: Duration,
+        settle: Duration,
+    ) -> (Self, iced::Task<Message>) {
         let (stikk, task) = Stikk::new(settings);
-        println!("probe: opening, deadline {} s", deadline.as_secs_f32());
+        println!(
+            "probe: opening, deadline {} s, settling for {} s before a confirmation is believed",
+            deadline.as_secs_f32(),
+            settle.as_secs_f32(),
+        );
         (
             Self {
                 stikk,
@@ -63,6 +84,7 @@ impl Probe {
                 deadline,
                 last: String::new(),
                 asked_again: false,
+                settle,
             },
             task,
         )
@@ -113,7 +135,7 @@ impl Probe {
                 self.stikk.state_line()
             );
         }
-        if self.stikk.viewport().confirmed() {
+        if self.stikk.viewport().confirmed() && self.started.elapsed() >= self.settle {
             // **The window is asked a second time before the probe believes it.**
             //
             // iced applies the app's own scale factor to the window's viewport when it
@@ -157,6 +179,7 @@ impl Probe {
 fn main() -> std::process::ExitCode {
     let mut scale = 1.0_f32;
     let mut seconds = 30_u64;
+    let mut settle = 1.5_f32;
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -171,6 +194,12 @@ fn main() -> std::process::ExitCode {
                     .next()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(seconds);
+            }
+            "--settle" => {
+                settle = arguments
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(settle);
             }
             other => {
                 eprintln!("probe: unknown argument {other:?}");
@@ -202,8 +231,9 @@ fn main() -> std::process::ExitCode {
     );
 
     let deadline = Duration::from_secs(seconds);
+    let settle = Duration::from_secs_f32(settle);
     let outcome = iced::application(
-        move || Probe::new(settings.clone(), deadline),
+        move || Probe::new(settings.clone(), deadline, settle),
         Probe::update,
         Probe::view,
     )

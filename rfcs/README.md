@@ -24,6 +24,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 |----|-------|-----------|
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 070 | [`stikk-gui`: the crate and its reading screens](./proposed/070-stikk-gui-the-crate-and-its-reading-screens.md) | the desktop app's two crates (`publish = false`), its shell, keys, reading report and reading screens, in three handoffs, tested to RFC 069's rules; nothing ships |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

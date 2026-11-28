@@ -192,15 +192,21 @@ fn commit_cross_ref_is_a_real_refusal_prikk_would_also_give() {
             Ok(_) => panic!("0.{}: a cross-ref commit must not succeed", bin.minor),
         };
 
-        let fixture_text = if bin.minor >= 33 {
+        // **0.59 added the way out** (RFC 074 §1, its `### Output changes`: "a refusal named a
+        // command that does not exist" and the rewrite that followed). The words before the colon
+        // are the same ones stikk's classifier keys on, and they are unchanged.
+        let fixture_text = if bin.minor >= 59 {
+            "error: precondition not met: active WAL is owned by heads/main; requested ref heads/other: `prikk uncommit <id>` takes the newest commit back and leaves your files (the next commit onto heads/other then authors them), or `prikk seal --allow-no-audit --ref heads/main` publishes them to heads/main"
+        } else if bin.minor >= 33 {
             "error: precondition not met: active WAL is owned by heads/main; requested ref heads/other"
         } else {
             "error: lock conflict: active WAL is owned by heads/main; requested ref heads/other"
         };
+        // The block id in 0.59's sentence is this run's own, so it is pinned by shape, not value.
         assert_matches_fixture(
             &format!("commit cross-ref @ 0.{}", bin.minor),
             fixture_text,
-            &message,
+            &stikk_real_binary::support::ids_as_placeholders(&message),
         );
     }
 }
@@ -312,9 +318,16 @@ fn seal_cross_ref_is_a_real_refusal_prikk_would_also_give() {
             Ok(_) => panic!("0.{}: a cross-ref seal must not succeed", bin.minor),
         };
 
+        // **0.59 added the way out**, as it did to the commit refusal above. No id here, so the
+        // sentence is pinned whole.
+        let fixture_text = if bin.minor >= 59 {
+            "error: active WAL is owned by heads/main; requested seal ref is heads/other: `prikk seal --allow-no-audit --ref heads/main` seals that queue onto heads/main"
+        } else {
+            "error: active WAL is owned by heads/main; requested seal ref is heads/other"
+        };
         assert_matches_fixture(
             &format!("seal cross-ref @ 0.{}", bin.minor),
-            "error: active WAL is owned by heads/main; requested seal ref is heads/other",
+            fixture_text,
             &message,
         );
     }
@@ -6617,19 +6630,32 @@ fn rfc045_the_preview_is_what_the_switch_does_at_the_ceiling() {
         .commit(&repo, "heads/queued", "queued for heads/queued")
         .unwrap_or_else(|e| panic!("0.{}: commit onto heads/queued: {e}", bin.minor));
     Fixture::clear_env();
-    let blocked = stikk_core::switch_preview(&backend, &repo, "heads/queued")
+    // **Who refuses this depends on the version** (RFC 074 decision 4). Below 0.59 prikk writes --
+    // measured on 0.58.0: the switch succeeds and `queued.txt` is gone -- so stikk's own guard
+    // stops it. From 0.59 prikk refuses before any write and names the seal, so stikk steps aside
+    // and the reader gets prikk's words; `rfc074_*` covers that end in full.
+    let previewed = stikk_core::switch_preview(&backend, &repo, "heads/queued")
         .unwrap_or_else(|e| panic!("0.{}: switch_preview: {e}", bin.minor));
-    match blocked {
-        stikk_core::SwitchPreview::Blocked(reason) => assert_eq!(
-            reason,
-            stikk_core::WORK_IS_QUEUED_FOR_THIS_BRANCH,
-            "0.{}: stikk's own words",
-            bin.minor
-        ),
-        stikk_core::SwitchPreview::Ready { .. } => panic!(
-            "0.{}: a switch to a branch the queue holds work for must not reach a confirmation",
-            bin.minor
-        ),
+    if bin.minor < stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR {
+        match previewed {
+            stikk_core::SwitchPreview::Blocked(reason) => assert_eq!(
+                reason,
+                stikk_core::WORK_IS_QUEUED_FOR_THIS_BRANCH,
+                "0.{}: stikk's own words",
+                bin.minor
+            ),
+            stikk_core::SwitchPreview::Ready { .. } => panic!(
+                "0.{}: a switch to a branch the queue holds work for must not reach a confirmation",
+                bin.minor
+            ),
+        }
+    } else {
+        assert!(
+            matches!(previewed, stikk_core::SwitchPreview::Ready { .. }),
+            "0.{}: from 0.{} stikk lets prikk refuse: {previewed:?}",
+            bin.minor,
+            stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR
+        );
     }
     assert_eq!(
         current(),
@@ -12405,4 +12431,449 @@ fn rfc063_the_bundle_card_reads_each_seal_as_prikk_checked_it() {
         );
     }
     Fixture::clear_env();
+}
+
+// =============================================================================================
+// RFC 074 decision 4 — **the switch to a branch whose queue holds work.**
+//
+// The state, measured on both binaries: seal `heads/main`, create `heads/feature`, then commit a
+// worktree file **to heads/feature while heads/main is current** (`commit --ref`), so the queue
+// belongs to a branch that is not the current one. Then switch to it.
+//
+//   0.58  the switch SUCCEEDS and `queued.txt` is gone from the worktree.
+//   0.59  prikk refuses before any write, names the paths and the seal, and the file is untouched.
+//
+// So stikk's own guard refuses below 0.59, and steps aside at 0.59 so prikk's words and prikk's way
+// out reach the reader (`stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR`).
+// =============================================================================================
+
+/// Build the state on `bin`, leaving `heads/main` current and a queue on `heads/feature` that
+/// holds `queued.txt`. Returns the repository.
+fn queue_held_by_another_branch(bin: &PrikkBin, fixture: &Fixture) -> std::path::PathBuf {
+    let repo = fixture.repo().to_path_buf();
+    let backend = CliBackend::with_program(&bin.path);
+
+    std::fs::write(repo.join("base.txt"), "base\n").expect("write base.txt");
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/main", "base")
+        .unwrap_or_else(|e| panic!("0.{}: commit base: {e}", bin.minor));
+    fixture.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/main")
+        .unwrap_or_else(|e| panic!("0.{}: seal heads/main: {e}", bin.minor));
+    prikk_ok(
+        bin,
+        &repo,
+        &["branch", "create", "heads/feature", "--from", "heads/main"],
+    );
+    // The commit that makes the queue another branch's, with heads/main still current.
+    std::fs::write(repo.join("queued.txt"), "queued\n").expect("write queued.txt");
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/feature", "queued")
+        .unwrap_or_else(|e| panic!("0.{}: commit onto heads/feature: {e}", bin.minor));
+    Fixture::clear_env();
+    repo
+}
+
+/// **At 0.59 stikk asks, prikk refuses, and the refusal carries the way out** — which is stikk's
+/// own Seal for the branch prikk named. After that seal the switch goes through and the file on
+/// disk is exactly what it was.
+#[test]
+#[ignore = "requires a real prikk binary; see this file's module doc"]
+fn rfc074_the_switch_refusal_is_prikks_and_the_offer_is_stikks_at_the_ceiling() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR {
+        eprintln!(
+            "RFC 074 SKIPPED at 0.{} — prikk refuses this switch from 0.{} (RFC 022 §3).",
+            bin.minor,
+            stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let repo = queue_held_by_another_branch(&bin, &fixture);
+    let backend = CliBackend::with_program(&bin.path);
+    let before = std::fs::read_to_string(repo.join("queued.txt")).expect("queued.txt");
+
+    // 1. stikk's own guard does **not** fire: the preview is ready, so prikk gets to answer.
+    let preview = stikk_core::switch_preview(&backend, &repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: switch_preview: {e}", bin.minor));
+    let stikk_core::SwitchPreview::Ready { token } = preview else {
+        panic!(
+            "0.{}: at this version stikk lets prikk refuse, but it blocked: {preview:?}",
+            bin.minor
+        );
+    };
+
+    // 2. prikk refuses, and stikk carries its words.
+    let readiness = backend
+        .readiness(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+        .readiness;
+    let err = stikk_core::switch_confirm_and_execute(
+        &backend,
+        &repo,
+        *token,
+        readiness,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
+        "heads/feature",
+    )
+    .expect_err("0.59 refuses this switch");
+    let StikkError::Refusal { message } = &err else {
+        panic!("0.{}: expected prikk's refusal, got {err:?}", bin.minor);
+    };
+    assert!(
+        message.contains("its queue holds") && message.contains("overwrite or delete on disk"),
+        "0.{}: prikk's own sentence: {message}",
+        bin.minor
+    );
+
+    // 3. the card offers stikk's Seal, for the branch prikk named.
+    assert_eq!(
+        stikk_core::switch::seal_offer(message).as_deref(),
+        Some("heads/feature"),
+        "0.{}: the branch is read from prikk's own clause: {message}",
+        bin.minor
+    );
+    let card = match stikk_core::present::present(
+        &err,
+        stikk_core::present::OperationContext::Other,
+        Some(bin.minor),
+    ) {
+        stikk_core::present::Presentation::RefusalOverlay(card) => card,
+        other => panic!("0.{}: expected a refusal card, got {other:?}", bin.minor),
+    };
+    assert_eq!(
+        card.verbatim, *message,
+        "0.{}: prikk's words, whole",
+        bin.minor
+    );
+    assert_eq!(
+        card.next_steps.first().map(|step| step.label.as_str()),
+        Some("Seal heads/feature first, then try again"),
+        "0.{}: the offer is the first thing to do: {:?}",
+        bin.minor,
+        card.next_steps
+    );
+
+    // 4. the offer's Seal, then the switch — and the file is untouched throughout.
+    fixture.set_maintainer_env();
+    backend
+        .seal(&repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: the offered seal: {e}", bin.minor));
+    Fixture::clear_env();
+    let preview = stikk_core::switch_preview(&backend, &repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: switch_preview after the seal: {e}", bin.minor));
+    let stikk_core::SwitchPreview::Ready { token } = preview else {
+        panic!(
+            "0.{}: after the seal the switch is ready: {preview:?}",
+            bin.minor
+        );
+    };
+    let readiness = backend
+        .readiness(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+        .readiness;
+    stikk_core::switch_confirm_and_execute(
+        &backend,
+        &repo,
+        *token,
+        readiness,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
+        "heads/feature",
+    )
+    .unwrap_or_else(|e| panic!("0.{}: the switch after the seal: {e}", bin.minor));
+    assert_eq!(
+        std::fs::read_to_string(repo.join("queued.txt")).expect("queued.txt is still there"),
+        before,
+        "0.{}: the file the refusal protected is unchanged",
+        bin.minor
+    );
+}
+
+/// **Below 0.59 stikk's own guard refuses, and the file stays** — because prikk there does not.
+///
+/// Measured on prikk 0.58.0: the same switch **succeeds** and `queued.txt` is gone from the
+/// worktree. That is what this guard exists to prevent, and this leg is the proof that it still
+/// does at the version where it matters.
+#[test]
+#[ignore = "requires a real prikk binary; see this file's module doc"]
+fn rfc074_below_the_band_stikks_own_guard_keeps_the_file() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let Some(bin) = PrikkBin::below_the_switch_band(
+        stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR - 1,
+    ) else {
+        return; // the slot said why, loudly
+    };
+    let fixture = Fixture::build(&bin);
+    let repo = queue_held_by_another_branch(&bin, &fixture);
+    let backend = CliBackend::with_program(&bin.path);
+
+    let preview = stikk_core::switch_preview(&backend, &repo, "heads/feature")
+        .unwrap_or_else(|e| panic!("0.{}: switch_preview: {e}", bin.minor));
+    let stikk_core::SwitchPreview::Blocked(reason) = preview else {
+        panic!(
+            "0.{}: stikk's own guard must refuse here — prikk does not: {preview:?}",
+            bin.minor
+        );
+    };
+    assert_eq!(
+        reason,
+        stikk_core::WORK_IS_QUEUED_FOR_THIS_BRANCH,
+        "0.{}",
+        bin.minor
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.join("queued.txt")).expect("queued.txt is still there"),
+        "queued\n",
+        "0.{}: nothing ran, so the file is untouched",
+        bin.minor
+    );
+}
+
+// =============================================================================================
+// RFC 074 decision 6 — **a successful command's `waiting …` line reaches nobody.**
+//
+// prikk 0.59 prints `waiting for …` on **stderr** after one second and may then succeed. RFC 074
+// F5 asks what stikk does with that. The answer is in `CliBackend::run`: on success it returns
+// `Ok(stdout)` *before* `stderr` is read at all. This leg proves it against a program that behaves
+// exactly as prikk does in that moment, because the state itself -- a lock held by a process that
+// appears to be running, released within the bound -- cannot be built from stikk's side without
+// writing prikk's own lock body, which is prikk's internal layout and its own test-only helper.
+// =============================================================================================
+
+/// A stand-in `prikk` that prints `waiting …` on stderr and then succeeds with `real`'s answer.
+///
+/// Unix only: it is a shell script. The leg says so and does nothing elsewhere.
+#[cfg(unix)]
+fn prikk_that_waits_then_succeeds(
+    real: &std::path::Path,
+    dir: &std::path::Path,
+) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let script = dir.join("prikk-waiting");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n\
+             # prikk 0.59's own line, from lock.rs:698-704, then the real command.\n\
+             echo 'waiting for the active lock held by pid 4812 (it appears to be running); giving up after 5 s (PRIKK_LOCK_WAIT_SECONDS sets this)' >&2\n\
+             exec {} \"$@\"\n",
+            real.display()
+        ),
+    )
+    .expect("write the stand-in");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .expect("make it executable");
+    script
+}
+
+/// **A command that prints `waiting …` and then succeeds is a success, with nothing said.**
+#[test]
+#[ignore = "requires a real prikk binary; see this file's module doc"]
+fn rfc074_a_waiting_line_on_a_successful_command_is_not_a_refusal_or_a_warning() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+
+    // The control: the real binary, with no waiting line.
+    let plain = CliBackend::with_program(&bin.path);
+    let expected = Prikk::orientation(&plain, &repo)
+        .unwrap_or_else(|e| panic!("0.{}: orientation: {e}", bin.minor));
+
+    #[cfg(unix)]
+    {
+        let script = prikk_that_waits_then_succeeds(&bin.path, fixture.repo());
+        let waiting = CliBackend::with_program(&script);
+        let got = Prikk::orientation(&waiting, &repo).unwrap_or_else(|e| {
+            panic!(
+                "0.{}: a `waiting …` line on a command that then succeeds must not become an \
+                 error, but stikk raised: {e}",
+                bin.minor
+            )
+        });
+        assert_eq!(
+            format!("{got:?}"),
+            format!("{expected:?}"),
+            "0.{}: the answer is the same with and without the line",
+            bin.minor
+        );
+        // And stikk keeps no trace of it to show: `run` returns before stderr is read.
+        let handshake = Prikk::handshake(&waiting)
+            .unwrap_or_else(|e| panic!("0.{}: handshake through the stand-in: {e}", bin.minor));
+        assert_eq!(
+            handshake.raw_version,
+            format!("prikk 0.{}.{}", bin.minor, handshake.version.patch),
+            "0.{}: the version line is stdout's, with no stderr mixed in",
+            bin.minor
+        );
+    }
+    #[cfg(not(unix))]
+    eprintln!("RFC 074 decision 6's stand-in is a shell script: NOT RUN on this platform.");
+}
+
+/// **The producer half of RFC 074 decision 4**: a merge into the current branch that would
+/// overwrite a path another branch's queue holds.
+///
+/// Measured on prikk 0.59.0 — the same `queue_held.rs` sentence as the switch's, in its producer
+/// wording, naming the seal for the branch that owns the queue:
+///
+/// ```text
+/// refusing: heads/other's queue holds 1 commit(s) that change c.txt, which merging heads/feature
+/// into heads/main would overwrite or delete on disk (nothing was written); `prikk seal
+/// --allow-no-audit --ref heads/other` publishes them to heads/other, where they stay; …
+/// ```
+///
+/// So stikk shows prikk's words and offers the same Seal, for `heads/other` rather than the branch
+/// being merged.
+#[test]
+#[ignore = "requires a real prikk binary; see this file's module doc"]
+fn rfc074_the_merge_refusal_is_prikks_and_names_the_queues_own_branch() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Fixture::clear_env();
+    let bin = PrikkBin::ceiling();
+    if bin.minor < stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR {
+        eprintln!(
+            "RFC 074 SKIPPED at 0.{} — prikk refuses a producer from 0.{} (RFC 022 §3).",
+            bin.minor,
+            stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR
+        );
+        return;
+    }
+    let fixture = Fixture::build(&bin);
+    let repo = fixture.repo().to_path_buf();
+    let backend = CliBackend::with_program(&bin.path);
+    let limit = 32;
+
+    let write = |name: &str, body: &str| {
+        std::fs::write(repo.join(name), body)
+            .unwrap_or_else(|e| panic!("0.{}: write {name}: {e}", bin.minor));
+    };
+    let seal = |reff: &str, message: &str| {
+        fixture.set_author_env();
+        backend
+            .commit(&repo, reff, message)
+            .unwrap_or_else(|e| panic!("0.{}: commit on {reff}: {e}", bin.minor));
+        fixture.set_maintainer_env();
+        backend
+            .seal(&repo, reff)
+            .unwrap_or_else(|e| panic!("0.{}: seal {reff}: {e}", bin.minor));
+        Fixture::clear_env();
+    };
+
+    // main holds a.txt and c.txt; feature changes c.txt; heads/other's queue changes c.txt too.
+    write("a.txt", "a\n");
+    write("c.txt", "c\n");
+    seal("heads/main", "base");
+    let baseline = backend
+        .history(&repo, "heads/main", limit)
+        .unwrap_or_else(|e| panic!("0.{}: log heads/main: {e}", bin.minor))
+        .blocks
+        .first()
+        .map(|block| block.block_id.clone())
+        .unwrap_or_else(|| panic!("0.{}: heads/main has a block", bin.minor));
+
+    fixture.set_maintainer_env();
+    prikk_ok(&bin, &repo, &["branch", "create", "heads/feature"]);
+    prikk_ok(&bin, &repo, &["branch", "switch", "heads/feature"]);
+    Fixture::clear_env();
+    write("c.txt", "c-feature\n");
+    seal("heads/feature", "feature changes c");
+    fixture.set_maintainer_env();
+    prikk_ok(&bin, &repo, &["branch", "switch", "heads/main"]);
+    prikk_ok(
+        &bin,
+        &repo,
+        &["branch", "create", "heads/other", "--from", "heads/main"],
+    );
+    Fixture::clear_env();
+    write("c.txt", "c-other\n");
+    fixture.set_author_env();
+    backend
+        .commit(&repo, "heads/other", "queued for heads/other")
+        .unwrap_or_else(|e| panic!("0.{}: commit onto heads/other: {e}", bin.minor));
+    Fixture::clear_env();
+    let before = std::fs::read_to_string(repo.join("c.txt")).expect("c.txt");
+
+    // The baseline is stikk's own read of where the two parted, as the Merge plan shows it --
+    // a hand-picked block is a plan that has moved, and stikk blocks that before prikk is asked.
+    let stikk_core::MergePlanRead::Read(plan) =
+        stikk_core::merge_plan_view(&backend, &repo, "heads/main", "heads/feature", limit)
+            .unwrap_or_else(|e| panic!("0.{}: merge_plan_view: {e}", bin.minor))
+    else {
+        panic!("0.{}: expected a plan", bin.minor);
+    };
+    let preview = stikk_core::merge_preview(
+        &backend,
+        &repo,
+        "heads/main",
+        "heads/feature",
+        &plan.baseline_short(),
+        limit,
+    )
+    .unwrap_or_else(|e| panic!("0.{}: merge_preview: {e}", bin.minor));
+    let stikk_core::MergePreview::Ready { token, .. } = preview else {
+        panic!(
+            "0.{}: prikk decides this one, so the preview is ready: {preview:?}",
+            bin.minor
+        );
+    };
+    // A merge is a maintainer's: the ceremony's own gate asks for that readiness.
+    fixture.set_maintainer_env();
+    let readiness = backend
+        .readiness(&repo)
+        .unwrap_or_else(|e| panic!("0.{}: readiness: {e}", bin.minor))
+        .readiness;
+    let err = stikk_core::merge_confirm_and_execute(
+        &backend,
+        &repo,
+        *token,
+        readiness,
+        stikk_core::Evidence::ExplicitYes(stikk_core::Seen::WholeCard),
+        &stikk_core::MergeTarget {
+            baseline: baseline.clone(),
+            into: "heads/main".to_string(),
+            from: "heads/feature".to_string(),
+        },
+    )
+    .expect_err("0.59 refuses this merge");
+    Fixture::clear_env();
+    let StikkError::Refusal { message } = &err else {
+        panic!("0.{}: expected prikk's refusal, got {err:?}", bin.minor);
+    };
+    assert!(
+        message.contains("heads/other's queue holds")
+            && message.contains("overwrite or delete on disk"),
+        "0.{}: prikk's own sentence: {message}",
+        bin.minor
+    );
+    // The offer names the queue's owner, not either branch of the merge.
+    assert_eq!(
+        stikk_core::switch::seal_offer(message).as_deref(),
+        Some("heads/other"),
+        "0.{}: {message}",
+        bin.minor
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.join("c.txt")).expect("c.txt is still there"),
+        before,
+        "0.{}: nothing was written",
+        bin.minor
+    );
 }

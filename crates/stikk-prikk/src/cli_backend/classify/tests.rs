@@ -518,3 +518,53 @@ fn the_retired_format_refusal_is_still_its_own_state() {
     assert_eq!(e.class(), "environment");
     assert!(!e.to_string().contains("unsupported format version"));
 }
+
+// ---------------------------------------------------------------------------------------------
+// **RFC 074 decision 6: waiting.** prikk 0.59 makes a writer wait up to five seconds for a lock
+// whose holder appears to be running. Two things reach stikk from that, and neither may change
+// what stikk says.
+// ---------------------------------------------------------------------------------------------
+
+/// **The refusal at the bound is today's lock refusal, suffix and all.**
+///
+/// Read from prikk's source at the 0.59.0 tag: `lock.rs:348-353` builds the sentence, and
+/// `lock.rs:719-724` appends ` (waited {N} s: {why})` when the writer waited. The clause stikk
+/// matches -- `lock already exists` -- sits before the suffix and is untouched, so the suffix must
+/// not move the message out of `lock-conflict`.
+#[test]
+fn the_bound_refusal_with_its_waited_suffix_is_still_a_lock_conflict() {
+    let without = "error: lock conflict: active lock already exists: /tmp/repo/.prikk/active/default/active.lock -- run `prikk unlock` to list held locks, or `prikk unlock --lock <path>` to clear one once the process that held it is confirmed gone";
+    let with_suffix = format!("{without} (waited 5 s: pid 4812 still appears to be running)");
+
+    for msg in [without, with_suffix.as_str()] {
+        let (out, err) = on_stderr(msg);
+        let e = classify(out, err, RequestCategory::Publication);
+        assert_eq!(
+            e.class(),
+            "lock-conflict",
+            "0.59's wait suffix must not reclassify this: {msg:?} -> {e:?}"
+        );
+    }
+}
+
+/// **The `waiting …` line is not a refusal of its own.**
+///
+/// prikk prints it on **stderr** after one second, from `lock.rs:698-704`, while the command is
+/// still running; the command may then succeed. If stikk ever did classify a successful command's
+/// stderr, this line must not read as a lock conflict, a refusal naming a way out, or a trust
+/// problem -- it is a progress note about a wait that may yet end well.
+///
+/// (Whether stikk classifies it at all is the stronger answer, and the suite's own leg measures
+/// that against the real binary: `run` returns `Ok(stdout)` before stderr is read at all.)
+#[test]
+fn the_waiting_line_matches_no_classifier_pattern() {
+    let waiting = "waiting for the active lock held by pid 4812 (it appears to be running); giving up after 5 s (PRIKK_LOCK_WAIT_SECONDS sets this)";
+    let (out, err) = on_stderr(waiting);
+    let e = classify(out, err, RequestCategory::Publication);
+    assert_ne!(
+        e.class(),
+        "lock-conflict",
+        "a wait in progress is not a lock conflict: {e:?}"
+    );
+    assert_ne!(e.class(), "not-ready", "nor a readiness problem: {e:?}");
+}

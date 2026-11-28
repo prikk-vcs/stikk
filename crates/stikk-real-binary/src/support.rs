@@ -40,6 +40,42 @@ impl PrikkBin {
         Self::resolve("STIKK_TEST_PRIKK_CEILING_BIN", ceiling)
     }
 
+    /// The binary **just below the band where prikk refuses the switch itself** — prikk 0.58 while
+    /// `stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR` is 59 — from
+    /// `STIKK_TEST_PRIKK_BELOW_SWITCH_BIN`.
+    ///
+    /// **A third binary, and an optional one.** The matrix has two ends because almost every leg
+    /// belongs at one of them; RFC 074 decision 4 is the first behaviour that is *banded in the
+    /// middle*, and proving stikk's own guard still keeps a file on disk below 0.59 needs a real
+    /// prikk from below 0.59. The ceiling cannot be it: this suite requires the ceiling binary to
+    /// report exactly the minor the range names, and must, or a leg could silently measure a
+    /// version nobody chose.
+    ///
+    /// **`None` when the variable is unset**, and the leg that wants it says so loudly and does
+    /// nothing else. It is not a `harness_fail`: a run without this binary is still a complete run
+    /// of everything the two ends cover, and failing it would make every local run demand a third
+    /// install for one leg. **A run with the variable set to the wrong version still fails**, as
+    /// both ends do -- an installed binary that is not the one asked for is a configuration error,
+    /// not an absence.
+    ///
+    /// `expected` is **derived by the caller, not written here**: the legs pass
+    /// `stikk_core::switch::PRIKK_REFUSES_THE_SWITCH_FROM_MINOR - 1`, so the next raise of that
+    /// constant moves this with it. (It is a parameter because `stikk-core` is this crate's
+    /// dev-dependency, reachable from the tests and not from the library.)
+    #[must_use]
+    pub fn below_the_switch_band(expected: u32) -> Option<Self> {
+        if env::var_os(BELOW_SWITCH_BIN).is_none() {
+            eprintln!(
+                "NOT RUN: this leg needs prikk 0.{expected} and {BELOW_SWITCH_BIN} is unset."
+            );
+            eprintln!(
+                "Install it and set {BELOW_SWITCH_BIN}=<dir>/bin/prikk to exercise the band; the rest of the suite is unaffected."
+            );
+            return None;
+        }
+        Some(Self::resolve(BELOW_SWITCH_BIN, expected))
+    }
+
     /// Resolve one end of the matrix from its environment variable, confirming the binary really is the
     /// version this suite's matrix names.
     ///
@@ -143,6 +179,10 @@ pub struct Fixture {
     /// As [`Fixture::author_seed_file`], for MAINTAINER.
     maintainer_seed_file: PathBuf,
 }
+
+/// The environment variable naming the binary from below the switch band -- see
+/// [`PrikkBin::below_the_switch_band`].
+pub const BELOW_SWITCH_BIN: &str = "STIKK_TEST_PRIKK_BELOW_SWITCH_BIN";
 
 /// Whether fixture construction has already failed once in this process (RFC 022 F3/§5).
 static HARNESS_ALREADY_FAILED: AtomicBool = AtomicBool::new(false);
@@ -645,6 +685,42 @@ fn decode_hex(hex: &str) -> Vec<u8> {
 
 fn encode_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Replace every 64-hex object id in `text` with `<id>`, so a fixture can pin a sentence that
+/// names one.
+///
+/// **Only where prikk's sentence carries an id that is this run's own** (RFC 074 §1): prikk 0.59
+/// added `prikk uncommit <block-id>` to the cross-ref commit refusal, and that id is a fresh
+/// block's, different on every run. Pinning the sentence with the id left in would make the
+/// fixture unmatchable; dropping the clause would stop pinning the words prikk added. The id's
+/// *shape* is still asserted -- a sentence with no id does not become one with `<id>` in it.
+///
+/// Nothing else is touched: an id is 64 lowercase hex characters with a non-hex boundary on each
+/// side, which no other part of these sentences is.
+#[must_use]
+pub fn ids_as_placeholders(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let run_len = chars[i..]
+            .iter()
+            .take_while(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+            .count();
+        let boundary_before = i == 0 || !chars[i - 1].is_ascii_hexdigit();
+        if run_len == 64 && boundary_before {
+            out.push_str("<id>");
+            i += run_len;
+            continue;
+        }
+        // Skip the whole run either way, so a 65-character run is not re-examined from its second
+        // character and matched as a 64-character one.
+        let step = run_len.max(1);
+        out.extend(chars[i..i + step].iter());
+        i += step;
+    }
+    out
 }
 
 /// Compare a live capture against a committed fixture, byte-exact — RFC 019 §5's rule: *captured, never

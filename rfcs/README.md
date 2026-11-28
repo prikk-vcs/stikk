@@ -24,6 +24,7 @@ _Open for review; an implementer should not start until an RFC moves to `accepte
 |----|-------|-----------|
 | 004 | [stikk-export report schema](./proposed/004-stikk-export-schema.md) | the versioned shape of stikk-authored report exports |
 | 005 | [Linked-library prikk backend](./proposed/005-linked-library-prikk-backend.md) | a second seam backend, for when prikk's crates stabilize |
+| 074 | [The prikk 0.59.0 re-baseline](./proposed/074-prikk-0-59-rebaseline.md) | the validated ceiling to 0.59; the switch, merge and adopt refusals shown in prikk's words with Seal offered as the way out; glosses that defer to sentences naming their way out; every JSON reader reads a refusal first; prikk's new wait kept |
 
 ## Accepted
 _Design settled; implementer may start; work has not yet shipped._

@@ -343,10 +343,19 @@ impl Screen {
         })
     }
 
-    /// **Every text in the tree, with the status area's banner drawing removed** — rule 9's own
-    /// failing run.
+    /// **Every text in the tree, with one of the shell's parts turned off** — the shape a guard's
+    /// failing run measures.
     #[must_use]
     pub fn texts_without_the_banner_row(&self) -> Vec<TextBox> {
+        self.texts_drawn_with(crate::shell::Draws {
+            banner: false,
+            ..crate::shell::Draws::shipped()
+        })
+    }
+
+    /// Every text in the tree, drawn with `draws`.
+    #[must_use]
+    pub fn texts_drawn_with(&self, draws: crate::shell::Draws) -> Vec<TextBox> {
         let mut found: Vec<TextBox> = Vec::new();
         {
             let _one_at_a_time = rendering();
@@ -369,7 +378,7 @@ impl Screen {
             let mut simulator = Simulator::with_size(
                 iced::Settings::default(),
                 self.size,
-                crate::shell::view_with(&self.stikk, false),
+                crate::shell::view_with(&self.stikk, draws),
             );
             let _ = simulator.find(collect);
         }
@@ -635,6 +644,51 @@ impl Picture {
             b: channel(2)?,
             a: channel(3)?,
         })
+    }
+
+    /// **Every colour in a rectangle, with how many pixels carry it**, most first.
+    ///
+    /// Exact `u8` triples, so a glyph's or a thumb's own colour is one entry and its antialiasing
+    /// is a crowd of rare ones. That is what makes "the colour this mark was drawn in" answerable
+    /// from a picture rather than guessed.
+    #[must_use]
+    pub fn colours_in(&self, area: Rectangle) -> Vec<(snora::design::Color, usize)> {
+        let mut counts: std::collections::HashMap<[u8; 3], usize> =
+            std::collections::HashMap::new();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let (x0, y0) = (area.x.max(0.0) as u32, area.y.max(0.0) as u32);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let (x1, y1) = (
+            (area.x + area.width).max(0.0).ceil() as u32,
+            (area.y + area.height).max(0.0).ceil() as u32,
+        );
+        for y in y0..y1.min(self.height) {
+            for x in x0..x1.min(self.width) {
+                let at = ((y * self.width + x) * 4) as usize;
+                let Some(bytes) = self.rgba.get(at..at + 3) else {
+                    continue;
+                };
+                let Ok(key) = <[u8; 3]>::try_from(bytes) else {
+                    continue;
+                };
+                *counts.entry(key).or_default() += 1;
+            }
+        }
+        let mut out: Vec<([u8; 3], usize)> = counts.into_iter().collect();
+        out.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
+        out.into_iter()
+            .map(|([r, g, b], n)| {
+                (
+                    snora::design::Color {
+                        r: f32::from(r) / 255.0,
+                        g: f32::from(g) / 255.0,
+                        b: f32::from(b) / 255.0,
+                        a: 1.0,
+                    },
+                    n,
+                )
+            })
+            .collect()
     }
 
     /// **The contrast a text was drawn at**, measured from its own rectangle.

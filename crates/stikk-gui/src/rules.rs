@@ -365,6 +365,7 @@ fn every_text_meets_the_contrast_floor() {
     let mut worst = f32::INFINITY;
     let mut worst_where = String::new();
     let mut measured = 0;
+    let mut covered = 0;
     for (name, fixture, open) in scenes() {
         for preset in Preset::every() {
             let zoom = 1.0;
@@ -401,6 +402,13 @@ fn every_text_meets_the_contrast_floor() {
                 if frame.is_some_and(|frame| !overlaps(area, frame)) {
                     continue;
                 }
+                // **Nothing was drawn here.** A card is opaque, so a text of the screen beneath it
+                // is not painted at all and its rectangle is one flat colour. There is nothing to
+                // measure, and the same text is measured in the scenes with no card over it.
+                if picture.colours_in(area).len() <= 1 {
+                    covered += 1;
+                    continue;
+                }
                 let is_label = controls.iter().any(|control| covers(*control, text.bounds));
                 let floor = floor_for(is_label, preset);
                 let Some(ratio) = picture.contrast_in(area) else {
@@ -422,7 +430,8 @@ fn every_text_meets_the_contrast_floor() {
     }
     println!(
         "rule 3: {measured} texts measured from the pixels; the worst was {worst:.2} : 1 \
-         ({worst_where})"
+         ({worst_where}). {covered} more were behind an opaque card and drawn nowhere, so they \
+         were measured in the scenes with no card."
     );
     assert!(measured > 100, "the suite measured {measured} texts");
 }
@@ -572,21 +581,42 @@ fn surfaces_not_reserving_the_bar(screen: &Screen) -> Vec<String> {
 }
 
 /// Every label that runs into a scrollable's own bar, or is cut off.
-fn labels_in_the_bar(screen: &Screen) -> Vec<String> {
-    let bars: Vec<Rectangle> = screen
+fn labels_in_the_bar(screen: &Screen, picture: Option<&harness::Picture>) -> Vec<String> {
+    // **Each bar, with the area whose text it can actually cover.** A scrollable's bar can only
+    // be painted over that scrollable's own content; a label somewhere else on the screen that
+    // happens to share those coordinates is behind or beside it, not under it. The first version
+    // of this check compared every text against every bar, and the key line — which sits in the
+    // footer, behind the card — came out as running under the card's bar at 800 × 600.
+    let bars: Vec<(Rectangle, Rectangle)> = screen
         .scrollables()
         .into_iter()
         .filter(harness::ScrollBox::scrolls)
-        .map(|scrollable| Rectangle {
-            x: scrollable.bounds.x + scrollable.bounds.width - BAR_WIDTH,
-            y: scrollable.bounds.y,
-            width: BAR_WIDTH,
-            height: scrollable.bounds.height,
+        .map(|scrollable| {
+            (
+                scrollable.bounds,
+                Rectangle {
+                    x: scrollable.bounds.x + scrollable.bounds.width - BAR_WIDTH,
+                    y: scrollable.bounds.y,
+                    width: BAR_WIDTH,
+                    height: scrollable.bounds.height,
+                },
+            )
         })
         .collect();
     let mut found = Vec::new();
     for text in screen.texts() {
         if text.content.trim().is_empty() {
+            continue;
+        }
+        // **Nothing was drawn here.** A card is opaque, so a text of the screen beneath it is not
+        // painted at all, and asking whether a bar covers it is asking about something that is
+        // not on the screen. The picture is the only thing that can tell a covered text from a
+        // drawn one: the tree gives both the same rectangle, because iced models clipping and not
+        // occlusion. Measured: at 800 x 600 at 150 % the key line sits behind the Glossary, and
+        // the first version of this guard reported it as running under the card's own bar.
+        if let Some(area) = text.visible_bounds
+            && picture.is_some_and(|picture| picture.colours_in(area).len() <= 1)
+        {
             continue;
         }
         // **Cut off across the line**: the layout gave it a width the window does not show.
@@ -605,8 +635,11 @@ fn labels_in_the_bar(screen: &Screen) -> Vec<String> {
         }
         // **Under the bar**: `visible_bounds` passes a glyph the bar is painted over (RFC 065 M5),
         // so the comparison is against the bar's own rectangle.
-        for bar in &bars {
-            if text.visible_bounds.is_some() && overlaps(text.bounds, *bar) {
+        for (content, bar) in &bars {
+            if text.visible_bounds.is_some()
+                && overlaps(text.bounds, *content)
+                && overlaps(text.bounds, *bar)
+            {
                 found.push(format!(
                     "{:?} runs under the scrollbar: text {:?}, bar {:?}",
                     text.content, text.bounds, bar
@@ -641,8 +674,23 @@ fn every_label_fits_and_is_clear_of_the_scrollbar() {
     for (name, fixture, open) in scenes() {
         for (preset, zoom, window) in harness::matrix() {
             let screen = scene(fixture, open, preset, zoom, window);
+            // The picture is taken only where a card is open, which is the only place a text can
+            // be hidden behind an opaque surface.
+            let picture = open.map(|_| {
+                harness::picture(
+                    fixture,
+                    &harness::drawing(preset),
+                    harness::logical(window, zoom),
+                    if preset.is_dark() {
+                        iced::theme::Mode::Dark
+                    } else {
+                        iced::theme::Mode::Light
+                    },
+                    open,
+                )
+            });
             let mut found = surfaces_not_reserving_the_bar(&screen);
-            found.extend(labels_in_the_bar(&screen));
+            found.extend(labels_in_the_bar(&screen, picture.as_ref()));
             assert!(
                 found.is_empty(),
                 "{name} at {} {zoom}x {}x{}:\n{}",
@@ -901,5 +949,302 @@ fn every_id_and_ref_on_orientation_is_isolated() {
             .iter()
             .any(|text| text.contains(&view.prikk_version) && !text.contains('\u{2066}')),
         "prikk's version line is prose and is drawn as prikk wrote it"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rule 3 — the marks: lines, the focus ring, and the scrollbar's thumb
+// ---------------------------------------------------------------------------------------------
+
+/// **The scrollbar's thumb, as it was drawn**, and the surface behind it.
+///
+/// The strip is the bar's own 10 logical pixels at the scrollable's end edge
+/// (`Scrollbar::default()`'s width), and the surface is read from the room `Scrollbar::spacing`
+/// reserves just inside it. The thumb is the colour in the strip furthest from that surface which
+/// covers enough of it to be a mark rather than antialiasing.
+fn thumb_and_surface(
+    picture: &harness::Picture,
+    bar: Rectangle,
+) -> Option<(snora::design::Color, snora::design::Color)> {
+    let behind = Rectangle {
+        x: bar.x - BAR_WIDTH - 2.0,
+        ..bar
+    };
+    let (surface, _) = *picture.colours_in(behind).first()?;
+    let strip = picture.colours_in(bar);
+    let pixels: usize = strip.iter().map(|(_, n)| n).sum();
+    let thumb = strip
+        .into_iter()
+        .filter(|(_, n)| *n * 20 >= pixels)
+        .map(|(colour, _)| colour)
+        .max_by(|a, b| {
+            snora::design::contrast::contrast_ratio(*a, surface)
+                .total_cmp(&snora::design::contrast::contrast_ratio(*b, surface))
+        })?;
+    Some((thumb, surface))
+}
+
+/// Every mark drawn below rule 3's floor for it.
+///
+/// **A card dims the page behind it**, so when one is open only the card's own bar is measured —
+/// the same reason the text suite stays inside the card's frame. Measured otherwise, the body's
+/// bar reads against the scrim rather than against the page: 2.84 : 1 in `dark_aaa`, which is the
+/// scrim doing its job and not a mark anyone is meant to read.
+fn marks_below_their_floor(
+    screen: &Screen,
+    picture: &harness::Picture,
+    preset: Preset,
+) -> Vec<String> {
+    let floor = stikk_gui_design::mark_floor(preset.is_high_contrast());
+    let tokens = stikk_gui_design::tokens(preset, harness::stikk_overrides());
+    let p = &tokens.palette;
+    let ratio = snora::design::contrast::contrast_ratio;
+    let mut found = Vec::new();
+
+    // **A line, and the focus ring, from the tokens.** Both are one or two logical pixels wide and
+    // drawn with antialiasing, so a picture answers about their edges rather than their colour;
+    // the colour is a fact of the preset, and that is what the floor is about. Neither varies
+    // with the zoom.
+    for (what, colour) in [
+        ("a line", p.border),
+        ("the focus ring", tokens.focus.ring_color),
+    ] {
+        for (surface, name) in [
+            (p.background, "the page"),
+            (p.surface, "a card"),
+            (p.surface_raised, "a raised card"),
+        ] {
+            let measured = ratio(colour, surface);
+            if measured < floor {
+                found.push(format!(
+                    "{what} against {name} measured {measured:.2} : 1, below {floor} : 1"
+                ));
+            }
+        }
+    }
+
+    // **The thumb, from the pixels**, because it is drawn by iced and not by this crate's tokens.
+    let frame = screen.card_frame();
+    for scrollable in screen
+        .scrollables()
+        .into_iter()
+        .filter(harness::ScrollBox::scrolls)
+    {
+        let bar = Rectangle {
+            x: scrollable.bounds.x + scrollable.bounds.width - BAR_WIDTH,
+            y: scrollable.bounds.y,
+            width: BAR_WIDTH,
+            height: scrollable.bounds.height,
+        };
+        // **The bar's own rectangle decides, not the scrollable's.** The body's scrollable is
+        // wider than the card and runs underneath it, so a card frame overlaps it while the
+        // body's bar is well outside — which is how the first version of this filter still
+        // measured a bar through the scrim.
+        if frame.is_some_and(|frame| !overlaps(bar, frame)) {
+            continue;
+        }
+        let Some((thumb, surface)) = thumb_and_surface(picture, bar) else {
+            continue;
+        };
+        let measured = ratio(thumb, surface);
+        if measured < floor {
+            found.push(format!(
+                "the scrollbar's thumb measured {measured:.2} : 1 against the surface behind it, \
+                 below {floor} : 1 (thumb {thumb:?}, surface {surface:?}, bar {bar:?})"
+            ));
+        }
+    }
+    found
+}
+
+/// **Rule 3, H — the marks.** A line, the focus ring and a scrollable's thumb each meet the mark
+/// floor: 3 : 1, and 4.5 : 1 in the high-contrast presets.
+///
+/// **The thumb is why this test exists.** RFC 070 Handoff A's review measured iced's own at
+/// **1.45 : 1** against its track and **1.56 : 1** against the card, off this handoff's own
+/// capture. It is the mark that tells a reader where they are in a long card and how much is left
+/// — the reason rule 4 reserves room for it at all — and at that contrast the readers this app is
+/// for cannot see it.
+#[test]
+fn every_mark_meets_the_mark_floor() {
+    // **Two scenes, so both bars are measured**: the card's own, and the body's with no card over
+    // it. Orientation at its longest is the screen that scrolls without one.
+    let scenes: [Scene; 2] = [
+        (
+            "the Glossary's bar",
+            harness::on_orientation,
+            Some(stikk_core::Key::Help),
+        ),
+        (
+            "the body's bar",
+            harness::on_orientation_at_its_longest,
+            None,
+        ),
+    ];
+    let mut measured = 0;
+    for (name, fixture, open) in scenes {
+        for preset in Preset::every() {
+            for zoom in [1.0_f32, 1.5] {
+                let screen = scene(fixture, open, preset, zoom, harness::WINDOW);
+                let mode = if preset.is_dark() {
+                    iced::theme::Mode::Dark
+                } else {
+                    iced::theme::Mode::Light
+                };
+                let picture = harness::picture(
+                    fixture,
+                    &harness::drawing(preset),
+                    harness::logical(harness::WINDOW, zoom),
+                    mode,
+                    open,
+                );
+                let found = marks_below_their_floor(&screen, &picture, preset);
+                assert!(
+                    found.is_empty(),
+                    "{name}, {} at {zoom}x:\n{}",
+                    preset.name(),
+                    found.join("\n")
+                );
+                measured += 1;
+            }
+        }
+    }
+    println!("rule 3: {measured} cells of marks measured, every one at or above its floor");
+}
+
+/// **The run that fails it:** iced's own scrollbar, which is what the review measured at
+/// 1.45 : 1.
+#[test]
+fn without_the_thumbs_contrast_the_mark_floor_fails() {
+    let mut below = Vec::new();
+    for preset in Preset::every() {
+        let mut settings = harness::drawing(preset);
+        settings.overrides = settings.overrides.without_scrollbar_contrast();
+        let size = harness::logical(harness::WINDOW, 1.0);
+        let mut screen = Screen::open(harness::on_orientation(), &settings, size);
+        screen.desktop_says(if preset.is_dark() {
+            iced::theme::Mode::Dark
+        } else {
+            iced::theme::Mode::Light
+        });
+        screen.window_says(size, 1.0);
+        screen.press(stikk_core::Key::Help);
+        let picture = harness::picture(
+            harness::on_orientation,
+            &settings,
+            size,
+            if preset.is_dark() {
+                iced::theme::Mode::Dark
+            } else {
+                iced::theme::Mode::Light
+            },
+            Some(stikk_core::Key::Help),
+        );
+        for finding in marks_below_their_floor(&screen, &picture, preset) {
+            if finding.contains("thumb") {
+                below.push(format!("{}: {finding}", preset.name()));
+            }
+        }
+    }
+    assert!(
+        !below.is_empty(),
+        "with iced's own scrollbar the thumb is below the mark floor"
+    );
+    println!(
+        "rule 3's failing run, the thumb: {} presets below the floor, the first being {:?}",
+        below.len(),
+        below.first()
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// C2 — a key and its action are one unit
+// ---------------------------------------------------------------------------------------------
+
+/// **C2, H: no key-and-action pair is laid out across two lines.**
+///
+/// Each pair is its own text with `Wrapping::None`, so a pair that is one line tall **cannot**
+/// have its key on one line and its action on another: the row can only break between pairs. The
+/// assertion is therefore that every pair the catalog offers here is in the tree as one text,
+/// exactly one `meta` line high.
+#[test]
+fn every_key_and_its_action_are_on_one_line() {
+    let one_line = snora::design::Typography::default_roles().body_small;
+    let one_line = one_line.size * one_line.line_height;
+    let mut measured = 0;
+    for (name, fixture, open) in scenes() {
+        for (preset, zoom, window) in harness::matrix() {
+            let screen = scene(fixture, open, preset, zoom, window);
+            let here = screen.stikk().app().keys_here();
+            let texts = screen.texts();
+            for entry in crate::words::key_line_entries(&here) {
+                let drawn = texts.iter().find(|text| text.content == entry);
+                let Some(drawn) = drawn else {
+                    panic!(
+                        "{name} at {} {zoom}x {}x{}: the key line does not draw {entry:?} as one \
+                         text; it draws:\n{:#?}",
+                        preset.name(),
+                        window.width,
+                        window.height,
+                        texts.iter().map(|t| &t.content).collect::<Vec<_>>()
+                    );
+                };
+                assert!(
+                    (drawn.bounds.height - one_line).abs() <= 0.1,
+                    "{name} at {} {zoom}x {}x{}: {entry:?} was laid out {} high, which is more \
+                     than one line — its key and its action are not together",
+                    preset.name(),
+                    window.width,
+                    window.height,
+                    drawn.bounds.height,
+                );
+                measured += 1;
+            }
+        }
+    }
+    println!("C2: {measured} key-and-action pairs measured, every one on one line");
+}
+
+/// **The run that fails it:** the key line as one string, which is the shape a real window broke
+/// between `v` and `Verify the repository` at 1280 × 720.
+///
+/// One string is one text, and at this width it is laid out **two lines high** — so it is not
+/// true of that shape that every pair is a one-line text, and where it breaks is the layout's
+/// choice rather than the drawing's. That is the defect C2 removes.
+#[test]
+fn as_one_string_the_key_line_is_more_than_one_line() {
+    let settings = harness::drawing(Preset::LightAaa);
+    let size = harness::logical(harness::WINDOW, 1.0);
+    let mut screen = Screen::open(harness::on_history(), &settings, size);
+    screen.window_says(size, 1.0);
+
+    let one_line = snora::design::Typography::default_roles().body_small;
+    let one_line = one_line.size * one_line.line_height;
+    let joined = crate::words::key_line_as_one_string(&screen.stikk().app().keys_here());
+
+    let before = screen.texts_drawn_with(crate::shell::Draws {
+        key_pairs: false,
+        ..crate::shell::Draws::shipped()
+    });
+    let drawn = before
+        .iter()
+        .find(|text| text.content == joined)
+        .expect("the one-string key line is in the tree");
+    assert!(
+        drawn.bounds.height > one_line + 0.1,
+        "the one-string key line is {} high, which is one line — this run has to show it wrapping",
+        drawn.bounds.height
+    );
+    println!(
+        "C2's failing run: as one string the key line is laid out {} high, {} lines of {one_line}",
+        drawn.bounds.height,
+        (drawn.bounds.height / one_line).round()
+    );
+
+    // And the shape that ships draws the same keys as separate one-line texts.
+    let after = screen.texts();
+    assert!(
+        after.iter().all(|text| text.content != joined),
+        "the shipped shape draws no joined key line"
     );
 }

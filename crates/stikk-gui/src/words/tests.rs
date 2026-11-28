@@ -3,7 +3,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use super::{Label, Say, key_line};
+use super::{Label, Say, key_line_as_one_string, key_line_entries};
 
 /// **Every template fills every placeholder it names**, and names no placeholder nobody fills.
 ///
@@ -44,7 +44,7 @@ fn no_template_is_a_fragment_of_another() {
 #[test]
 fn every_action_the_key_line_names_is_the_catalogs() {
     let actions: Vec<&'static stikk_core::Action> = stikk_core::actions::all().iter().collect();
-    let line = key_line(&actions);
+    let line = key_line_as_one_string(&actions);
     for action in &actions {
         assert!(
             line.contains(action.name),
@@ -65,7 +65,10 @@ fn every_action_the_key_line_names_is_the_catalogs() {
     // Entry by entry, and not by deleting the known words from the whole line: a key label is one
     // letter, and deleting a letter everywhere takes it out of the other entries too (measured —
     // the first version of this test reported a line of mangled words as *"words from nowhere"*).
-    for entry in line.split(" · ") {
+    for entry in key_line_entries(&actions) {
+        let entry = entry
+            .trim_end_matches(Say::KeyLineSeparator.template())
+            .trim();
         let known = actions.iter().any(|action| {
             let whole = match action.key {
                 Some(key) => {
@@ -76,6 +79,22 @@ fn every_action_the_key_line_names_is_the_catalogs() {
             entry == whole
         });
         assert!(known, "the key line holds an entry from nowhere: {entry:?}");
+    }
+    // **And every entry is one key with one action**, which is what makes the pair unbreakable
+    // when the drawing lays each of them out as its own text (C2).
+    let entries = key_line_entries(&actions);
+    assert_eq!(entries.len(), actions.len());
+    for (entry, action) in entries.iter().zip(&actions) {
+        assert!(
+            entry.contains(action.name),
+            "{entry:?} carries its action's name"
+        );
+        if let Some(key) = action.key {
+            assert!(
+                entry.starts_with(&key.label()),
+                "{entry:?} begins with its own key"
+            );
+        }
     }
 }
 

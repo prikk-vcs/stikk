@@ -4,7 +4,8 @@
 //! them. A card floats on the scrim in the dialog slot, which blocks the screen beneath for input
 //! and for the pointer (knotra's RFC-034 lesson).
 
-use iced::widget::{Column, column, sensor};
+use iced::widget::text::Wrapping;
+use iced::widget::{Column, Row, column, sensor};
 use iced::{Element, Length};
 use snora::AppLayout;
 use stikk_gui_design as design;
@@ -19,19 +20,43 @@ use crate::{Message, Stikk, card, log, text, view};
 /// out at, which is the viewport the app actually used. Reported on arrival and on every change,
 /// so a window that changes under the app withdraws its own confirmation.
 pub fn view(stikk: &Stikk) -> Element<'_, Message> {
-    view_with(stikk, true)
+    view_with(stikk, Draws::shipped())
 }
 
-/// The whole window, with the status area's banner drawing on or off.
+/// **Which parts of the shell are drawn** — the switches two guards need their failing run to
+/// turn.
 ///
-/// **`draws_banner` is rule 9's own failing run** (RFC 070 §4.1: *"Run it with the status area's
-/// banner drawing removed, and it must fail"*). A shipped build is [`view()`], which passes `true`;
-/// nothing else in the crate calls this with `false`.
-pub fn view_with(stikk: &Stikk, draws_banner: bool) -> Element<'_, Message> {
+/// A shipped build is [`Draws::shipped`], and [`view()`] is the only caller that uses it. Nothing
+/// else in the crate turns one off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Draws {
+    /// Rule 9: the status area draws every banner the program sets. **Off is rule 9's failing
+    /// run** (RFC 070 §4.1: *"Run it with the status area's banner drawing removed, and it must
+    /// fail"*).
+    pub banner: bool,
+    /// C2: each key-and-action pair is one unbreakable unit, and the line wraps between pairs
+    /// only. **Off is that guard's failing run**: the key line as one string, which is the shape
+    /// a real window broke between `v` and `Verify the repository`.
+    pub key_pairs: bool,
+}
+
+impl Draws {
+    /// Everything drawn, which is what a shipped build does.
+    #[must_use]
+    pub fn shipped() -> Self {
+        Self {
+            banner: true,
+            key_pairs: true,
+        }
+    }
+}
+
+/// The whole window, with one of [`Draws`]'s parts turned off for a guard's failing run.
+pub fn view_with(stikk: &Stikk, draws: Draws) -> Element<'_, Message> {
     let tokens = stikk.tokens();
     let mut layout = AppLayout::new(view::body(stikk, &tokens))
         .header(header(stikk, &tokens))
-        .footer(footer(stikk, &tokens, draws_banner));
+        .footer(footer(stikk, &tokens, draws));
     if let Some((overlay, surface)) = stikk.app().top_card() {
         layout = layout.dialog(snora::Dialog::new(card::view(
             overlay, surface, stikk, &tokens,
@@ -64,24 +89,36 @@ fn header<'a>(stikk: &'a Stikk, tokens: &Tokens) -> Element<'a, Message> {
 /// and its faults. RFC 065's W4 is why the rule exists: prikk refused *"nothing to commit"*, the
 /// program closed the card and set a banner, and the prototype drew nothing — so the screen
 /// silently did nothing, which is the confusion this project exists to prevent.
-fn footer<'a>(stikk: &'a Stikk, tokens: &Tokens, draws_banner: bool) -> Element<'a, Message> {
+fn footer<'a>(stikk: &'a Stikk, tokens: &Tokens, draws: Draws) -> Element<'a, Message> {
     let mut rows = Column::new().spacing(tokens.spacing.xs);
-    if let Some(fault) = stikk.app().fault().filter(|_| draws_banner) {
+    if let Some(fault) = stikk.app().fault().filter(|_| draws.banner) {
         rows = rows.push(design::body(tokens, text::inert(fault)));
     }
-    if let Some(banner) = stikk.app().banner().filter(|_| draws_banner) {
+    if let Some(banner) = stikk.app().banner().filter(|_| draws.banner) {
         rows = rows.push(design::body(tokens, text::inert(banner)));
     }
     rows = rows.push(design::line(tokens));
-    rows = rows.push(design::meta(tokens, keys_line(stikk)));
+    rows = rows.push(key_line(stikk, tokens, draws.key_pairs));
     design::start(rows).padding(tokens.spacing.md).into()
 }
 
-/// **The key line, from the catalog** (rule 7): a key exists only where the catalog binds it, so a
-/// line that lists a key that does nothing is impossible. The words are the template table's.
-#[must_use]
-pub fn keys_line(stikk: &Stikk) -> String {
-    crate::words::key_line(&stikk.app().keys_here())
+/// **The key line: one unbreakable text per key-and-action pair, wrapping between pairs** (C2).
+///
+/// A key and its action are one unit. Laid out as one long string the line broke between `v` and
+/// `Verify the repository` on a real window at 1280 × 720, so the `v` read as belonging to nothing
+/// and the next line's first action read as having no key. Each pair is its own text with
+/// `Wrapping::None`, so iced can only break the row **between** them.
+fn key_line<'a>(stikk: &'a Stikk, tokens: &Tokens, pairs: bool) -> Element<'a, Message> {
+    let here = stikk.app().keys_here();
+    if !pairs {
+        // The shape before C2, which this guard's failing run draws.
+        return design::meta(tokens, crate::words::key_line_as_one_string(&here)).into();
+    }
+    let mut line = Row::new().spacing(tokens.spacing.xs);
+    for entry in crate::words::key_line_entries(&here) {
+        line = line.push(design::meta(tokens, entry).wrapping(Wrapping::None));
+    }
+    line.wrap().into()
 }
 
 /// The room a scrollable's own bar is given, as every scrollable in the app is given it (rule 4).
@@ -92,11 +129,16 @@ pub fn scrollable<'a>(
     tokens: &Tokens,
     on_scroll: impl Fn(iced::widget::scrollable::Viewport) -> Message + 'a,
 ) -> iced::widget::Scrollable<'a, Message> {
+    let overrides = stikk.overrides();
+    let styling = tokens.clone();
     let scrollable = iced::widget::scrollable(content)
         .id(id)
         .height(Length::Fill)
-        .on_scroll(on_scroll);
-    match design::scrollbar_spacing(tokens, stikk.overrides()) {
+        .on_scroll(on_scroll)
+        // **The bar's thumb is a mark a reader has to be able to see** (rule 3), and iced's own
+        // measured 1.45 : 1. The design crate chooses it from the preset's palette by measuring.
+        .style(move |theme, status| design::scrollbar(&styling, overrides, theme, status));
+    match design::scrollbar_spacing(tokens, overrides) {
         Some(spacing) => scrollable.spacing(spacing),
         None => scrollable,
     }

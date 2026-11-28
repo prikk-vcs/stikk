@@ -19,6 +19,7 @@
 //! | [`isolate`], [`identifier`], [`meta_identifier`] — text that is not words | 12 |
 //! | [`start`] — the start edge, aligned here and in no view | 4 |
 //! | [`line()`] — lines, not panels | 4, 10 |
+//! | [`scrollbar`] — a bar whose thumb is a mark a reader can see | 3, 4 |
 //! | [`render`] — the card on its scrim, and the shell around it | 4, 10 |
 //! | [`scrollbar_spacing`] — every scrollable reserves its bar's room | 4 |
 //! | [`button_primary`], [`button_secondary`] — Snora's buttons, with the unavailable floors | 3 |
@@ -37,7 +38,8 @@ mod text;
 pub use font::{MACOS_CANDIDATES, interface_font, interface_font_name};
 pub use preset::{Overrides, Preset, theme, tokens};
 pub use style::{
-    button_primary, button_secondary, card_width, line, render, scrollbar_spacing, start,
+    button_primary, button_secondary, card_width, line, mark_floor, render, scrollbar,
+    scrollbar_spacing, start, text_floor,
 };
 pub use text::{
     body, control_label, heading, identifier, isolate, meta, meta_identifier, role_sizes, strong,

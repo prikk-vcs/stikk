@@ -95,6 +95,14 @@ pub struct Overrides {
     /// 4.5 : 1 in the high-contrast presets), where Snora's disabled style multiplies the alpha by
     /// 0.45 and measures 1.48–2.90 : 1 (RFC 065 M4).
     pub disabled_contrast: bool,
+    /// Rule 3: **a scrollable's thumb is a mark, and meets the mark floor** — 3 : 1, and 4.5 : 1
+    /// in the high-contrast presets — against the surface it is drawn on.
+    ///
+    /// iced's own thumb measured **1.45 : 1** against its track and **1.56 : 1** against the card
+    /// in `dark_aaa` at 200 %, read off this handoff's own capture (RFC 070 Handoff A's review,
+    /// C1). It is the mark that tells a reader where they are and how much is left, which is the
+    /// reason rule 4 reserves room for it in the first place.
+    pub scrollbar_contrast: bool,
 }
 
 impl Overrides {
@@ -105,6 +113,7 @@ impl Overrides {
             targets_44: true,
             scrollbar_spacing: true,
             disabled_contrast: true,
+            scrollbar_contrast: true,
         }
     }
 
@@ -131,6 +140,15 @@ impl Overrides {
     pub fn without_targets_44(self) -> Self {
         Self {
             targets_44: false,
+            ..self
+        }
+    }
+
+    /// Rule 3's other failing run: the same tree with iced's own scrollbar.
+    #[must_use]
+    pub fn without_scrollbar_contrast(self) -> Self {
+        Self {
+            scrollbar_contrast: false,
             ..self
         }
     }

@@ -86,6 +86,8 @@ pub enum Say {
     GlossaryNotation,
     /// One entry on the key line, and in the Glossary's key list.
     KeyLineEntry,
+    /// What stands between two entries on the key line.
+    KeyLineSeparator,
     /// The way out of a read-only card.
     CardWayOut,
     /// How much of a card is still below the window.
@@ -154,6 +156,7 @@ impl Say {
             Self::GlossaryCodes => "Codes prikk reports",
             Self::GlossaryNotation => "stikk's own notation",
             Self::KeyLineEntry => "{key} {action}",
+            Self::KeyLineSeparator => "·",
             Self::CardWayOut => "Esc closes this",
             Self::CardMoreBelow => "↓ scrolls — there is more below",
         }
@@ -228,6 +231,7 @@ impl Say {
             Self::GlossaryCodes,
             Self::GlossaryNotation,
             Self::KeyLineEntry,
+            Self::KeyLineSeparator,
             Self::CardWayOut,
             Self::CardMoreBelow,
         ]
@@ -277,20 +281,46 @@ impl Label {
     }
 }
 
-/// **The key line** (rule 7): what the catalog binds, here, in the catalog's own words.
+/// **The key line, entry by entry** (rule 7): what the catalog binds, here, in the catalog's own
+/// words.
 ///
-/// In this module because it is text, and a view may not assemble one (rule 13's check). The
-/// separator is punctuation between entries, not a sentence: the entries themselves are templates.
+/// **One string per key-and-action pair, and the separator inside the pair that precedes it.** A
+/// key and its action are one unit: split across two lines, the key reads as belonging to nothing
+/// and the next line's action reads as having none. Measured on a real window at 1280 × 720: the
+/// line broke between `v` and `Verify the repository` (RFC 070 Handoff A's review, C2).
+///
+/// So the drawing lays each of these out as its own unbreakable text, and the line wraps **between
+/// pairs only**. The words and the separator stay here, which is where rule 13 keeps them.
 #[must_use]
-pub fn key_line(actions: &[&'static stikk_core::Action]) -> String {
+pub fn key_line_entries(actions: &[&'static stikk_core::Action]) -> Vec<String> {
+    let last = actions.len().saturating_sub(1);
     actions
         .iter()
-        .map(|action| match action.key {
-            Some(key) => Say::KeyLineEntry.fill(&[("key", &key.label()), ("action", action.name)]),
-            None => action.name.to_string(),
+        .enumerate()
+        .map(|(at, action)| {
+            let pair = match action.key {
+                Some(key) => {
+                    Say::KeyLineEntry.fill(&[("key", &key.label()), ("action", action.name)])
+                }
+                None => action.name.to_string(),
+            };
+            if at == last {
+                pair
+            } else {
+                format!("{pair} {}", Say::KeyLineSeparator.template())
+            }
         })
-        .collect::<Vec<_>>()
-        .join(" · ")
+        .collect()
+}
+
+/// **The key line as one string** — the shape before C2, kept because a guard needs the run that
+/// fails it.
+///
+/// Nothing in a shipped build draws this: [`key_line_entries`] is what the shell lays out. It is
+/// here so the test that holds C2 can measure the two shapes side by side.
+#[must_use]
+pub fn key_line_as_one_string(actions: &[&'static stikk_core::Action]) -> String {
+    key_line_entries(actions).join(" ")
 }
 
 #[cfg(test)]
